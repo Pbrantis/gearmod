@@ -10,6 +10,7 @@ import { SettingsRepository } from './settings'
 import { AgentContextService } from './agent-context'
 import { McpBridge } from './mcp-bridge'
 import { AgentWriteback } from './agent-writeback'
+import { ExecutionService } from './executions'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
 import { ConversationRepository } from './conversations'
@@ -40,6 +41,7 @@ const writeback = new AgentWriteback(board, mcpBridge)
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
 }, worktrees, 2, agentContext, writeback)
+const executions = new ExecutionService(board, conversations, orchestrator)
 let disposeIpc: (() => void) | undefined
 
 async function openDatabase(): Promise<void> {
@@ -82,7 +84,7 @@ async function chooseDirectory(): Promise<string | null> {
 app.whenReady().then(async () => {
   await openDatabase()
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, executions, appVersion, dataDir, reopen: openDatabase })
   await createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow() })
 }).catch((error: unknown) => {

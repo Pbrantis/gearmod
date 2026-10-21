@@ -52,6 +52,7 @@ export class AgentOrchestrator {
       const cwd = worktree?.path ?? context.projectPath
       if (worktree) this.conversations.attachWorktree(job.run.id, worktree.id)
       this.conversations.updateRun(job.run.id, 'running', null)
+      publish({ type: 'agentboard/run-started', payload: { cardId: context.cardId, planning: job.planning } })
       const mcp = this.writeback?.begin(job.run.id, context.cardId, (type, payload) => publish({ type, payload }))
       const result = await this.adapters[context.profile.provider].run({ cwd, prompt: this.agentContext ? this.agentContext.prompt(context.cardId, job.prompt, job.planning) : job.prompt, pluginDir: this.agentContext?.pluginDir, mcp, developerInstructions: this.agentContext?.developerInstructions(job.planning), sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
       this.conversations.updateSession(job.chatId, result.sessionId)

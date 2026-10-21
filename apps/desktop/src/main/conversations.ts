@@ -97,6 +97,20 @@ export class ConversationRepository {
     return this.listPlans(plan.cardId).find((item) => item.id === planId)!
   }
 
+  /** Garante que o Plano atual do card exista como versão em `plans` e o aprova (Iniciar aprova o plano). */
+  approveCurrentPlan(cardId: string, profileId: string, planDocument: string): Plan | null {
+    const latest = this.listPlans(cardId)[0]
+    if (planDocument.trim() && latest?.contentMd !== planDocument) this.savePlan(cardId, profileId, planDocument)
+    const target = this.listPlans(cardId)[0]
+    return target ? this.approvePlan(target.id) : null
+  }
+
+  /** Chat de execução do card (um por card, com o histórico), criado na primeira execução. */
+  executionChat(projectId: string, cardId: string, profileId: string): Chat {
+    const existing = this.listChats(projectId, cardId).find((chat) => chat.purpose === 'execution')
+    return existing ?? this.createChat({ projectId, cardId, purpose: 'execution', profileId })
+  }
+
   reconcileInterrupted(): number {
     return this.database.db.prepare(`UPDATE runs SET status = 'interrupted', ended_at = ?, exit_reason = 'Application restarted' WHERE status IN ('queued', 'running')`).run(new Date().toISOString()).changes
   }

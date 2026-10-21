@@ -240,6 +240,14 @@ export const migrations: readonly Migration[] = [
         if (plan?.body.trim()) save(card.id, 'plano', plan.body, plan.at)
       }
     }
+  },
+  {
+    version: 8,
+    checksum: 'sha256:agentboard-card-viewed-v8-2026-10-21',
+    up(db) {
+      // viewed_at marca quando o usuário viu o resultado da última execução (destaque de "terminado"); o que já existe conta como visto.
+      db.exec(`ALTER TABLE cards ADD COLUMN viewed_at TEXT; UPDATE cards SET viewed_at = datetime('now');`)
+    }
   }
 ]
 

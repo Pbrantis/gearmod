@@ -18,13 +18,13 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
   const planning = mode === 'planning'
   const loadMessages = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
   const loadCard = useCallback(async () => { const [fresh, documents] = await Promise.all([window.agentboard.invoke('cards:get', { cardId: initial.id }), window.agentboard.invoke('cards:documents', { cardId: initial.id })]); setCard(fresh); setDocs(documents) }, [initial.id])
-  useEffect(() => { void loadCard().catch((reason: unknown) => setError(String(reason))) }, [loadCard])
+  useEffect(() => { void window.agentboard.invoke('cards:mark-viewed', { cardId: initial.id }).then(() => loadCard()).catch((reason: unknown) => setError(String(reason))) }, [initial.id, loadCard])
   useEffect(() => { void window.agentboard.invoke('chats:list', { projectId: project.id, cardId: initial.id }).then((items) => { const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); setProfileId(found.profileId); void loadMessages(found.id) } }).catch((reason: unknown) => setError(String(reason))) }, [project.id, initial.id, mode, loadMessages])
   useEffect(() => window.agentboard.onRunEvent((event) => {
     if (event.eventType === 'agentboard/card-updated' && event.payload.cardId === initial.id) void loadCard()
     if (event.runId !== runId.current) return
     if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
-    if (event.eventType === 'agentboard/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void loadCard() }
+    if (event.eventType === 'agentboard/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void window.agentboard.invoke('cards:mark-viewed', { cardId: initial.id }).then(() => loadCard()) }
   }), [initial.id, loadCard, loadMessages])
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }) }, [messages, live])
   useEffect(() => { document.body.classList.add('dockOpen'); return () => document.body.classList.remove('dockOpen') }, [])
@@ -47,7 +47,7 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
 
   return <aside className={`dock ${expanded ? 'full' : ''}`} aria-label="Chat do card">
     <div className="dockIn">
-      <div className="dockHead"><div className="top"><div><p className="eyebrow">{planning ? 'Planejando card' : 'Execução'}</p><h2>{card.title || 'Novo card'}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span></div></div>
+      <div className="dockHead"><div className="top"><div><p className="eyebrow">{planning ? 'Planejando card' : card.run.state === 'running' || run ? 'Executando' : card.run.state === 'paused' ? 'Pausado' : 'Execução'}</p><h2>{card.title || 'Novo card'}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span></div></div>
         <div className="dockTools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button type="button" className="ibtn tip" data-tip="Fechar chat" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
       <div className="chatlog" ref={log}>
         {!messages.length && !live && <div className="msg sys">{planning ? 'Skill de planejamento carregada. Este chat só planeja, não altera arquivos.' : 'Chat de execução do card.'}</div>}
