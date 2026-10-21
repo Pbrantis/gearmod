@@ -1,11 +1,20 @@
 import { execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { delimiter, extname, isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { AgentProbe, AgentProfile } from '@agentboard/contracts'
 import type { ProfileRepository } from './projects'
 
 const exec = promisify(execFile)
 export interface CommandRunner { run(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> }
-const systemRunner: CommandRunner = { async run(command, args, env) { return exec(command, args, { env, timeout: 10_000, windowsHide: true }) } }
+const systemRunner: CommandRunner = { async run(command, args, env) {
+  const executable = resolveCommand(command, env)
+  if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(executable).toLowerCase())) {
+    const commandLine = [executable, ...args].map(quoteCmdArgument).join(' ')
+    return exec(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', commandLine], { env, timeout: 10_000, windowsHide: true })
+  }
+  return exec(executable, args, { env, timeout: 10_000, windowsHide: true })
+} }
 
 export class AgentProbeService {
   constructor(private readonly profiles: ProfileRepository, private readonly runner: CommandRunner = systemRunner) {}
@@ -42,9 +51,9 @@ export class AgentProbeService {
 
   login(profileId: string): { started: true } {
     const profile = this.profiles.get(profileId)
-    const command = profile.executablePath || profile.provider
-    const args = profile.provider === 'codex' ? ['login'] : ['auth', 'login']
     const env = this.environment(profile)
+    const command = resolveCommand(profile.executablePath || profile.provider, env)
+    const args = profile.provider === 'codex' ? ['login'] : ['auth', 'login']
     if (process.platform === 'win32') {
       const child = spawn('cmd.exe', ['/d', '/c', 'start', '', command, ...args], { env, detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
@@ -71,6 +80,20 @@ export class AgentProbeService {
     } catch { return false }
   }
 }
+
+function resolveCommand(command: string, env: NodeJS.ProcessEnv): string {
+  if (process.platform !== 'win32' || isAbsolute(command)) return command
+  const folders = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
+  for (const extension of ['.exe', '.cmd', '.bat']) {
+    for (const folder of folders) {
+      const candidate = join(folder, `${command}${extension}`)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return command
+}
+
+function quoteCmdArgument(value: string): string { return `"${value.replace(/"/g, '""')}"` }
 
 function safeError(error: unknown): string {
   const value = error instanceof Error ? error.message : String(error)

@@ -14,7 +14,14 @@ export interface AgentAdapter { run(options: AgentRunOptions): Promise<AgentRunR
 
 type JsonObject = Record<string, unknown>
 export interface ProcessFactory { start(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): ChildProcessWithoutNullStreams }
-const nodeProcesses: ProcessFactory = { start(command, args, options) { return spawn(safeExecutable(command), args, { ...options, windowsHide: true, shell: false }) } }
+const nodeProcesses: ProcessFactory = { start(command, args, options) {
+  const executable = safeExecutable(command)
+  if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(executable).toLowerCase())) {
+    const commandLine = [executable, ...args].map((value) => `"${value.replace(/"/g, '""')}"`).join(' ')
+    return spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', commandLine], { ...options, windowsHide: true, shell: false })
+  }
+  return spawn(executable, args, { ...options, windowsHide: true, shell: false })
+} }
 
 class JsonLineRpc {
   private nextId = 1
@@ -126,12 +133,15 @@ function sanitize(value: string): string { return value.replace(/(?:sk-|Bearer\s
 function safeExecutable(command: string): string {
   if (process.platform !== 'win32') return command
   if (isAbsolute(command)) {
-    if (extname(command).toLowerCase() !== '.exe') throw new Error('No Windows, o executável do agente deve ser um arquivo .exe')
+    if (!['.exe', '.cmd', '.bat'].includes(extname(command).toLowerCase())) throw new Error('No Windows, o agente deve apontar para um arquivo .exe, .cmd ou .bat')
     return command
   }
-  for (const folder of (process.env.PATH ?? '').split(delimiter)) {
-    const candidate = join(folder, `${command}.exe`)
-    if (existsSync(candidate)) return candidate
+  const folders = (process.env.PATH ?? '').split(delimiter)
+  for (const extension of ['.exe', '.cmd', '.bat']) {
+    for (const folder of folders) {
+      const candidate = join(folder, `${command}${extension}`)
+      if (existsSync(candidate)) return candidate
+    }
   }
-  throw new Error(`Executável seguro não encontrado no PATH: ${command}.exe`)
+  throw new Error(`Executável seguro não encontrado no PATH: ${command}`)
 }
