@@ -51,6 +51,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     },
     'profiles:list': () => services.profiles.list(),
     'profiles:create': (input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }) => services.profiles.create(input),
+    'profiles:update': (input: { profileId: string; label: string; scope: string }) => services.profiles.update(input),
     'profiles:delete': (input: { profileId: string }) => ({ deleted: services.profiles.delete(input.profileId) }),
     'profiles:probe': (input: { profileId: string }) => services.agentProbes.probe(input.profileId),
     'profiles:probe-all': () => services.agentProbes.probeAll(),

@@ -71,14 +71,24 @@ export class ProfileRepository {
     return this.get(id)
   }
 
+  update(input: { profileId: string; label: string; scope: string }): AgentProfile {
+    this.get(input.profileId)
+    this.database.db.prepare('UPDATE agent_profiles SET label = ?, scope = ?, updated_at = ? WHERE id = ?')
+      .run(input.label.trim(), input.scope.trim(), new Date().toISOString(), input.profileId)
+    return this.get(input.profileId)
+  }
+
   delete(id: string): boolean {
     this.get(id)
-    const references = ['project_agent_profiles', 'plans', 'chats', 'runs'].some((table) => {
-      const column = table === 'project_agent_profiles' ? 'profile_id' : table === 'plans' ? 'agent_profile_id' : 'profile_id'
+    const references = ['plans', 'chats', 'runs'].some((table) => {
+      const column = table === 'plans' ? 'agent_profile_id' : 'profile_id'
       return Boolean(this.database.db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id))
     })
-    if (references) throw new Error('Este agente está em uso por um projeto, conversa, plano ou execução')
-    return this.database.db.prepare('DELETE FROM agent_profiles WHERE id = ?').run(id).changes > 0
+    if (references) throw new Error('Este agente possui conversas, planos ou execuções salvos e não pode ser excluído')
+    return this.database.db.transaction(() => {
+      this.database.db.prepare('DELETE FROM project_agent_profiles WHERE profile_id = ?').run(id)
+      return this.database.db.prepare('DELETE FROM agent_profiles WHERE id = ?').run(id).changes > 0
+    })()
   }
 
   list(): AgentProfile[] {

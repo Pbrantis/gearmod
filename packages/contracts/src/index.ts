@@ -98,6 +98,7 @@ export const ipcContracts = {
   'backups:restore': { input: restoreBackupInputSchema, output: z.object({ restored: z.literal(true) }) }
   , 'profiles:list': { input: z.undefined(), output: z.array(agentProfileSchema) }
   , 'profiles:create': { input: createAgentProfileInputSchema, output: agentProfileSchema }
+  , 'profiles:update': { input: z.object({ profileId: uuid, label: z.string().trim().min(1).max(80), scope: z.string().trim().min(1).max(80) }).strict(), output: agentProfileSchema }
   , 'profiles:delete': { input: z.object({ profileId: uuid }).strict(), output: z.object({ deleted: z.boolean() }) }
   , 'profiles:probe': { input: z.object({ profileId: uuid }).strict(), output: agentProbeSchema }
   , 'profiles:probe-all': { input: z.undefined(), output: z.array(agentProbeSchema) }
