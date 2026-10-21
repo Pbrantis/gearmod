@@ -53,13 +53,16 @@ describe('DocumentRepository', () => {
   it('stores four documents with versions and mirrors the summary into the card description', async () => {
     const { database, board, card } = await setup()
     expect(board.documents.get(card.id).resumo.contentMd).toBe('Resumo inicial')
+    expect(board.card(card.id).hasPlan).toBe(false)
+    board.documents.write(card.id, 'plano', '## Plano\nFazer')
+    expect(board.card(card.id)).toMatchObject({ hasPlan: true, execProfileId: null })
     board.documents.write(card.id, 'especificacao', '## Especificação\nTexto', 'agent')
     board.documents.write(card.id, 'resumo', 'Resumo novo')
     board.documents.write(card.id, 'resumo', 'Resumo novo')
     expect(board.card(card.id).description).toBe('Resumo novo')
     expect(board.documents.versions(card.id, 'resumo').map((v) => [v.version, v.actor])).toEqual([[2, 'user'], [1, 'user']])
     expect(board.documents.get(card.id).especificacao).toMatchObject({ updatedBy: 'agent', contentMd: '## Especificação\nTexto' })
-    expect(board.documents.get(card.id).plano.contentMd).toBe('')
+    expect(board.documents.get(card.id).plano.contentMd).toBe('## Plano\nFazer')
     database.close()
   })
 

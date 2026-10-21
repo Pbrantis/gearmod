@@ -1,6 +1,6 @@
 import React from 'react'
 
-/** Renderizador Markdown mínimo e seguro (sem HTML cru): títulos, listas e checklists aninhadas, citações, código, tabelas e ênfase. */
+/** Renderizador Markdown mínimo e seguro (sem HTML cru). Devolve só os blocos: quem chama põe dentro de um `.md`. Checklists no formato do protótipo (`ul.tasks > li.tk`). */
 interface Item { indent: number; ordered: boolean; checked: boolean | null; text: string; line: number; children: Item[] }
 
 const inlinePattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|\[[^\]]+\]\([^)]*\))/g
@@ -21,12 +21,14 @@ const listLine = /^(\s*)([-*+]|\d+\.)\s+(?:\[( |x|X)\]\s+)?(.*)$/
 const isSpecial = (line: string): boolean => /^(#{1,6}\s|```|>\s?|\s*([-*+]|\d+\.)\s|---+\s*$)/.test(line) || /^\|.*\|\s*$/.test(line)
 
 function renderItems(items: Item[], onToggle: ((line: number, checked: boolean) => void) | undefined, key: string): React.JSX.Element {
-  const ordered = items[0]?.ordered, Tag = ordered ? 'ol' : 'ul'
-  return <Tag key={key} className={items.some((item) => item.checked !== null) ? 'mdChecklist' : undefined}>{items.map((item) => <li key={`${key}-${item.line}`}>
-    {item.checked !== null && <input type="checkbox" checked={item.checked} disabled={!onToggle} aria-label={item.text} onChange={(e) => onToggle?.(item.line, e.target.checked)} />}
-    <span className={item.checked ? 'mdDone' : undefined}>{inline(item.text, `${key}-${item.line}`)}</span>
-    {item.children.length > 0 && renderItems(item.children, onToggle, `${key}-${item.line}c`)}
-  </li>)}</Tag>
+  if (items.some((item) => item.checked !== null)) {
+    const flat: Array<{ item: Item; depth: number }> = []
+    const walk = (list: Item[], depth: number): void => list.forEach((item) => { flat.push({ item, depth }); walk(item.children, depth + 1) })
+    walk(items, 0)
+    return <ul key={key} className="tasks">{flat.map(({ item, depth }) => <li key={`${key}-${item.line}`} className={`tk ${depth ? 'sub' : ''}`} data-ln={onToggle ? item.line : undefined} onClick={onToggle ? () => onToggle(item.line, !item.checked) : undefined}><span className={`tkb ${item.checked ? 'on' : ''}`} />{inline(item.text, `${key}-${item.line}`)}</li>)}</ul>
+  }
+  const Tag = items[0]?.ordered ? 'ol' : 'ul'
+  return <Tag key={key}>{items.map((item) => <li key={`${key}-${item.line}`}>{inline(item.text, `${key}-${item.line}`)}{item.children.length > 0 && renderItems(item.children, onToggle, `${key}-${item.line}c`)}</li>)}</Tag>
 }
 
 function buildTree(lines: Array<{ match: RegExpExecArray; line: number }>): Item[] {
@@ -52,7 +54,7 @@ export function Markdown({ source, onToggle }: { source: string; onToggle?(line:
       i += 1; blocks.push(<pre key={`b${start}`}><code>{body.join('\n')}</code></pre>); continue
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line)
-    if (heading) { const Tag = `h${heading[1]!.length}` as 'h1'; blocks.push(<Tag key={`b${i}`}>{inline(heading[2]!, `b${i}`)}</Tag>); i += 1; continue }
+    if (heading) { const Tag = `h${Math.min(3, heading[1]!.length)}` as 'h1'; blocks.push(<Tag key={`b${i}`}>{inline(heading[2]!, `b${i}`)}</Tag>); i += 1; continue }
     if (/^---+\s*$/.test(line)) { blocks.push(<hr key={`b${i}`} />); i += 1; continue }
     if (/^>\s?/.test(line)) {
       const start = i; const body: string[] = []
@@ -74,5 +76,5 @@ export function Markdown({ source, onToggle }: { source: string; onToggle?(line:
     while (i < lines.length && lines[i]!.trim() && (i === start || !isSpecial(lines[i]!))) { body.push(lines[i]!.trim()); i += 1 }
     blocks.push(<p key={`b${start}`}>{inline(body.join(' '), `b${start}`)}</p>)
   }
-  return <div className="markdown">{blocks.length ? blocks : <p className="mdEmpty">Nada escrito ainda.</p>}</div>
+  return <>{blocks.length ? blocks : <p className="mdEmpty">Nada escrito ainda.</p>}</>
 }

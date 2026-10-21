@@ -1,5 +1,0 @@
-/* Tokens de tema. Só a tonalidade de destaque muda (data-accent em <html>, salvo em settings app.tema); o fundo escuro é fixo. */
-:root{--accent:#8db99a;--accent-strong:#a9d5b5;--accent-muted:#7fa18a;--accent-bg:#26342b;--accent-line:#2f5a40;--accent-deep:#1b2b21;--accent-glow:#203327}
-:root[data-accent="purple"]{--accent:#a99bd9;--accent-strong:#c7bcf0;--accent-muted:#9285bf;--accent-bg:#2d2840;--accent-line:#4a3f6e;--accent-deep:#211d30;--accent-glow:#2a2340}
-:root[data-accent="blue"]{--accent:#8fb3d9;--accent-strong:#b5cff0;--accent-muted:#7f9cbd;--accent-bg:#24303f;--accent-line:#345273;--accent-deep:#1a2430;--accent-glow:#1e2c3d}
-:root[data-accent="orange"]{--accent:#d9a477;--accent-strong:#f0c59e;--accent-muted:#bd8e66;--accent-bg:#3a2c22;--accent-line:#6b4a33;--accent-deep:#2a2019;--accent-glow:#3a2a1e}
