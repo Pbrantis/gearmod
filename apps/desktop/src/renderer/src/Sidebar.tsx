@@ -1,0 +1,55 @@
+import React, { useCallback, useEffect, useState } from 'react'
+import type { AgentProfile, AgentUsage, Project } from '@agentboard/contracts'
+import { AgentIcon, ProviderLogo } from './AgentIcon'
+import { ChevronLeftIcon } from './icons'
+
+const level = (percent: number): string => (percent >= 90 ? 'hi' : percent >= 70 ? 'mid' : 'ok')
+function left(iso: string | null): string {
+  if (!iso) return '—'
+  const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60000)), days = Math.floor(minutes / 1440), hours = Math.floor((minutes % 1440) / 60)
+  return days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes % 60}min` : `${minutes}min`
+}
+const at = (iso: string | null): string => (iso ? new Date(iso).toLocaleString('pt-BR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '')
+const Bar = ({ percent }: { percent: number }): React.JSX.Element => <div className="ubar"><i className={level(percent)} style={{ width: `${percent}%` }} /></div>
+
+/** Uso das sessões: botão do rodapé com os provedores, lista por agente (5 h) e, ao clicar, o painel completo com a semana. */
+function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Element {
+  const [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>()
+  const load = useCallback(async () => { try { setUsage(await window.agentboard.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
+  useEffect(() => { if (open || detail) void load() }, [open, detail, load])
+  useEffect(() => window.agentboard.onRunEvent((event) => { if ((open || detail) && event.eventType === 'agentboard/run-completed') void load() }), [open, detail, load])
+  const providers = [...new Set(profiles.map((item) => item.provider))]
+  const session = (profileId: string) => usage.find((item) => item.profileId === profileId)?.windows.find((window) => window.id === 'five_hour')
+  return <div className="used">
+    <button type="button" className="usedbtn tip" data-tip="Agentes e uso da sessão" aria-expanded={open} aria-label="Agentes e uso da sessão" onClick={() => setOpen(!open)}>{providers.map((provider) => { const sample = profiles.find((item) => item.provider === provider)!; return <span key={provider} className={`av ptl ${provider}`} style={{ color: sample.color, background: `color-mix(in srgb, ${sample.color} 22%, #1b1e1c)` }}><ProviderLogo provider={provider} /></span> })}<span className={`uchev ${open ? 'open' : ''}`}>⌃</span></button>
+    {open && <div className="upop"><div className="sectitle">Uso da sessão (5 h)</div>{profiles.length === 0 && <p className="hint">Nenhum agente cadastrado.</p>}{profiles.map((profile) => { const window = session(profile.id); return <button type="button" className="urow" key={profile.id} onClick={() => { setDetail(profile.id); setOpen(false) }}><AgentIcon profile={profile} tip={false} /><span className="un"><b>{profile.label}</b><small className="rs">{window ? <>Reseta em<span>{left(window.resetsAt)}</span></> : 'Sem dados ainda'}</small>{window && <Bar percent={window.usedPercent} />}</span><span className="up">{window ? `${window.usedPercent}%` : ''}</span></button> })}</div>}
+    {detail && <UsageModal profiles={profiles} usage={usage} current={detail} close={() => setDetail(undefined)} />}
+  </div>
+}
+
+function UsageModal({ profiles, usage, current, close }: { profiles: AgentProfile[]; usage: AgentUsage[]; current: string; close(): void }): React.JSX.Element {
+  useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') close() }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [close])
+  return <div className="overlay top"><div className="modal" style={{ width: 'min(760px,100%)' }}><header><div><div className="eyebrow">Uso do plano</div><h2>Sessões e semana</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
+    <div className="ugrid">{profiles.map((profile) => { const item = usage.find((entry) => entry.profileId === profile.id); return <section className={`ucard ${profile.id === current ? 'here' : ''}`} key={profile.id}>
+      <div className="uhead"><AgentIcon profile={profile} size="lg" tip={false} /><span><b>{profile.label}</b><small>{profile.provider === 'codex' ? 'Codex' : 'Claude'}</small></span></div>
+      {item?.windows.length ? item.windows.map((window) => <div className="ublk" key={window.id}><div className="uh"><span>{window.label}</span><b>{window.usedPercent}%</b></div><Bar percent={window.usedPercent} />{window.resetsAt && <small>Reseta em<span>{left(window.resetsAt)} · {at(window.resetsAt)}</span></small>}</div>) : <div className="ublk"><small>{profile.provider === 'claude' ? 'O Claude informa o uso a cada execução; rode algo para ver aqui.' : 'Sem sessões do Codex com limites ainda.'}</small></div>}
+      {item && <small className="foot">{item.source}</small>}
+    </section> })}</div>
+    <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div></div></div>
+}
+
+export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onToggle }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onToggle(): void }): React.JSX.Element {
+  return <>
+    <button type="button" className="side-toggle tip" data-tip={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} aria-label={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} onClick={onToggle}><ChevronLeftIcon /></button>
+    <aside>
+      <div className="brand"><b>AB</b> AgentBoard</div>
+      <button className="secondary newproj" onClick={onNew}>＋ Novo projeto</button>
+      <nav className="projs">{projects.map((project) => {
+        const { running, finished } = project.activity, git = project.sources.filter((source) => source.isGitRepository).length
+        const sub = running ? <small className="srun">{running} executando</small> : finished ? <small className="sfin">Terminou · clique para ver</small> : <small>{git ? `${git} ${git === 1 ? 'repositório' : 'repositórios'}` : 'Pasta sem Git'}</small>
+        return <button type="button" key={project.id} className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''}`} onClick={() => onSelect(project.id)}><i>{project.name[0]?.toUpperCase()}</i><span>{project.name}{sub}</span>{running > 0 && <span className="spin sm" title="Executando" />}{finished > 0 && <b className="pdot" title="Terminou" />}</button>
+      })}</nav>
+      <div className="side-foot"><UsedAgents profiles={profiles} /><button className="iconbtn" title="Configurar agentes" aria-label="Configurar agentes" onClick={onSettings}>⚙</button></div>
+    </aside>
+  </>
+}

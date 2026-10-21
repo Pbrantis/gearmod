@@ -222,12 +222,17 @@ export class BoardRepository {
   card(cardId: string): Card {
     const row = this.database.db.prepare(`SELECT id, project_id AS projectId, column_id AS columnId, source_id AS sourceId, type, title, description,
       priority, order_key AS orderKey, created_at AS createdAt, updated_at AS updatedAt, archived_at AS archivedAt
-      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run'> | undefined
+      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run' | 'hasPlan' | 'execProfileId' | 'execModel'> | undefined
     if (!row) throw new Error('Card não encontrado')
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
       .map((item) => ({ ...item, checked: Boolean(item.checked) }))
-    return { ...row, acceptanceCriteria: criteria, tasks: countTasks(this.documents.read(cardId, 'tasks')), run: cardRunState(this.database.db, cardId) }
+    return { ...row, acceptanceCriteria: criteria, tasks: countTasks(this.documents.read(cardId, 'tasks')), run: cardRunState(this.database.db, cardId), hasPlan: this.documents.read(cardId, 'plano').trim().length > 0, ...this.execSettings(cardId) }
+  }
+
+  private execSettings(cardId: string): { execProfileId: string | null; execModel: string | null } {
+    const row = this.database.db.prepare("SELECT profile_id AS profileId, model FROM card_agent_settings WHERE card_id = ? AND purpose = 'execution'").get(cardId) as { profileId: string; model: string | null } | undefined
+    return { execProfileId: row?.profileId ?? null, execModel: row?.model ?? null }
   }
 
   create(input: { projectId: string; columnId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {

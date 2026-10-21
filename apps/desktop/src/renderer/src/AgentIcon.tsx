@@ -8,7 +8,7 @@ export function ProviderLogo({ provider }: { provider: AgentProfile['provider'] 
   return <svg viewBox="0 0 24 24" aria-hidden="true">{provider === 'claude' ? <path d={claudePath} /> : <path fillRule="evenodd" clipRule="evenodd" d={codexPath} />}</svg>
 }
 
-/** Ícone do agente: logo do provedor na cor escolhida para o agente; o nome dado ao agente aparece só no tooltip. */
-export function AgentIcon({ profile, size = 'md' }: { profile: Pick<AgentProfile, 'provider' | 'label' | 'color'>; size?: 'sm' | 'md' | 'lg' }): React.JSX.Element {
-  return <i className={`agentIcon ${size} tip`} style={{ '--agent': profile.color } as React.CSSProperties} data-tip={profile.label} aria-label={profile.label} role="img"><ProviderLogo provider={profile.provider} /></i>
+/** Avatar do agente (`.av`): logo do provedor na cor do agente; o nome dado ao agente aparece só no tooltip. */
+export function AgentIcon({ profile, size = 'md', tip = true }: { profile: Pick<AgentProfile, 'provider' | 'label' | 'color'>; size?: 'sm' | 'md' | 'lg'; tip?: boolean }): React.JSX.Element {
+  return <i className={`av ${profile.provider} ${size === 'lg' ? 'lg' : ''} ${size === 'sm' ? 'smav' : ''} ${tip ? 'tip' : ''}`} style={{ color: profile.color, background: `color-mix(in srgb, ${profile.color} 22%, #1b1e1c)` }} data-tip={tip ? profile.label : undefined} role="img" aria-label={profile.label}><ProviderLogo provider={profile.provider} /></i>
 }
