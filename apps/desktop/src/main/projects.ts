@@ -3,12 +3,15 @@ import { execFile } from 'node:child_process'
 import { readdir, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import type { AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
+import { defaultAgentColor, type CardRunState, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { DocumentRepository } from './documents'
+import { countTasks } from './tasks'
+import type Database from 'better-sqlite3'
 
 const execFileAsync = promisify(execFile)
 const defaultColumns = [
-  ['To Do', 'todo'], ['Doing', 'doing'], ['Test', 'test'], ['MR', 'mr'], ['Done', 'done']
+  ['Backlog', 'backlog'], ['To do', 'todo'], ['Doing', 'doing'], ['Test', 'test'], ['Done', 'done']
 ] as const
 
 export class GitService {
@@ -59,7 +62,7 @@ export class ProfileRepository {
     this.database.db.prepare('UPDATE agent_profiles SET executable_path = ? WHERE id = ?').run(path, id)
   }
 
-  create(input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }): AgentProfile {
+  create(input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean; color?: string }): AgentProfile {
     const id = randomUUID()
     const configDir = input.useExistingSession
       ? join(this.homeDir, input.provider === 'codex' ? '.codex' : '.claude')
@@ -70,15 +73,15 @@ export class ProfileRepository {
     }
     const now = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO agent_profiles
-      (id, provider, label, scope, config_dir, executable_path, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?)`).run(id, input.provider, input.label.trim(), input.scope, configDir, now, now)
+      (id, provider, label, scope, color, config_dir, executable_path, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, NULL, 1, ?, ?)`).run(id, input.provider, input.label.trim(), input.scope, input.color ?? defaultAgentColor(input.provider), configDir, now, now)
     return this.get(id)
   }
 
-  update(input: { profileId: string; label: string; scope: string }): AgentProfile {
-    this.get(input.profileId)
-    this.database.db.prepare('UPDATE agent_profiles SET label = ?, scope = ?, updated_at = ? WHERE id = ?')
-      .run(input.label.trim(), input.scope.trim(), new Date().toISOString(), input.profileId)
+  update(input: { profileId: string; label: string; scope: string; color?: string }): AgentProfile {
+    const current = this.get(input.profileId)
+    this.database.db.prepare('UPDATE agent_profiles SET label = ?, scope = ?, color = ?, updated_at = ? WHERE id = ?')
+      .run(input.label.trim(), input.scope.trim(), input.color ?? current.color, new Date().toISOString(), input.profileId)
     return this.get(input.profileId)
   }
 
@@ -91,12 +94,13 @@ export class ProfileRepository {
     if (references) throw new Error('Este agente possui conversas, planos ou execuções salvos e não pode ser excluído')
     return this.database.db.transaction(() => {
       this.database.db.prepare('DELETE FROM project_agent_profiles WHERE profile_id = ?').run(id)
+      this.database.db.prepare('DELETE FROM card_agent_settings WHERE profile_id = ?').run(id)
       return this.database.db.prepare('DELETE FROM agent_profiles WHERE id = ?').run(id).changes > 0
     })()
   }
 
   list(): AgentProfile[] {
-    return this.database.db.prepare(`SELECT id, provider, label, scope, config_dir AS configDir,
+    return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
       executable_path AS executablePath, enabled FROM agent_profiles WHERE enabled = 1 ORDER BY created_at`).all()
       .map((row) => ({ ...(row as Omit<AgentProfile, 'enabled'> & { enabled: number }), enabled: Boolean((row as { enabled: number }).enabled) }))
   }
@@ -108,16 +112,36 @@ export class ProfileRepository {
   }
 }
 
+/**
+ * Estado de execução do card, derivado da última run: em andamento, pausado (parado pelo usuário ou interrompido),
+ * terminado (execução concluída e ainda não vista) ou planejando.
+ */
+export function cardRunState(db: Database.Database, cardId: string): CardRunState {
+  const row = db.prepare(`SELECT r.id, r.status, r.ended_at AS endedAt, r.profile_id AS profileId, ch.purpose, k.viewed_at AS viewedAt
+    FROM runs r JOIN chats ch ON ch.id = r.chat_id JOIN cards k ON k.id = r.card_id WHERE r.card_id = ? ORDER BY r.started_at DESC, r.rowid DESC LIMIT 1`).get(cardId) as
+    { id: string; status: string; endedAt: string | null; profileId: string; purpose: string; viewedAt: string | null } | undefined
+  const none = { state: 'idle' as const, runId: null, profileId: null }
+  if (!row) return none
+  const base = { runId: row.id, profileId: row.profileId }
+  const active = row.status === 'queued' || row.status === 'running'
+  if (row.purpose === 'planning') return active ? { state: 'planning', ...base } : none
+  if (active) return { state: 'running', ...base }
+  if (row.status === 'completed') return row.endedAt && (!row.viewedAt || row.endedAt > row.viewedAt) ? { state: 'finished', ...base } : none
+  return { state: 'paused', ...base }
+}
+
 export class ProjectRepository {
   constructor(private readonly database: AppDatabase, private readonly git: Pick<GitService, 'inspect' | 'validate'>) {}
 
   list(): Project[] {
     const rows = this.database.db.prepare(`SELECT id, name, local_path AS localPath, base_branch AS baseBranch,
-      remote_provider AS remoteProvider, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY updated_at DESC`).all() as Omit<Project, 'allowedProfileIds'>[]
+      remote_provider AS remoteProvider, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY updated_at DESC`).all() as Omit<Project, 'allowedProfileIds' | 'sources' | 'activity'>[]
     const allowed = this.database.db.prepare('SELECT profile_id AS profileId FROM project_agent_profiles WHERE project_id = ? AND allowed = 1')
     const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS localPath,
       is_git_repository AS isGitRepository, current_branch AS currentBranch, sort_order AS sortOrder FROM project_sources WHERE project_id = ? ORDER BY sort_order`)
+    const cards = this.database.db.prepare('SELECT id FROM cards WHERE project_id = ? AND archived_at IS NULL')
     return rows.map((row) => ({ ...row,
+      activity: (cards.all(row.id) as { id: string }[]).reduce((total, card) => { const state = cardRunState(this.database.db, card.id).state; return { running: total.running + (state === 'running' ? 1 : 0), finished: total.finished + (state === 'finished' ? 1 : 0) } }, { running: 0, finished: 0 }),
       allowedProfileIds: (allowed.all(row.id) as { profileId: string }[]).map((item) => item.profileId),
       sources: (sources.all(row.id) as Array<Omit<ProjectSource, 'isGitRepository'> & { isGitRepository: number }>).map((item) => ({ ...item, isGitRepository: Boolean(item.isGitRepository) }))
     }))
@@ -179,26 +203,31 @@ export class ProjectRepository {
   }
 }
 
+/** Dentro de cada coluna os cards ficam por prioridade (urgente primeiro) e, na mesma prioridade, pela ordem manual. */
+const priorityRank = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`
+
 export class BoardRepository {
-  constructor(private readonly database: AppDatabase, private readonly projects: ProjectRepository) {}
+  readonly documents: DocumentRepository
+
+  constructor(private readonly database: AppDatabase, private readonly projects: ProjectRepository) { this.documents = new DocumentRepository(database) }
 
   get(projectId: string): ProjectBoard {
     const columns = (this.database.db.prepare(`SELECT id, project_id AS projectId, label, sort_order AS sortOrder,
-      semantic_state AS semanticState, is_default AS isDefault FROM board_columns WHERE project_id = ? ORDER BY sort_order`).all(projectId) as Array<Omit<BoardColumn, 'isDefault'> & { isDefault: number }>)
+      semantic_state AS semanticState, is_default AS isDefault FROM board_columns WHERE project_id = ? AND semantic_state <> 'mr' ORDER BY sort_order`).all(projectId) as Array<Omit<BoardColumn, 'isDefault'> & { isDefault: number }>)
       .map((item) => ({ ...item, isDefault: Boolean(item.isDefault) }))
-    const rows = this.database.db.prepare(`SELECT id FROM cards WHERE project_id = ? ORDER BY order_key`).all(projectId) as { id: string }[]
+    const rows = this.database.db.prepare(`SELECT id FROM cards WHERE project_id = ? ORDER BY ${priorityRank}, order_key`).all(projectId) as { id: string }[]
     return { project: this.projects.get(projectId), columns, cards: rows.map((row) => this.card(row.id)) }
   }
 
   card(cardId: string): Card {
     const row = this.database.db.prepare(`SELECT id, project_id AS projectId, column_id AS columnId, source_id AS sourceId, type, title, description,
       priority, order_key AS orderKey, created_at AS createdAt, updated_at AS updatedAt, archived_at AS archivedAt
-      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria'> | undefined
+      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run'> | undefined
     if (!row) throw new Error('Card não encontrado')
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
       .map((item) => ({ ...item, checked: Boolean(item.checked) }))
-    return { ...row, acceptanceCriteria: criteria }
+    return { ...row, acceptanceCriteria: criteria, tasks: countTasks(this.documents.read(cardId, 'tasks')), run: cardRunState(this.database.db, cardId) }
   }
 
   create(input: { projectId: string; columnId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
@@ -212,7 +241,10 @@ export class BoardRepository {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, input.projectId, input.columnId, sourceId, input.type, input.title, input.description, input.priority, order, now, now)
       this.replaceCriteria(id, input.acceptanceCriteria)
     })
-    create(); return this.card(id)
+    create()
+    if (input.description.trim()) this.documents.write(id, 'resumo', input.description, 'user')
+    if (input.acceptanceCriteria.length) this.documents.write(id, 'tasks', input.acceptanceCriteria.map((item, index) => `- [${item.checked ? 'x' : ' '}] T${String(index + 1).padStart(3, '0')} ${item.body}`).join('\n'), 'user')
+    return this.card(id)
   }
 
   update(input: { cardId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
@@ -225,28 +257,31 @@ export class BoardRepository {
       this.database.db.prepare('DELETE FROM card_acceptance_criteria WHERE card_id = ?').run(input.cardId)
       this.replaceCriteria(input.cardId, input.acceptanceCriteria)
     })
-    update(); return this.card(input.cardId)
+    update()
+    if (input.description !== current.description) this.documents.write(input.cardId, 'resumo', input.description, 'user')
+    return this.card(input.cardId)
   }
 
-  move(cardId: string, columnId: string, beforeCardId: string | null): Card {
+  move(cardId: string, columnId: string, beforeCardId: string | null, actor: 'user' | 'agent' = 'user'): Card {
     const current = this.card(cardId)
     this.assertColumn(current.projectId, columnId)
     const destination = this.database.db.prepare('SELECT semantic_state AS state FROM board_columns WHERE id = ?').get(columnId) as { state: string }
     if (destination.state === 'done') this.assertDoneGate(cardId)
-    let orderKey: number
+    let orderKey: number, priority = current.priority
     if (beforeCardId) {
       const before = this.card(beforeCardId)
       if (before.columnId !== columnId) throw new Error('Card de referência pertence a outra coluna')
-      const prior = this.database.db.prepare('SELECT MAX(order_key) AS value FROM cards WHERE column_id = ? AND order_key < ? AND id <> ?').get(columnId, before.orderKey, cardId) as { value: number | null }
+      priority = before.priority
+      const prior = this.database.db.prepare('SELECT MAX(order_key) AS value FROM cards WHERE column_id = ? AND priority = ? AND order_key < ? AND id <> ?').get(columnId, priority, before.orderKey, cardId) as { value: number | null }
       orderKey = prior.value === null ? before.orderKey - 1024 : (prior.value + before.orderKey) / 2
     } else {
       orderKey = (this.database.db.prepare('SELECT COALESCE(MAX(order_key), 0) + 1024 AS value FROM cards WHERE column_id = ? AND id <> ?').get(columnId, cardId) as { value: number }).value
     }
     const now = new Date().toISOString()
     const move = this.database.db.transaction(() => {
-      this.database.db.prepare('UPDATE cards SET column_id = ?, order_key = ?, updated_at = ? WHERE id = ?').run(columnId, orderKey, now, cardId)
+      this.database.db.prepare('UPDATE cards SET column_id = ?, order_key = ?, priority = ?, updated_at = ? WHERE id = ?').run(columnId, orderKey, priority, now, cardId)
       if (current.columnId !== columnId) this.database.db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
-        VALUES (?, ?, ?, ?, ?, 'user', 'kanban-move')`).run(randomUUID(), cardId, current.columnId, columnId, now)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), cardId, current.columnId, columnId, now, actor, actor === 'agent' ? 'agent-request' : 'kanban-move')
     })
     move(); return this.card(cardId)
   }
@@ -256,6 +291,17 @@ export class BoardRepository {
     this.database.db.prepare('UPDATE cards SET archived_at = ?, updated_at = ? WHERE id = ?')
       .run(restore ? null : new Date().toISOString(), new Date().toISOString(), cardId)
     return this.card(cardId)
+  }
+
+  markViewed(cardId: string): Card {
+    this.card(cardId)
+    this.database.db.prepare('UPDATE cards SET viewed_at = ? WHERE id = ?').run(new Date().toISOString(), cardId)
+    return this.card(cardId)
+  }
+
+  delete(cardId: string): boolean {
+    this.card(cardId)
+    return this.database.db.prepare('DELETE FROM cards WHERE id = ?').run(cardId).changes > 0
   }
 
   private assertColumn(projectId: string, columnId: string): void {

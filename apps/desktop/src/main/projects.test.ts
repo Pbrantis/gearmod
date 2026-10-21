@@ -3,14 +3,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AppDatabase } from './database'
+import { migrations } from './migrations'
 import { BoardRepository, ProfileRepository, ProjectRepository } from './projects'
+import { seedProfiles } from './test-helpers'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'agentboard-projects-')); roots.push(root)
   const database = new AppDatabase(join(root, 'data.sqlite'), '0.1.0'); await database.open()
-  const profiles = new ProfileRepository(database, root); profiles.ensureDefaults()
+  const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
   const git = {
     validate: async () => undefined,
     branches: async () => ['dev', 'main'],
@@ -24,18 +26,18 @@ async function setup() {
 describe('project board', () => {
   it('creates a project with five stable semantic columns and available profiles', async () => {
     const { root, database, profiles, projects, board } = await setup()
-    const project = await projects.create({ name: 'Produto', localPath: root, baseBranch: 'dev' })
+    const project = await projects.create({ name: 'Produto', localPath: root, baseBranch: 'dev', profileIds: profiles.list().map((item) => item.id) })
     const state = board.get(project.id)
-    expect(state.columns.map((column) => column.semanticState)).toEqual(['todo', 'doing', 'test', 'mr', 'done'])
-    expect(project.allowedProfileIds).toHaveLength(6)
-    expect(profiles.list()).toHaveLength(6)
+    expect(state.columns.map((column) => column.semanticState)).toEqual(['backlog', 'todo', 'doing', 'test', 'done'])
+    expect(project.allowedProfileIds).toHaveLength(2)
+    expect(profiles.list()).toHaveLength(2)
     database.close()
   })
 
   it('persists card fields, criteria, ordering, transitions and archive state', async () => {
     const { root, database, projects, board } = await setup()
     const project = await projects.create({ name: 'Produto', localPath: root, baseBranch: 'dev' })
-    const state = board.get(project.id), todo = state.columns[0]!, doing = state.columns[1]!
+    const state = board.get(project.id), todo = state.columns[1]!, doing = state.columns[2]!
     const card = board.create({ projectId: project.id, columnId: todo.id, title: 'Fluxo real', description: 'Persistir tudo', type: 'feature', priority: 'high', acceptanceCriteria: [{ body: 'Reabre igual', checked: false }] })
     expect(card.acceptanceCriteria[0]?.body).toBe('Reabre igual')
     expect(board.move(card.id, doing.id, null).columnId).toBe(doing.id)
@@ -72,5 +74,50 @@ describe('project board', () => {
     expect(project.name).toBe(root.split(/[\\/]/).at(-1))
     expect(project.baseBranch).toBe('dev')
     database.close()
+  })
+
+  it('orders cards by priority, adopts the priority of the card it is dropped before and deletes cards', async () => {
+    const { root, database, projects, board } = await setup()
+    const project = await projects.create({ name: 'Ordem', localPath: root, baseBranch: 'dev' })
+    const column = board.get(project.id).columns[1]!
+    const make = (title: string, priority: string) => board.create({ projectId: project.id, columnId: column.id, title, description: '', type: 'task', priority, acceptanceCriteria: [] })
+    const low = make('baixa', 'low'), urgent = make('urgente', 'urgent'), mediumA = make('media A', 'medium'), mediumB = make('media B', 'medium')
+    const titles = () => board.get(project.id).cards.map((card) => card.title)
+    expect(titles()).toEqual(['urgente', 'media A', 'media B', 'baixa'])
+    expect(board.move(mediumB.id, column.id, mediumA.id).priority).toBe('medium')
+    expect(titles()).toEqual(['urgente', 'media B', 'media A', 'baixa'])
+    const adopted = board.move(low.id, column.id, urgent.id)
+    expect(adopted.priority).toBe('urgent')
+    expect(titles()).toEqual(['baixa', 'urgente', 'media B', 'media A'])
+    expect(board.delete(urgent.id)).toBe(true)
+    expect(titles()).not.toContain('urgente')
+    database.close()
+  })
+
+  it('migrates MR columns to Test keeping history and adds Backlog', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-mr-')); roots.push(root)
+    const path = join(root, 'data.sqlite')
+    const old = new AppDatabase(path, '0.1.0', migrations.slice(0, 5)); await old.open()
+    const now = '2026-01-01T00:00:00.000Z', project = '40000000-0000-4000-8000-000000000001'
+    old.db.prepare(`INSERT INTO projects(id, name, local_path, base_branch, created_at, updated_at) VALUES (?, 'P', ?, 'dev', ?, ?)`).run(project, root, now, now)
+    const ids: Record<string, string> = {}
+    ;[['To Do', 'todo'], ['Doing', 'doing'], ['Test', 'test'], ['MR', 'mr'], ['Done', 'done']].forEach(([label, state], index) => {
+      ids[state!] = `40000000-0000-4000-8000-00000000010${index}`
+      old.db.prepare('INSERT INTO board_columns(id, project_id, label, sort_order, semantic_state, is_default) VALUES (?, ?, ?, ?, ?, 1)').run(ids[state!], project, label, index, state)
+    })
+    const card = '40000000-0000-4000-8000-000000000200'
+    old.db.prepare(`INSERT INTO cards(id, project_id, column_id, type, title, description, priority, order_key, created_at, updated_at) VALUES (?, ?, ?, 'task', 'Em revisão', '', 'medium', 1, ?, ?)`).run(card, project, ids.mr, now, now)
+    old.db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason) VALUES ('40000000-0000-4000-8000-000000000300', ?, ?, ?, ?, 'user', 'kanban-move')`).run(card, ids.test, ids.mr, now)
+    old.close()
+
+    const upgraded = new AppDatabase(path, '0.1.0'); await upgraded.open()
+    const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
+    const board = new BoardRepository(upgraded, new ProjectRepository(upgraded, git)).get(project)
+    expect(board.columns.map((column) => column.semanticState)).toEqual(['backlog', 'todo', 'doing', 'test', 'done'])
+    expect(board.columns.find((column) => column.semanticState === 'todo')?.label).toBe('To do')
+    expect(board.cards[0]?.columnId).toBe(ids.test)
+    expect(upgraded.db.prepare('SELECT COUNT(*) AS value FROM column_history WHERE card_id = ?').get(card)).toEqual({ value: 2 })
+    expect(upgraded.db.prepare(`SELECT reason FROM column_history WHERE actor = 'system'`).get()).toEqual({ reason: 'migration-mr-to-test' })
+    upgraded.close()
   })
 })

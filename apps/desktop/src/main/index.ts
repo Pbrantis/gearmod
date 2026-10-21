@@ -1,14 +1,24 @@
 import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { BackupService } from './backup'
 import { AppDatabase } from './database'
 import { registerIpc } from './ipc'
 import { NoteRepository } from './repository'
+import { SettingsRepository } from './settings'
+import { AgentContextService } from './agent-context'
+import { McpBridge } from './mcp-bridge'
+import { AgentWriteback } from './agent-writeback'
+import { ExecutionService } from './executions'
+import { AgentConfigRepository } from './agent-config'
+import { SkillService } from './skills'
+import { VoiceService } from './voice'
+import { UsageService } from './usage'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
 import { ConversationRepository } from './conversations'
-import { ClaudeCliAdapter, CodexAppServerAdapter } from './adapters'
+import { ClaudeCliAdapter, CodexAppServerAdapter, listCodexModels } from './adapters'
 import { AgentOrchestrator } from './orchestrator'
 import { WorktreeService } from './worktrees'
 import { QualityService } from './quality'
@@ -23,12 +33,23 @@ const agentProbes = new AgentProbeService(profiles)
 const projects = new ProjectRepository(database, git)
 const board = new BoardRepository(database, projects)
 const notes = new NoteRepository(database)
+const settings = new SettingsRepository(database)
 const conversations = new ConversationRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
 const quality = new QualityService(database, worktrees)
+const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
+const agentContext = new AgentContextService(board, settings, existsSync(pluginDir) ? pluginDir : null)
+const agentConfigs = new AgentConfigRepository(database, board, profiles, (profileId) => listCodexModels(profiles.get(profileId)))
+const usage = new UsageService(database, profiles)
+const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
+const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript })
+const writeback = new AgentWriteback(board, mcpBridge)
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
-}, worktrees)
+}, worktrees, 2, agentContext, writeback, agentConfigs, usage)
+const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })))
+const voice = new VoiceService({ dataDir, emit: (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })) })
+const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs)
 let disposeIpc: (() => void) | undefined
 
 async function openDatabase(): Promise<void> {
@@ -56,7 +77,9 @@ async function createWindow(): Promise<void> {
   window.once('ready-to-show', () => window.show())
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())
-  window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
+  // Só o microfone (ditado por voz) é liberado; qualquer outra permissão continua negada.
+  window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback, details) => callback(permission === 'media' && (details as { mediaTypes?: string[] }).mediaTypes?.every((type) => type === 'audio') === true))
+  window.webContents.session.setPermissionCheckHandler((_webContents, permission) => permission === 'media')
   if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL)
   else await window.loadFile(join(__dirname, '../renderer/index.html'))
 }
@@ -68,9 +91,17 @@ async function chooseDirectory(): Promise<string | null> {
   return result.canceled ? null : result.filePaths[0] ?? null
 }
 
+async function chooseSkillSource(): Promise<string | null> {
+  const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  const options: OpenDialogOptions = { properties: ['openFile', 'openDirectory'], title: 'Escolha a pasta da skill ou o SKILL.md' }
+  const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
+  return result.canceled ? null : result.filePaths[0] ?? null
+}
+
 app.whenReady().then(async () => {
   await openDatabase()
-  disposeIpc = registerIpc(ipcMain, { database, backups, notes, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, appVersion, dataDir, reopen: openDatabase })
+  await mcpBridge.listen()
+  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, voice, usage, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
   await createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow() })
 }).catch((error: unknown) => {
@@ -79,4 +110,4 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-app.on('before-quit', () => { disposeIpc?.(); database.close() })
+app.on('before-quit', () => { disposeIpc?.(); void mcpBridge.close(); database.close() })

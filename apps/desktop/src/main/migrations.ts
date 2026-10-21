@@ -168,6 +168,120 @@ export const migrations: readonly Migration[] = [
         CREATE INDEX idx_worktree_members_worktree ON worktree_members(worktree_id);
       `)
     }
+  },
+  {
+    version: 5,
+    checksum: 'sha256:agentboard-agent-color-v5-2026-10-21',
+    up(db) {
+      db.exec(`
+        ALTER TABLE agent_profiles ADD COLUMN color TEXT NOT NULL DEFAULT '#aeb9ff';
+        UPDATE agent_profiles SET color = CASE provider WHEN 'claude' THEN '#D97757' ELSE '#aeb9ff' END;
+      `)
+    }
+  },
+  {
+    version: 6,
+    checksum: 'sha256:agentboard-backlog-and-no-mr-v6-2026-10-21',
+    up(db) {
+      // Colunas Backlog/To do/Doing/Test/Done. A linha 'mr' fica no banco (volta segura, o histórico aponta para ela), mas sai do quadro.
+      const projects = db.prepare('SELECT id FROM projects').all() as { id: string }[]
+      const now = new Date().toISOString()
+      for (const { id: projectId } of projects) {
+        const column = (state: string): { id: string } | undefined => db.prepare('SELECT id FROM board_columns WHERE project_id = ? AND semantic_state = ?').get(projectId, state) as { id: string } | undefined
+        if (!column('backlog')) {
+          db.prepare('UPDATE board_columns SET sort_order = sort_order + 1 WHERE project_id = ?').run(projectId)
+          db.prepare(`INSERT INTO board_columns(id, project_id, label, sort_order, semantic_state, is_default)
+            VALUES (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), ?, 'Backlog', 0, 'backlog', 1)`).run(projectId)
+        }
+        db.prepare(`UPDATE board_columns SET label = 'To do' WHERE project_id = ? AND semantic_state = 'todo' AND label = 'To Do'`).run(projectId)
+        const mr = column('mr'), test = column('test')
+        if (mr && test) {
+          const cards = db.prepare('SELECT id FROM cards WHERE column_id = ? ORDER BY order_key').all(mr.id) as { id: string }[]
+          const next = db.prepare('SELECT COALESCE(MAX(order_key), 0) AS value FROM cards WHERE column_id = ?')
+          for (const card of cards) {
+            const order = (next.get(test.id) as { value: number }).value + 1024
+            db.prepare('UPDATE cards SET column_id = ?, order_key = ?, updated_at = ? WHERE id = ?').run(test.id, order, now, card.id)
+            db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
+              VALUES (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), ?, ?, ?, ?, 'system', 'migration-mr-to-test')`).run(card.id, mr.id, test.id, now)
+          }
+        }
+      }
+    }
+  },
+  {
+    version: 7,
+    checksum: 'sha256:agentboard-card-documents-v7-2026-10-21',
+    up(db) {
+      db.exec(`
+        CREATE TABLE card_documents (
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('resumo', 'especificacao', 'plano', 'tasks')),
+          content_md TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL,
+          PRIMARY KEY(card_id, kind)
+        );
+        CREATE TABLE card_document_versions (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL, version INTEGER NOT NULL, content_md TEXT NOT NULL, created_at TEXT NOT NULL, actor TEXT NOT NULL,
+          UNIQUE(card_id, kind, version)
+        );
+      `)
+      // A descrição antiga vira o Resumo, os critérios viram tasks de primeiro nível e o último plano vira o documento Plano.
+      // As colunas e tabelas antigas continuam no banco (volta segura).
+      const insertDoc = db.prepare('INSERT INTO card_documents(card_id, kind, content_md, updated_at, updated_by) VALUES (?, ?, ?, ?, \'system\')')
+      const insertVersion = db.prepare(`INSERT INTO card_document_versions(id, card_id, kind, version, content_md, created_at, actor)
+        VALUES (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), ?, ?, 1, ?, ?, 'system')`)
+      const save = (cardId: string, kind: string, content: string, at: string): void => { insertDoc.run(cardId, kind, content, at); insertVersion.run(cardId, kind, content, at) }
+      const cards = db.prepare('SELECT id, description, updated_at AS updatedAt FROM cards').all() as { id: string; description: string; updatedAt: string }[]
+      for (const card of cards) {
+        if (card.description.trim()) save(card.id, 'resumo', card.description, card.updatedAt)
+        const criteria = db.prepare('SELECT body, checked FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order').all(card.id) as { body: string; checked: number }[]
+        if (criteria.length) save(card.id, 'tasks', criteria.map((item, index) => `- [${item.checked ? 'x' : ' '}] T${String(index + 1).padStart(3, '0')} ${item.body}`).join('\n'), card.updatedAt)
+        const plan = db.prepare(`SELECT content_md AS body, created_at AS at FROM plans WHERE card_id = ? ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, version DESC LIMIT 1`).get(card.id) as { body: string; at: string } | undefined
+        if (plan?.body.trim()) save(card.id, 'plano', plan.body, plan.at)
+      }
+    }
+  },
+  {
+    version: 8,
+    checksum: 'sha256:agentboard-card-viewed-v8-2026-10-21',
+    up(db) {
+      // viewed_at marca quando o usuário viu o resultado da última execução (destaque de "terminado"); o que já existe conta como visto.
+      db.exec(`ALTER TABLE cards ADD COLUMN viewed_at TEXT; UPDATE cards SET viewed_at = datetime('now');`)
+    }
+  },
+  {
+    version: 9,
+    checksum: 'sha256:agentboard-agent-config-v9-2026-10-21',
+    up(db) {
+      db.exec(`
+        CREATE TABLE card_agent_settings (
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          purpose TEXT NOT NULL CHECK (purpose IN ('planning', 'execution')),
+          profile_id TEXT NOT NULL REFERENCES agent_profiles(id), model TEXT, effort TEXT, mode TEXT NOT NULL,
+          updated_at TEXT NOT NULL, PRIMARY KEY(card_id, purpose)
+        );
+        CREATE TABLE agent_usage_stats (
+          profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE,
+          purpose TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', effort TEXT NOT NULL DEFAULT '',
+          count INTEGER NOT NULL DEFAULT 0, last_used_at TEXT NOT NULL, PRIMARY KEY(profile_id, purpose, model, effort)
+        );
+      `)
+    }
+  },
+  {
+    version: 10,
+    checksum: 'sha256:agentboard-chat-skill-v10-2026-10-21',
+    up(db) { db.exec('ALTER TABLE chats ADD COLUMN skill_name TEXT; ALTER TABLE chats ADD COLUMN skill_path TEXT;') }
+  },
+  {
+    version: 11,
+    checksum: 'sha256:agentboard-usage-snapshots-v11-2026-10-21',
+    up(db) {
+      db.exec(`CREATE TABLE agent_usage_snapshots (
+        profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE, window TEXT NOT NULL,
+        utilization REAL NOT NULL, resets_at TEXT, captured_at TEXT NOT NULL, PRIMARY KEY(profile_id, window)
+      )`)
+    }
   }
 ]
 

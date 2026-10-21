@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { BackupService } from './backup'
 import { AppDatabase } from './database'
-import type { Migration } from './migrations'
+import { latestSchemaVersion, type Migration } from './migrations'
 import { NoteRepository } from './repository'
 
 const roots: string[] = []
@@ -23,7 +23,7 @@ describe('AppDatabase', () => {
     const second = new AppDatabase(path, '0.1.0')
     await second.open()
     expect(new NoteRepository(second).list()).toEqual([created])
-    expect(second.schemaVersion()).toBe(2)
+    expect(second.schemaVersion()).toBe(latestSchemaVersion)
     second.close()
   })
 

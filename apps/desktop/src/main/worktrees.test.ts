@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AppDatabase } from './database'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
+import { seedProfiles } from './test-helpers'
 import { WorktreeService } from './worktrees'
 import { QualityService } from './quality'
 
@@ -30,7 +31,7 @@ describe('WorktreeService', () => {
     await exec('git', ['init', '-b', 'dev', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'AgentBoard Test'])
     await writeFile(join(repo, 'README.md'), '# fixture'); await exec('git', ['-C', repo, 'add', 'README.md']); await exec('git', ['-C', repo, 'commit', '-m', 'fixture'])
     const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()
-    const profiles = new ProfileRepository(database, root); profiles.ensureDefaults()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, new GitService()), project = await projects.create({ localPath: repo })
     expect(project.name).toBe('repo'); expect(project.baseBranch).toBe('dev')
     const board = new BoardRepository(database, projects), column = board.get(project.id).columns[0]!
@@ -38,7 +39,7 @@ describe('WorktreeService', () => {
     const second = board.create({ projectId: project.id, columnId: column.id, title: 'Segunda tarefa', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const service = new WorktreeService(database, data), one = await service.prepare(first.id), two = await service.prepare(second.id)
     expect(one.path).not.toBe(two.path); expect(one.branch).not.toBe(two.branch)
-    await writeFile(join(one.path, 'change.txt'), 'isolated')
+    await writeFile(join(one.path, '1-repo', 'change.txt'), 'isolated')
     const snapshot = await service.snapshot(first.id)
     expect(snapshot.exists).toBe(true); expect(snapshot.status).toContain('change.txt')
     expect((await service.snapshot(second.id)).status).not.toContain('change.txt')

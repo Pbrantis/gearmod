@@ -1,7 +1,7 @@
 .plan { background: transparent !important; color: var(--accent-strong) !important; padding: 2px !important; font-size: 11px !important; }
 .chatlog { max-height: 340px; overflow: auto; display: grid; gap: 9px; margin-bottom: 14px; }
 .message { border-radius: 10px; padding: 10px 12px; background: var(--surface-2); }
-.message.assistant { background: #1f2b23; }
+.message.assistant { background: var(--accent-deep); }
 .message b { font-size: 11px; text-transform: uppercase; color: var(--muted); }
 .message pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font: 13px/1.45 ui-monospace, Consolas, monospace; }
 .planStatus { display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border); background: var(--surface-2); border-radius: 9px; padding: 9px 11px; font-size: 12px; }
