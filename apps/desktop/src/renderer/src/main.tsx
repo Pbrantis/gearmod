@@ -52,38 +52,6 @@ function FolderIcon(): React.JSX.Element { return <svg className="folderSvg" vie
 
 function AgentSettings({ profiles, close, changed }: { profiles: AgentProfile[]; close(): void; changed(): Promise<void> }): React.JSX.Element { return <AgentManager profiles={profiles} close={close} changed={changed} /> }
 
-function LegacyAgentSettings({ profiles, close, changed }: { profiles: AgentProfile[]; close(): void; changed(): Promise<void> }): React.JSX.Element {
-  const [items, setItems] = useState(profiles), [probes, setProbes] = useState<Record<string, AgentProbe>>({}), [adding, setAdding] = useState(false), [draft, setDraft] = useState<AgentDraft>({ provider: 'codex', label: '', scope: 'Pessoal', useExistingSession: true }), [error, setError] = useState('')
-  const probe = async (profile: AgentProfile): Promise<void> => { try { const result = await window.agentboard.invoke('profiles:probe', { profileId: profile.id }); setProbes((current) => ({ ...current, [profile.id]: result })) } catch (reason) { setError(String(reason)) } }
-  const add = async (): Promise<void> => {
-    try {
-      setError('')
-      const detected = await window.agentboard.invoke('profiles:detect-provider', { provider: draft.provider })
-      if (!detected.installed) {
-        await window.agentboard.invoke('profiles:install-provider', { provider: draft.provider })
-        setError(`A instalação do ${draft.provider === 'codex' ? 'Codex' : 'Claude'} foi aberta. Termine no terminal e clique novamente em Cadastrar para verificar e continuar.`)
-        return
-      }
-      const profile = await window.agentboard.invoke('profiles:create', { ...draft, label: draft.label.trim() || (draft.provider === 'codex' ? 'Meu Codex' : 'Meu Claude'), scope: draft.scope.trim() || 'Pessoal' })
-      const result = await window.agentboard.invoke('profiles:probe', { profileId: profile.id })
-      setItems((current) => [...current, profile]); setProbes((current) => ({ ...current, [profile.id]: result })); setAdding(false); setDraft({ provider: 'codex', label: '', scope: 'Pessoal', useExistingSession: true }); await changed()
-      if (!result.authenticated) setError(`${profile.label} foi cadastrado. Agora clique em Entrar para conectar a conta.`)
-    } catch (reason) { setError(String(reason)) }
-  }
-  const remove = async (profile: AgentProfile): Promise<void> => {
-    if (!window.confirm(`Excluir o agente “${profile.label}”? Ele também será removido dos projetos.`)) return
-    try { setError(''); await window.agentboard.invoke('profiles:delete', { profileId: profile.id }); setItems((current) => current.filter((item) => item.id !== profile.id)); await changed() } catch (reason) { setError(String(reason)) }
-  }
-  const edit = async (profile: AgentProfile): Promise<void> => {
-    const label = window.prompt('Nome do agente', profile.label)?.trim()
-    if (!label) return
-    const scope = window.prompt('Uso do agente', profile.scope)?.trim()
-    if (!scope) return
-    try { setError(''); const updated = await window.agentboard.invoke('profiles:update', { profileId: profile.id, label, scope }); setItems((current) => current.map((item) => item.id === updated.id ? updated : item)); await changed() } catch (reason) { setError(String(reason)) }
-  }
-  return <Modal close={close} title="Agentes"><div className="settingsHeading"><div><h3>Seus agentes</h3><p>Cadastre aqui. Dentro de cada projeto, escolha quais poderão trabalhar nele.</p></div><button type="button" onClick={() => setAdding(true)}>＋ Adicionar agente</button></div>{adding && <div className="agentSetup onboarding"><div className="providerCards"><button type="button" className={draft.provider === 'codex' ? 'selected' : ''} onClick={() => setDraft({ ...draft, provider: 'codex' })}><i>C</i><span><b>Codex</b><small>OpenAI</small></span></button><button type="button" className={draft.provider === 'claude' ? 'selected' : ''} onClick={() => setDraft({ ...draft, provider: 'claude' })}><i>A</i><span><b>Claude</b><small>Anthropic</small></span></button></div><label>Nome<input placeholder="Nome deste agente" value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} /></label><label>Uso<input placeholder="Pessoal, Trabalho, Cliente X…" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })} /></label><label className="sessionOption"><input type="checkbox" checked={draft.useExistingSession} onChange={(e) => setDraft({ ...draft, useExistingSession: e.target.checked })} /><span><b>Usar login atual</b><small>Desmarque para criar uma sessão independente.</small></span></label><div className="inlineActions"><button type="button" className="secondary" onClick={() => setAdding(false)}>Cancelar</button><button type="button" onClick={() => void add()}>Cadastrar</button></div></div>}<div className="agentLibrary">{!items.length && <div className="emptyAgents"><b>Nenhum agente cadastrado</b><span>Adicione quantos agentes precisar. Cada sessão separada terá seu próprio login.</span></div>}{items.map((profile) => { const status = probes[profile.id]; return <div className="agentLibraryRow" key={profile.id}><i>{profile.provider === 'codex' ? 'C' : 'A'}</i><span><b>{profile.label}</b><small>{profile.provider === 'codex' ? 'Codex' : 'Claude'} · {profile.scope} · {!status ? 'não verificado' : status.installed ? status.authenticated ? 'conectado' : 'login necessário' : 'não instalado'}</small></span><div>{!status?.installed && <button type="button" onClick={async () => { await window.agentboard.invoke('profiles:install', { profileId: profile.id }); setError('Instalação aberta no terminal. Ao terminar, clique em Verificar.') }}>Instalar</button>}{status?.installed && !status.authenticated && <button type="button" onClick={async () => { await window.agentboard.invoke('profiles:login', { profileId: profile.id }); setError('Conclua o login e clique em Verificar.') }}>Entrar</button>}<button type="button" className="secondary" onClick={() => void probe(profile)}>Verificar</button><button type="button" className="secondary" onClick={() => void edit(profile)}>Editar</button><button type="button" className="dangerButton" onClick={() => void remove(profile)}>Excluir</button></div></div>})}</div>{error && <p className="error">{error}</p>}<div className="actions"><button type="button" onClick={close}>Concluir</button></div></Modal>
-}
-
 function Board({ board, profiles, refresh }: { board: ProjectBoard; profiles: AgentProfile[]; refresh(): Promise<void> }): React.JSX.Element {
   const [draft, setDraft] = useState<Draft>(), [settings, setSettings] = useState(false), [chatCard, setChatCard] = useState<Card>()
   const active = board.cards.filter((c) => !c.archivedAt), archived = board.cards.filter((c) => c.archivedAt)

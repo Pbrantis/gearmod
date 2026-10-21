@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ConversationRepository } from './conversations'
 import { AppDatabase } from './database'
 import { BoardRepository, ProfileRepository, ProjectRepository } from './projects'
+import { seedProfiles } from './test-helpers'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
@@ -13,9 +14,9 @@ describe('ConversationRepository', () => {
   it('persists chats, messages, runs and ordered sanitized events', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-chat-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
-    const profiles = new ProfileRepository(database, root); profiles.ensureDefaults()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'Repo', repositories: [{ localPath, name: 'Repo', currentBranch: 'dev', branches: ['dev'] }] }) })
-    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
+    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev', profileIds: profiles.list().map((item) => item.id) })
     const board = new BoardRepository(database, projects), column = board.get(project.id).columns[0]!
     const card = board.create({ projectId: project.id, columnId: column.id, title: 'Chat', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const repo = new ConversationRepository(database), profile = profiles.list()[0]!
@@ -36,7 +37,7 @@ describe('ConversationRepository', () => {
   it('rejects a profile outside the project allowlist', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-chat-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
-    const profiles = new ProfileRepository(database, root); profiles.ensureDefaults()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'Repo', repositories: [{ localPath, name: 'Repo', currentBranch: 'dev', branches: ['dev'] }] }) })
     const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' }), all = profiles.list()
     projects.setProfiles(project.id, [all[0]!.id])

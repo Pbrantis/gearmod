@@ -4,13 +4,14 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AppDatabase } from './database'
 import { BoardRepository, ProfileRepository, ProjectRepository } from './projects'
+import { seedProfiles } from './test-helpers'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'agentboard-projects-')); roots.push(root)
   const database = new AppDatabase(join(root, 'data.sqlite'), '0.1.0'); await database.open()
-  const profiles = new ProfileRepository(database, root); profiles.ensureDefaults()
+  const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
   const git = {
     validate: async () => undefined,
     branches: async () => ['dev', 'main'],
@@ -24,11 +25,11 @@ async function setup() {
 describe('project board', () => {
   it('creates a project with five stable semantic columns and available profiles', async () => {
     const { root, database, profiles, projects, board } = await setup()
-    const project = await projects.create({ name: 'Produto', localPath: root, baseBranch: 'dev' })
+    const project = await projects.create({ name: 'Produto', localPath: root, baseBranch: 'dev', profileIds: profiles.list().map((item) => item.id) })
     const state = board.get(project.id)
     expect(state.columns.map((column) => column.semanticState)).toEqual(['todo', 'doing', 'test', 'mr', 'done'])
-    expect(project.allowedProfileIds).toHaveLength(6)
-    expect(profiles.list()).toHaveLength(6)
+    expect(project.allowedProfileIds).toHaveLength(2)
+    expect(profiles.list()).toHaveLength(2)
     database.close()
   })
 
