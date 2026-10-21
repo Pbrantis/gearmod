@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { cardDocumentKinds, type Card, type CardDocumentKind, type CardDocuments, type DocumentVersion, type ProjectSource } from '@agentboard/contracts'
+import { cardDocumentKinds, type AgentProfile, type Card, type CardDocumentKind, type CardDocuments, type DocumentVersion, type ProjectSource } from '@agentboard/contracts'
+import { AgentMenu, useAgentConfig } from './AgentMenu'
 import { ConfirmDialog } from './ConfirmDialog'
 import { ChatIcon, TrashIcon } from './icons'
 import { Markdown } from './markdown'
@@ -15,9 +16,10 @@ const modes: Array<{ value: Mode; label: string }> = [{ value: 'write', label: '
 const toTexts = (docs: CardDocuments): Texts => ({ resumo: docs.resumo.contentMd, especificacao: docs.especificacao.contentMd, plano: docs.plano.contentMd, tasks: docs.tasks.contentMd })
 
 /** Editor do card: dados básicos e os 4 documentos Markdown (Resumo, Especificação, Plano e Tasks). */
-export function CardEditor({ projectId, sources, draft: start, close, saved, openChat }: { projectId: string; sources: ProjectSource[]; draft: Draft; close(): void; saved(): void; openChat?(): void }): React.JSX.Element {
+export function CardEditor({ projectId, sources, profiles, draft: start, close, saved, openChat }: { projectId: string; sources: ProjectSource[]; profiles: AgentProfile[]; draft: Draft; close(): void; saved(): void; openChat?(): void }): React.JSX.Element {
   const [d, set] = useState(start), [kind, setKind] = useState<CardDocumentKind>('resumo'), [mode, setMode] = useState<Mode>('split'), [texts, setTexts] = useState<Texts>(empty), [original, setOriginal] = useState<Texts>(empty)
   const [versions, setVersions] = useState<DocumentVersion[]>(), [error, setError] = useState(''), [confirming, setConfirming] = useState(false), [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(!start.id)
+  const planAgent = useAgentConfig(start.id ?? '', 'planning', profiles), execAgent = useAgentConfig(start.id ?? '', 'execution', profiles)
   const gitSources = sources.filter((source) => source.isGitRepository), area = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { if (start.id) void window.agentboard.invoke('cards:documents', { cardId: start.id }).then((docs) => { setTexts(toTexts(docs)); setOriginal(toTexts(docs)); setLoaded(true) }).catch((reason: unknown) => setError(String(reason))) }, [start.id])
   useEffect(() => { setVersions(undefined) }, [kind])
@@ -45,6 +47,7 @@ export function CardEditor({ projectId, sources, draft: start, close, saved, ope
           <label>Título<input value={d.title} onChange={(e) => set({ ...d, title: e.target.value })} required /></label>
           <div className="two"><label>Tipo<select value={d.type} onChange={(e) => set({ ...d, type: e.target.value as Card['type'] })}><option value="feature">Feature</option><option value="bug">Bug</option><option value="improvement">Improvement</option><option value="task">Task</option></select></label><label>Prioridade<select value={d.priority} onChange={(e) => set({ ...d, priority: e.target.value as Card['priority'] })}><option value="low">Baixa</option><option value="medium">Média</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label></div>
           {gitSources.length > 0 ? <label>Repositório<select value={d.sourceId ?? gitSources[0]?.id} onChange={(e) => set({ ...d, sourceId: e.target.value })}>{gitSources.map((source) => <option key={source.id} value={source.id}>{source.name} · {source.currentBranch}</option>)}</select></label> : <p className="hint">Este projeto não possui Git. O planejamento funciona normalmente; execução com worktree exige um repositório.</p>}
+          {d.id && profiles.length > 0 && <div className="agentsBlock"><span className="sectitle">Agente de planejamento</span><AgentMenu profiles={profiles} purpose="planning" state={planAgent} showMode={false} /><span className="sectitle">Agente de execução</span><AgentMenu profiles={profiles} purpose="execution" state={execAgent} /></div>}
         </aside>
         <section className="docs">
           <div className="docTabs" role="tablist">{cardDocumentKinds.map((k) => <button type="button" role="tab" aria-selected={kind === k} key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{labels[k]}{dirty(k) && <i className="dirtyDot" aria-label="alterado" />}</button>)}</div>

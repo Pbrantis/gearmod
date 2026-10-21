@@ -94,6 +94,7 @@ export class ProfileRepository {
     if (references) throw new Error('Este agente possui conversas, planos ou execuções salvos e não pode ser excluído')
     return this.database.db.transaction(() => {
       this.database.db.prepare('DELETE FROM project_agent_profiles WHERE profile_id = ?').run(id)
+      this.database.db.prepare('DELETE FROM card_agent_settings WHERE profile_id = ?').run(id)
       return this.database.db.prepare('DELETE FROM agent_profiles WHERE id = ?').run(id).changes > 0
     })()
   }

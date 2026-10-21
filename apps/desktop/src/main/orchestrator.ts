@@ -4,6 +4,7 @@ import type { ConversationRepository } from './conversations'
 import type { WorktreeService } from './worktrees'
 import type { AgentContextService } from './agent-context'
 import type { AgentWriteback } from './agent-writeback'
+import type { AgentConfigRepository } from './agent-config'
 
 type Job = { run: Run; chatId: string; prompt: string; planning: boolean }
 
@@ -18,7 +19,8 @@ export class AgentOrchestrator {
     private readonly worktrees: WorktreeService,
     private readonly concurrency = 2,
     private readonly agentContext?: Pick<AgentContextService, 'prompt' | 'developerInstructions' | 'pluginDir'>,
-    private readonly writeback?: AgentWriteback
+    private readonly writeback?: AgentWriteback,
+    private readonly configs?: Pick<AgentConfigRepository, 'resolve' | 'recordUse'>
   ) {}
 
   start(input: { chatId: string; prompt: string; planning: boolean }): Run {
@@ -53,8 +55,11 @@ export class AgentOrchestrator {
       if (worktree) this.conversations.attachWorktree(job.run.id, worktree.id)
       this.conversations.updateRun(job.run.id, 'running', null)
       publish({ type: 'agentboard/run-started', payload: { cardId: context.cardId, planning: job.planning } })
+      const purpose = job.planning ? 'planning' : 'execution'
+      const config = this.configs?.resolve(context.cardId, context.profile.id, purpose)
+      if (config) this.configs?.recordUse(config, purpose)
       const mcp = this.writeback?.begin(job.run.id, context.cardId, (type, payload) => publish({ type, payload }))
-      const result = await this.adapters[context.profile.provider].run({ cwd, prompt: this.agentContext ? this.agentContext.prompt(context.cardId, job.prompt, job.planning) : job.prompt, pluginDir: this.agentContext?.pluginDir, mcp, developerInstructions: this.agentContext?.developerInstructions(job.planning), sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
+      const result = await this.adapters[context.profile.provider].run({ cwd, prompt: this.agentContext ? this.agentContext.prompt(context.cardId, job.prompt, job.planning) : job.prompt, pluginDir: this.agentContext?.pluginDir, mcp, model: config?.model, effort: config?.effort, mode: job.planning ? 'plan' : config?.mode, developerInstructions: this.agentContext?.developerInstructions(job.planning), sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
       this.conversations.updateSession(job.chatId, result.sessionId)
       if (result.text) this.conversations.addMessage({ chatId: job.chatId, role: 'assistant', body: result.text, status: result.status === 'completed' ? 'complete' : 'failed' })
       const applied = this.writeback?.finish({ runId: job.run.id, cardId: context.cardId, planning: job.planning, completed: result.status === 'completed', text: result.text, publish: (type, payload) => publish({ type, payload }) })

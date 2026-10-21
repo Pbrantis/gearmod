@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { ClaudeCliAdapter, CodexAppServerAdapter, type ProcessFactory } from './adapters'
+import { ClaudeCliAdapter, CodexAppServerAdapter, codexAccess, listCodexModels, type ProcessFactory } from './adapters'
 import type { AgentProfile } from '@agentboard/contracts'
 
 const profile = (provider: 'codex' | 'claude'): AgentProfile => ({ id: '10000000-0000-4000-8000-000000000001', provider, label: provider, scope: 'work', color: '#aeb9ff', configDir: 'C:\\profiles\\work', executablePath: null, enabled: true })
@@ -68,5 +68,44 @@ describe('real provider protocol adapters', () => {
     expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__agentboard'); expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]!).mcpServers.agentboard.env.AGENTBOARD_TOKEN).toBe('t')
     await new ClaudeCliAdapter(withMcp).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('claude'), mcp, onEvent: () => undefined })
     expect(args).not.toContain('--tools')
+  })
+
+  it('maps permission modes, model and effort to Claude flags', async () => {
+    let args: string[] = []
+    let child: ChildProcessWithoutNullStreams
+    const factory: ProcessFactory = { start(_command, received) { args = received; child = fakeProcess(); queueMicrotask(() => send(child, { type: 'result', session_id: 's', result: 'ok' })); return child } }
+    const run = (mode: 'accept_edits' | 'auto' | 'bypass' | 'manual') => new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('claude'), model: 'sonnet', effort: 'medium', mode, onEvent: () => undefined })
+    await run('accept_edits'); expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits'); expect(args[args.indexOf('--model') + 1]).toBe('sonnet'); expect(args[args.indexOf('--effort') + 1]).toBe('medium')
+    await run('auto'); expect(args[args.indexOf('--permission-mode') + 1]).toBe('auto')
+    await run('bypass'); expect(args[args.indexOf('--permission-mode') + 1]).toBe('bypassPermissions')
+    await expect(run('manual').then(() => 'ran')).resolves.toBe('ran')
+  })
+
+  it('maps permission modes to Codex sandbox, approvals and reviewer, and sends model and effort', async () => {
+    expect(codexAccess('plan')).toEqual({ sandbox: 'read-only', approvalPolicy: 'never' })
+    expect(codexAccess('auto')).toEqual({ sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review' })
+    expect(codexAccess('bypass')).toEqual({ sandbox: 'danger-full-access', approvalPolicy: 'never' })
+    expect(() => codexAccess('accept_edits')).toThrow('Codex')
+    const params: Record<string, Record<string, unknown>> = {}
+    const factory: ProcessFactory = { start() { return fakeProcess((request, child) => {
+      const id = request.id
+      if (request.method === 'initialize') send(child, { id, result: {} })
+      if (request.method === 'thread/start') { params.thread = request.params as Record<string, unknown>; send(child, { id, result: { thread: { id: 't' } } }) }
+      if (request.method === 'turn/start') { params.turn = request.params as Record<string, unknown>; send(child, { id, result: { turn: { id: 'u' } } }); send(child, { method: 'turn/completed', params: { threadId: 't', turn: { id: 'u', status: 'completed' } } }) }
+    }) } }
+    await new CodexAppServerAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('codex'), model: 'gpt-x', effort: 'high', mode: 'auto', onEvent: () => undefined })
+    expect(params.thread).toMatchObject({ sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', model: 'gpt-x' })
+    expect(params.turn).toMatchObject({ approvalPolicy: 'on-request', approvalsReviewer: 'auto_review', model: 'gpt-x', effort: 'high' })
+  })
+
+  it('lists Codex models from the app-server and hides hidden ones', async () => {
+    const factory: ProcessFactory = { start() { return fakeProcess((request, child) => {
+      const id = request.id
+      if (request.method === 'initialize') send(child, { id, result: {} })
+      if (request.method === 'model/list') send(child, { id, result: { data: [
+        { model: 'gpt-a', displayName: 'GPT A', description: 'A', hidden: false, isDefault: true, defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }] },
+        { model: 'gpt-h', displayName: 'Hidden', description: '', hidden: true, isDefault: false, defaultReasoningEffort: 'low', supportedReasoningEfforts: [] }] } })
+    }) } }
+    expect(await listCodexModels(profile('codex'), factory)).toEqual([{ id: 'gpt-a', label: 'GPT A', description: 'A', efforts: ['low', 'medium'], recommendedFor: ['planning', 'execution'], defaultEffort: 'medium' }])
   })
 })

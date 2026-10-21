@@ -59,6 +59,36 @@ export const projectSchema = z.object({
 export const projectInspectionSchema = z.object({
   localPath: z.string(), name: z.string(), repositories: z.array(z.object({ localPath: z.string(), name: z.string(), currentBranch: z.string(), branches: z.array(z.string()) }))
 })
+export const agentPurposeSchema = z.enum(['planning', 'execution'])
+export const permissionModeSchema = z.enum(['plan', 'auto', 'accept_edits', 'manual', 'on_request', 'read_only', 'bypass'])
+export const effortSchema = z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+export const agentConfigSchema = z.object({ profileId: uuid, model: z.string().trim().max(120).nullable(), effort: effortSchema.nullable(), mode: permissionModeSchema })
+export const cardAgentsSchema = z.object({ planning: agentConfigSchema.nullable(), execution: agentConfigSchema.nullable() })
+export const modelOptionSchema = z.object({ id: z.string(), label: z.string(), description: z.string(), efforts: z.array(effortSchema), recommendedFor: z.array(agentPurposeSchema), defaultEffort: effortSchema.nullable() })
+export const mostUsedSchema = z.object({ model: z.string().nullable(), effort: effortSchema.nullable() }).nullable()
+export const agentOptionsSchema = z.object({ models: z.array(modelOptionSchema), mostUsed: z.object({ planning: mostUsedSchema, execution: mostUsedSchema }) })
+
+export type PermissionMode = z.infer<typeof permissionModeSchema>
+export interface PermissionModeInfo { id: PermissionMode; label: string; description: string; purposes: Array<z.infer<typeof agentPurposeSchema>>; needsApprovalUi?: boolean; dangerous?: boolean; recommended?: boolean }
+/** Modos de permissão por provedor (plano 08, seção 6). Modos que dependem da tela de aprovação (F14, pendente) ficam desabilitados. */
+export const permissionModes: Record<'claude' | 'codex', PermissionModeInfo[]> = {
+  claude: [
+    { id: 'plan', label: 'Plano', description: 'Só lê e planeja; não altera arquivos.', purposes: ['planning'], recommended: true },
+    { id: 'accept_edits', label: 'Aceitar edições', description: 'Edita arquivos sem perguntar; comandos fora da lista são negados.', purposes: ['execution'], recommended: true },
+    { id: 'auto', label: 'Automático', description: 'O próprio Claude decide o que é seguro aprovar.', purposes: ['execution'] },
+    { id: 'manual', label: 'Manual', description: 'Pergunta a cada ação. Precisa da tela de aprovação (em breve).', purposes: ['execution'], needsApprovalUi: true },
+    { id: 'bypass', label: 'Ignorar permissões', description: 'Executa tudo sem pedir. Use só em ambiente descartável.', purposes: ['execution'], dangerous: true }
+  ],
+  codex: [
+    { id: 'plan', label: 'Plano', description: 'Somente leitura, só planeja.', purposes: ['planning'], recommended: true },
+    { id: 'auto', label: 'Automático', description: 'Edita na pasta do projeto e uma revisão automática aprova o que for seguro.', purposes: ['execution'], recommended: true },
+    { id: 'on_request', label: 'Sob pedido', description: 'Edita na pasta do projeto e pede aprovação para o resto. Precisa da tela de aprovação (em breve).', purposes: ['execution'], needsApprovalUi: true },
+    { id: 'read_only', label: 'Somente leitura', description: 'Lê e pede aprovação para qualquer mudança. Precisa da tela de aprovação (em breve).', purposes: ['execution'], needsApprovalUi: true },
+    { id: 'bypass', label: 'Ignorar permissões', description: 'Sem sandbox e sem aprovações. Use só em ambiente descartável.', purposes: ['execution'], dangerous: true }
+  ]
+}
+export const defaultPermissionMode = (provider: 'claude' | 'codex', purpose: z.infer<typeof agentPurposeSchema>): PermissionMode => (purpose === 'planning' ? 'plan' : provider === 'claude' ? 'accept_edits' : 'auto')
+
 export const cardDocumentKinds = ['resumo', 'especificacao', 'plano', 'tasks'] as const
 export const cardDocumentKindSchema = z.enum(cardDocumentKinds)
 export const cardDocumentSchema = z.object({ kind: cardDocumentKindSchema, contentMd: z.string(), updatedAt: isoDate.nullable(), updatedBy: z.enum(['user', 'agent', 'system']).nullable() })
@@ -142,9 +172,12 @@ export const ipcContracts = {
   , 'cards:write-document': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema, contentMd: z.string().max(200_000) }).strict(), output: cardDocumentSchema }
   , 'cards:document-versions': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema }).strict(), output: z.array(documentVersionSchema) }
   , 'cards:toggle-task': { input: z.object({ cardId: uuid, line: z.number().int().nonnegative(), checked: z.boolean() }).strict(), output: cardDocumentSchema }
-  , 'cards:start': { input: z.object({ cardId: uuid, profileId: uuid }).strict(), output: runSchema }
+  , 'cards:start': { input: z.object({ cardId: uuid, config: agentConfigSchema }).strict(), output: runSchema }
   , 'cards:resume': { input: cardIdInput, output: runSchema }
   , 'cards:mark-viewed': { input: cardIdInput, output: cardSchema }
+  , 'agents:options': { input: z.object({ profileId: uuid }).strict(), output: agentOptionsSchema }
+  , 'cards:agent-config': { input: cardIdInput, output: cardAgentsSchema }
+  , 'cards:set-agent-config': { input: z.object({ cardId: uuid, purpose: agentPurposeSchema, config: agentConfigSchema }).strict(), output: cardAgentsSchema }
   , 'cards:delete': { input: cardIdInput, output: z.object({ deleted: z.boolean() }) }
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
   , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid }).strict(), output: chatSchema }
@@ -181,6 +214,12 @@ export type CardDocumentKind = z.output<typeof cardDocumentKindSchema>
 export type CardDocument = z.output<typeof cardDocumentSchema>
 export type CardDocuments = z.output<typeof cardDocumentsSchema>
 export type DocumentVersion = z.output<typeof documentVersionSchema>
+export type AgentPurpose = z.output<typeof agentPurposeSchema>
+export type AgentConfig = z.output<typeof agentConfigSchema>
+export type CardAgents = z.output<typeof cardAgentsSchema>
+export type ModelOption = z.output<typeof modelOptionSchema>
+export type AgentOptions = z.output<typeof agentOptionsSchema>
+export type Effort = z.output<typeof effortSchema>
 export type CardRunState = z.output<typeof cardRunStateSchema>
 export type Card = z.output<typeof cardSchema>
 export type ProjectBoard = z.output<typeof projectBoardSchema>

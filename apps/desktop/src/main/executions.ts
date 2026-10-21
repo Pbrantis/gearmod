@@ -1,4 +1,5 @@
-import type { Run } from '@agentboard/contracts'
+import type { AgentConfig, Run } from '@agentboard/contracts'
+import type { AgentConfigRepository } from './agent-config'
 import type { ConversationRepository } from './conversations'
 import type { AgentOrchestrator } from './orchestrator'
 import type { BoardRepository } from './projects'
@@ -13,10 +14,12 @@ const resumePrompt = 'Continue de onde parou, seguindo o Plano e as Tasks do con
 
 /** Iniciar e continuar execuções: Iniciar aprova o plano atual, leva o card para Doing e usa o chat de execução do card. */
 export class ExecutionService {
-  constructor(private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly orchestrator: Pick<AgentOrchestrator, 'start'>) {}
+  constructor(private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly orchestrator: Pick<AgentOrchestrator, 'start'>, private readonly configs?: Pick<AgentConfigRepository, 'set'>) {}
 
-  start(cardId: string, profileId: string): Run {
+  start(cardId: string, config: AgentConfig): Run {
     const card = this.assertIdle(cardId)
+    const profileId = config.profileId
+    this.configs?.set(cardId, 'execution', config)
     const columns = this.board.get(card.projectId).columns, doing = columns.find((column) => column.semanticState === 'doing')
     if (doing && card.columnId !== doing.id) this.board.move(cardId, doing.id, null, 'user')
     this.conversations.approveCurrentPlan(cardId, profileId, this.board.documents.read(cardId, 'plano'))

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { cardDocumentKinds, type AgentProfile, type Card, type CardDocumentKind, type CardDocuments, type Chat, type ChatMessage, type Project, type Run } from '@agentboard/contracts'
-import { AgentIcon } from './AgentIcon'
+import { AgentMenu, useAgentConfig } from './AgentMenu'
 import { priorityLabel } from './CardTile'
 import { CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, SparkIcon, StopIcon } from './icons'
 import { Markdown } from './markdown'
@@ -16,6 +16,7 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
   const [profileId, setProfileId] = useState(usable[0]?.id ?? ''), [input, setInput] = useState(''), [expanded, setExpanded] = useState(true), [tab, setTab] = useState<Tab>('resumo'), [error, setError] = useState('')
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined)
   const planning = mode === 'planning'
+  const agentState = useAgentConfig(initial.id, mode, usable, chat?.profileId)
   const loadMessages = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
   const loadCard = useCallback(async () => { const [fresh, documents] = await Promise.all([window.agentboard.invoke('cards:get', { cardId: initial.id }), window.agentboard.invoke('cards:documents', { cardId: initial.id })]); setCard(fresh); setDocs(documents) }, [initial.id])
   useEffect(() => { void window.agentboard.invoke('cards:mark-viewed', { cardId: initial.id }).then(() => loadCard()).catch((reason: unknown) => setError(String(reason))) }, [initial.id, loadCard])
@@ -35,14 +36,14 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
     try {
       setError(''); setInput('')
       let current = chat
-      if (!current) { current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: mode, profileId }); setChat(current) }
+      const chosen = agentState.config?.profileId ?? profileId
+      if (!current) { current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: mode, profileId: chosen }); setChat(current) }
       const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning })
       runId.current = started.id; setRun(started); setLive(''); await loadMessages(current.id)
     } catch (reason) { setError(String(reason)); setInput(prompt) }
   }
   const stop = async (): Promise<void> => { if (run) await window.agentboard.invoke('agents:cancel', { runId: run.id }).catch((reason: unknown) => setError(String(reason))) }
   const toggleTask = async (line: number, checked: boolean): Promise<void> => { await window.agentboard.invoke('cards:toggle-task', { cardId: card.id, line, checked }); await loadCard() }
-  const profile = usable.find((item) => item.id === profileId)
   const busy = Boolean(run)
 
   return <aside className={`dock ${expanded ? 'full' : ''}`} aria-label="Chat do card">
@@ -59,11 +60,11 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
         {error && <p className="error">{error}</p>}
         <div className="cbox"><textarea rows={2} aria-label="Mensagem para o agente" value={input} placeholder={planning ? 'Descreva o que você quer planejar…' : 'Envie uma instrução ao agente…'} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
           <button type="button" className="micbtn tip" data-tip="Ditado por voz em breve" aria-label="Ditado por voz" disabled><MicIcon /></button>
-          {busy ? <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button> : <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" disabled={!input.trim() || !profileId} onClick={() => void send()}><SendIcon /></button>}</div>
+          {busy ? <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button> : <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" disabled={!input.trim() || !(agentState.config?.profileId ?? profileId)} onClick={() => void send()}><SendIcon /></button>}</div>
         <div className="cmeta">
           <span className="mode tip" data-tip={planning ? 'Este chat não altera arquivos' : 'Executa na worktree do card'}>{planning ? '✦ Só planejar' : 'Executar'}</span>
           <span className="skillChip tip" data-tip="Skill do sistema"><SparkIcon /> {planning ? 'Planejamento' : 'Execução'}</span>
-          <label className="agentPick">{profile && <AgentIcon profile={profile} size="sm" />}<select aria-label="Agente" value={profileId} disabled={Boolean(chat)} onChange={(e) => setProfileId(e.target.value)}>{usable.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <AgentMenu profiles={usable} purpose={mode} state={agentState} lockProfile={Boolean(chat)} />
         </div>
       </div>
     </div>

@@ -3,14 +3,18 @@ import { createInterface } from 'node:readline'
 import { delimiter, extname, isAbsolute, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { resolveCommand } from './agents'
-import type { AgentProfile } from '@agentboard/contracts'
+import type { AgentProfile, Effort, ModelOption, PermissionMode } from '@agentboard/contracts'
 import type { McpEndpoint } from './mcp-bridge'
 import type { ServerNotification } from './generated/codex-app-server/ServerNotification'
 import type { ThreadStartParams } from './generated/codex-app-server/v2/ThreadStartParams'
+import type { ReasoningEffort } from './generated/codex-app-server/ReasoningEffort'
+import type { SandboxMode } from './generated/codex-app-server/v2/SandboxMode'
+import type { AskForApproval } from './generated/codex-app-server/v2/AskForApproval'
+import type { ApprovalsReviewer } from './generated/codex-app-server/v2/ApprovalsReviewer'
 import type { TurnStartParams } from './generated/codex-app-server/v2/TurnStartParams'
 
 export type AgentEvent = { type: string; payload: Record<string, unknown> }
-export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; mcp?: McpEndpoint; developerInstructions?: string; signal?: AbortSignal; onEvent(event: AgentEvent): void }
+export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; signal?: AbortSignal; onEvent(event: AgentEvent): void }
 export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null }
 export interface AgentAdapter { run(options: AgentRunOptions): Promise<AgentRunResult> }
 
@@ -61,6 +65,23 @@ class JsonLineRpc {
   private failAll(error: Error): void { for (const pending of this.pending.values()) pending.reject(error); this.pending.clear() }
 }
 
+const codexEfforts = new Set<string>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+
+/** Modos de permissão do AgentBoard → sandbox, política de aprovação e revisor do Codex (plano 08, seção 6). */
+export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; approvalPolicy: AskForApproval; approvalsReviewer?: ApprovalsReviewer } {
+  switch (mode) {
+    case 'plan': return { sandbox: 'read-only', approvalPolicy: 'never' }
+    case 'auto': return { sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'auto_review' }
+    case 'on_request': return { sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user' }
+    case 'read_only': return { sandbox: 'read-only', approvalPolicy: 'on-request', approvalsReviewer: 'user' }
+    case 'bypass': return { sandbox: 'danger-full-access', approvalPolicy: 'never' }
+    default: throw new Error(`Modo não suportado pelo Codex: ${mode}`)
+  }
+}
+
+/** Modos do AgentBoard → `--permission-mode` do Claude. */
+export const claudePermissionMode: Record<PermissionMode, string | null> = { plan: 'plan', auto: 'auto', accept_edits: 'acceptEdits', manual: 'manual', on_request: null, read_only: null, bypass: 'bypassPermissions' }
+
 export class CodexAppServerAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
@@ -71,7 +92,8 @@ export class CodexAppServerAdapter implements AgentAdapter {
     try {
       await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
       rpc.notify('initialized')
-      const policy = { cwd: options.cwd, approvalPolicy: 'never', sandbox: options.planning ? 'read-only' : 'workspace-write', ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp ? { config: { mcp_servers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } } } : {}) } satisfies ThreadStartParams
+      const access = codexAccess(options.planning ? 'plan' : options.mode ?? 'auto')
+      const policy = { cwd: options.cwd, ...access, ...(options.model ? { model: options.model } : {}), ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp ? { config: { mcp_servers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } } } : {}) } satisfies ThreadStartParams
       const threadResult = options.sessionId
         ? await rpc.request('thread/resume', { threadId: options.sessionId, ...policy })
         : await rpc.request('thread/start', policy)
@@ -93,12 +115,25 @@ export class CodexAppServerAdapter implements AgentAdapter {
           if (event.method === 'error') reject(new Error(sanitize(JSON.stringify(params))))
         })
       })
-      const turnParams: TurnStartParams = { threadId: thread.id, input: [{ type: 'text', text: options.prompt, text_elements: [] }], approvalPolicy: 'never' }
+      const turnParams: TurnStartParams = { threadId: thread.id, input: [{ type: 'text', text: options.prompt, text_elements: [] }], approvalPolicy: access.approvalPolicy, ...(access.approvalsReviewer ? { approvalsReviewer: access.approvalsReviewer } : {}), ...(options.model ? { model: options.model } : {}), ...(options.effort && codexEfforts.has(options.effort) ? { effort: options.effort as ReasoningEffort } : {}) }
       const started = await rpc.request('turn/start', turnParams as unknown as JsonObject)
       turnId = (started.turn as { id?: string } | undefined)?.id ?? null
       return await completed
     } finally { options.signal?.removeEventListener('abort', abort); rpc.stop() }
   }
+}
+
+/** Lista os modelos do Codex pelo app-server (`model/list`); falha ou demora devolvem lista vazia. */
+export async function listCodexModels(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 10_000): Promise<ModelOption[]> {
+  const child = processes.start(profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: process.cwd(), env: { ...process.env, CODEX_HOME: profile.configDir } })
+  const rpc = new JsonLineRpc(child)
+  const timer = setTimeout(() => rpc.stop(), timeoutMs)
+  try {
+    await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
+    rpc.notify('initialized')
+    const result = await rpc.request('model/list', {}) as unknown as { data?: Array<{ model: string; displayName: string; description: string; hidden: boolean; isDefault: boolean; defaultReasoningEffort: Effort; supportedReasoningEfforts: Array<{ reasoningEffort: Effort }> }> }
+    return (result.data ?? []).filter((model) => !model.hidden).map((model) => ({ id: model.model, label: model.displayName, description: model.description, efforts: model.supportedReasoningEfforts.map((item) => item.reasoningEffort), recommendedFor: model.isDefault ? ['planning', 'execution'] as const : [], defaultEffort: model.defaultReasoningEffort })).map((model) => ({ ...model, recommendedFor: [...model.recommendedFor] }))
+  } finally { clearTimeout(timer); rpc.stop() }
 }
 
 export class ClaudeCliAdapter implements AgentAdapter {
@@ -107,7 +142,11 @@ export class ClaudeCliAdapter implements AgentAdapter {
     // Em `plan` o Claude se recusa a chamar ferramentas que gravam (inclusive as do AgentBoard; confirmado em teste real).
     // Com o MCP ligado, o planejamento usa o modo padrão só com ferramentas de leitura + as do AgentBoard; sem MCP, `plan` e documentos por marcadores.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
-    const args = ['--print', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', options.planning && !readOnlyPlanning ? 'plan' : 'default']
+    const executionMode = claudePermissionMode[options.mode ?? 'accept_edits']
+    if (!options.planning && !executionMode) throw new Error(`Modo não suportado pelo Claude: ${String(options.mode)}`)
+    const args = ['--print', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', options.planning ? (readOnlyPlanning ? 'default' : 'plan') : executionMode!]
+    if (options.model) args.push('--model', options.model)
+    if (options.effort) args.push('--effort', options.effort)
     if (readOnlyPlanning) args.push('--tools', 'Read,Grep,Glob,WebSearch,WebFetch')
     if (options.pluginDir) args.push('--plugin-dir', options.pluginDir)
     if (options.mcp) args.push('--mcp-config', JSON.stringify({ mcpServers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } }), '--allowedTools', 'mcp__agentboard')

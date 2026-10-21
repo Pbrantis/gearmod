@@ -1,4 +1,4 @@
-import { ipcContracts, type AppLanguage, type AppTheme, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
+import { ipcContracts, type AppLanguage, type AppTheme, type AgentConfig, type AgentPurpose, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
 import type { BackupService } from './backup'
 import type { AppDatabase } from './database'
 import type { NoteRepository } from './repository'
@@ -10,6 +10,7 @@ import type { AgentOrchestrator } from './orchestrator'
 import type { WorktreeService } from './worktrees'
 import type { QualityService } from './quality'
 import type { ExecutionService } from './executions'
+import type { AgentConfigRepository } from './agent-config'
 
 export interface IpcMainLike {
   handle(channel: string, listener: (event: unknown, input: unknown) => unknown): void
@@ -32,6 +33,7 @@ interface Services {
   worktrees: WorktreeService
   quality: QualityService
   executions: ExecutionService
+  agentConfigs: AgentConfigRepository
   appVersion: string
   dataDir: string
   reopen(): Promise<void>
@@ -92,7 +94,10 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
     'cards:document-versions': (input: { cardId: string; kind: CardDocumentKind }) => services.board.documents.versions(input.cardId, input.kind),
     'cards:toggle-task': (input: { cardId: string; line: number; checked: boolean }) => services.board.documents.setTask(input.cardId, input.line, input.checked, 'user'),
-    'cards:start': (input: { cardId: string; profileId: string }) => services.executions.start(input.cardId, input.profileId),
+    'cards:start': (input: { cardId: string; config: AgentConfig }) => services.executions.start(input.cardId, input.config),
+    'agents:options': (input: { profileId: string }) => services.agentConfigs.options(input.profileId),
+    'cards:agent-config': (input: { cardId: string }) => services.agentConfigs.get(input.cardId),
+    'cards:set-agent-config': (input: { cardId: string; purpose: AgentPurpose; config: AgentConfig }) => services.agentConfigs.set(input.cardId, input.purpose, input.config),
     'cards:resume': (input: { cardId: string }) => services.executions.resume(input.cardId),
     'cards:mark-viewed': (input: { cardId: string }) => services.board.markViewed(input.cardId),
     'cards:delete': (input: { cardId: string }) => ({ deleted: services.board.delete(input.cardId) })

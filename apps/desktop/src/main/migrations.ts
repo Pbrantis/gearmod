@@ -248,6 +248,25 @@ export const migrations: readonly Migration[] = [
       // viewed_at marca quando o usuário viu o resultado da última execução (destaque de "terminado"); o que já existe conta como visto.
       db.exec(`ALTER TABLE cards ADD COLUMN viewed_at TEXT; UPDATE cards SET viewed_at = datetime('now');`)
     }
+  },
+  {
+    version: 9,
+    checksum: 'sha256:agentboard-agent-config-v9-2026-10-21',
+    up(db) {
+      db.exec(`
+        CREATE TABLE card_agent_settings (
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          purpose TEXT NOT NULL CHECK (purpose IN ('planning', 'execution')),
+          profile_id TEXT NOT NULL REFERENCES agent_profiles(id), model TEXT, effort TEXT, mode TEXT NOT NULL,
+          updated_at TEXT NOT NULL, PRIMARY KEY(card_id, purpose)
+        );
+        CREATE TABLE agent_usage_stats (
+          profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE,
+          purpose TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', effort TEXT NOT NULL DEFAULT '',
+          count INTEGER NOT NULL DEFAULT 0, last_used_at TEXT NOT NULL, PRIMARY KEY(profile_id, purpose, model, effort)
+        );
+      `)
+    }
   }
 ]
 
