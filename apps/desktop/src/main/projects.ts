@@ -240,7 +240,7 @@ export class BoardRepository {
     return this.card(input.cardId)
   }
 
-  move(cardId: string, columnId: string, beforeCardId: string | null): Card {
+  move(cardId: string, columnId: string, beforeCardId: string | null, actor: 'user' | 'agent' = 'user'): Card {
     const current = this.card(cardId)
     this.assertColumn(current.projectId, columnId)
     const destination = this.database.db.prepare('SELECT semantic_state AS state FROM board_columns WHERE id = ?').get(columnId) as { state: string }
@@ -259,7 +259,7 @@ export class BoardRepository {
     const move = this.database.db.transaction(() => {
       this.database.db.prepare('UPDATE cards SET column_id = ?, order_key = ?, priority = ?, updated_at = ? WHERE id = ?').run(columnId, orderKey, priority, now, cardId)
       if (current.columnId !== columnId) this.database.db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
-        VALUES (?, ?, ?, ?, ?, 'user', 'kanban-move')`).run(randomUUID(), cardId, current.columnId, columnId, now)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), cardId, current.columnId, columnId, now, actor, actor === 'agent' ? 'agent-request' : 'kanban-move')
     })
     move(); return this.card(cardId)
   }

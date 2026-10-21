@@ -8,6 +8,8 @@ import { registerIpc } from './ipc'
 import { NoteRepository } from './repository'
 import { SettingsRepository } from './settings'
 import { AgentContextService } from './agent-context'
+import { McpBridge } from './mcp-bridge'
+import { AgentWriteback } from './agent-writeback'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
 import { ConversationRepository } from './conversations'
@@ -32,9 +34,12 @@ const worktrees = new WorktreeService(database, dataDir)
 const quality = new QualityService(database, worktrees)
 const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
 const agentContext = new AgentContextService(board, settings, existsSync(pluginDir) ? pluginDir : null)
+const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
+const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript })
+const writeback = new AgentWriteback(board, mcpBridge)
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
-}, worktrees, 2, agentContext)
+}, worktrees, 2, agentContext, writeback)
 let disposeIpc: (() => void) | undefined
 
 async function openDatabase(): Promise<void> {
@@ -76,6 +81,7 @@ async function chooseDirectory(): Promise<string | null> {
 
 app.whenReady().then(async () => {
   await openDatabase()
+  await mcpBridge.listen()
   disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, appVersion, dataDir, reopen: openDatabase })
   await createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow() })
@@ -85,4 +91,4 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-app.on('before-quit', () => { disposeIpc?.(); database.close() })
+app.on('before-quit', () => { disposeIpc?.(); void mcpBridge.close(); database.close() })

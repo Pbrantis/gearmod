@@ -64,6 +64,7 @@ function AgentSettings(props: React.ComponentProps<typeof AgentManager>): React.
 function Board({ board, profiles, refresh }: { board: ProjectBoard; profiles: AgentProfile[]; refresh(): Promise<void> }): React.JSX.Element {
   const [draft, setDraft] = useState<Draft>(), [settings, setSettings] = useState(false), [chatCard, setChatCard] = useState<Card>(), [dragId, setDragId] = useState<string>(), [dropOn, setDropOn] = useState<string>(), [overColumn, setOverColumn] = useState<string>(), [toast, setToast] = useState('')
   const active = board.cards.filter((c) => !c.archivedAt), archived = board.cards.filter((c) => c.archivedAt)
+  useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType !== 'agentboard/card-updated') return; if (event.payload.type === 'moved') say(`O agente moveu o card para ${String(event.payload.column)}`); void refresh() }), [refresh])
   const say = (text: string): void => { setToast(text); window.setTimeout(() => setToast(''), 2600) }
   const move = async (cardId: string, columnId: string, beforeCardId: string | null): Promise<void> => {
     const before = board.cards.find((c) => c.id === cardId)

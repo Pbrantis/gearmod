@@ -48,7 +48,7 @@
     "asarUnpack": ["node_modules/better-sqlite3/**"],
     "directories": { "output": "dist" },
     "files": ["out/**/*", "package.json"],
-    "extraResources": [{ "from": "resources/agentboard-plugin", "to": "agentboard-plugin" }],
+    "extraResources": [{ "from": "resources/agentboard-plugin", "to": "agentboard-plugin" }, { "from": "resources/agentboard-mcp", "to": "agentboard-mcp" }],
     "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
     "nsis": {
       "oneClick": false,
