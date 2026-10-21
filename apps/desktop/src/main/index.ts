@@ -14,6 +14,7 @@ import { ExecutionService } from './executions'
 import { AgentConfigRepository } from './agent-config'
 import { SkillService } from './skills'
 import { VoiceService } from './voice'
+import { UsageService } from './usage'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
 import { ConversationRepository } from './conversations'
@@ -39,12 +40,13 @@ const quality = new QualityService(database, worktrees)
 const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
 const agentContext = new AgentContextService(board, settings, existsSync(pluginDir) ? pluginDir : null)
 const agentConfigs = new AgentConfigRepository(database, board, profiles, (profileId) => listCodexModels(profiles.get(profileId)))
+const usage = new UsageService(database, profiles)
 const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
 const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript })
 const writeback = new AgentWriteback(board, mcpBridge)
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
-}, worktrees, 2, agentContext, writeback, agentConfigs)
+}, worktrees, 2, agentContext, writeback, agentConfigs, usage)
 const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })))
 const voice = new VoiceService({ dataDir, emit: (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })) })
 const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs)
@@ -99,7 +101,7 @@ async function chooseSkillSource(): Promise<string | null> {
 app.whenReady().then(async () => {
   await openDatabase()
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, voice, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, voice, usage, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
   await createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow() })
 }).catch((error: unknown) => {

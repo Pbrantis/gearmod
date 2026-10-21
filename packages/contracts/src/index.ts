@@ -106,6 +106,11 @@ export type SkillProviderState = z.infer<typeof skillProviderStateSchema>
 export type SkillEntry = z.infer<typeof skillEntrySchema>
 export type SkillRef = z.infer<typeof skillRefSchema>
 
+export const usageWindowSchema = z.object({ id: z.string(), label: z.string(), usedPercent: z.number().min(0).max(100), resetsAt: isoDate.nullable() })
+export const agentUsageSchema = z.object({ profileId: uuid, provider: agentProviderSchema, windows: z.array(usageWindowSchema), capturedAt: isoDate.nullable(), source: z.string() })
+export type UsageWindow = z.infer<typeof usageWindowSchema>
+export type AgentUsage = z.infer<typeof agentUsageSchema>
+
 export const cardDocumentKinds = ['resumo', 'especificacao', 'plano', 'tasks'] as const
 export const cardDocumentKindSchema = z.enum(cardDocumentKinds)
 export const cardDocumentSchema = z.object({ kind: cardDocumentKindSchema, contentMd: z.string(), updatedAt: isoDate.nullable(), updatedBy: z.enum(['user', 'agent', 'system']).nullable() })
@@ -203,6 +208,7 @@ export const ipcContracts = {
   , 'voice:status': { input: z.undefined(), output: voiceStatusSchema }
   , 'voice:install': { input: z.undefined(), output: voiceStatusSchema }
   , 'voice:transcribe': { input: z.object({ wav: z.instanceof(Uint8Array).refine((value) => value.byteLength <= 12 * 1024 * 1024, 'Gravação longa demais'), prompt: z.string().max(400).optional() }).strict(), output: z.object({ text: z.string() }) }
+  , 'usage:list': { input: z.undefined(), output: z.array(agentUsageSchema) }
   , 'cards:delete': { input: cardIdInput, output: z.object({ deleted: z.boolean() }) }
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
   , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid, skill: skillRefSchema.nullable().optional() }).strict(), output: chatSchema }

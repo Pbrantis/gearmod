@@ -13,6 +13,7 @@ import type { ExecutionService } from './executions'
 import type { AgentConfigRepository } from './agent-config'
 import type { SkillService } from './skills'
 import type { VoiceService } from './voice'
+import type { UsageService } from './usage'
 
 export interface IpcMainLike {
   handle(channel: string, listener: (event: unknown, input: unknown) => unknown): void
@@ -38,6 +39,7 @@ interface Services {
   agentConfigs: AgentConfigRepository
   skills: SkillService
   voice: VoiceService
+  usage: UsageService
   chooseSkillSource(): Promise<string | null>
   appVersion: string
   dataDir: string
@@ -116,6 +118,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'voice:status': () => services.voice.status(services.settings.get().voz),
     'voice:install': () => services.voice.install(services.settings.get().voz),
     'voice:transcribe': async (input: { wav: Uint8Array; prompt?: string }) => { const settings = services.settings.get(); return { text: await services.voice.transcribe({ wav: input.wav, model: settings.voz, language: settings.idioma === 'en' ? 'en' : 'pt', prompt: input.prompt }) } },
+    'usage:list': () => services.usage.list(),
     'cards:delete': (input: { cardId: string }) => ({ deleted: services.board.delete(input.cardId) })
     , 'chats:list': (input: { projectId: string; cardId?: string | null }) => services.conversations.listChats(input.projectId, input.cardId)
     , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }

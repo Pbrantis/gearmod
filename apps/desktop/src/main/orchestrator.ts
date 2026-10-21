@@ -20,7 +20,8 @@ export class AgentOrchestrator {
     private readonly concurrency = 2,
     private readonly agentContext?: Pick<AgentContextService, 'prompt' | 'developerInstructions' | 'pluginDir'>,
     private readonly writeback?: AgentWriteback,
-    private readonly configs?: Pick<AgentConfigRepository, 'resolve' | 'recordUse'>
+    private readonly configs?: Pick<AgentConfigRepository, 'resolve' | 'recordUse'>,
+    private readonly usage?: { recordClaude(profileId: string, payload: Record<string, unknown>): void }
   ) {}
 
   start(input: { chatId: string; prompt: string; planning: boolean }): Run {
@@ -48,7 +49,9 @@ export class AgentOrchestrator {
   private async execute(job: Job): Promise<void> {
     const controller = new AbortController(); this.controllers.set(job.run.id, controller)
     const context = this.conversations.context(job.chatId)
-    const publish = (event: AgentEvent): void => { const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload }) }
+    const publish = (event: AgentEvent): void => {
+      if (event.type === 'claude/rate_limit_event') { try { this.usage?.recordClaude(context.profile.id, event.payload) } catch { /* uso é informativo */ } }
+      const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload }) }
     try {
       const worktree = job.planning ? null : await this.worktrees.prepare(context.cardId)
       const cwd = worktree?.path ?? context.projectPath

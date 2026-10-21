@@ -272,6 +272,16 @@ export const migrations: readonly Migration[] = [
     version: 10,
     checksum: 'sha256:agentboard-chat-skill-v10-2026-10-21',
     up(db) { db.exec('ALTER TABLE chats ADD COLUMN skill_name TEXT; ALTER TABLE chats ADD COLUMN skill_path TEXT;') }
+  },
+  {
+    version: 11,
+    checksum: 'sha256:agentboard-usage-snapshots-v11-2026-10-21',
+    up(db) {
+      db.exec(`CREATE TABLE agent_usage_snapshots (
+        profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE, window TEXT NOT NULL,
+        utilization REAL NOT NULL, resets_at TEXT, captured_at TEXT NOT NULL, PRIMARY KEY(profile_id, window)
+      )`)
+    }
   }
 ]
 
