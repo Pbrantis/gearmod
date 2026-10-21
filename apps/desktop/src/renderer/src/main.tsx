@@ -53,7 +53,19 @@ function AgentSettings({ profiles, close, changed }: { profiles: AgentProfile[];
   const [items, setItems] = useState(profiles), [probes, setProbes] = useState<Record<string, AgentProbe>>({}), [adding, setAdding] = useState(false), [draft, setDraft] = useState<AgentDraft>({ provider: 'codex', label: '', scope: 'Pessoal', useExistingSession: true }), [error, setError] = useState('')
   const probe = async (profile: AgentProfile): Promise<void> => { try { const result = await window.agentboard.invoke('profiles:probe', { profileId: profile.id }); setProbes((current) => ({ ...current, [profile.id]: result })) } catch (reason) { setError(String(reason)) } }
   const add = async (): Promise<void> => {
-    try { setError(''); const profile = await window.agentboard.invoke('profiles:create', { ...draft, label: draft.label.trim() || (draft.provider === 'codex' ? 'Meu Codex' : 'Meu Claude'), scope: draft.scope.trim() || 'Pessoal' }); setItems((current) => [...current, profile]); setAdding(false); setDraft({ provider: 'codex', label: '', scope: 'Pessoal', useExistingSession: true }); await changed(); await probe(profile) } catch (reason) { setError(String(reason)) }
+    try {
+      setError('')
+      const detected = await window.agentboard.invoke('profiles:detect-provider', { provider: draft.provider })
+      if (!detected.installed) {
+        await window.agentboard.invoke('profiles:install-provider', { provider: draft.provider })
+        setError(`A instalação do ${draft.provider === 'codex' ? 'Codex' : 'Claude'} foi aberta. Termine no terminal e clique novamente em Cadastrar para verificar e continuar.`)
+        return
+      }
+      const profile = await window.agentboard.invoke('profiles:create', { ...draft, label: draft.label.trim() || (draft.provider === 'codex' ? 'Meu Codex' : 'Meu Claude'), scope: draft.scope.trim() || 'Pessoal' })
+      const result = await window.agentboard.invoke('profiles:probe', { profileId: profile.id })
+      setItems((current) => [...current, profile]); setProbes((current) => ({ ...current, [profile.id]: result })); setAdding(false); setDraft({ provider: 'codex', label: '', scope: 'Pessoal', useExistingSession: true }); await changed()
+      if (!result.authenticated) setError(`${profile.label} foi cadastrado. Agora clique em Entrar para conectar a conta.`)
+    } catch (reason) { setError(String(reason)) }
   }
   const remove = async (profile: AgentProfile): Promise<void> => {
     if (!window.confirm(`Excluir o agente “${profile.label}”? Ele também será removido dos projetos.`)) return
@@ -82,7 +94,17 @@ function AgentOnboarding({ project, profiles, close, ready }: { project: Project
     try { setError(''); setPending(profile); const result = await window.agentboard.invoke('profiles:probe', { profileId: profile.id }); setProbe(result); if (result.installed && result.authenticated) { await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: [...new Set([...project.allowedProfileIds, profile.id])] }); ready(profile) } } catch (reason) { setError(String(reason)) }
   }
   const add = async (): Promise<void> => {
-    try { setError(''); const profile = await window.agentboard.invoke('profiles:create', { ...draft, label: draft.label.trim() || (draft.provider === 'codex' ? 'Meu Codex' : 'Meu Claude'), scope: draft.scope.trim() || 'Pessoal' }); await connect(profile) } catch (reason) { setError(String(reason)) }
+    try {
+      setError('')
+      const detected = await window.agentboard.invoke('profiles:detect-provider', { provider: draft.provider })
+      if (!detected.installed) {
+        await window.agentboard.invoke('profiles:install-provider', { provider: draft.provider })
+        setError(`A instalação do ${draft.provider === 'codex' ? 'Codex' : 'Claude'} foi aberta. Termine no terminal e clique novamente em Adicionar e continuar.`)
+        return
+      }
+      const profile = await window.agentboard.invoke('profiles:create', { ...draft, label: draft.label.trim() || (draft.provider === 'codex' ? 'Meu Codex' : 'Meu Claude'), scope: draft.scope.trim() || 'Pessoal' })
+      await connect(profile)
+    } catch (reason) { setError(String(reason)) }
   }
   return <Modal close={close} title="Adicionar agente"><div className="agentIntro"><h3>Escolha quem vai trabalhar neste projeto</h3><p>O projeto já está salvo. Para iniciar o chat, conecte um agente.</p></div>{profiles.length > 0 && <div className="savedAgents"><span>Agentes cadastrados</span>{profiles.map((profile) => <button type="button" key={profile.id} onClick={() => void connect(profile)}><i>{profile.provider === 'codex' ? 'C' : 'A'}</i><span><b>{profile.label}</b><small>{profile.provider === 'codex' ? 'Codex' : 'Claude'} · {profile.scope}</small></span><strong>Usar</strong></button>)}</div>}<div className="agentSetup onboarding"><span className="fieldTitle">Novo agente</span><div className="providerCards"><button type="button" className={draft.provider === 'codex' ? 'selected' : ''} onClick={() => setDraft({ ...draft, provider: 'codex' })}><i>C</i><span><b>Codex</b><small>OpenAI</small></span></button><button type="button" className={draft.provider === 'claude' ? 'selected' : ''} onClick={() => setDraft({ ...draft, provider: 'claude' })}><i>A</i><span><b>Claude</b><small>Anthropic</small></span></button></div><label>Nome<input placeholder={draft.provider === 'codex' ? 'Meu Codex' : 'Meu Claude'} value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} /></label><label>Uso<input placeholder="Pessoal, Trabalho, Cliente X…" value={draft.scope} onChange={(e) => setDraft({ ...draft, scope: e.target.value })} /></label><label className="sessionOption"><input type="checkbox" checked={draft.useExistingSession} onChange={(e) => setDraft({ ...draft, useExistingSession: e.target.checked })} /><span><b>Usar login atual</b><small>Desmarque para manter uma sessão separada.</small></span></label><div className="inlineActions"><button type="button" className="secondary" onClick={close}>Agora não</button><button type="button" onClick={() => void add()}>Adicionar e continuar</button></div></div>{pending && probe && !probe.authenticated && <div className="loginNotice"><span>{probe.installed ? `${pending.label} está instalado e precisa de login.` : `${pending.label} ainda não está instalado neste computador.`}</span>{!probe.installed && <button type="button" onClick={async () => { await window.agentboard.invoke('profiles:install', { profileId: pending.id }); setError('A instalação foi aberta no terminal. Quando terminar, clique em Verificar.') }}>Instalar</button>}{probe.installed && <button type="button" onClick={async () => { await window.agentboard.invoke('profiles:login', { profileId: pending.id }); setError('Conclua o login na janela aberta e depois clique em Verificar.') }}>Entrar</button>}<button type="button" className="secondary" onClick={() => void connect(pending)}>Verificar</button></div>}{error && <p className="error">{error}</p>}</Modal>
 }

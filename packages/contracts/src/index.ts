@@ -102,6 +102,8 @@ export const ipcContracts = {
   , 'profiles:delete': { input: z.object({ profileId: uuid }).strict(), output: z.object({ deleted: z.boolean() }) }
   , 'profiles:probe': { input: z.object({ profileId: uuid }).strict(), output: agentProbeSchema }
   , 'profiles:probe-all': { input: z.undefined(), output: z.array(agentProbeSchema) }
+  , 'profiles:detect-provider': { input: z.object({ provider: z.enum(['codex', 'claude']) }).strict(), output: z.object({ installed: z.boolean(), version: z.string().nullable(), error: z.string().nullable() }) }
+  , 'profiles:install-provider': { input: z.object({ provider: z.enum(['codex', 'claude']) }).strict(), output: z.object({ started: z.literal(true) }) }
   , 'profiles:install': { input: z.object({ profileId: uuid }).strict(), output: z.object({ started: z.literal(true) }) }
   , 'profiles:login': { input: z.object({ profileId: uuid }).strict(), output: z.object({ started: z.literal(true) }) }
   , 'projects:list': { input: z.undefined(), output: z.array(projectSchema) }

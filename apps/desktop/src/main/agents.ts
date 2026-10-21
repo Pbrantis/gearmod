@@ -36,9 +36,15 @@ export class AgentProbeService {
 
   async probeAll(): Promise<AgentProbe[]> { return Promise.all(this.profiles.list().map((profile) => this.probe(profile.id))) }
 
-  install(profileId: string): { started: true } {
-    const profile = this.profiles.get(profileId)
-    const packageName = profile.provider === 'codex' ? '@openai/codex@latest' : '@anthropic-ai/claude-code@latest'
+  async detectProvider(provider: 'codex' | 'claude'): Promise<{ installed: boolean; version: string | null; error: string | null }> {
+    try {
+      const result = await systemRunner.run(provider, ['--version'], process.env)
+      return { installed: true, version: result.stdout.trim() || result.stderr.trim() || null, error: null }
+    } catch (error) { return { installed: false, version: null, error: safeError(error) } }
+  }
+
+  installProvider(provider: 'codex' | 'claude'): { started: true } {
+    const packageName = provider === 'codex' ? '@openai/codex@latest' : '@anthropic-ai/claude-code@latest'
     if (process.platform === 'win32') {
       const child = spawn('cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe', '/k', 'npm', 'install', '-g', packageName], { detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
@@ -47,6 +53,11 @@ export class AgentProbeService {
       child.unref()
     }
     return { started: true }
+  }
+
+  install(profileId: string): { started: true } {
+    const profile = this.profiles.get(profileId)
+    return this.installProvider(profile.provider)
   }
 
   login(profileId: string): { started: true } {
