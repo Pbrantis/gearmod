@@ -55,6 +55,10 @@ export class GitService {
 export class ProfileRepository {
   constructor(private readonly database: AppDatabase, private readonly homeDir: string) {}
 
+  setExecutable(id: string, path: string): void {
+    this.database.db.prepare('UPDATE agent_profiles SET executable_path = ? WHERE id = ?').run(path, id)
+  }
+
   create(input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }): AgentProfile {
     const id = randomUUID()
     const configDir = input.useExistingSession

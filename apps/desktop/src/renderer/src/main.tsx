@@ -4,6 +4,7 @@ import type { AgentProbe, AgentProfile, Card, ChatMessage, GitSnapshot, Plan, Pr
 import './styles.css'
 import './probe.css'
 import './chat.css'
+import { AgentManager } from './AgentManager'
 
 type Draft = { id?: string; columnId: string; sourceId?: string | null; title: string; description: string; type: Card['type']; priority: Card['priority']; criteria: string }
 type AgentDraft = { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }
@@ -49,7 +50,9 @@ function ProjectDialog({ profiles, close, created }: { profiles: AgentProfile[];
 
 function FolderIcon(): React.JSX.Element { return <svg className="folderSvg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.8c0-1 .8-1.8 1.8-1.8h4l2 2h7.4c1 0 1.8.8 1.8 1.8v8.4c0 1-.8 1.8-1.8 1.8H5.3c-1 0-1.8-.8-1.8-1.8V6.8Z" /></svg> }
 
-function AgentSettings({ profiles, close, changed }: { profiles: AgentProfile[]; close(): void; changed(): Promise<void> }): React.JSX.Element {
+function AgentSettings({ profiles, close, changed }: { profiles: AgentProfile[]; close(): void; changed(): Promise<void> }): React.JSX.Element { return <AgentManager profiles={profiles} close={close} changed={changed} /> }
+
+function LegacyAgentSettings({ profiles, close, changed }: { profiles: AgentProfile[]; close(): void; changed(): Promise<void> }): React.JSX.Element {
   const [items, setItems] = useState(profiles), [probes, setProbes] = useState<Record<string, AgentProbe>>({}), [adding, setAdding] = useState(false), [draft, setDraft] = useState<AgentDraft>({ provider: 'codex', label: '', scope: 'Pessoal', useExistingSession: true }), [error, setError] = useState('')
   const probe = async (profile: AgentProfile): Promise<void> => { try { const result = await window.agentboard.invoke('profiles:probe', { profileId: profile.id }); setProbes((current) => ({ ...current, [profile.id]: result })) } catch (reason) { setError(String(reason)) } }
   const add = async (): Promise<void> => {

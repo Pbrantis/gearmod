@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { delimiter, extname, isAbsolute, join } from 'node:path'
 import { existsSync } from 'node:fs'
+import { resolveCommand } from './agents'
 import type { AgentProfile } from '@agentboard/contracts'
 import type { ServerNotification } from './generated/codex-app-server/ServerNotification'
 import type { ThreadStartParams } from './generated/codex-app-server/v2/ThreadStartParams'
@@ -132,6 +133,7 @@ function sanitize(value: string): string { return value.replace(/(?:sk-|Bearer\s
 
 function safeExecutable(command: string): string {
   if (process.platform !== 'win32') return command
+  command = resolveCommand(command, process.env)
   if (isAbsolute(command)) {
     if (!['.exe', '.cmd', '.bat'].includes(extname(command).toLowerCase())) throw new Error('No Windows, o agente deve apontar para um arquivo .exe, .cmd ou .bat')
     return command

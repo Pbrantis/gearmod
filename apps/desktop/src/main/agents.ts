@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { delimiter, extname, isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { AgentProbe, AgentProfile } from '@agentboard/contracts'
@@ -26,6 +27,8 @@ export class AgentProbeService {
     const env = this.environment(profile)
     try {
       const versionResult = await this.runner.run(command, ['--version'], env)
+      const resolved = resolveCommand(command, env)
+      if (isAbsolute(resolved)) this.profiles.setExecutable(profile.id, resolved)
       const version = versionResult.stdout.trim() || versionResult.stderr.trim() || null
       const authenticated = await this.authentication(profile, command, env)
       return { profileId, provider: profile.provider, installed: true, authenticated, version, executablePath: command, capabilities: profile.provider === 'codex' ? ['app-server', 'streaming', 'resume', 'approvals', 'plan'] : ['stream-json', 'resume', 'permissions', 'plan'], checkedAt: new Date().toISOString(), error: null }
@@ -92,9 +95,34 @@ export class AgentProbeService {
   }
 }
 
-function resolveCommand(command: string, env: NodeJS.ProcessEnv): string {
-  if (process.platform !== 'win32' || isAbsolute(command)) return command
-  const folders = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean)
+export function resolveCommand(command: string, env: NodeJS.ProcessEnv): string {
+  if (process.platform !== 'win32') return command
+  if (isAbsolute(command)) {
+    if (existsSync(command)) return command
+    command = /claude/i.test(command) ? 'claude' : 'codex'
+  }
+  const folders = [...new Set([
+    ...(env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean),
+    join(env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'npm'),
+    join(homedir(), '.local', 'bin'),
+    join(env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'Microsoft', 'WinGet', 'Links')
+  ])]
+  if (command === 'codex') {
+    // The desktop installation uses versioned folders and may not be in the
+    // PATH inherited by an application launched from Windows Explorer.
+    const desktopBin = join(env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'OpenAI', 'Codex', 'bin')
+    if (existsSync(desktopBin)) {
+      for (const entry of readdirSync(desktopBin, { withFileTypes: true }).filter((item) => item.isDirectory()).sort((a, b) => statSync(join(desktopBin, b.name)).mtimeMs - statSync(join(desktopBin, a.name)).mtimeMs)) {
+        folders.push(join(desktopBin, entry.name))
+      }
+    }
+    const npmVendor = join(env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'npm', 'node_modules', '@openai', 'codex')
+    const roots = [join(npmVendor, 'node_modules', '@openai', 'codex-win32-x64', 'vendor'), join(npmVendor, 'vendor')]
+    for (const root of roots) {
+      if (!existsSync(root)) continue
+      for (const entry of readdirSync(root)) folders.unshift(join(root, entry, 'codex'))
+    }
+  }
   for (const extension of ['.exe', '.cmd', '.bat']) {
     for (const folder of folders) {
       const candidate = join(folder, `${command}${extension}`)
