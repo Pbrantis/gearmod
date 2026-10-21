@@ -8,7 +8,7 @@ import type { AppDatabase } from './database'
 
 const execFileAsync = promisify(execFile)
 const defaultColumns = [
-  ['To Do', 'todo'], ['Doing', 'doing'], ['Test', 'test'], ['MR', 'mr'], ['Done', 'done']
+  ['Backlog', 'backlog'], ['To do', 'todo'], ['Doing', 'doing'], ['Test', 'test'], ['Done', 'done']
 ] as const
 
 export class GitService {
@@ -179,14 +179,17 @@ export class ProjectRepository {
   }
 }
 
+/** Dentro de cada coluna os cards ficam por prioridade (urgente primeiro) e, na mesma prioridade, pela ordem manual. */
+const priorityRank = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`
+
 export class BoardRepository {
   constructor(private readonly database: AppDatabase, private readonly projects: ProjectRepository) {}
 
   get(projectId: string): ProjectBoard {
     const columns = (this.database.db.prepare(`SELECT id, project_id AS projectId, label, sort_order AS sortOrder,
-      semantic_state AS semanticState, is_default AS isDefault FROM board_columns WHERE project_id = ? ORDER BY sort_order`).all(projectId) as Array<Omit<BoardColumn, 'isDefault'> & { isDefault: number }>)
+      semantic_state AS semanticState, is_default AS isDefault FROM board_columns WHERE project_id = ? AND semantic_state <> 'mr' ORDER BY sort_order`).all(projectId) as Array<Omit<BoardColumn, 'isDefault'> & { isDefault: number }>)
       .map((item) => ({ ...item, isDefault: Boolean(item.isDefault) }))
-    const rows = this.database.db.prepare(`SELECT id FROM cards WHERE project_id = ? ORDER BY order_key`).all(projectId) as { id: string }[]
+    const rows = this.database.db.prepare(`SELECT id FROM cards WHERE project_id = ? ORDER BY ${priorityRank}, order_key`).all(projectId) as { id: string }[]
     return { project: this.projects.get(projectId), columns, cards: rows.map((row) => this.card(row.id)) }
   }
 
@@ -233,18 +236,19 @@ export class BoardRepository {
     this.assertColumn(current.projectId, columnId)
     const destination = this.database.db.prepare('SELECT semantic_state AS state FROM board_columns WHERE id = ?').get(columnId) as { state: string }
     if (destination.state === 'done') this.assertDoneGate(cardId)
-    let orderKey: number
+    let orderKey: number, priority = current.priority
     if (beforeCardId) {
       const before = this.card(beforeCardId)
       if (before.columnId !== columnId) throw new Error('Card de referência pertence a outra coluna')
-      const prior = this.database.db.prepare('SELECT MAX(order_key) AS value FROM cards WHERE column_id = ? AND order_key < ? AND id <> ?').get(columnId, before.orderKey, cardId) as { value: number | null }
+      priority = before.priority
+      const prior = this.database.db.prepare('SELECT MAX(order_key) AS value FROM cards WHERE column_id = ? AND priority = ? AND order_key < ? AND id <> ?').get(columnId, priority, before.orderKey, cardId) as { value: number | null }
       orderKey = prior.value === null ? before.orderKey - 1024 : (prior.value + before.orderKey) / 2
     } else {
       orderKey = (this.database.db.prepare('SELECT COALESCE(MAX(order_key), 0) + 1024 AS value FROM cards WHERE column_id = ? AND id <> ?').get(columnId, cardId) as { value: number }).value
     }
     const now = new Date().toISOString()
     const move = this.database.db.transaction(() => {
-      this.database.db.prepare('UPDATE cards SET column_id = ?, order_key = ?, updated_at = ? WHERE id = ?').run(columnId, orderKey, now, cardId)
+      this.database.db.prepare('UPDATE cards SET column_id = ?, order_key = ?, priority = ?, updated_at = ? WHERE id = ?').run(columnId, orderKey, priority, now, cardId)
       if (current.columnId !== columnId) this.database.db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
         VALUES (?, ?, ?, ?, ?, 'user', 'kanban-move')`).run(randomUUID(), cardId, current.columnId, columnId, now)
     })
@@ -256,6 +260,11 @@ export class BoardRepository {
     this.database.db.prepare('UPDATE cards SET archived_at = ?, updated_at = ? WHERE id = ?')
       .run(restore ? null : new Date().toISOString(), new Date().toISOString(), cardId)
     return this.card(cardId)
+  }
+
+  delete(cardId: string): boolean {
+    this.card(cardId)
+    return this.database.db.prepare('DELETE FROM cards WHERE id = ?').run(cardId).changes > 0
   }
 
   private assertColumn(projectId: string, columnId: string): void {

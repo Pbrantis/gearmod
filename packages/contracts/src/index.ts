@@ -29,7 +29,7 @@ const isoDate = z.string().datetime()
 const uuid = z.string().uuid()
 export const cardTypeSchema = z.enum(['feature', 'bug', 'improvement', 'task'])
 export const cardPrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
-export const semanticStateSchema = z.enum(['todo', 'doing', 'test', 'mr', 'done'])
+export const semanticStateSchema = z.enum(['backlog', 'todo', 'doing', 'test', 'done'])
 
 export const agentProviderSchema = z.enum(['codex', 'claude'])
 export const agentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
@@ -130,6 +130,7 @@ export const ipcContracts = {
   , 'cards:move': { input: moveCardInputSchema, output: cardSchema }
   , 'cards:archive': { input: cardIdInput, output: cardSchema }
   , 'cards:restore': { input: cardIdInput, output: cardSchema }
+  , 'cards:delete': { input: cardIdInput, output: z.object({ deleted: z.boolean() }) }
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
   , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid }).strict(), output: chatSchema }
   , 'messages:list': { input: z.object({ chatId: uuid }).strict(), output: z.array(chatMessageSchema) }

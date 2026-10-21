@@ -178,6 +178,35 @@ export const migrations: readonly Migration[] = [
         UPDATE agent_profiles SET color = CASE provider WHEN 'claude' THEN '#D97757' ELSE '#aeb9ff' END;
       `)
     }
+  },
+  {
+    version: 6,
+    checksum: 'sha256:agentboard-backlog-and-no-mr-v6-2026-10-21',
+    up(db) {
+      // Colunas Backlog/To do/Doing/Test/Done. A linha 'mr' fica no banco (volta segura, o histórico aponta para ela), mas sai do quadro.
+      const projects = db.prepare('SELECT id FROM projects').all() as { id: string }[]
+      const now = new Date().toISOString()
+      for (const { id: projectId } of projects) {
+        const column = (state: string): { id: string } | undefined => db.prepare('SELECT id FROM board_columns WHERE project_id = ? AND semantic_state = ?').get(projectId, state) as { id: string } | undefined
+        if (!column('backlog')) {
+          db.prepare('UPDATE board_columns SET sort_order = sort_order + 1 WHERE project_id = ?').run(projectId)
+          db.prepare(`INSERT INTO board_columns(id, project_id, label, sort_order, semantic_state, is_default)
+            VALUES (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), ?, 'Backlog', 0, 'backlog', 1)`).run(projectId)
+        }
+        db.prepare(`UPDATE board_columns SET label = 'To do' WHERE project_id = ? AND semantic_state = 'todo' AND label = 'To Do'`).run(projectId)
+        const mr = column('mr'), test = column('test')
+        if (mr && test) {
+          const cards = db.prepare('SELECT id FROM cards WHERE column_id = ? ORDER BY order_key').all(mr.id) as { id: string }[]
+          const next = db.prepare('SELECT COALESCE(MAX(order_key), 0) AS value FROM cards WHERE column_id = ?')
+          for (const card of cards) {
+            const order = (next.get(test.id) as { value: number }).value + 1024
+            db.prepare('UPDATE cards SET column_id = ?, order_key = ?, updated_at = ? WHERE id = ?').run(test.id, order, now, card.id)
+            db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
+              VALUES (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), ?, ?, ?, ?, 'system', 'migration-mr-to-test')`).run(card.id, mr.id, test.id, now)
+          }
+        }
+      }
+    }
   }
 ]
 
