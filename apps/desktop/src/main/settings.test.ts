@@ -17,26 +17,26 @@ async function open(): Promise<{ root: string; database: AppDatabase }> {
 describe('SettingsRepository', () => {
   it('defaults to green theme and pt-BR language', async () => {
     const { database } = await open()
-    expect(new SettingsRepository(database).get()).toEqual({ tema: 'green', idioma: 'pt-BR' })
+    expect(new SettingsRepository(database).get()).toEqual({ tema: 'green', idioma: 'pt-BR', voz: 'small' })
     database.close()
   })
 
   it('persists app.tema and app.idioma in settings across a restart', async () => {
     const { root, database } = await open()
     const settings = new SettingsRepository(database)
-    expect(settings.update({ tema: 'purple' })).toEqual({ tema: 'purple', idioma: 'pt-BR' })
-    expect(settings.update({ idioma: 'en' })).toEqual({ tema: 'purple', idioma: 'en' })
+    expect(settings.update({ tema: 'purple' })).toEqual({ tema: 'purple', idioma: 'pt-BR', voz: 'small' })
+    expect(settings.update({ idioma: 'en' })).toEqual({ tema: 'purple', idioma: 'en', voz: 'small' })
     expect(database.db.prepare(`SELECT key, json_value FROM settings ORDER BY key`).all()).toMatchObject([{ key: 'app.idioma', json_value: '"en"' }, { key: 'app.tema', json_value: '"purple"' }])
     database.close()
     const reopened = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await reopened.open()
-    expect(new SettingsRepository(reopened).get()).toEqual({ tema: 'purple', idioma: 'en' })
+    expect(new SettingsRepository(reopened).get()).toEqual({ tema: 'purple', idioma: 'en', voz: 'small' })
     reopened.close()
   })
 
   it('falls back to defaults when a stored value is invalid', async () => {
     const { database } = await open()
     database.db.prepare(`INSERT INTO settings(key, json_value, updated_at) VALUES ('app.tema', '"rosa"', 'x'), ('app.idioma', '{oops', 'x')`).run()
-    expect(new SettingsRepository(database).get()).toEqual({ tema: 'green', idioma: 'pt-BR' })
+    expect(new SettingsRepository(database).get()).toEqual({ tema: 'green', idioma: 'pt-BR', voz: 'small' })
     database.close()
   })
 })

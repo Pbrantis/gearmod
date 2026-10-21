@@ -19,7 +19,7 @@ import { FolderGlyph } from './icons'
 import { applySettings } from './Appearance'
 
 type AgentDraft = { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }
-const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR' }
+const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'small' }
 
 function App(): React.JSX.Element {
   const [projects, setProjects] = useState<Project[]>([]), [profiles, setProfiles] = useState<AgentProfile[]>([])

@@ -5,6 +5,7 @@ import { priorityLabel } from './CardTile'
 import { CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, SparkIcon, StopIcon } from './icons'
 import { Markdown } from './markdown'
 import { QualityPanel } from './QualityPanel'
+import { useDictation } from './useDictation'
 import type { SkillEntry, SkillRef } from '@agentboard/contracts'
 
 const docLabels: Record<CardDocumentKind, string> = { resumo: 'Resumo', especificacao: 'Especificação', plano: 'Plano', tasks: 'Tasks' }
@@ -17,6 +18,8 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
   const [profileId, setProfileId] = useState(usable[0]?.id ?? ''), [input, setInput] = useState(''), [expanded, setExpanded] = useState(true), [tab, setTab] = useState<Tab>('resumo'), [error, setError] = useState('')
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined)
   const planning = mode === 'planning'
+  const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []), card.title || undefined)
+  const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled), [voiceSetup, setVoiceSetup] = useState(false)
   const [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null), [skillOpen, setSkillOpen] = useState(false)
   const agentState = useAgentConfig(initial.id, mode, usable, chat?.profileId)
   const loadMessages = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
@@ -64,9 +67,11 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
         {busy && !live && <div className="msg assistant typing" aria-label="O agente está escrevendo"><i /><i /><i /></div>}
       </div>
       <div className="composer">
-        {error && <p className="error">{error}</p>}
+        {(error || dictation.error) && <p className="error">{error || dictation.error}</p>}
+        {voiceSetup && !voiceReady && dictation.status && <div className="voiceSetup"><p>O ditado por voz roda no seu computador, sem gastar token. Falta baixar {!dictation.status.engineInstalled ? (dictation.status.canInstallEngine ? 'o programa de transcrição e ' : 'o programa de transcrição (whisper-cli no PATH) e ') : ''}o modelo ({dictation.status.sizeMb} MB), só uma vez.</p><div className="inlineActions"><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Agora não</button><button type="button" disabled={Boolean(dictation.progress) || (!dictation.status.engineInstalled && !dictation.status.canInstallEngine)} onClick={() => void dictation.install().then(() => setVoiceSetup(false))}>{dictation.progress || 'Baixar'}</button></div></div>}
+        {dictation.recording && <div className="listening" role="status"><span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>Ouvindo… clique no microfone para parar</div>}
         <div className="cbox"><textarea rows={2} aria-label="Mensagem para o agente" value={input} placeholder={planning ? 'Descreva o que você quer planejar…' : 'Envie uma instrução ao agente…'} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
-          <button type="button" className="micbtn tip" data-tip="Ditado por voz em breve" aria-label="Ditado por voz" disabled><MicIcon /></button>
+          <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? 'Parar de ouvir' : dictation.transcribing ? 'Transcrevendo…' : 'Ditar por voz'} aria-label="Ditar por voz" aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : setVoiceSetup(true))}>{dictation.transcribing ? <span className="spin" /> : <MicIcon />}</button>
           {busy ? <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button> : <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" disabled={!input.trim() || !(agentState.config?.profileId ?? profileId)} onClick={() => void send()}><SendIcon /></button>}</div>
         <div className="cmeta">
           <span className="mode tip" data-tip={planning ? 'Este chat não altera arquivos' : 'Executa na worktree do card'}>{planning ? '✦ Só planejar' : 'Executar'}</span>

@@ -1,4 +1,4 @@
-import { ipcContracts, type AppLanguage, type AppTheme, type AgentConfig, type AgentPurpose, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
+import { ipcContracts, type AppLanguage, type VoiceModel, type AppTheme, type AgentConfig, type AgentPurpose, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
 import type { BackupService } from './backup'
 import type { AppDatabase } from './database'
 import type { NoteRepository } from './repository'
@@ -12,6 +12,7 @@ import type { QualityService } from './quality'
 import type { ExecutionService } from './executions'
 import type { AgentConfigRepository } from './agent-config'
 import type { SkillService } from './skills'
+import type { VoiceService } from './voice'
 
 export interface IpcMainLike {
   handle(channel: string, listener: (event: unknown, input: unknown) => unknown): void
@@ -36,6 +37,7 @@ interface Services {
   executions: ExecutionService
   agentConfigs: AgentConfigRepository
   skills: SkillService
+  voice: VoiceService
   chooseSkillSource(): Promise<string | null>
   appVersion: string
   dataDir: string
@@ -59,7 +61,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       return { restored: true as const }
     },
     'settings:get': () => services.settings.get(),
-    'settings:update': (input: { tema?: AppTheme; idioma?: AppLanguage }) => services.settings.update(input),
+    'settings:update': (input: { tema?: AppTheme; idioma?: AppLanguage; voz?: VoiceModel }) => services.settings.update(input),
     'profiles:list': () => services.profiles.list(),
     'profiles:create': (input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean; color?: string }) => services.profiles.create(input),
     'profiles:update': (input: { profileId: string; label: string; scope: string; color?: string }) => services.profiles.update(input),
@@ -111,6 +113,9 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       if (input.skill) await services.skills.assertKnown(input.skill, services.conversations.projectOf(input.chatId))
       return services.conversations.setSkill(input.chatId, input.skill)
     },
+    'voice:status': () => services.voice.status(services.settings.get().voz),
+    'voice:install': () => services.voice.install(services.settings.get().voz),
+    'voice:transcribe': async (input: { wav: Uint8Array; prompt?: string }) => { const settings = services.settings.get(); return { text: await services.voice.transcribe({ wav: input.wav, model: settings.voz, language: settings.idioma === 'en' ? 'en' : 'pt', prompt: input.prompt }) } },
     'cards:delete': (input: { cardId: string }) => ({ deleted: services.board.delete(input.cardId) })
     , 'chats:list': (input: { projectId: string; cardId?: string | null }) => services.conversations.listChats(input.projectId, input.cardId)
     , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }

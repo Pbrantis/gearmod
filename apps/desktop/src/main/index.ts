@@ -13,6 +13,7 @@ import { AgentWriteback } from './agent-writeback'
 import { ExecutionService } from './executions'
 import { AgentConfigRepository } from './agent-config'
 import { SkillService } from './skills'
+import { VoiceService } from './voice'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
 import { ConversationRepository } from './conversations'
@@ -45,6 +46,7 @@ const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppS
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
 }, worktrees, 2, agentContext, writeback, agentConfigs)
 const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })))
+const voice = new VoiceService({ dataDir, emit: (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })) })
 const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs)
 let disposeIpc: (() => void) | undefined
 
@@ -73,7 +75,9 @@ async function createWindow(): Promise<void> {
   window.once('ready-to-show', () => window.show())
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())
-  window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false))
+  // Só o microfone (ditado por voz) é liberado; qualquer outra permissão continua negada.
+  window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback, details) => callback(permission === 'media' && (details as { mediaTypes?: string[] }).mediaTypes?.every((type) => type === 'audio') === true))
+  window.webContents.session.setPermissionCheckHandler((_webContents, permission) => permission === 'media')
   if (process.env.ELECTRON_RENDERER_URL) await window.loadURL(process.env.ELECTRON_RENDERER_URL)
   else await window.loadFile(join(__dirname, '../renderer/index.html'))
 }
@@ -95,7 +99,7 @@ async function chooseSkillSource(): Promise<string | null> {
 app.whenReady().then(async () => {
   await openDatabase()
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, voice, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
   await createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow() })
 }).catch((error: unknown) => {

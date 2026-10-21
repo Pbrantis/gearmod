@@ -38,8 +38,12 @@ export const agentColorPalette = ['#D97757', '#E5A24B', '#9ccf6f', '#6fc3b2', '#
 export const defaultAgentColor = (provider: z.infer<typeof agentProviderSchema>): string => (provider === 'claude' ? agentColorPalette[0] : agentColorPalette[5])
 export const themeSchema = z.enum(['green', 'purple', 'blue', 'orange'])
 export const languageSchema = z.enum(['pt-BR', 'en'])
-export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema })
-export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional() }).strict()
+export const voiceModelSchema = z.enum(['small', 'large-v3-turbo'])
+export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema })
+export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional() }).strict()
+export const voiceStatusSchema = z.object({ model: voiceModelSchema, modelInstalled: z.boolean(), engineInstalled: z.boolean(), canInstallEngine: z.boolean(), sizeMb: z.number(), downloading: z.object({ item: z.enum(['programa', 'modelo']), received: z.number(), total: z.number().nullable() }).nullable() })
+export type VoiceModel = z.infer<typeof voiceModelSchema>
+export type VoiceStatus = z.infer<typeof voiceStatusSchema>
 export const agentProfileSchema = z.object({
   id: uuid, provider: agentProviderSchema, label: z.string(), scope: z.string(), color: agentColorSchema,
   configDir: z.string(), executablePath: z.string().nullable(), enabled: z.boolean()
@@ -196,6 +200,9 @@ export const ipcContracts = {
   , 'skills:import': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), sourcePath: z.string().trim().min(1).max(2048), name: z.string().trim().min(1).max(64), provider: agentProviderSchema }).strict(), output: z.array(skillEntrySchema) }
   , 'skills:convert': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), name: z.string().trim().min(1).max(64), from: agentProviderSchema, to: agentProviderSchema, reviewProfileId: uuid.optional(), model: z.string().max(120).nullable().optional() }).strict(), output: z.object({ converted: z.literal(true), reviewing: z.boolean() }) }
   , 'chats:set-skill': { input: z.object({ chatId: uuid, skill: skillRefSchema.nullable() }).strict(), output: chatSchema }
+  , 'voice:status': { input: z.undefined(), output: voiceStatusSchema }
+  , 'voice:install': { input: z.undefined(), output: voiceStatusSchema }
+  , 'voice:transcribe': { input: z.object({ wav: z.instanceof(Uint8Array).refine((value) => value.byteLength <= 12 * 1024 * 1024, 'Gravação longa demais'), prompt: z.string().max(400).optional() }).strict(), output: z.object({ text: z.string() }) }
   , 'cards:delete': { input: cardIdInput, output: z.object({ deleted: z.boolean() }) }
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
   , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid, skill: skillRefSchema.nullable().optional() }).strict(), output: chatSchema }
