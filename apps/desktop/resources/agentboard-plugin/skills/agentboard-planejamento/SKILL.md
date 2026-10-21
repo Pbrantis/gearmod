@@ -41,6 +41,7 @@ Cada turno traz um bloco de contexto com:
 ## Como entregar os documentos
 
 - Se a ferramenta `agentboard_escrever_documento` estiver disponível, chame-a uma vez por documento com `tipo` = `resumo`, `especificacao`, `plano` ou `tasks` e o Markdown completo.
+- Para dar título, tipo ou prioridade ao card, use `agentboard_atualizar_card`.
 - Se não existir, devolva cada documento na sua mensagem entre marcadores, exatamente assim:
 
 ```

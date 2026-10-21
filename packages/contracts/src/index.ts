@@ -96,11 +96,11 @@ export const updateProjectInputSchema = z.object({ projectId: uuid, name: z.stri
 export const setProjectProfilesInputSchema = z.object({ projectId: uuid, profileIds: z.array(uuid).max(8) }).strict()
 const criterionInputSchema = z.object({ body: z.string().trim().min(1).max(2000), checked: z.boolean().default(false) })
 export const createCardInputSchema = z.object({
-  projectId: uuid, columnId: uuid, sourceId: uuid.nullable().optional(), type: cardTypeSchema, title: z.string().trim().min(1).max(240),
+  projectId: uuid, columnId: uuid, sourceId: uuid.nullable().optional(), type: cardTypeSchema, title: z.string().trim().max(240),
   description: z.string().max(20_000).default(''), priority: cardPrioritySchema,
   acceptanceCriteria: z.array(criterionInputSchema).max(50).default([])
 }).strict()
-export const updateCardInputSchema = createCardInputSchema.omit({ projectId: true, columnId: true }).extend({ cardId: uuid }).strict()
+export const updateCardInputSchema = createCardInputSchema.omit({ projectId: true, columnId: true }).extend({ cardId: uuid, title: z.string().trim().min(1).max(240) }).strict()
 export const moveCardInputSchema = z.object({ cardId: uuid, columnId: uuid, beforeCardId: uuid.nullable().default(null) }).strict()
 
 export const ipcContracts = {
@@ -136,6 +136,7 @@ export const ipcContracts = {
   , 'cards:move': { input: moveCardInputSchema, output: cardSchema }
   , 'cards:archive': { input: cardIdInput, output: cardSchema }
   , 'cards:restore': { input: cardIdInput, output: cardSchema }
+  , 'cards:get': { input: cardIdInput, output: cardSchema }
   , 'cards:documents': { input: cardIdInput, output: cardDocumentsSchema }
   , 'cards:write-document': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema, contentMd: z.string().max(200_000) }).strict(), output: cardDocumentSchema }
   , 'cards:document-versions': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema }).strict(), output: z.array(documentVersionSchema) }

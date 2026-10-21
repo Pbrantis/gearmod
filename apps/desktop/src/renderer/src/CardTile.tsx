@@ -23,7 +23,7 @@ export function CardTile({ card, state, dropLabel, onOpen, onChat, onPlan, onArc
   return <article className={`card ${dropLabel ? 'dropBefore' : ''}`} data-plabel={dropLabel} onClick={onOpen} {...dragProps}>
     <div className="pills"><span className={`pill ${card.type}`}>{card.type}</span><span className={`pill ${card.priority}`}>{priorityLabel[card.priority]}</span></div>
     <button type="button" className="cardChat tip" data-tip="Abrir chat" aria-label="Abrir chat" onClick={(e) => { e.stopPropagation(); onChat() }}><ChatIcon /></button>
-    <h3>{card.title}</h3>
+    <h3>{card.title || 'Novo card'}</h3>
     {card.description && <div className="desc">{plain(card.description)}</div>}
     <div className="cfoot"><span className="cnt">{total ? `${done}/${total} tasks` : 'sem tasks'}</span><div className="btns">
       {(state === 'backlog' || state === 'todo') && action('plan', 'Planejar', onPlan, <SparkIcon />)}

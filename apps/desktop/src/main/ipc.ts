@@ -85,6 +85,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:move': (input: { cardId: string; columnId: string; beforeCardId: string | null }) => services.board.move(input.cardId, input.columnId, input.beforeCardId),
     'cards:archive': (input: { cardId: string }) => services.board.archive(input.cardId),
     'cards:restore': (input: { cardId: string }) => services.board.archive(input.cardId, true),
+    'cards:get': (input: { cardId: string }) => services.board.card(input.cardId),
     'cards:documents': (input: { cardId: string }) => services.board.documents.get(input.cardId),
     'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
     'cards:document-versions': (input: { cardId: string; kind: CardDocumentKind }) => services.board.documents.versions(input.cardId, input.kind),

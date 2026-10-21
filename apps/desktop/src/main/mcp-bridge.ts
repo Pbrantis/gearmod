@@ -9,7 +9,7 @@ import type { AgentContextService } from './agent-context'
 import type { BoardRepository } from './projects'
 
 export interface McpEndpoint { command: string; args: string[]; env: Record<string, string> }
-export type CardChange = { type: 'document'; kind: CardDocumentKind } | { type: 'task' } | { type: 'moved'; column: string }
+export type CardChange = { type: 'document'; kind: CardDocumentKind } | { type: 'task' } | { type: 'moved'; column: string } | { type: 'card' }
 interface RunState { runId: string; cardId: string; written: Set<CardDocumentKind>; pendingMove: string | null; notify(change: CardChange): void }
 export interface RunReport { written: CardDocumentKind[]; pendingMove: string | null }
 type Reply = { ok: true; text: string } | { ok: false; error: string }
@@ -88,6 +88,16 @@ export class McpBridge {
         if (!Number.isInteger(args.linha) || (args.linha as number) < 1 || typeof args.feito !== 'boolean') return { ok: false, error: 'linha deve ser um inteiro a partir de 1 e feito um booleano' }
         board.documents.setTask(run.cardId, (args.linha as number) - 1, args.feito, 'agent'); run.notify({ type: 'task' })
         return { ok: true, text: `Linha ${String(args.linha)} ${args.feito ? 'marcada' : 'desmarcada'}.` }
+      }
+      if (tool === 'agentboard_atualizar_card') {
+        const current = board.card(run.cardId)
+        const title = args.titulo === undefined ? current.title : args.titulo, type = args.tipo === undefined ? current.type : args.tipo, priority = args.prioridade === undefined ? current.priority : args.prioridade
+        if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo deve ser um texto de 1 a 240 caracteres' }
+        if (!['feature', 'bug', 'improvement', 'task'].includes(String(type))) return { ok: false, error: 'tipo deve ser feature, bug, improvement ou task' }
+        if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade deve ser low, medium, high ou urgent' }
+        board.update({ cardId: run.cardId, type: String(type), title: title.trim(), description: current.description, priority: String(priority), acceptanceCriteria: current.acceptanceCriteria.map(({ body, checked }) => ({ body, checked })) })
+        run.notify({ type: 'card' })
+        return { ok: true, text: `Card atualizado: ${title.trim()} (${String(type)}, ${String(priority)}).` }
       }
       if (tool === 'agentboard_mover_card') {
         if (typeof args.coluna !== 'string' || (args.quando !== 'agora' && args.quando !== 'ao_terminar')) return { ok: false, error: 'informe coluna e quando ("agora" ou "ao_terminar")' }
