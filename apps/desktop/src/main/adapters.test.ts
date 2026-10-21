@@ -40,4 +40,22 @@ describe('real provider protocol adapters', () => {
     const result = await new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'planeje', sessionId: null, planning: true, profile: profile('claude'), onEvent: () => undefined })
     expect(result).toMatchObject({ sessionId: 'session-1', text: 'Plano', status: 'completed' })
   })
+
+  it('passes the system skills to Codex as developerInstructions and to Claude as --plugin-dir', async () => {
+    const started: Record<string, unknown>[] = []
+    const codex: ProcessFactory = { start() { return fakeProcess((request, child) => {
+      const id = request.id
+      if (request.method === 'initialize') send(child, { id, result: {} })
+      if (request.method === 'thread/start') { started.push(request.params as Record<string, unknown>); send(child, { id, result: { thread: { id: 'thread-1' } } }) }
+      if (request.method === 'turn/start') { send(child, { id, result: { turn: { id: 'turn-1' } } }); send(child, { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } } }) }
+    }) } }
+    await new CodexAppServerAdapter(codex).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: true, profile: profile('codex'), developerInstructions: 'SKILLS', onEvent: () => undefined })
+    expect(started[0]).toMatchObject({ developerInstructions: 'SKILLS', sandbox: 'read-only' })
+
+    let args: string[] = []
+    let child: ChildProcessWithoutNullStreams
+    const claude: ProcessFactory = { start(_command, received) { args = received; child = fakeProcess(); queueMicrotask(() => send(child, { type: 'result', session_id: 's', result: 'ok' })); return child } }
+    await new ClaudeCliAdapter(claude).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: true, profile: profile('claude'), pluginDir: 'C:\\plugin', onEvent: () => undefined })
+    expect(args).toContain('--plugin-dir'); expect(args[args.indexOf('--plugin-dir') + 1]).toBe('C:\\plugin')
+  })
 })

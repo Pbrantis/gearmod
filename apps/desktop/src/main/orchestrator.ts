@@ -2,6 +2,7 @@ import type { Run } from '@agentboard/contracts'
 import type { AgentAdapter, AgentEvent } from './adapters'
 import type { ConversationRepository } from './conversations'
 import type { WorktreeService } from './worktrees'
+import type { AgentContextService } from './agent-context'
 
 type Job = { run: Run; chatId: string; prompt: string; planning: boolean }
 
@@ -14,7 +15,8 @@ export class AgentOrchestrator {
     private readonly adapters: Record<'codex' | 'claude', AgentAdapter>,
     private readonly emit: (event: { runId: string; eventType: string; payload: Record<string, unknown> }) => void,
     private readonly worktrees: WorktreeService,
-    private readonly concurrency = 2
+    private readonly concurrency = 2,
+    private readonly agentContext?: Pick<AgentContextService, 'prompt' | 'developerInstructions' | 'pluginDir'>
   ) {}
 
   start(input: { chatId: string; prompt: string; planning: boolean }): Run {
@@ -48,7 +50,7 @@ export class AgentOrchestrator {
       const cwd = worktree?.path ?? context.projectPath
       if (worktree) this.conversations.attachWorktree(job.run.id, worktree.id)
       this.conversations.updateRun(job.run.id, 'running', null)
-      const result = await this.adapters[context.profile.provider].run({ cwd, prompt: job.prompt, sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
+      const result = await this.adapters[context.profile.provider].run({ cwd, prompt: this.agentContext ? this.agentContext.prompt(context.cardId, job.prompt, job.planning) : job.prompt, pluginDir: this.agentContext?.pluginDir, developerInstructions: this.agentContext?.developerInstructions(job.planning), sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
       this.conversations.updateSession(job.chatId, result.sessionId)
       if (result.text) this.conversations.addMessage({ chatId: job.chatId, role: 'assistant', body: result.text, status: result.status === 'completed' ? 'complete' : 'failed' })
       if (job.planning && result.status === 'completed') this.conversations.savePlan(context.cardId, context.profile.id, result.text)

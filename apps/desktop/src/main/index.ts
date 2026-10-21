@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { BackupService } from './backup'
@@ -6,6 +7,7 @@ import { AppDatabase } from './database'
 import { registerIpc } from './ipc'
 import { NoteRepository } from './repository'
 import { SettingsRepository } from './settings'
+import { AgentContextService } from './agent-context'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
 import { ConversationRepository } from './conversations'
@@ -28,9 +30,11 @@ const settings = new SettingsRepository(database)
 const conversations = new ConversationRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
 const quality = new QualityService(database, worktrees)
+const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
+const agentContext = new AgentContextService(board, settings, existsSync(pluginDir) ? pluginDir : null)
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
-}, worktrees)
+}, worktrees, 2, agentContext)
 let disposeIpc: (() => void) | undefined
 
 async function openDatabase(): Promise<void> {

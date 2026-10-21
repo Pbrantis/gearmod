@@ -9,7 +9,7 @@ import type { ThreadStartParams } from './generated/codex-app-server/v2/ThreadSt
 import type { TurnStartParams } from './generated/codex-app-server/v2/TurnStartParams'
 
 export type AgentEvent = { type: string; payload: Record<string, unknown> }
-export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; signal?: AbortSignal; onEvent(event: AgentEvent): void }
+export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; developerInstructions?: string; signal?: AbortSignal; onEvent(event: AgentEvent): void }
 export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null }
 export interface AgentAdapter { run(options: AgentRunOptions): Promise<AgentRunResult> }
 
@@ -70,7 +70,7 @@ export class CodexAppServerAdapter implements AgentAdapter {
     try {
       await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
       rpc.notify('initialized')
-      const policy = { cwd: options.cwd, approvalPolicy: 'never', sandbox: options.planning ? 'read-only' : 'workspace-write' } satisfies ThreadStartParams
+      const policy = { cwd: options.cwd, approvalPolicy: 'never', sandbox: options.planning ? 'read-only' : 'workspace-write', ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}) } satisfies ThreadStartParams
       const threadResult = options.sessionId
         ? await rpc.request('thread/resume', { threadId: options.sessionId, ...policy })
         : await rpc.request('thread/start', policy)
@@ -104,6 +104,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     const args = ['--print', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', options.planning ? 'plan' : 'default']
+    if (options.pluginDir) args.push('--plugin-dir', options.pluginDir)
     if (options.sessionId) args.push('--resume', options.sessionId)
     args.push(options.prompt)
     const child = this.processes.start(options.profile.executablePath || 'claude', args, { cwd: options.cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: options.profile.configDir } })
