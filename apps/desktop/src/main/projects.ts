@@ -1,0 +1,263 @@
+import { randomUUID } from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { readdir, stat } from 'node:fs/promises'
+import { basename, join, resolve } from 'node:path'
+import { promisify } from 'node:util'
+import type { AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
+import type { AppDatabase } from './database'
+
+const execFileAsync = promisify(execFile)
+const defaultColumns = [
+  ['To Do', 'todo'], ['Doing', 'doing'], ['Test', 'test'], ['MR', 'mr'], ['Done', 'done']
+] as const
+
+export class GitService {
+  async inspect(localPath: string): Promise<{ localPath: string; name: string; repositories: Array<{ localPath: string; name: string; currentBranch: string; branches: string[] }> }> {
+    const folder = await stat(localPath).catch(() => undefined)
+    if (!folder?.isDirectory()) throw new Error('A pasta do projeto não existe')
+    const root = resolve(localPath)
+    const direct = await this.repository(root)
+    if (direct) return { localPath: root, name: basename(root), repositories: [direct] }
+    const children = await readdir(root, { withFileTypes: true })
+    const repositories = (await Promise.all(children.filter((item) => item.isDirectory() && item.name !== '.git').map((item) => this.repository(resolve(root, item.name))))).filter((item): item is NonNullable<typeof item> => Boolean(item))
+    return { localPath: root, name: basename(root), repositories }
+  }
+
+  private async repository(localPath: string): Promise<{ localPath: string; name: string; currentBranch: string; branches: string[] } | null> {
+    try {
+      const [{ stdout: rootOutput }, { stdout: branchOutput }] = await Promise.all([
+        execFileAsync('git', ['-C', localPath, 'rev-parse', '--show-toplevel']),
+        execFileAsync('git', ['-C', localPath, 'branch', '--show-current'])
+      ])
+      const root = resolve(rootOutput.trim())
+      const currentBranch = branchOutput.trim()
+      if (!currentBranch) return null
+      return { localPath: root, name: basename(root), currentBranch, branches: await this.branches(root) }
+    } catch { return null }
+  }
+
+  async branches(localPath: string): Promise<string[]> {
+    const folder = await stat(localPath).catch(() => undefined)
+    if (!folder?.isDirectory()) throw new Error('A pasta do projeto não existe')
+    try {
+      const { stdout } = await execFileAsync('git', ['-C', localPath, 'for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes'])
+      const branches = stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).map((item) => item.replace(/^origin\//, ''))
+      return [...new Set(branches)].sort()
+    } catch { throw new Error('A pasta selecionada não é um repositório Git acessível') }
+  }
+
+  async validate(localPath: string, baseBranch: string): Promise<void> {
+    const branches = await this.branches(localPath)
+    if (!branches.includes(baseBranch)) throw new Error(`A branch base “${baseBranch}” não existe no repositório`)
+  }
+}
+
+export class ProfileRepository {
+  constructor(private readonly database: AppDatabase, private readonly homeDir: string) {}
+
+  create(input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }): AgentProfile {
+    const id = randomUUID()
+    const configDir = input.useExistingSession
+      ? join(this.homeDir, input.provider === 'codex' ? '.codex' : '.claude')
+      : join(this.homeDir, '.agentboard', 'profiles', id)
+    if (input.useExistingSession) {
+      const existing = this.database.db.prepare('SELECT 1 FROM agent_profiles WHERE provider = ? AND config_dir = ?').get(input.provider, configDir)
+      if (existing) throw new Error(`A sessão atual de ${input.provider === 'codex' ? 'Codex' : 'Claude'} já foi adicionada`)
+    }
+    const now = new Date().toISOString()
+    this.database.db.prepare(`INSERT INTO agent_profiles
+      (id, provider, label, scope, config_dir, executable_path, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?)`).run(id, input.provider, input.label.trim(), input.scope, configDir, now, now)
+    return this.get(id)
+  }
+
+  delete(id: string): boolean {
+    this.get(id)
+    const references = ['project_agent_profiles', 'plans', 'chats', 'runs'].some((table) => {
+      const column = table === 'project_agent_profiles' ? 'profile_id' : table === 'plans' ? 'agent_profile_id' : 'profile_id'
+      return Boolean(this.database.db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id))
+    })
+    if (references) throw new Error('Este agente está em uso por um projeto, conversa, plano ou execução')
+    return this.database.db.prepare('DELETE FROM agent_profiles WHERE id = ?').run(id).changes > 0
+  }
+
+  list(): AgentProfile[] {
+    return this.database.db.prepare(`SELECT id, provider, label, scope, config_dir AS configDir,
+      executable_path AS executablePath, enabled FROM agent_profiles WHERE enabled = 1 ORDER BY created_at`).all()
+      .map((row) => ({ ...(row as Omit<AgentProfile, 'enabled'> & { enabled: number }), enabled: Boolean((row as { enabled: number }).enabled) }))
+  }
+
+  get(id: string): AgentProfile {
+    const profile = this.list().find((item) => item.id === id)
+    if (!profile) throw new Error('Perfil não encontrado')
+    return profile
+  }
+}
+
+export class ProjectRepository {
+  constructor(private readonly database: AppDatabase, private readonly git: Pick<GitService, 'inspect' | 'validate'>) {}
+
+  list(): Project[] {
+    const rows = this.database.db.prepare(`SELECT id, name, local_path AS localPath, base_branch AS baseBranch,
+      remote_provider AS remoteProvider, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY updated_at DESC`).all() as Omit<Project, 'allowedProfileIds'>[]
+    const allowed = this.database.db.prepare('SELECT profile_id AS profileId FROM project_agent_profiles WHERE project_id = ? AND allowed = 1')
+    const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS localPath,
+      is_git_repository AS isGitRepository, current_branch AS currentBranch, sort_order AS sortOrder FROM project_sources WHERE project_id = ? ORDER BY sort_order`)
+    return rows.map((row) => ({ ...row,
+      allowedProfileIds: (allowed.all(row.id) as { profileId: string }[]).map((item) => item.profileId),
+      sources: (sources.all(row.id) as Array<Omit<ProjectSource, 'isGitRepository'> & { isGitRepository: number }>).map((item) => ({ ...item, isGitRepository: Boolean(item.isGitRepository) }))
+    }))
+  }
+
+  get(id: string): Project {
+    const project = this.list().find((item) => item.id === id)
+    if (!project) throw new Error('Projeto não encontrado')
+    return project
+  }
+
+  async create(input: { name?: string; sourcePaths?: string[]; profileIds?: string[]; localPath?: string; baseBranch?: string }): Promise<Project> {
+    const paths = input.sourcePaths ?? (input.localPath ? [input.localPath] : [])
+    if (!paths.length) throw new Error('Adicione pelo menos uma pasta de origem')
+    const inspections = await Promise.all(paths.map((path) => this.git.inspect(path)))
+    const first = inspections[0]!
+    type DiscoveredSource = { localPath: string; name: string; currentBranch: string | null; branches: string[]; isGitRepository: boolean }
+    const discovered: DiscoveredSource[] = inspections.flatMap<DiscoveredSource>((inspection) => inspection.repositories.length ? inspection.repositories.map((repository) => ({ ...repository, isGitRepository: true })) : [{ localPath: inspection.localPath, name: inspection.name, currentBranch: null, branches: [], isGitRepository: false }])
+    const unique = [...new Map(discovered.map((source) => [source.localPath.toLocaleLowerCase(), source])).values()]
+    const name = input.name?.trim() || first.name
+    const baseBranch = input.baseBranch || unique.find((source) => source.isGitRepository)?.currentBranch || ''
+    const selectedProfiles = input.profileIds ?? []
+    const now = new Date().toISOString(), id = randomUUID()
+    const create = this.database.db.transaction(() => {
+      this.database.db.prepare(`INSERT INTO projects(id, name, local_path, base_branch, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)`).run(id, name, first.localPath, baseBranch, now, now)
+      const insertSource = this.database.db.prepare(`INSERT INTO project_sources(id, project_id, name, local_path, is_git_repository, current_branch, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      unique.forEach((source, index) => insertSource.run(randomUUID(), id, source.name, source.localPath, source.isGitRepository ? 1 : 0, source.currentBranch, index))
+      const insertColumn = this.database.db.prepare(`INSERT INTO board_columns(id, project_id, label, sort_order, semantic_state, is_default)
+        VALUES (?, ?, ?, ?, ?, 1)`)
+      defaultColumns.forEach(([label, state], index) => insertColumn.run(randomUUID(), id, label, index, state))
+      const allow = this.database.db.prepare('INSERT INTO project_agent_profiles(project_id, profile_id, allowed) VALUES (?, ?, 1)')
+      selectedProfiles.forEach((profileId) => allow.run(id, profileId))
+    })
+    create()
+    return this.get(id)
+  }
+
+  async update(input: { projectId: string; name: string }): Promise<Project> {
+    const result = this.database.db.prepare('UPDATE projects SET name = ?, updated_at = ? WHERE id = ?')
+      .run(input.name, new Date().toISOString(), input.projectId)
+    if (!result.changes) throw new Error('Projeto não encontrado')
+    return this.get(input.projectId)
+  }
+
+  setProfiles(projectId: string, profileIds: string[]): Project {
+    this.get(projectId)
+    const known = new Set((this.database.db.prepare('SELECT id FROM agent_profiles WHERE enabled = 1').all() as { id: string }[]).map((item) => item.id))
+    if (profileIds.some((id) => !known.has(id))) throw new Error('Perfil desconhecido ou desabilitado')
+    const update = this.database.db.transaction(() => {
+      this.database.db.prepare('DELETE FROM project_agent_profiles WHERE project_id = ?').run(projectId)
+      const insert = this.database.db.prepare('INSERT INTO project_agent_profiles(project_id, profile_id, allowed) VALUES (?, ?, 1)')
+      profileIds.forEach((id) => insert.run(projectId, id))
+      this.database.db.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), projectId)
+    })
+    update()
+    return this.get(projectId)
+  }
+}
+
+export class BoardRepository {
+  constructor(private readonly database: AppDatabase, private readonly projects: ProjectRepository) {}
+
+  get(projectId: string): ProjectBoard {
+    const columns = (this.database.db.prepare(`SELECT id, project_id AS projectId, label, sort_order AS sortOrder,
+      semantic_state AS semanticState, is_default AS isDefault FROM board_columns WHERE project_id = ? ORDER BY sort_order`).all(projectId) as Array<Omit<BoardColumn, 'isDefault'> & { isDefault: number }>)
+      .map((item) => ({ ...item, isDefault: Boolean(item.isDefault) }))
+    const rows = this.database.db.prepare(`SELECT id FROM cards WHERE project_id = ? ORDER BY order_key`).all(projectId) as { id: string }[]
+    return { project: this.projects.get(projectId), columns, cards: rows.map((row) => this.card(row.id)) }
+  }
+
+  card(cardId: string): Card {
+    const row = this.database.db.prepare(`SELECT id, project_id AS projectId, column_id AS columnId, source_id AS sourceId, type, title, description,
+      priority, order_key AS orderKey, created_at AS createdAt, updated_at AS updatedAt, archived_at AS archivedAt
+      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria'> | undefined
+    if (!row) throw new Error('Card não encontrado')
+    const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
+      FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
+      .map((item) => ({ ...item, checked: Boolean(item.checked) }))
+    return { ...row, acceptanceCriteria: criteria }
+  }
+
+  create(input: { projectId: string; columnId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
+    this.assertColumn(input.projectId, input.columnId)
+    const sourceId = input.sourceId ?? (this.database.db.prepare('SELECT id FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order LIMIT 1').get(input.projectId) as { id: string } | undefined)?.id ?? null
+    if (sourceId && !this.database.db.prepare('SELECT 1 FROM project_sources WHERE id = ? AND project_id = ?').get(sourceId, input.projectId)) throw new Error('Pasta de origem não pertence ao projeto')
+    const id = randomUUID(), now = new Date().toISOString()
+    const order = (this.database.db.prepare('SELECT COALESCE(MAX(order_key), 0) + 1024 AS value FROM cards WHERE column_id = ?').get(input.columnId) as { value: number }).value
+    const create = this.database.db.transaction(() => {
+      this.database.db.prepare(`INSERT INTO cards(id, project_id, column_id, source_id, type, title, description, priority, order_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, input.projectId, input.columnId, sourceId, input.type, input.title, input.description, input.priority, order, now, now)
+      this.replaceCriteria(id, input.acceptanceCriteria)
+    })
+    create(); return this.card(id)
+  }
+
+  update(input: { cardId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
+    const current = this.card(input.cardId)
+    const sourceId = input.sourceId === undefined ? current.sourceId : input.sourceId
+    if (sourceId && !this.database.db.prepare('SELECT 1 FROM project_sources WHERE id = ? AND project_id = ?').get(sourceId, current.projectId)) throw new Error('Pasta de origem não pertence ao projeto')
+    const update = this.database.db.transaction(() => {
+      this.database.db.prepare('UPDATE cards SET source_id = ?, type = ?, title = ?, description = ?, priority = ?, updated_at = ? WHERE id = ?')
+        .run(sourceId, input.type, input.title, input.description, input.priority, new Date().toISOString(), input.cardId)
+      this.database.db.prepare('DELETE FROM card_acceptance_criteria WHERE card_id = ?').run(input.cardId)
+      this.replaceCriteria(input.cardId, input.acceptanceCriteria)
+    })
+    update(); return this.card(input.cardId)
+  }
+
+  move(cardId: string, columnId: string, beforeCardId: string | null): Card {
+    const current = this.card(cardId)
+    this.assertColumn(current.projectId, columnId)
+    const destination = this.database.db.prepare('SELECT semantic_state AS state FROM board_columns WHERE id = ?').get(columnId) as { state: string }
+    if (destination.state === 'done') this.assertDoneGate(cardId)
+    let orderKey: number
+    if (beforeCardId) {
+      const before = this.card(beforeCardId)
+      if (before.columnId !== columnId) throw new Error('Card de referência pertence a outra coluna')
+      const prior = this.database.db.prepare('SELECT MAX(order_key) AS value FROM cards WHERE column_id = ? AND order_key < ? AND id <> ?').get(columnId, before.orderKey, cardId) as { value: number | null }
+      orderKey = prior.value === null ? before.orderKey - 1024 : (prior.value + before.orderKey) / 2
+    } else {
+      orderKey = (this.database.db.prepare('SELECT COALESCE(MAX(order_key), 0) + 1024 AS value FROM cards WHERE column_id = ? AND id <> ?').get(columnId, cardId) as { value: number }).value
+    }
+    const now = new Date().toISOString()
+    const move = this.database.db.transaction(() => {
+      this.database.db.prepare('UPDATE cards SET column_id = ?, order_key = ?, updated_at = ? WHERE id = ?').run(columnId, orderKey, now, cardId)
+      if (current.columnId !== columnId) this.database.db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
+        VALUES (?, ?, ?, ?, ?, 'user', 'kanban-move')`).run(randomUUID(), cardId, current.columnId, columnId, now)
+    })
+    move(); return this.card(cardId)
+  }
+
+  archive(cardId: string, restore = false): Card {
+    this.card(cardId)
+    this.database.db.prepare('UPDATE cards SET archived_at = ?, updated_at = ? WHERE id = ?')
+      .run(restore ? null : new Date().toISOString(), new Date().toISOString(), cardId)
+    return this.card(cardId)
+  }
+
+  private assertColumn(projectId: string, columnId: string): void {
+    const row = this.database.db.prepare('SELECT 1 FROM board_columns WHERE id = ? AND project_id = ?').get(columnId, projectId)
+    if (!row) throw new Error('Coluna não pertence ao projeto')
+  }
+
+  private replaceCriteria(cardId: string, criteria: { body: string; checked: boolean }[]): void {
+    const insert = this.database.db.prepare(`INSERT INTO card_acceptance_criteria(id, card_id, body, checked, sort_order) VALUES (?, ?, ?, ?, ?)`)
+    criteria.forEach((item, index) => insert.run(randomUUID(), cardId, item.body, item.checked ? 1 : 0, index))
+  }
+
+  private assertDoneGate(cardId: string): void {
+    const test = this.database.db.prepare('SELECT status FROM test_runs WHERE card_id = ? ORDER BY started_at DESC LIMIT 1').get(cardId) as { status: string } | undefined
+    if (test?.status !== 'passed') throw new Error('Done exige um teste aprovado')
+    const review = this.database.db.prepare('SELECT state FROM reviews WHERE card_id = ? ORDER BY updated_at DESC LIMIT 1').get(cardId) as { state: string } | undefined
+    if (!review || !['approved', 'merged'].includes(review.state)) throw new Error('Done exige revisão aprovada ou merge confirmado')
+  }
+}

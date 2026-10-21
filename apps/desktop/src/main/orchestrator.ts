@@ -1,0 +1,63 @@
+import type { Run } from '@agentboard/contracts'
+import type { AgentAdapter, AgentEvent } from './adapters'
+import type { ConversationRepository } from './conversations'
+import type { WorktreeService } from './worktrees'
+
+type Job = { run: Run; chatId: string; prompt: string; planning: boolean }
+
+export class AgentOrchestrator {
+  private active = 0
+  private readonly queue: Job[] = []
+  private readonly controllers = new Map<string, AbortController>()
+  constructor(
+    private readonly conversations: ConversationRepository,
+    private readonly adapters: Record<'codex' | 'claude', AgentAdapter>,
+    private readonly emit: (event: { runId: string; eventType: string; payload: Record<string, unknown> }) => void,
+    private readonly worktrees: WorktreeService,
+    private readonly concurrency = 2
+  ) {}
+
+  start(input: { chatId: string; prompt: string; planning: boolean }): Run {
+    const context = this.conversations.context(input.chatId)
+    if (input.planning && context.chat.purpose !== 'planning') throw new Error('Use um chat de planejamento para executar em modo read-only')
+    this.conversations.addMessage({ chatId: input.chatId, role: 'user', body: input.prompt, status: 'complete' })
+    const run = this.conversations.createRun({ cardId: context.cardId, chatId: input.chatId, profileId: context.profile.id })
+    this.queue.push({ run, ...input }); this.pump()
+    return run
+  }
+
+  cancel(runId: string): boolean {
+    const queued = this.queue.findIndex((job) => job.run.id === runId)
+    if (queued >= 0) { this.queue.splice(queued, 1); this.conversations.updateRun(runId, 'cancelled', 'Cancelled before start'); return true }
+    const controller = this.controllers.get(runId); if (!controller) return false; controller.abort(); return true
+  }
+
+  private pump(): void {
+    while (this.active < this.concurrency && this.queue.length) {
+      const job = this.queue.shift()!; this.active += 1
+      void this.execute(job).finally(() => { this.active -= 1; this.pump() })
+    }
+  }
+
+  private async execute(job: Job): Promise<void> {
+    const controller = new AbortController(); this.controllers.set(job.run.id, controller)
+    const context = this.conversations.context(job.chatId)
+    const publish = (event: AgentEvent): void => { const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload }) }
+    try {
+      const worktree = job.planning ? null : await this.worktrees.prepare(context.cardId)
+      const cwd = worktree?.path ?? context.projectPath
+      if (worktree) this.conversations.attachWorktree(job.run.id, worktree.id)
+      this.conversations.updateRun(job.run.id, 'running', null)
+      const result = await this.adapters[context.profile.provider].run({ cwd, prompt: job.prompt, sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
+      this.conversations.updateSession(job.chatId, result.sessionId)
+      if (result.text) this.conversations.addMessage({ chatId: job.chatId, role: 'assistant', body: result.text, status: result.status === 'completed' ? 'complete' : 'failed' })
+      if (job.planning && result.status === 'completed') this.conversations.savePlan(context.cardId, context.profile.id, result.text)
+      this.conversations.updateRun(job.run.id, result.status, result.error, result.turnId)
+      publish({ type: 'agentboard/run-completed', payload: { status: result.status, error: result.error } })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      this.conversations.updateRun(job.run.id, controller.signal.aborted ? 'interrupted' : 'failed', message)
+      publish({ type: 'agentboard/run-completed', payload: { status: controller.signal.aborted ? 'interrupted' : 'failed', error: message } })
+    } finally { this.controllers.delete(job.run.id) }
+  }
+}

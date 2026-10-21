@@ -1,0 +1,61 @@
+{
+  "name": "@agentboard/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "predev": "pnpm run rebuild:native",
+    "dev": "electron-vite dev",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "pretest": "pnpm rebuild better-sqlite3",
+    "test": "vitest run",
+    "posttest": "pnpm run rebuild:native",
+    "prebuild": "pnpm run rebuild:native",
+    "build": "electron-vite build",
+    "dist": "pnpm run build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@agentboard/contracts": "workspace:*",
+    "better-sqlite3": "^12.4.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
+    "@eslint/js": "^9.38.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "electron": "^39.1.0",
+    "electron-vite": "^4.0.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9.38.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2",
+    "vite": "^7.2.2",
+    "vitest": "^4.0.3"
+  },
+  "build": {
+    "appId": "com.agentboard.desktop",
+    "productName": "AgentBoard",
+    "asar": true,
+    "asarUnpack": ["node_modules/better-sqlite3/**"],
+    "directories": { "output": "dist" },
+    "files": ["out/**/*", "package.json"],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "AgentBoard-Setup-${version}-${arch}.${ext}"
+    }
+  }
+}

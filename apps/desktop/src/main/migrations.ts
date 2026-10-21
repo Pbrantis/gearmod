@@ -1,0 +1,174 @@
+import type Database from 'better-sqlite3'
+
+export interface Migration {
+  version: number
+  checksum: string
+  up(db: Database.Database): void
+}
+
+const initialSchema = `
+CREATE TABLE projects (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, local_path TEXT NOT NULL UNIQUE,
+  base_branch TEXT NOT NULL DEFAULT 'dev', remote_provider TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE agent_profiles (
+  id TEXT PRIMARY KEY, provider TEXT NOT NULL, label TEXT NOT NULL, scope TEXT NOT NULL,
+  config_dir TEXT NOT NULL, executable_path TEXT, enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE project_agent_profiles (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE,
+  allowed INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(project_id, profile_id)
+);
+CREATE TABLE board_columns (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  label TEXT NOT NULL, sort_order INTEGER NOT NULL, semantic_state TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0, UNIQUE(project_id, semantic_state)
+);
+CREATE TABLE cards (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  column_id TEXT NOT NULL REFERENCES board_columns(id), type TEXT NOT NULL, title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '', priority TEXT NOT NULL, order_key REAL NOT NULL,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT
+);
+CREATE TABLE card_acceptance_criteria (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  body TEXT NOT NULL, checked INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL
+);
+CREATE TABLE card_tags (card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, tag TEXT NOT NULL, PRIMARY KEY(card_id, tag));
+CREATE TABLE card_attachments (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  file_name TEXT NOT NULL, relative_path TEXT NOT NULL, media_type TEXT, size_bytes INTEGER NOT NULL,
+  checksum TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE plans (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL, agent_profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+  content_md TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, approved_at TEXT,
+  UNIQUE(card_id, version)
+);
+CREATE TABLE chats (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  card_id TEXT REFERENCES cards(id) ON DELETE SET NULL, purpose TEXT NOT NULL, provider TEXT NOT NULL,
+  profile_id TEXT NOT NULL REFERENCES agent_profiles(id), provider_session_id TEXT,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE chat_messages (
+  id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+  role TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL,
+  provider_message_id TEXT
+);
+CREATE TABLE worktrees (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  repo_path TEXT NOT NULL, path TEXT NOT NULL, branch TEXT NOT NULL, base_ref TEXT NOT NULL,
+  created_at TEXT NOT NULL, cleanup_state TEXT NOT NULL
+);
+CREATE TABLE runs (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  chat_id TEXT NOT NULL REFERENCES chats(id), profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+  status TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT, exit_reason TEXT,
+  worktree_id TEXT REFERENCES worktrees(id), provider_turn_id TEXT
+);
+CREATE TABLE run_events (
+  id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL, event_type TEXT NOT NULL, payload_json_sanitized TEXT NOT NULL,
+  created_at TEXT NOT NULL, UNIQUE(run_id, seq)
+);
+CREATE TABLE reviews (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL, remote_url TEXT, remote_id TEXT, state TEXT NOT NULL,
+  target_branch TEXT NOT NULL, source_branch TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE test_runs (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  run_id TEXT REFERENCES runs(id), command TEXT NOT NULL, status TEXT NOT NULL, exit_code INTEGER,
+  summary TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT
+);
+CREATE TABLE column_history (
+  id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  from_column_id TEXT REFERENCES board_columns(id), to_column_id TEXT NOT NULL REFERENCES board_columns(id),
+  changed_at TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT
+);
+CREATE TABLE approvals (
+  id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  provider_request_id TEXT NOT NULL, description TEXT NOT NULL, decision TEXT,
+  requested_at TEXT NOT NULL, decided_at TEXT
+);
+CREATE TABLE settings (key TEXT PRIMARY KEY, json_value TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE notes (
+  id TEXT PRIMARY KEY, body TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_cards_project ON cards(project_id, archived_at, order_key);
+CREATE INDEX idx_chats_card ON chats(card_id, updated_at);
+CREATE INDEX idx_runs_card ON runs(card_id, started_at);
+CREATE INDEX idx_events_run ON run_events(run_id, seq);
+`
+
+export const migrations: readonly Migration[] = [
+  {
+    version: 1,
+    checksum: 'sha256:agentboard-schema-v1-2026-10-20',
+    up(db) { db.exec(initialSchema) }
+  },
+  {
+    version: 2,
+    checksum: 'sha256:agentboard-project-sources-v2-2026-10-20',
+    up(db) {
+      db.exec(`
+        CREATE TABLE project_sources (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          name TEXT NOT NULL, local_path TEXT NOT NULL, is_git_repository INTEGER NOT NULL DEFAULT 0,
+          current_branch TEXT, sort_order INTEGER NOT NULL, UNIQUE(project_id, local_path)
+        );
+        ALTER TABLE cards ADD COLUMN source_id TEXT REFERENCES project_sources(id);
+        INSERT INTO project_sources(id, project_id, name, local_path, is_git_repository, current_branch, sort_order)
+          SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))),
+            id, name, local_path, 1, base_branch, 0 FROM projects;
+        UPDATE cards SET source_id = (SELECT ps.id FROM project_sources ps WHERE ps.project_id = cards.project_id ORDER BY ps.sort_order LIMIT 1);
+        CREATE INDEX idx_project_sources_project ON project_sources(project_id, sort_order);
+      `)
+    }
+  },
+  {
+    version: 3,
+    checksum: 'sha256:agentboard-remove-automatic-profiles-v3-2026-10-20',
+    up(db) {
+      db.exec(`
+        DELETE FROM agent_profiles
+        WHERE id IN (
+          '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002',
+          '10000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000004',
+          '10000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000006'
+        )
+        AND NOT EXISTS (SELECT 1 FROM project_agent_profiles WHERE profile_id = agent_profiles.id)
+        AND NOT EXISTS (SELECT 1 FROM plans WHERE agent_profile_id = agent_profiles.id)
+        AND NOT EXISTS (SELECT 1 FROM chats WHERE profile_id = agent_profiles.id)
+        AND NOT EXISTS (SELECT 1 FROM runs WHERE profile_id = agent_profiles.id);
+        UPDATE agent_profiles SET enabled = 0, updated_at = datetime('now')
+        WHERE id IN (
+          '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002',
+          '10000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000004',
+          '10000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000006'
+        );
+      `)
+    }
+  },
+  {
+    version: 4,
+    checksum: 'sha256:agentboard-multi-repo-worktrees-v4-2026-10-20',
+    up(db) {
+      db.exec(`
+        CREATE TABLE worktree_members (
+          id TEXT PRIMARY KEY, worktree_id TEXT NOT NULL REFERENCES worktrees(id) ON DELETE CASCADE,
+          repo_path TEXT NOT NULL, path TEXT NOT NULL, base_ref TEXT NOT NULL,
+          UNIQUE(worktree_id, repo_path)
+        );
+        CREATE INDEX idx_worktree_members_worktree ON worktree_members(worktree_id);
+      `)
+    }
+  }
+]
+
+export const latestSchemaVersion = migrations.at(-1)?.version ?? 0
