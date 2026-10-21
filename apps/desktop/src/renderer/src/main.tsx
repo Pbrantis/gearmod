@@ -13,6 +13,7 @@ import { CardEditor, blankDraft, type Draft } from './CardEditor'
 import { CardChat } from './CardChat'
 import { NewCardDialog } from './NewCardDialog'
 import { StartDialog } from './StartDialog'
+import { SkillsPanel } from './SkillsPanel'
 import { ConfirmDialog } from './ConfirmDialog'
 import { FolderGlyph } from './icons'
 import { applySettings } from './Appearance'
@@ -115,7 +116,7 @@ function Settings({ project, profiles, close, saved }: { project: Project; profi
   const [probes, setProbes] = useState<Record<string, AgentProbe>>({})
   const probe = async (profileId: string): Promise<void> => { const result = await window.agentboard.invoke('profiles:probe', { profileId }); setProbes((current) => ({ ...current, [profileId]: result })) }
   const submit = async (e: React.FormEvent): Promise<void> => { e.preventDefault(); try { await window.agentboard.invoke('projects:update', { projectId: project.id, name }); await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: allowed }); saved() } catch (reason) { setError(String(reason)) } }
-  return <Modal close={close} title="Configurar projeto"><form onSubmit={(e) => void submit(e)}><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} /></label><fieldset><legend>Agentes permitidos</legend>{profiles.map((p) => <div className="profile" key={p.id}><label className="check"><input type="checkbox" checked={allowed.includes(p.id)} onChange={() => setAllowed(allowed.includes(p.id) ? allowed.filter((id) => id !== p.id) : [...allowed, p.id])} /><span>{p.label}<small>{p.provider} · {p.scope}{probes[p.id] ? ` · ${probes[p.id]!.installed ? probes[p.id]!.authenticated ? 'conectado' : 'login necessário' : 'não instalado'}` : ''}</small></span></label><button type="button" className="secondary probe" onClick={() => void probe(p.id)}>Verificar</button></div>)}</fieldset>{error && <p className="error">{error}</p>}<Actions close={close} /></form></Modal>
+  return <Modal close={close} title="Configurar projeto"><form onSubmit={(e) => void submit(e)}><label>Nome<input value={name} onChange={(e) => setName(e.target.value)} /></label><fieldset><legend>Agentes permitidos</legend>{profiles.map((p) => <div className="profile" key={p.id}><label className="check"><input type="checkbox" checked={allowed.includes(p.id)} onChange={() => setAllowed(allowed.includes(p.id) ? allowed.filter((id) => id !== p.id) : [...allowed, p.id])} /><span>{p.label}<small>{p.provider} · {p.scope}{probes[p.id] ? ` · ${probes[p.id]!.installed ? probes[p.id]!.authenticated ? 'conectado' : 'login necessário' : 'não instalado'}` : ''}</small></span></label><button type="button" className="secondary probe" onClick={() => void probe(p.id)}>Verificar</button></div>)}</fieldset>{error && <p className="error">{error}</p>}<Actions close={close} /></form><SkillsPanel scope="project" projectId={project.id} profiles={profiles.filter((p) => allowed.includes(p.id))} /></Modal>
 }
 
 function Modal({ close, title, children, compactHeader = false }: React.PropsWithChildren<{ close(): void; title: string; compactHeader?: boolean }>): React.JSX.Element { return <div className="overlay"><div className="modal"><header><div>{!compactHeader && <p className="eyebrow">AGENTBOARD</p>}<h2>{title}</h2></div><button onClick={close}>×</button></header>{children}</div></div> }

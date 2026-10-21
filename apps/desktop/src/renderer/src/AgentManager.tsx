@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { agentColorPalette, defaultAgentColor, type AgentProbe, type AgentProfile, type AppSettings } from '@agentboard/contracts'
 import { Appearance } from './Appearance'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
+import { SkillsPanel } from './SkillsPanel'
 
 function ColorPicker({ provider, label, color, change }: { provider: AgentProfile['provider']; label: string; color: string; change(color: string): void }): React.JSX.Element {
   return <div className="colorField"><span className="fieldTitle">Personalidade</span><div className="swatches">{agentColorPalette.map((item) => <button type="button" key={item} className={`sw ${color.toLowerCase() === item.toLowerCase() ? 'sel' : ''}`} style={{ '--c': item } as React.CSSProperties} aria-label={`Cor ${item}`} aria-pressed={color.toLowerCase() === item.toLowerCase()} onClick={() => change(item)} />)}</div><div className="agentPreview"><AgentIcon profile={{ provider, label: label || 'Novo agente', color }} size="lg" /><span>{label || 'Novo agente'}</span></div></div>
@@ -11,7 +12,7 @@ export function AgentManager({ profiles, settings, close, changed, settingsChang
   const [items, setItems] = useState(profiles), [adding, setAdding] = useState(false)
   const [provider, setProvider] = useState<'codex' | 'claude'>('codex'), [label, setLabel] = useState(''), [scope, setScope] = useState('Pessoal'), [existing, setExisting] = useState(true)
   const [installed, setInstalled] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [pending, setPending] = useState<AgentProfile>(), [editing, setEditing] = useState<AgentProfile>(), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({})
-  const [createdHere, setCreatedHere] = useState(false), [tab, setTab] = useState<'agents' | 'look'>('agents'), [color, setColor] = useState<string>(defaultAgentColor('codex'))
+  const [createdHere, setCreatedHere] = useState(false), [tab, setTab] = useState<'agents' | 'skills' | 'look'>('agents'), [color, setColor] = useState<string>(defaultAgentColor('codex'))
   const run = async (action: () => Promise<void>): Promise<void> => { setBusy(true); setMessage(''); try { await action() } catch (error) { setMessage(String(error)) } finally { setBusy(false) } }
   const refresh = async (): Promise<void> => { setItems(await window.agentboard.invoke('profiles:list', undefined)); await changed() }
   const checkInstall = async (): Promise<void> => {
@@ -32,9 +33,9 @@ export function AgentManager({ profiles, settings, close, changed, settingsChang
     setCreatedHere(true); setPending(profile); await checkAccount(profile)
   }
   const remove = async (profile: AgentProfile): Promise<void> => { if (!window.confirm(`Remover ${profile.label}?`)) return; await window.agentboard.invoke('profiles:delete', { profileId: profile.id }); await refresh() }
-  return <div className="overlay"><div className="modal"><header><div><h2>Configurações</h2><p>Agentes, cor de destaque e idioma.</p></div><button onClick={close} aria-label="Fechar">×</button></header>
-    <div className="tabs" role="tablist"><button role="tab" aria-selected={tab === 'agents'} className={tab === 'agents' ? 'on' : ''} onClick={() => setTab('agents')}>Agentes</button><button role="tab" aria-selected={tab === 'look'} className={tab === 'look' ? 'on' : ''} onClick={() => setTab('look')}>Aparência</button></div>
-    {tab === 'look' ? <Appearance settings={settings} changed={settingsChanged} /> : <>
+  return <div className="overlay"><div className="modal"><header><div><h2>Configurações</h2><p>Agentes, skills, cor de destaque e idioma.</p></div><button onClick={close} aria-label="Fechar">×</button></header>
+    <div className="tabs" role="tablist"><button role="tab" aria-selected={tab === 'agents'} className={tab === 'agents' ? 'on' : ''} onClick={() => setTab('agents')}>Agentes</button><button role="tab" aria-selected={tab === 'skills'} className={tab === 'skills' ? 'on' : ''} onClick={() => setTab('skills')}>Skills</button><button role="tab" aria-selected={tab === 'look'} className={tab === 'look' ? 'on' : ''} onClick={() => setTab('look')}>Aparência</button></div>
+    {tab === 'look' ? <Appearance settings={settings} changed={settingsChanged} /> : tab === 'skills' ? <SkillsPanel scope="global" profiles={items} /> : <>
     {!adding && <button onClick={() => { setLabel(''); setScope('Pessoal'); setPending(undefined); setAdding(true) }}>＋ Adicionar agente</button>}
     {adding && <section className="agentSetup onboarding"><p className="fieldTitle">{pending ? '3 · Conectar conta' : installed ? '2 · Configurar agente' : '1 · Instalar agente'}</p>
       {!pending && <><div className="providerCards"><button disabled={busy} className={provider === 'codex' ? 'selected' : ''} onClick={() => setProvider('codex')}><i className="logo"><ProviderLogo provider="codex" /></i>Codex</button><button disabled={busy} className={provider === 'claude' ? 'selected' : ''} onClick={() => setProvider('claude')}><i className="logo"><ProviderLogo provider="claude" /></i>Claude</button></div>

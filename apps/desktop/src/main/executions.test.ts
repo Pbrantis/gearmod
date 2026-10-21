@@ -52,6 +52,18 @@ describe('ExecutionService', () => {
   })
 })
 
+describe('chat skill', () => {
+  it('stores a chosen skill per chat and clears it', async () => {
+    const { database, conversations, project, profile, card } = await setup()
+    const chat = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'planning', profileId: profile.id, skill: { name: 'tdd', path: '/x/tdd' } })
+    expect(chat.skill).toEqual({ name: 'tdd', path: '/x/tdd' })
+    expect(conversations.context(chat.id).chat.skill?.name).toBe('tdd')
+    expect(conversations.setSkill(chat.id, null).skill).toBeNull()
+    expect(conversations.projectOf(chat.id)).toBe(project.id)
+    database.close()
+  })
+})
+
 describe('card run state', () => {
   it('highlights a finished run until the user views it and counts activity per project', async () => {
     const { database, board, conversations, projects, project, profile, card } = await setup()

@@ -11,6 +11,7 @@ import type { WorktreeService } from './worktrees'
 import type { QualityService } from './quality'
 import type { ExecutionService } from './executions'
 import type { AgentConfigRepository } from './agent-config'
+import type { SkillService } from './skills'
 
 export interface IpcMainLike {
   handle(channel: string, listener: (event: unknown, input: unknown) => unknown): void
@@ -34,6 +35,8 @@ interface Services {
   quality: QualityService
   executions: ExecutionService
   agentConfigs: AgentConfigRepository
+  skills: SkillService
+  chooseSkillSource(): Promise<string | null>
   appVersion: string
   dataDir: string
   reopen(): Promise<void>
@@ -100,9 +103,17 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:set-agent-config': (input: { cardId: string; purpose: AgentPurpose; config: AgentConfig }) => services.agentConfigs.set(input.cardId, input.purpose, input.config),
     'cards:resume': (input: { cardId: string }) => services.executions.resume(input.cardId),
     'cards:mark-viewed': (input: { cardId: string }) => services.board.markViewed(input.cardId),
+    'skills:list': (input: { scope: 'global' | 'project'; projectId?: string }) => services.skills.list(input.scope, input.projectId),
+    'skills:choose-source': () => services.chooseSkillSource(),
+    'skills:import': (input: { scope: 'global' | 'project'; projectId?: string; sourcePath: string; name: string; provider: 'claude' | 'codex' }) => services.skills.import(input),
+    'skills:convert': (input: { scope: 'global' | 'project'; projectId?: string; name: string; from: 'claude' | 'codex'; to: 'claude' | 'codex'; reviewProfileId?: string; model?: string | null }) => services.skills.convert(input),
+    'chats:set-skill': async (input: { chatId: string; skill: { name: string; path: string } | null }) => {
+      if (input.skill) await services.skills.assertKnown(input.skill, services.conversations.projectOf(input.chatId))
+      return services.conversations.setSkill(input.chatId, input.skill)
+    },
     'cards:delete': (input: { cardId: string }) => ({ deleted: services.board.delete(input.cardId) })
     , 'chats:list': (input: { projectId: string; cardId?: string | null }) => services.conversations.listChats(input.projectId, input.cardId)
-    , 'chats:create': (input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string }) => services.conversations.createChat(input)
+    , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }
     , 'messages:list': (input: { chatId: string }) => services.conversations.listMessages(input.chatId)
     , 'messages:add': (input: { chatId: string; role: string; body: string; status: string }) => services.conversations.addMessage(input)
     , 'runs:create': (input: { cardId: string; chatId: string; profileId: string }) => services.conversations.createRun(input)

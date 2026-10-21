@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import type { AppLanguage, CardDocumentKind } from '@agentboard/contracts'
+import type { AppLanguage, CardDocumentKind, SkillRef } from '@agentboard/contracts'
 import { cardDocumentKinds } from '@agentboard/contracts'
 import type { BoardRepository } from './projects'
 import type { SettingsRepository } from './settings'
@@ -28,15 +28,17 @@ export class AgentContextService {
   }
 
   /** Texto enviado ao agente: contexto + pedido. Em planejamento, pede explicitamente a skill de planejamento do sistema. */
-  prompt(cardId: string, prompt: string, planning: boolean): string {
-    const lead = planning ? 'Use a skill agentboard-planejamento para conduzir este chat.\n\n' : ''
+  prompt(cardId: string, prompt: string, planning: boolean, skill?: SkillRef | null): string {
+    const lead = planning ? (skill ? `Use a skill ${skill.name} para conduzir este chat, no lugar de agentboard-planejamento. Os documentos do card, o idioma e as ferramentas do AgentBoard continuam valendo.\n\n` : 'Use a skill agentboard-planejamento para conduzir este chat.\n\n') : ''
     return `${this.block(cardId)}\n\n${lead}${prompt}`
   }
 
   /** Para agentes sem suporte a plugin (Codex): skills e modelos do idioma, em `developerInstructions`. */
-  developerInstructions(planning: boolean): string | undefined {
-    if (!this.pluginDir) return undefined
-    return loadSkillInstructions(this.pluginDir, this.language(), planning)
+  developerInstructions(planning: boolean, skill?: SkillRef | null): string | undefined {
+    const system = this.pluginDir ? loadSkillInstructions(this.pluginDir, this.language(), planning) : undefined
+    const file = skill && planning ? join(skill.path, 'SKILL.md') : null
+    const chosen = file && existsSync(file) ? `## Skill escolhida para este chat: ${skill!.name}\n${stripFrontMatter(readFileSync(file, 'utf8'))}` : undefined
+    return [system, chosen].filter(Boolean).join('\n\n---\n\n') || undefined
   }
 }
 

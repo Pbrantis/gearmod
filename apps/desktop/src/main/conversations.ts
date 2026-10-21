@@ -3,6 +3,9 @@ import type { Chat, ChatMessage, Plan, Run, RunEvent } from '@agentboard/contrac
 import type { AgentProfile } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 
+type ChatRow = Omit<Chat, 'skill'> & { skillName: string | null; skillPath: string | null }
+const toChat = ({ skillName, skillPath, ...chat }: ChatRow): Chat => ({ ...chat, skill: skillName && skillPath ? { name: skillName, path: skillPath } : null })
+
 export class ConversationRepository {
   constructor(private readonly database: AppDatabase) {}
 
@@ -10,16 +13,31 @@ export class ConversationRepository {
     const where = cardId === undefined ? 'project_id = ?' : cardId === null ? 'project_id = ? AND card_id IS NULL' : 'project_id = ? AND card_id = ?'
     const args = cardId === undefined || cardId === null ? [projectId] : [projectId, cardId]
     return this.database.db.prepare(`SELECT id, project_id AS projectId, card_id AS cardId, purpose, provider, profile_id AS profileId,
-      provider_session_id AS providerSessionId, created_at AS createdAt, updated_at AS updatedAt FROM chats WHERE ${where} ORDER BY updated_at DESC`).all(...args) as Chat[]
+      provider_session_id AS providerSessionId, skill_name AS skillName, skill_path AS skillPath, created_at AS createdAt, updated_at AS updatedAt FROM chats WHERE ${where} ORDER BY updated_at DESC`).all(...args)
+      .map((row) => toChat(row as ChatRow))
   }
 
-  createChat(input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string }): Chat {
+  projectOf(chatId: string): string {
+    const row = this.database.db.prepare('SELECT project_id AS projectId FROM chats WHERE id = ?').get(chatId) as { projectId: string } | undefined
+    if (!row) throw new Error('Chat não encontrado')
+    return row.projectId
+  }
+
+  setSkill(chatId: string, skill: { name: string; path: string } | null): Chat {
+    const chat = this.database.db.prepare('SELECT project_id AS projectId, card_id AS cardId FROM chats WHERE id = ?').get(chatId) as { projectId: string; cardId: string | null } | undefined
+    if (!chat) throw new Error('Chat não encontrado')
+    this.database.db.prepare('UPDATE chats SET skill_name = ?, skill_path = ? WHERE id = ?').run(skill?.name ?? null, skill?.path ?? null, chatId)
+    return this.listChats(chat.projectId, chat.cardId).find((item) => item.id === chatId)!
+  }
+
+  createChat(input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string; skill?: { name: string; path: string } | null }): Chat {
     const allowed = this.database.db.prepare('SELECT ap.provider FROM project_agent_profiles pap JOIN agent_profiles ap ON ap.id = pap.profile_id WHERE pap.project_id = ? AND pap.profile_id = ? AND pap.allowed = 1 AND ap.enabled = 1').get(input.projectId, input.profileId) as { provider: 'codex' | 'claude' } | undefined
     if (!allowed) throw new Error('Perfil não permitido para este projeto')
     if (input.cardId && !this.database.db.prepare('SELECT 1 FROM cards WHERE id = ? AND project_id = ?').get(input.cardId, input.projectId)) throw new Error('Card não pertence ao projeto')
     const id = randomUUID(), now = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO chats(id, project_id, card_id, purpose, provider, profile_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, input.projectId, input.cardId, input.purpose, allowed.provider, input.profileId, now, now)
+    if (input.skill) this.setSkill(id, input.skill)
     return this.listChats(input.projectId, input.cardId).find((chat) => chat.id === id)!
   }
 
@@ -53,11 +71,12 @@ export class ConversationRepository {
 
   context(chatId: string): { chat: Chat; cardId: string; projectPath: string; profile: AgentProfile } {
     const row = this.database.db.prepare(`SELECT c.id, c.project_id AS projectId, c.card_id AS cardId, c.purpose, c.provider,
-      c.profile_id AS profileId, c.provider_session_id AS providerSessionId, c.created_at AS createdAt, c.updated_at AS updatedAt,
+      c.profile_id AS profileId, c.provider_session_id AS providerSessionId, c.skill_name AS skillName, c.skill_path AS skillPath, c.created_at AS createdAt, c.updated_at AS updatedAt,
       p.local_path AS projectPath, ap.label, ap.scope, ap.color, ap.config_dir AS configDir, ap.executable_path AS executablePath, ap.enabled
-      FROM chats c JOIN projects p ON p.id = c.project_id JOIN agent_profiles ap ON ap.id = c.profile_id WHERE c.id = ?`).get(chatId) as (Chat & { projectPath: string; label: string; scope: string; color: string; configDir: string; executablePath: string | null; enabled: number }) | undefined
+      FROM chats c JOIN projects p ON p.id = c.project_id JOIN agent_profiles ap ON ap.id = c.profile_id WHERE c.id = ?`).get(chatId) as (ChatRow & { projectPath: string; label: string; scope: string; color: string; configDir: string; executablePath: string | null; enabled: number }) | undefined
     if (!row?.cardId) throw new Error('A execução exige um chat associado a um card')
-    const { projectPath, label, scope, color, configDir, executablePath, enabled, ...chat } = row
+    const { projectPath, label, scope, color, configDir, executablePath, enabled, ...rest } = row
+    const chat = toChat(rest)
     return { chat, cardId: row.cardId, projectPath, profile: { id: row.profileId, provider: row.provider, label, scope, color, configDir, executablePath, enabled: Boolean(enabled) } }
   }
 

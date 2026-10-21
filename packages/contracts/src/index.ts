@@ -89,6 +89,19 @@ export const permissionModes: Record<'claude' | 'codex', PermissionModeInfo[]> =
 }
 export const defaultPermissionMode = (provider: 'claude' | 'codex', purpose: z.infer<typeof agentPurposeSchema>): PermissionMode => (purpose === 'planning' ? 'plan' : provider === 'claude' ? 'accept_edits' : 'auto')
 
+export const skillScopeSchema = z.enum(['global', 'project'])
+export const skillProviderStateSchema = z.enum(['ready', 'none', 'converting'])
+export const skillEntrySchema = z.object({
+  id: z.string(), name: z.string(), description: z.string(), scope: skillScopeSchema, detected: z.boolean(),
+  providers: z.object({ claude: skillProviderStateSchema, codex: skillProviderStateSchema }),
+  paths: z.object({ claude: z.string().nullable(), codex: z.string().nullable() })
+})
+export const skillRefSchema = z.object({ name: z.string().min(1).max(64), path: z.string().min(1).max(2048) })
+export type SkillScope = z.infer<typeof skillScopeSchema>
+export type SkillProviderState = z.infer<typeof skillProviderStateSchema>
+export type SkillEntry = z.infer<typeof skillEntrySchema>
+export type SkillRef = z.infer<typeof skillRefSchema>
+
 export const cardDocumentKinds = ['resumo', 'especificacao', 'plano', 'tasks'] as const
 export const cardDocumentKindSchema = z.enum(cardDocumentKinds)
 export const cardDocumentSchema = z.object({ kind: cardDocumentKindSchema, contentMd: z.string(), updatedAt: isoDate.nullable(), updatedBy: z.enum(['user', 'agent', 'system']).nullable() })
@@ -108,7 +121,7 @@ export const agentProbeSchema = z.object({
   version: z.string().nullable(), executablePath: z.string().nullable(), capabilities: z.array(z.string()), checkedAt: isoDate,
   error: z.string().nullable()
 })
-export const chatSchema = z.object({ id: uuid, projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), provider: z.enum(['codex', 'claude']), profileId: uuid, providerSessionId: z.string().nullable(), createdAt: isoDate, updatedAt: isoDate })
+export const chatSchema = z.object({ id: uuid, projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), provider: z.enum(['codex', 'claude']), profileId: uuid, providerSessionId: z.string().nullable(), skill: skillRefSchema.nullable(), createdAt: isoDate, updatedAt: isoDate })
 export const chatMessageSchema = z.object({ id: uuid, chatId: uuid, role: z.enum(['user', 'assistant', 'system', 'tool']), body: z.string(), status: z.enum(['streaming', 'complete', 'failed']), createdAt: isoDate, providerMessageId: z.string().nullable() })
 export const runSchema = z.object({ id: uuid, cardId: uuid, chatId: uuid, profileId: uuid, status: z.enum(['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled']), startedAt: isoDate, endedAt: isoDate.nullable(), exitReason: z.string().nullable(), worktreeId: uuid.nullable(), providerTurnId: z.string().nullable() })
 export const runEventSchema = z.object({ id: uuid, runId: uuid, seq: z.number().int().nonnegative(), eventType: z.string(), payload: z.record(z.string(), z.unknown()), createdAt: isoDate })
@@ -178,9 +191,14 @@ export const ipcContracts = {
   , 'agents:options': { input: z.object({ profileId: uuid }).strict(), output: agentOptionsSchema }
   , 'cards:agent-config': { input: cardIdInput, output: cardAgentsSchema }
   , 'cards:set-agent-config': { input: z.object({ cardId: uuid, purpose: agentPurposeSchema, config: agentConfigSchema }).strict(), output: cardAgentsSchema }
+  , 'skills:list': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional() }).strict(), output: z.array(skillEntrySchema) }
+  , 'skills:choose-source': { input: z.undefined(), output: z.string().nullable() }
+  , 'skills:import': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), sourcePath: z.string().trim().min(1).max(2048), name: z.string().trim().min(1).max(64), provider: agentProviderSchema }).strict(), output: z.array(skillEntrySchema) }
+  , 'skills:convert': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), name: z.string().trim().min(1).max(64), from: agentProviderSchema, to: agentProviderSchema, reviewProfileId: uuid.optional(), model: z.string().max(120).nullable().optional() }).strict(), output: z.object({ converted: z.literal(true), reviewing: z.boolean() }) }
+  , 'chats:set-skill': { input: z.object({ chatId: uuid, skill: skillRefSchema.nullable() }).strict(), output: chatSchema }
   , 'cards:delete': { input: cardIdInput, output: z.object({ deleted: z.boolean() }) }
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
-  , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid }).strict(), output: chatSchema }
+  , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid, skill: skillRefSchema.nullable().optional() }).strict(), output: chatSchema }
   , 'messages:list': { input: z.object({ chatId: uuid }).strict(), output: z.array(chatMessageSchema) }
   , 'messages:add': { input: z.object({ chatId: uuid, role: z.enum(['user', 'assistant', 'system', 'tool']), body: z.string().min(1).max(100_000), status: z.enum(['streaming', 'complete', 'failed']).default('complete') }).strict(), output: chatMessageSchema }
   , 'runs:create': { input: z.object({ cardId: uuid, chatId: uuid, profileId: uuid }).strict(), output: runSchema }

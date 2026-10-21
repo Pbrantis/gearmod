@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,6 +26,10 @@ describe('AgentContextService', () => {
     expect(block).toContain('"nome": "Done"'); expect(block).toContain('Resumo do card'); expect(block).toContain('### Tasks\n(vazio)'); expect(block).toContain('só move o card se o usuário pedir')
     expect(service.prompt(card.id, 'Planeje', true)).toContain('Use a skill agentboard-planejamento')
     expect(service.prompt(card.id, 'Execute', false)).not.toContain('agentboard-planejamento')
+    const skillDir = join(root, 'minha-skill'); await mkdir(skillDir, { recursive: true }); await writeFile(join(skillDir, 'SKILL.md'), '---\nname: minha-skill\ndescription: x\n---\nPasso a passo da skill escolhida')
+    expect(service.prompt(card.id, 'Planeje', true, { name: 'minha-skill', path: skillDir })).toContain('Use a skill minha-skill')
+    expect(service.developerInstructions(true, { name: 'minha-skill', path: skillDir })).toContain('Passo a passo da skill escolhida')
+    expect(service.developerInstructions(false, { name: 'minha-skill', path: skillDir })).not.toContain('Passo a passo da skill escolhida')
     settings.update({ idioma: 'en' })
     expect(service.block(card.id)).toContain('"idioma": "en"')
     database.close()

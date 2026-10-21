@@ -5,6 +5,7 @@ import { priorityLabel } from './CardTile'
 import { CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, SparkIcon, StopIcon } from './icons'
 import { Markdown } from './markdown'
 import { QualityPanel } from './QualityPanel'
+import type { SkillEntry, SkillRef } from '@agentboard/contracts'
 
 const docLabels: Record<CardDocumentKind, string> = { resumo: 'Resumo', especificacao: 'Especificação', plano: 'Plano', tasks: 'Tasks' }
 type Tab = CardDocumentKind | 'quality'
@@ -16,6 +17,7 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
   const [profileId, setProfileId] = useState(usable[0]?.id ?? ''), [input, setInput] = useState(''), [expanded, setExpanded] = useState(true), [tab, setTab] = useState<Tab>('resumo'), [error, setError] = useState('')
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined)
   const planning = mode === 'planning'
+  const [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null), [skillOpen, setSkillOpen] = useState(false)
   const agentState = useAgentConfig(initial.id, mode, usable, chat?.profileId)
   const loadMessages = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
   const loadCard = useCallback(async () => { const [fresh, documents] = await Promise.all([window.agentboard.invoke('cards:get', { cardId: initial.id }), window.agentboard.invoke('cards:documents', { cardId: initial.id })]); setCard(fresh); setDocs(documents) }, [initial.id])
@@ -31,13 +33,18 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
   useEffect(() => { document.body.classList.add('dockOpen'); return () => document.body.classList.remove('dockOpen') }, [])
   useEffect(() => { document.body.classList.toggle('dockFull', expanded); return () => document.body.classList.remove('dockFull') }, [expanded])
 
+  useEffect(() => { void Promise.all([window.agentboard.invoke('skills:list', { scope: 'global' }), window.agentboard.invoke('skills:list', { scope: 'project', projectId: project.id })]).then(([global, local]) => setSkills([...local, ...global])).catch(() => undefined) }, [project.id])
+  useEffect(() => { setSkill(chat?.skill ?? null) }, [chat?.id, chat?.skill])
+  const provider = profiles.find((item) => item.id === (agentState.config?.profileId ?? profileId))?.provider
+  const available = skills.filter((item) => provider && item.paths[provider])
+  const chooseSkill = async (next: SkillRef | null): Promise<void> => { setSkillOpen(false); try { setError(''); if (chat) setChat(await window.agentboard.invoke('chats:set-skill', { chatId: chat.id, skill: next })); setSkill(next) } catch (reason) { setError(String(reason)) } }
   const send = async (): Promise<void> => {
     const prompt = input.trim(); if (!prompt || run) return
     try {
       setError(''); setInput('')
       let current = chat
       const chosen = agentState.config?.profileId ?? profileId
-      if (!current) { current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: mode, profileId: chosen }); setChat(current) }
+      if (!current) { current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: mode, profileId: chosen, skill }); setChat(current) }
       const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning })
       runId.current = started.id; setRun(started); setLive(''); await loadMessages(current.id)
     } catch (reason) { setError(String(reason)); setInput(prompt) }
@@ -63,7 +70,10 @@ export function CardChat({ project, card: initial, profiles, columnLabel, mode, 
           {busy ? <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button> : <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" disabled={!input.trim() || !(agentState.config?.profileId ?? profileId)} onClick={() => void send()}><SendIcon /></button>}</div>
         <div className="cmeta">
           <span className="mode tip" data-tip={planning ? 'Este chat não altera arquivos' : 'Executa na worktree do card'}>{planning ? '✦ Só planejar' : 'Executar'}</span>
-          <span className="skillChip tip" data-tip="Skill do sistema"><SparkIcon /> {planning ? 'Planejamento' : 'Execução'}</span>
+          {planning ? <span className="skillPick"><button type="button" className="skillChipBtn tip" data-tip="Trocar a skill deste chat" aria-haspopup="menu" aria-expanded={skillOpen} onClick={() => setSkillOpen(!skillOpen)}><SparkIcon /> {skill?.name ?? 'Planejamento'} ▾</button>
+            {skillOpen && <div className="skillMenu" role="menu"><button type="button" role="menuitem" className={`opt ${skill ? '' : 'sel'}`} onClick={() => void chooseSkill(null)}><b>Planejamento <em>Sistema</em></b><small>Skill padrão do AgentBoard (especificação, plano, tasks e resumo)</small></button>
+              {available.map((item) => { const path = provider ? item.paths[provider]! : ''; return <button type="button" role="menuitem" key={item.id} className={`opt ${skill?.path === path ? 'sel' : ''}`} onClick={() => void chooseSkill({ name: item.name, path })}><b>{item.name} <em>{item.scope === 'project' ? 'Projeto' : 'Global'}</em></b><small>{item.description || 'Sem descrição'}</small></button> })}
+              {!available.length && <small className="dim">Nenhuma skill {provider === 'codex' ? 'do Codex' : 'do Claude'} encontrada.</small>}</div>}</span> : <span className="skillChip tip" data-tip="Skill do sistema"><SparkIcon /> Execução</span>}
           <AgentMenu profiles={usable} purpose={mode} state={agentState} lockProfile={Boolean(chat)} />
         </div>
       </div>

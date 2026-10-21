@@ -267,6 +267,11 @@ export const migrations: readonly Migration[] = [
         );
       `)
     }
+  },
+  {
+    version: 10,
+    checksum: 'sha256:agentboard-chat-skill-v10-2026-10-21',
+    up(db) { db.exec('ALTER TABLE chats ADD COLUMN skill_name TEXT; ALTER TABLE chats ADD COLUMN skill_path TEXT;') }
   }
 ]
 
