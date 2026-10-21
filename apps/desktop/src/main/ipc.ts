@@ -1,7 +1,8 @@
-import { ipcContracts, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
+import { ipcContracts, type AppLanguage, type AppTheme, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
 import type { BackupService } from './backup'
 import type { AppDatabase } from './database'
 import type { NoteRepository } from './repository'
+import type { SettingsRepository } from './settings'
 import type { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import type { AgentProbeService } from './agents'
 import type { ConversationRepository } from './conversations'
@@ -18,6 +19,7 @@ interface Services {
   database: AppDatabase
   backups: BackupService
   notes: NoteRepository
+  settings: SettingsRepository
   profiles: ProfileRepository
   projects: ProjectRepository
   board: BoardRepository
@@ -49,9 +51,11 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       await services.reopen()
       return { restored: true as const }
     },
+    'settings:get': () => services.settings.get(),
+    'settings:update': (input: { tema?: AppTheme; idioma?: AppLanguage }) => services.settings.update(input),
     'profiles:list': () => services.profiles.list(),
-    'profiles:create': (input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }) => services.profiles.create(input),
-    'profiles:update': (input: { profileId: string; label: string; scope: string }) => services.profiles.update(input),
+    'profiles:create': (input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean; color?: string }) => services.profiles.create(input),
+    'profiles:update': (input: { profileId: string; label: string; scope: string; color?: string }) => services.profiles.update(input),
     'profiles:delete': (input: { profileId: string }) => ({ deleted: services.profiles.delete(input.profileId) }),
     'profiles:probe': (input: { profileId: string }) => services.agentProbes.probe(input.profileId),
     'profiles:probe-all': () => services.agentProbes.probeAll(),

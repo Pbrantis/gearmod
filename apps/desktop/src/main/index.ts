@@ -5,6 +5,7 @@ import { BackupService } from './backup'
 import { AppDatabase } from './database'
 import { registerIpc } from './ipc'
 import { NoteRepository } from './repository'
+import { SettingsRepository } from './settings'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
 import { ConversationRepository } from './conversations'
@@ -23,6 +24,7 @@ const agentProbes = new AgentProbeService(profiles)
 const projects = new ProjectRepository(database, git)
 const board = new BoardRepository(database, projects)
 const notes = new NoteRepository(database)
+const settings = new SettingsRepository(database)
 const conversations = new ConversationRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
 const quality = new QualityService(database, worktrees)
@@ -70,7 +72,7 @@ async function chooseDirectory(): Promise<string | null> {
 
 app.whenReady().then(async () => {
   await openDatabase()
-  disposeIpc = registerIpc(ipcMain, { database, backups, notes, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, appVersion, dataDir, reopen: openDatabase })
   await createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow() })
 }).catch((error: unknown) => {

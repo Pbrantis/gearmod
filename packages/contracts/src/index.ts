@@ -31,13 +31,22 @@ export const cardTypeSchema = z.enum(['feature', 'bug', 'improvement', 'task'])
 export const cardPrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
 export const semanticStateSchema = z.enum(['todo', 'doing', 'test', 'mr', 'done'])
 
+export const agentProviderSchema = z.enum(['codex', 'claude'])
+export const agentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
+/** Cores de personalidade oferecidas ao cadastrar um agente; a cor é independente do tema do sistema. */
+export const agentColorPalette = ['#D97757', '#E5A24B', '#9ccf6f', '#6fc3b2', '#8fb8d6', '#aeb9ff', '#b98fd6', '#e07a9a'] as const
+export const defaultAgentColor = (provider: z.infer<typeof agentProviderSchema>): string => (provider === 'claude' ? agentColorPalette[0] : agentColorPalette[5])
+export const themeSchema = z.enum(['green', 'purple', 'blue', 'orange'])
+export const languageSchema = z.enum(['pt-BR', 'en'])
+export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema })
+export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional() }).strict()
 export const agentProfileSchema = z.object({
-  id: uuid, provider: z.enum(['codex', 'claude']), label: z.string(), scope: z.string(),
+  id: uuid, provider: agentProviderSchema, label: z.string(), scope: z.string(), color: agentColorSchema,
   configDir: z.string(), executablePath: z.string().nullable(), enabled: z.boolean()
 })
 export const createAgentProfileInputSchema = z.object({
-  provider: z.enum(['codex', 'claude']), label: z.string().trim().min(1).max(80),
-  scope: z.string().trim().min(1).max(80), useExistingSession: z.boolean()
+  provider: agentProviderSchema, label: z.string().trim().min(1).max(80),
+  scope: z.string().trim().min(1).max(80), useExistingSession: z.boolean(), color: agentColorSchema.optional()
 }).strict()
 export const boardColumnSchema = z.object({ id: uuid, projectId: uuid, label: z.string(), sortOrder: z.number().int(), semanticState: semanticStateSchema, isDefault: z.boolean() })
 export const projectSourceSchema = z.object({
@@ -96,9 +105,11 @@ export const ipcContracts = {
   'backups:list': { input: z.undefined(), output: z.array(backupSummarySchema) },
   'backups:create': { input: z.undefined(), output: backupSummarySchema },
   'backups:restore': { input: restoreBackupInputSchema, output: z.object({ restored: z.literal(true) }) }
+  , 'settings:get': { input: z.undefined(), output: appSettingsSchema }
+  , 'settings:update': { input: updateAppSettingsInputSchema, output: appSettingsSchema }
   , 'profiles:list': { input: z.undefined(), output: z.array(agentProfileSchema) }
   , 'profiles:create': { input: createAgentProfileInputSchema, output: agentProfileSchema }
-  , 'profiles:update': { input: z.object({ profileId: uuid, label: z.string().trim().min(1).max(80), scope: z.string().trim().min(1).max(80) }).strict(), output: agentProfileSchema }
+  , 'profiles:update': { input: z.object({ profileId: uuid, label: z.string().trim().min(1).max(80), scope: z.string().trim().min(1).max(80), color: agentColorSchema.optional() }).strict(), output: agentProfileSchema }
   , 'profiles:delete': { input: z.object({ profileId: uuid }).strict(), output: z.object({ deleted: z.boolean() }) }
   , 'profiles:probe': { input: z.object({ profileId: uuid }).strict(), output: agentProbeSchema }
   , 'profiles:probe-all': { input: z.undefined(), output: z.array(agentProbeSchema) }
@@ -142,6 +153,9 @@ export type IpcInput<C extends IpcChannel> = z.input<(typeof ipcContracts)[C]['i
 export type IpcOutput<C extends IpcChannel> = z.output<(typeof ipcContracts)[C]['output']>
 export type Note = z.output<typeof noteSchema>
 export type BackupSummary = z.output<typeof backupSummarySchema>
+export type AppTheme = z.output<typeof themeSchema>
+export type AppLanguage = z.output<typeof languageSchema>
+export type AppSettings = z.output<typeof appSettingsSchema>
 export type AgentProfile = z.output<typeof agentProfileSchema>
 export type Project = z.output<typeof projectSchema>
 export type ProjectInspection = z.output<typeof projectInspectionSchema>

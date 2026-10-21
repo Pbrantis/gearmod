@@ -168,6 +168,16 @@ export const migrations: readonly Migration[] = [
         CREATE INDEX idx_worktree_members_worktree ON worktree_members(worktree_id);
       `)
     }
+  },
+  {
+    version: 5,
+    checksum: 'sha256:agentboard-agent-color-v5-2026-10-21',
+    up(db) {
+      db.exec(`
+        ALTER TABLE agent_profiles ADD COLUMN color TEXT NOT NULL DEFAULT '#aeb9ff';
+        UPDATE agent_profiles SET color = CASE provider WHEN 'claude' THEN '#D97757' ELSE '#aeb9ff' END;
+      `)
+    }
   }
 ]
 

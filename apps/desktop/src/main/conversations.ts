@@ -54,11 +54,11 @@ export class ConversationRepository {
   context(chatId: string): { chat: Chat; cardId: string; projectPath: string; profile: AgentProfile } {
     const row = this.database.db.prepare(`SELECT c.id, c.project_id AS projectId, c.card_id AS cardId, c.purpose, c.provider,
       c.profile_id AS profileId, c.provider_session_id AS providerSessionId, c.created_at AS createdAt, c.updated_at AS updatedAt,
-      p.local_path AS projectPath, ap.label, ap.scope, ap.config_dir AS configDir, ap.executable_path AS executablePath, ap.enabled
-      FROM chats c JOIN projects p ON p.id = c.project_id JOIN agent_profiles ap ON ap.id = c.profile_id WHERE c.id = ?`).get(chatId) as (Chat & { projectPath: string; label: string; scope: string; configDir: string; executablePath: string | null; enabled: number }) | undefined
+      p.local_path AS projectPath, ap.label, ap.scope, ap.color, ap.config_dir AS configDir, ap.executable_path AS executablePath, ap.enabled
+      FROM chats c JOIN projects p ON p.id = c.project_id JOIN agent_profiles ap ON ap.id = c.profile_id WHERE c.id = ?`).get(chatId) as (Chat & { projectPath: string; label: string; scope: string; color: string; configDir: string; executablePath: string | null; enabled: number }) | undefined
     if (!row?.cardId) throw new Error('A execução exige um chat associado a um card')
-    const { projectPath, label, scope, configDir, executablePath, enabled, ...chat } = row
-    return { chat, cardId: row.cardId, projectPath, profile: { id: row.profileId, provider: row.provider, label, scope, configDir, executablePath, enabled: Boolean(enabled) } }
+    const { projectPath, label, scope, color, configDir, executablePath, enabled, ...chat } = row
+    return { chat, cardId: row.cardId, projectPath, profile: { id: row.profileId, provider: row.provider, label, scope, color, configDir, executablePath, enabled: Boolean(enabled) } }
   }
 
   updateSession(chatId: string, providerSessionId: string): void {

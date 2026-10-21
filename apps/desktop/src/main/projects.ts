@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import { readdir, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import type { AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
+import { defaultAgentColor, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 
 const execFileAsync = promisify(execFile)
@@ -59,7 +59,7 @@ export class ProfileRepository {
     this.database.db.prepare('UPDATE agent_profiles SET executable_path = ? WHERE id = ?').run(path, id)
   }
 
-  create(input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean }): AgentProfile {
+  create(input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean; color?: string }): AgentProfile {
     const id = randomUUID()
     const configDir = input.useExistingSession
       ? join(this.homeDir, input.provider === 'codex' ? '.codex' : '.claude')
@@ -70,15 +70,15 @@ export class ProfileRepository {
     }
     const now = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO agent_profiles
-      (id, provider, label, scope, config_dir, executable_path, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?)`).run(id, input.provider, input.label.trim(), input.scope, configDir, now, now)
+      (id, provider, label, scope, color, config_dir, executable_path, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, NULL, 1, ?, ?)`).run(id, input.provider, input.label.trim(), input.scope, input.color ?? defaultAgentColor(input.provider), configDir, now, now)
     return this.get(id)
   }
 
-  update(input: { profileId: string; label: string; scope: string }): AgentProfile {
-    this.get(input.profileId)
-    this.database.db.prepare('UPDATE agent_profiles SET label = ?, scope = ?, updated_at = ? WHERE id = ?')
-      .run(input.label.trim(), input.scope.trim(), new Date().toISOString(), input.profileId)
+  update(input: { profileId: string; label: string; scope: string; color?: string }): AgentProfile {
+    const current = this.get(input.profileId)
+    this.database.db.prepare('UPDATE agent_profiles SET label = ?, scope = ?, color = ?, updated_at = ? WHERE id = ?')
+      .run(input.label.trim(), input.scope.trim(), input.color ?? current.color, new Date().toISOString(), input.profileId)
     return this.get(input.profileId)
   }
 
@@ -96,7 +96,7 @@ export class ProfileRepository {
   }
 
   list(): AgentProfile[] {
-    return this.database.db.prepare(`SELECT id, provider, label, scope, config_dir AS configDir,
+    return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
       executable_path AS executablePath, enabled FROM agent_profiles WHERE enabled = 1 ORDER BY created_at`).all()
       .map((row) => ({ ...(row as Omit<AgentProfile, 'enabled'> & { enabled: number }), enabled: Boolean((row as { enabled: number }).enabled) }))
   }

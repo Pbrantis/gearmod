@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { ClaudeCliAdapter, CodexAppServerAdapter, type ProcessFactory } from './adapters'
 import type { AgentProfile } from '@agentboard/contracts'
 
-const profile = (provider: 'codex' | 'claude'): AgentProfile => ({ id: '10000000-0000-4000-8000-000000000001', provider, label: provider, scope: 'work', configDir: 'C:\\profiles\\work', executablePath: null, enabled: true })
+const profile = (provider: 'codex' | 'claude'): AgentProfile => ({ id: '10000000-0000-4000-8000-000000000001', provider, label: provider, scope: 'work', color: '#aeb9ff', configDir: 'C:\\profiles\\work', executablePath: null, enabled: true })
 
 function fakeProcess(onInput?: (value: Record<string, unknown>, child: ChildProcessWithoutNullStreams) => void): ChildProcessWithoutNullStreams {
   const emitter = new EventEmitter() as EventEmitter & Partial<ChildProcessWithoutNullStreams>
