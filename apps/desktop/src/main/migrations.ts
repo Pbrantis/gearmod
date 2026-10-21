@@ -207,6 +207,39 @@ export const migrations: readonly Migration[] = [
         }
       }
     }
+  },
+  {
+    version: 7,
+    checksum: 'sha256:agentboard-card-documents-v7-2026-10-21',
+    up(db) {
+      db.exec(`
+        CREATE TABLE card_documents (
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('resumo', 'especificacao', 'plano', 'tasks')),
+          content_md TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL,
+          PRIMARY KEY(card_id, kind)
+        );
+        CREATE TABLE card_document_versions (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL, version INTEGER NOT NULL, content_md TEXT NOT NULL, created_at TEXT NOT NULL, actor TEXT NOT NULL,
+          UNIQUE(card_id, kind, version)
+        );
+      `)
+      // A descrição antiga vira o Resumo, os critérios viram tasks de primeiro nível e o último plano vira o documento Plano.
+      // As colunas e tabelas antigas continuam no banco (volta segura).
+      const insertDoc = db.prepare('INSERT INTO card_documents(card_id, kind, content_md, updated_at, updated_by) VALUES (?, ?, ?, ?, \'system\')')
+      const insertVersion = db.prepare(`INSERT INTO card_document_versions(id, card_id, kind, version, content_md, created_at, actor)
+        VALUES (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), ?, ?, 1, ?, ?, 'system')`)
+      const save = (cardId: string, kind: string, content: string, at: string): void => { insertDoc.run(cardId, kind, content, at); insertVersion.run(cardId, kind, content, at) }
+      const cards = db.prepare('SELECT id, description, updated_at AS updatedAt FROM cards').all() as { id: string; description: string; updatedAt: string }[]
+      for (const card of cards) {
+        if (card.description.trim()) save(card.id, 'resumo', card.description, card.updatedAt)
+        const criteria = db.prepare('SELECT body, checked FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order').all(card.id) as { body: string; checked: number }[]
+        if (criteria.length) save(card.id, 'tasks', criteria.map((item, index) => `- [${item.checked ? 'x' : ' '}] T${String(index + 1).padStart(3, '0')} ${item.body}`).join('\n'), card.updatedAt)
+        const plan = db.prepare(`SELECT content_md AS body, created_at AS at FROM plans WHERE card_id = ? ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, version DESC LIMIT 1`).get(card.id) as { body: string; at: string } | undefined
+        if (plan?.body.trim()) save(card.id, 'plano', plan.body, plan.at)
+      }
+    }
   }
 ]
 

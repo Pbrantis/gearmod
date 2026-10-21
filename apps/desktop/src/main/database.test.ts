@@ -23,7 +23,7 @@ describe('AppDatabase', () => {
     const second = new AppDatabase(path, '0.1.0')
     await second.open()
     expect(new NoteRepository(second).list()).toEqual([created])
-    expect(second.schemaVersion()).toBe(6)
+    expect(second.schemaVersion()).toBe(7)
     second.close()
   })
 

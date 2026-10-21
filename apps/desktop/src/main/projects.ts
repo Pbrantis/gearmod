@@ -5,6 +5,8 @@ import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { defaultAgentColor, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { DocumentRepository } from './documents'
+import { countTasks } from './tasks'
 
 const execFileAsync = promisify(execFile)
 const defaultColumns = [
@@ -183,7 +185,9 @@ export class ProjectRepository {
 const priorityRank = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`
 
 export class BoardRepository {
-  constructor(private readonly database: AppDatabase, private readonly projects: ProjectRepository) {}
+  readonly documents: DocumentRepository
+
+  constructor(private readonly database: AppDatabase, private readonly projects: ProjectRepository) { this.documents = new DocumentRepository(database) }
 
   get(projectId: string): ProjectBoard {
     const columns = (this.database.db.prepare(`SELECT id, project_id AS projectId, label, sort_order AS sortOrder,
@@ -196,12 +200,12 @@ export class BoardRepository {
   card(cardId: string): Card {
     const row = this.database.db.prepare(`SELECT id, project_id AS projectId, column_id AS columnId, source_id AS sourceId, type, title, description,
       priority, order_key AS orderKey, created_at AS createdAt, updated_at AS updatedAt, archived_at AS archivedAt
-      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria'> | undefined
+      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks'> | undefined
     if (!row) throw new Error('Card não encontrado')
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
       .map((item) => ({ ...item, checked: Boolean(item.checked) }))
-    return { ...row, acceptanceCriteria: criteria }
+    return { ...row, acceptanceCriteria: criteria, tasks: countTasks(this.documents.read(cardId, 'tasks')) }
   }
 
   create(input: { projectId: string; columnId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
@@ -215,7 +219,10 @@ export class BoardRepository {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, input.projectId, input.columnId, sourceId, input.type, input.title, input.description, input.priority, order, now, now)
       this.replaceCriteria(id, input.acceptanceCriteria)
     })
-    create(); return this.card(id)
+    create()
+    if (input.description.trim()) this.documents.write(id, 'resumo', input.description, 'user')
+    if (input.acceptanceCriteria.length) this.documents.write(id, 'tasks', input.acceptanceCriteria.map((item, index) => `- [${item.checked ? 'x' : ' '}] T${String(index + 1).padStart(3, '0')} ${item.body}`).join('\n'), 'user')
+    return this.card(id)
   }
 
   update(input: { cardId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
@@ -228,7 +235,9 @@ export class BoardRepository {
       this.database.db.prepare('DELETE FROM card_acceptance_criteria WHERE card_id = ?').run(input.cardId)
       this.replaceCriteria(input.cardId, input.acceptanceCriteria)
     })
-    update(); return this.card(input.cardId)
+    update()
+    if (input.description !== current.description) this.documents.write(input.cardId, 'resumo', input.description, 'user')
+    return this.card(input.cardId)
   }
 
   move(cardId: string, columnId: string, beforeCardId: string | null): Card {

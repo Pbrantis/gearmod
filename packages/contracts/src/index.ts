@@ -59,11 +59,17 @@ export const projectSchema = z.object({
 export const projectInspectionSchema = z.object({
   localPath: z.string(), name: z.string(), repositories: z.array(z.object({ localPath: z.string(), name: z.string(), currentBranch: z.string(), branches: z.array(z.string()) }))
 })
+export const cardDocumentKinds = ['resumo', 'especificacao', 'plano', 'tasks'] as const
+export const cardDocumentKindSchema = z.enum(cardDocumentKinds)
+export const cardDocumentSchema = z.object({ kind: cardDocumentKindSchema, contentMd: z.string(), updatedAt: isoDate.nullable(), updatedBy: z.enum(['user', 'agent', 'system']).nullable() })
+export const cardDocumentsSchema = z.object({ resumo: cardDocumentSchema, especificacao: cardDocumentSchema, plano: cardDocumentSchema, tasks: cardDocumentSchema })
+export const documentVersionSchema = z.object({ id: uuid, version: z.number().int().positive(), contentMd: z.string(), createdAt: isoDate, actor: z.enum(['user', 'agent', 'system']) })
+export const taskCountSchema = z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() })
 export const criterionSchema = z.object({ id: uuid, cardId: uuid, body: z.string(), checked: z.boolean(), sortOrder: z.number().int() })
 export const cardSchema = z.object({
   id: uuid, projectId: uuid, columnId: uuid, sourceId: uuid.nullable(), type: cardTypeSchema, title: z.string(), description: z.string(),
   priority: cardPrioritySchema, orderKey: z.number(), createdAt: isoDate, updatedAt: isoDate,
-  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema)
+  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema
 })
 export const projectBoardSchema = z.object({ project: projectSchema, columns: z.array(boardColumnSchema), cards: z.array(cardSchema) })
 export const agentProbeSchema = z.object({
@@ -130,6 +136,10 @@ export const ipcContracts = {
   , 'cards:move': { input: moveCardInputSchema, output: cardSchema }
   , 'cards:archive': { input: cardIdInput, output: cardSchema }
   , 'cards:restore': { input: cardIdInput, output: cardSchema }
+  , 'cards:documents': { input: cardIdInput, output: cardDocumentsSchema }
+  , 'cards:write-document': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema, contentMd: z.string().max(200_000) }).strict(), output: cardDocumentSchema }
+  , 'cards:document-versions': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema }).strict(), output: z.array(documentVersionSchema) }
+  , 'cards:toggle-task': { input: z.object({ cardId: uuid, line: z.number().int().nonnegative(), checked: z.boolean() }).strict(), output: cardDocumentSchema }
   , 'cards:delete': { input: cardIdInput, output: z.object({ deleted: z.boolean() }) }
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
   , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid }).strict(), output: chatSchema }
@@ -162,6 +172,10 @@ export type Project = z.output<typeof projectSchema>
 export type ProjectInspection = z.output<typeof projectInspectionSchema>
 export type ProjectSource = z.output<typeof projectSourceSchema>
 export type BoardColumn = z.output<typeof boardColumnSchema>
+export type CardDocumentKind = z.output<typeof cardDocumentKindSchema>
+export type CardDocument = z.output<typeof cardDocumentSchema>
+export type CardDocuments = z.output<typeof cardDocumentsSchema>
+export type DocumentVersion = z.output<typeof documentVersionSchema>
 export type Card = z.output<typeof cardSchema>
 export type ProjectBoard = z.output<typeof projectBoardSchema>
 export type AgentProbe = z.output<typeof agentProbeSchema>

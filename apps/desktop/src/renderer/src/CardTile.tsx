@@ -18,7 +18,7 @@ export interface CardTileProps {
 
 /** Card do quadro: etiquetas, botão de chat no canto, resumo, contador de tasks e ações por coluna (ícone com tooltip). */
 export function CardTile({ card, state, dropLabel, onOpen, onChat, onPlan, onArchive, dragProps }: CardTileProps): React.JSX.Element {
-  const total = card.acceptanceCriteria.length, done = card.acceptanceCriteria.filter((item) => item.checked).length
+  const { total, done } = card.tasks
   const action = (className: string, tip: string, click: () => void, icon: React.ReactNode): React.JSX.Element => <button type="button" className={`ib ${className} tip`} data-tip={tip} aria-label={tip} onClick={(e) => { e.stopPropagation(); click() }}>{icon}</button>
   return <article className={`card ${dropLabel ? 'dropBefore' : ''}`} data-plabel={dropLabel} onClick={onOpen} {...dragProps}>
     <div className="pills"><span className={`pill ${card.type}`}>{card.type}</span><span className={`pill ${card.priority}`}>{priorityLabel[card.priority]}</span></div>
