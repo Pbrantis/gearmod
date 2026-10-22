@@ -4,7 +4,7 @@ import { useDockSize } from './CardChat'
 import { CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { Select } from './Select'
 import { AgentIcon } from './AgentIcon'
-import { ChatMessageView } from './ChatMessageView'
+import { ChatMessageList } from './ChatMessageView'
 import { Markdown } from './markdown'
 import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { startVoiceInstall } from './voiceStore'
@@ -55,7 +55,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
         <div className="dock-tools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
       <div className="chatlog" ref={log}>
         {!messages.length && !live && <div className="msg sys">Chat livre: conversa solta, não altera arquivos nem cards. Se virar um planejamento, peça e eu crio o card aqui mesmo.</div>}
-        {messages.map((m) => <ChatMessageView key={m.id} message={m} />)}
+        <ChatMessageList messages={messages} busy={busy} />
         {live && <div className="msg agent"><div className="md chatmd"><Markdown source={typed} /><span className="caret" /></div></div>}
         {busy && <ThinkingIndicator purpose="free" messages={messages} since={busySince} />}
       </div>

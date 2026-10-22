@@ -127,6 +127,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     },
     'voice:status': () => services.voice.status(services.settings.get().voz),
     'voice:install': () => services.voice.install(services.settings.get().voz),
+    'voice:set-key': (input: { key: string }) => services.voice.setGroqKey(input.key, services.settings.get().voz),
     'voice:transcribe': async (input: { wav: Uint8Array; prompt?: string }) => { const settings = services.settings.get(); return { text: await services.voice.transcribe({ wav: input.wav, model: settings.voz, language: settings.idioma === 'en' ? 'en' : 'pt', prompt: input.prompt }) } },
     'usage:list': () => services.usage.list(),
     'usage:refresh': () => services.usage.refresh(),

@@ -1,5 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { BackupService } from './backup'
@@ -51,7 +52,17 @@ const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppS
 }, worktrees, 2, agentContext, writeback, agentConfigs, usage, collab)
 const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })))
 collab.setStarter((action) => { orchestrator.start(action) })
-const voice = new VoiceService({ dataDir, emit: (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })) })
+/** Chave do Groq cifrada pelo sistema (DPAPI no Windows); nunca vai para o banco nem para o backup. */
+const groqKeyFile = join(dataDir, 'whisper', 'groq.key')
+const voiceSecrets = {
+  read: async (): Promise<string | null> => existsSync(groqKeyFile) && safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(await readFile(groqKeyFile)) : null,
+  write: async (value: string | null): Promise<void> => {
+    if (!value) { await rm(groqKeyFile, { force: true }); return }
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('O sistema não oferece armazenamento seguro para a chave')
+    await mkdir(join(dataDir, 'whisper'), { recursive: true }); await writeFile(groqKeyFile, safeStorage.encryptString(value))
+  }
+}
+const voice = new VoiceService({ dataDir, secrets: voiceSecrets, emit: (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })) })
 const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs)
 let disposeIpc: (() => void) | undefined
 

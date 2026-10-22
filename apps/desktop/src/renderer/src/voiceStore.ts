@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { plainError } from './NoticeDialog'
 
 export interface VoiceInstall { installing: boolean; item: string; percent: number | null; megabytes: number; done: boolean; error: string }
 
@@ -23,8 +24,11 @@ export async function startVoiceInstall(): Promise<void> {
   if (state.installing) return
   set({ installing: true, done: false, error: '', item: '', percent: null })
   try { await window.agentboard.invoke('voice:install', undefined); set({ installing: false, done: true, percent: 100 }) }
-  catch (reason) { set({ installing: false, error: String(reason).replace(/^Error: /, '') }) }
+  catch (reason) { set({ installing: false, error: plainError(reason) }) }
 }
+
+/** Avisa os chats abertos que o modo de ditado ou a chave mudou, para não ficarem com o status antigo. */
+export const notifyVoiceChanged = (): void => { window.dispatchEvent(new Event('agentboard:voice-changed')) }
 
 export const dismissVoiceInstall = (): void => set({ done: false, error: '' })
 

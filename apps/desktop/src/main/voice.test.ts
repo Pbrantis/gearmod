@@ -68,4 +68,36 @@ describe('VoiceService', () => {
     await writeFile(join(binDir, 'whisper-cli'), '')
     await expect(new VoiceService({ dataDir, platform: 'linux', pathEnv: binDir }).transcribe({ wav, model: 'small', language: 'pt' })).rejects.toThrow('ainda não foi baixado')
   })
+
+  it('transcribes on Groq with the stored key, language and vocabulary', async () => {
+    const dataDir = await tmp()
+    let stored: string | null = null
+    const secrets = { read: async () => stored, write: async (value: string | null) => { stored = value } }
+    const seen: Array<{ auth?: string; body: string }> = []
+    const server = createServer((request, response) => {
+      const parts: Buffer[] = []
+      request.on('data', (chunk: Buffer) => parts.push(chunk)).on('end', () => {
+        if (request.headers.authorization !== 'Bearer gsk_ok') { response.writeHead(401, { 'content-type': 'application/json' }); response.end(JSON.stringify({ error: { message: 'Invalid API Key' } })); return }
+        if (request.url === '/v1/models') { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"data":[]}'); return }
+        seen.push({ auth: request.headers.authorization, body: Buffer.concat(parts).toString('latin1') })
+        response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ text: ' Crie uma\n worktree ' }))
+      })
+    })
+    servers.push(server); await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const voice = new VoiceService({ dataDir, secrets, groqUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/audio/transcriptions` })
+    expect(await voice.status('groq')).toMatchObject({ cloud: true, modelInstalled: false, engineInstalled: true })
+    await expect(voice.transcribe({ wav, model: 'groq', language: 'pt' })).rejects.toThrow('chave do Groq')
+    await expect(voice.install('groq')).rejects.toThrow('chave do Groq')
+    await expect(voice.setGroqKey('xai-123', 'groq')).rejects.toThrow('Grok (xAI)')
+    await expect(voice.setGroqKey('gsk_bad', 'groq')).rejects.toThrow('Invalid API Key')
+    expect(stored).toBeNull()
+    expect(await voice.setGroqKey(' gsk_\u200bok\n', 'groq')).toMatchObject({ modelInstalled: true })
+    expect(stored).toBe('gsk_ok')
+    expect(await voice.transcribe({ wav, model: 'groq', language: 'pt', prompt: 'Card X' })).toBe('Crie uma worktree')
+    expect(seen[0]!.auth).toBe('Bearer gsk_ok')
+    expect(seen[0]!.body).toContain('whisper-large-v3-turbo'); expect(seen[0]!.body).toContain('worktree'); expect(seen[0]!.body).toContain('Card X'); expect(seen[0]!.body).toMatch(/name="language"\r\n\r\npt/)
+    stored = 'gsk_revoked'
+    await expect(voice.transcribe({ wav, model: 'groq', language: 'pt' })).rejects.toThrow('recusou a chave salva ("Invalid API Key")')
+    expect(await voice.setGroqKey('', 'groq')).toMatchObject({ modelInstalled: false })
+  })
 })

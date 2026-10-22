@@ -5,7 +5,7 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { BranchIcon, CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { ModelMenu, useAgentConfig } from './ModelMenu'
 import { worktreeName } from './workspace'
-import { ChatMessageView } from './ChatMessageView'
+import { ChatMessageList } from './ChatMessageView'
 import { Markdown } from './markdown'
 import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { plainError } from './NoticeDialog'
@@ -141,14 +141,15 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
         <div className="dock-tools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
       <div className="chatlog" ref={log}>
         {!messages.length && !live && <div className="msg sys">{planning ? 'Skill de planejamento carregada. Este chat só planeja, não altera arquivos.' : testing ? 'Chat de teste do card. Use Testar no card ou escreva o que o agente deve conferir.' : 'Chat de implementação do card. Use Iniciar no card ou escreva uma instrução.'}</div>}
-        {messages.map((m) => <ChatMessageView key={m.id} message={m} />)}
+        <ChatMessageList messages={messages} busy={busy} />
         {live && <div className="msg agent"><div className="md chatmd"><Markdown source={typed} /><span className="caret" /></div></div>}
         {busy && <ThinkingIndicator purpose={mode} messages={messages} since={busySince} />}
       </div>
       <div className="composer" ref={wrap}>
         {inactive && <div className="convbox"><p>O agente <b>{inactive.label.replace(' (desativado)', '')}</b> foi removido (desativado) e não pode mais executar nada neste chat. O histórico continua aqui para consulta. Para seguir neste card, reinicie o chat com outro agente.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => void resetInactive()}>Reiniciar chat</button></div></div>}
         {(error || dictation.error) && <p className="error">{error || dictation.error}</p>}
-        {voiceSetup && !voiceReady && dictation.status && <div className="convbox"><p>O ditado por voz roda no seu computador, sem gastar token. Falta baixar {!dictation.status.engineInstalled ? (dictation.status.canInstallEngine ? 'o programa de transcrição e ' : 'o programa de transcrição (whisper-cli no PATH) e ') : ''}o modelo ({dictation.status.sizeMb} MB), só uma vez.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Agora não</button><button type="button" disabled={Boolean(dictation.progress) || (!dictation.status.engineInstalled && !dictation.status.canInstallEngine)} onClick={() => void dictation.install().then(() => setVoiceSetup(false))}>{dictation.progress || 'Baixar'}</button></div></div>}
+        {voiceSetup && !voiceReady && dictation.status?.cloud && <div className="convbox"><p>O ditado está configurado para o Groq, mas falta a chave da API. Cadastre em Configurações › Aparência.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Fechar</button></div></div>}
+        {voiceSetup && !voiceReady && dictation.status && !dictation.status.cloud && <div className="convbox"><p>O ditado por voz roda no seu computador, sem gastar token. Falta baixar {!dictation.status.engineInstalled ? (dictation.status.canInstallEngine ? 'o programa de transcrição e ' : 'o programa de transcrição (whisper-cli no PATH) e ') : ''}o modelo ({dictation.status.sizeMb} MB), só uma vez.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Agora não</button><button type="button" disabled={Boolean(dictation.progress) || (!dictation.status.engineInstalled && !dictation.status.canInstallEngine)} onClick={() => void dictation.install().then(() => setVoiceSetup(false))}>{dictation.progress || 'Baixar'}</button></div></div>}
         {!planning && <><button type="button" className="expand" aria-expanded={quality} onClick={() => setQuality(!quality)}>Worktree, teste e revisão {quality ? '▴' : '▾'}</button>{quality && <QualityPanel cardId={card.id} />}</>}
         <div className="cbox">
           <textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : planning ? 'Descreva o que você quer planejar…' : testing ? 'Diga o que o agente deve testar…' : 'Envie uma instrução ao agente…'} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />

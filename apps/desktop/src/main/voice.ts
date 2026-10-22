@@ -8,10 +8,12 @@ import { promisify } from 'node:util'
 import type { VoiceModel, VoiceStatus } from '@agentboard/contracts'
 
 const execFileAsync = promisify(execFile)
-export const voiceModels: Record<VoiceModel, { file: string; label: string; sizeMb: number }> = {
+type LocalVoiceModel = Exclude<VoiceModel, 'groq'>
+export const voiceModels: Record<LocalVoiceModel, { file: string; label: string; sizeMb: number }> = {
   small: { file: 'ggml-small.bin', label: 'Small', sizeMb: 466 },
   'large-v3-turbo': { file: 'ggml-large-v3-turbo.bin', label: 'Large v3 Turbo', sizeMb: 1624 }
 }
+const groqUrl = 'https://api.groq.com/openai/v1/audio/transcriptions'
 const modelBase = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
 const engineAsset = 'https://github.com/ggml-org/whisper.cpp/releases'
 /** "latest" muda de nome de pacote entre versões e já devolveu 404; as versões fixas são o plano B. */
@@ -28,9 +30,12 @@ export interface VoiceDeps {
   emit?: (type: string, payload: Record<string, unknown>) => void
   modelUrl?: (model: VoiceModel) => string
   engineUrl?: string
+  /** Guarda a chave do Groq fora do banco (no app, cifrada pelo sistema operacional). */
+  secrets?: { read(): Promise<string | null>; write(value: string | null): Promise<void> }
+  groqUrl?: string
 }
 
-/** Ditado por voz local: whisper.cpp como processo separado (nunca na thread da interface) e modelo baixado sob demanda para a pasta de dados. */
+/** Ditado por voz: whisper.cpp local como processo separado (nunca na thread da interface, modelo baixado sob demanda) ou Groq na nuvem com a chave do usuário. */
 export class VoiceService {
   private downloading: VoiceStatus['downloading'] = null
   private readonly platform: NodeJS.Platform
@@ -38,7 +43,7 @@ export class VoiceService {
 
   private get binDir(): string { return join(this.deps.dataDir, 'whisper', 'bin') }
   private get modelsDir(): string { return join(this.deps.dataDir, 'whisper', 'models') }
-  private modelPath(model: VoiceModel): string { return join(this.modelsDir, voiceModels[model].file) }
+  private modelPath(model: LocalVoiceModel): string { return join(this.modelsDir, voiceModels[model].file) }
 
   private engineNames(): string[] { return this.platform === 'win32' ? ['whisper-cli.exe'] : ['whisper-cli', 'whisper-cpp'] }
 
@@ -53,17 +58,40 @@ export class VoiceService {
   }
 
   async status(model: VoiceModel): Promise<VoiceStatus> {
+    if (model === 'groq') return { model, cloud: true, modelInstalled: Boolean(await this.groqKey()), engineInstalled: true, canInstallEngine: false, sizeMb: 0, downloading: null }
     const enginePath = await this.findEngine()
-    return { model, modelInstalled: await this.hasModel(model), engineInstalled: Boolean(enginePath), canInstallEngine: this.platform === 'win32', sizeMb: voiceModels[model].sizeMb, downloading: this.downloading }
+    return { model, cloud: false, modelInstalled: await this.hasModel(model), engineInstalled: Boolean(enginePath), canInstallEngine: this.platform === 'win32', sizeMb: voiceModels[model].sizeMb, downloading: this.downloading }
   }
 
-  private async hasModel(model: VoiceModel): Promise<boolean> {
+  private async groqKey(): Promise<string | null> { return (await this.deps.secrets?.read().catch(() => null)) || null }
+
+  async setGroqKey(key: string, model: VoiceModel): Promise<VoiceStatus> {
+    if (!this.deps.secrets) throw new Error('Não é possível guardar a chave neste computador')
+    // Remove quebras de linha e caracteres invisíveis que costumam vir junto ao colar.
+    const value = key.replace(/[^\x21-\x7e]/g, '')
+    if (value) await this.checkGroqKey(value)
+    await this.deps.secrets.write(value || null)
+    return this.status(model)
+  }
+
+  /** Testa a chave antes de guardar: Groq (groq.com, chave gsk_…) é fácil de confundir com o Grok da xAI (chave xai-…). */
+  private async checkGroqKey(key: string): Promise<void> {
+    if (/^xai-/i.test(key)) throw new Error('Essa é uma chave do Grok (xAI). O ditado usa o Groq, com "q": crie a chave em console.groq.com/keys (começa com gsk_).')
+    const modelsUrl = (this.deps.groqUrl ?? groqUrl).replace(/\/audio\/transcriptions$/, '/models')
+    let response: Response
+    try { response = await (this.deps.fetchImpl ?? fetch)(modelsUrl, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) }) } catch { throw new Error('Não consegui falar com o Groq para conferir a chave. Verifique a internet.') }
+    if (response.status === 401 || response.status === 403) throw new Error(`O Groq recusou essa chave${await groqReason(response)}. Copie a chave inteira ao criá-la em console.groq.com/keys (começa com gsk_).`)
+    if (!response.ok) throw new Error(`Não consegui conferir a chave no Groq (HTTP ${response.status})`)
+  }
+
+  private async hasModel(model: LocalVoiceModel): Promise<boolean> {
     const info = await stat(this.modelPath(model)).catch(() => null)
     return Boolean(info && info.size > 10 * 1024 * 1024)
   }
 
   /** Baixa o modelo (e, no Windows, o executável) com progresso; nada é baixado sem o usuário pedir. */
   async install(model: VoiceModel): Promise<VoiceStatus> {
+    if (model === 'groq') throw new Error('Cadastre a chave do Groq em Configurações › Aparência')
     if (this.downloading) throw new Error('Já existe um download em andamento')
     try {
       if (!await this.findEngine()) {
@@ -102,8 +130,9 @@ export class VoiceService {
     try { await pipeline(source, createWriteStream(partial)); await rename(partial, target) } catch (error) { await rm(partial, { force: true }); throw error }
   }
 
-  /** Transcreve um WAV (16 kHz, mono, 16 bits). O texto volta para o campo do chat; ditado não gasta token. */
+  /** Transcreve um WAV (16 kHz, mono, 16 bits). O texto volta para o campo do chat; ditado não gasta token dos agentes. */
   async transcribe(input: { wav: Uint8Array; model: VoiceModel; language: string; prompt?: string }): Promise<string> {
+    if (input.model === 'groq') return this.transcribeGroq(input)
     const engine = await this.findEngine()
     if (!engine) throw new Error('O programa de transcrição não está instalado')
     if (!await this.hasModel(input.model)) throw new Error('O modelo de voz ainda não foi baixado')
@@ -118,6 +147,33 @@ export class VoiceService {
       return stdout.replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim()
     } finally { await rm(temp, { force: true }) }
   }
+
+  private async transcribeGroq(input: { wav: Uint8Array; language: string; prompt?: string }): Promise<string> {
+    const key = await this.groqKey()
+    if (!key) throw new Error('Cadastre a chave do Groq em Configurações › Aparência')
+    if (input.wav.byteLength < 2000) return ''
+    const form = new FormData()
+    form.append('file', new Blob([Buffer.from(input.wav)],{ type: 'audio/wav' }), 'ditado.wav')
+    form.append('model', 'whisper-large-v3-turbo')
+    form.append('language', input.language)
+    form.append('response_format', 'json')
+    form.append('temperature', '0')
+    // O Groq aceita até 224 tokens de prompt.
+    form.append('prompt', [supportVocabulary, input.prompt].filter(Boolean).join(', ').slice(0, 600))
+    const response = await (this.deps.fetchImpl ?? fetch)(this.deps.groqUrl ?? groqUrl, { method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(60_000) })
+    if (response.status === 401) throw new Error(`O Groq recusou a chave salva${await groqReason(response)}. Troque em Configurações › Aparência.`)
+    if (response.status === 429) throw new Error('Limite do Groq atingido. Espere um pouco ou volte para o modelo local.')
+    if (!response.ok) throw new Error(`O Groq não transcreveu o áudio${await groqReason(response)} (HTTP ${response.status})`)
+    const { text } = await response.json() as { text?: string }
+    return (text ?? '').replace(/\s+/g, ' ').trim()
+  }
+}
+
+/** Motivo que o Groq devolve no corpo do erro ({ error: { message } }), para não esconder o que ele disse. */
+async function groqReason(response: Response): Promise<string> {
+  const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
+  const message = body?.error?.message?.trim()
+  return message ? ` ("${message.slice(0, 160)}")` : ''
 }
 
 async function defaultRun(command: string, args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string }> {

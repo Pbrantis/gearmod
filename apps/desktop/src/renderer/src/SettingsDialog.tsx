@@ -3,6 +3,7 @@ import { agentColorPalette, defaultAgentColor, type AgentProbe, type AgentProfil
 import { AgentIcon, ProviderLogo } from './AgentIcon'
 import { NoticeDialog, plainError } from './NoticeDialog'
 import { SkillsPanel } from './SkillsPanel'
+import { dismissVoiceInstall, notifyVoiceChanged } from './voiceStore'
 
 const themes: ReadonlyArray<{ value: AppTheme; label: string; swatches: [string, string, string] }> = [
   { value: 'green', label: 'Verde escuro', swatches: ['#8db99a', '#2f5a40', '#1b2b21'] },
@@ -11,7 +12,7 @@ const themes: ReadonlyArray<{ value: AppTheme; label: string; swatches: [string,
   { value: 'orange', label: 'Laranja escuro', swatches: ['#d9a477', '#6b4a33', '#2a2019'] }
 ]
 const languages: ReadonlyArray<{ value: AppLanguage; label: string }> = [{ value: 'pt-BR', label: 'Português (Brasil)' }, { value: 'en', label: 'English' }]
-const voices: ReadonlyArray<{ value: VoiceModel; label: string }> = [{ value: 'small', label: 'Small (466 MB, rápido)' }, { value: 'large-v3-turbo', label: 'Large v3 Turbo (1,6 GB, mais preciso)' }]
+const voices: ReadonlyArray<{ value: VoiceModel; label: string }> = [{ value: 'small', label: 'Small (466 MB, rápido)' }, { value: 'large-v3-turbo', label: 'Large v3 Turbo (1,6 GB, mais preciso)' }, { value: 'groq', label: 'Groq na nuvem (rápido, não usa o computador)' }]
 
 export function applySettings(settings: AppSettings): void {
   document.documentElement.dataset.accent = settings.tema
@@ -73,6 +74,25 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
     {notice && <NoticeDialog eyebrow="Agente" title={notice.title} text={notice.text} close={() => { const after = notice.after; setNotice(undefined); if (after) close() }} />}
   </div></div>
 }
+/** Chave do Groq: fica cifrada no computador; a tela só sabe se existe, nunca mostra o valor. */
+function GroqKeyField(): React.JSX.Element {
+  const [saved, setSaved] = useState<boolean>(), [editing, setEditing] = useState(false), [key, setKey] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  useEffect(() => { void window.agentboard.invoke('voice:status', undefined).then((status) => setSaved(status.modelInstalled)).catch(() => undefined) }, [])
+  const store = async (value: string): Promise<void> => {
+    setBusy(true); setError('')
+    try { setSaved((await window.agentboard.invoke('voice:set-key', { key: value })).modelInstalled); setKey(''); setEditing(false); dismissVoiceInstall(); notifyVoiceChanged() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
+  }
+  return <div className="stack" style={{ gap: 6 }}>
+    <div className="f">Chave da API do Groq
+      {saved && !editing
+        ? <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input className="in" type="password" readOnly value="••••••••••••••••" aria-label="Chave salva" style={{ flex: 1 }} /><span className="hint" style={{ margin: 0 }}>✓ Chave salva</span><button type="button" className="secondary" disabled={busy} onClick={() => { setEditing(true); setError('') }}>Trocar</button><button type="button" className="secondary" disabled={busy} onClick={() => void store('')}>Remover</button></div>
+        : <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); if (key.trim()) void store(key) }}><input className="in" type="password" autoComplete="off" spellCheck={false} autoFocus={editing} placeholder="gsk_…" aria-label="Chave da API do Groq" value={key} onChange={(e) => setKey(e.target.value)} style={{ flex: 1 }} /><button type="submit" disabled={busy || !key.trim()}>{busy ? 'Conferindo…' : 'Salvar'}</button>{editing && <button type="button" className="secondary" disabled={busy} onClick={() => { setEditing(false); setKey(''); setError('') }}>Cancelar</button>}</form>}
+    </div>
+    <p className="hint">Crie uma chave grátis em console.groq.com/keys. O áudio vai para o Groq (whisper-large-v3-turbo); o plano gratuito cobre o uso normal e, acima dele, custa cerca de US$ 0,04 por hora de áudio.</p>
+    {error && <p className="error">{error}</p>}
+  </div>
+}
+
 const item = (provider: 'codex' | 'claude'): string => (provider === 'codex' ? 'Codex' : 'Claude')
 
 export function SettingsDialog({ profiles, settings, close, changed, settingsChanged }: { profiles: AgentProfile[]; settings: AppSettings; close(): void; changed(): Promise<void>; settingsChanged(settings: AppSettings): void }): React.JSX.Element {
@@ -94,8 +114,8 @@ export function SettingsDialog({ profiles, settings, close, changed, settingsCha
       <div className="stack" style={{ marginTop: 16 }}>
         <label className="f">Idioma dos agentes<select className="in" value={settings.idioma} onChange={(e) => void save({ idioma: e.target.value as AppLanguage })}>{languages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}</select></label>
         <p className="hint">Tudo o que o agente escreve segue este idioma. A interface continua em português por enquanto.</p>
-        <label className="f">Ditado por voz (Whisper local)<select className="in" value={settings.voz} onChange={(e) => void save({ voz: e.target.value as VoiceModel })}>{voices.map((voice) => <option key={voice.value} value={voice.value}>{voice.label}</option>)}</select></label>
-        <p className="hint">O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do AgentBoard.</p>
+        <label className="f">Ditado por voz<select className="in" value={settings.voz} onChange={(e) => void save({ voz: e.target.value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })}>{voices.map((voice) => <option key={voice.value} value={voice.value}>{voice.label}</option>)}</select></label>
+        {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do AgentBoard.</p>}
       </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}
     <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div>
     {editing && <AgentDialog profile={editing === 'new' ? undefined : editing} close={() => setEditing(undefined)} changed={refresh} />}
