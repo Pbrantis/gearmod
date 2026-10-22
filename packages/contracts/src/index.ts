@@ -137,7 +137,7 @@ export const projectBoardSchema = z.object({ project: projectSchema, columns: z.
 export const agentProbeSchema = z.object({
   profileId: uuid, provider: z.enum(['codex', 'claude']), installed: z.boolean(), authenticated: z.boolean(),
   version: z.string().nullable(), executablePath: z.string().nullable(), capabilities: z.array(z.string()), checkedAt: isoDate,
-  error: z.string().nullable()
+  error: z.string().nullable(), account: z.string().nullable()
 })
 export const chatPurposeSchema = z.union([agentPurposeSchema, z.literal('free')])
 export const chatSchema = z.object({ id: uuid, projectId: uuid, cardId: uuid.nullable(), purpose: chatPurposeSchema, title: z.string().nullable(), busy: z.boolean(), provider: z.enum(['codex', 'claude']), profileId: uuid, providerSessionId: z.string().nullable(), skill: skillRefSchema.nullable(), createdAt: isoDate, updatedAt: isoDate })

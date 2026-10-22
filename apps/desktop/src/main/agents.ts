@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { delimiter, extname, isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { AgentProbe, AgentProfile } from '@agentboard/contracts'
+import { readAccountEmail } from './account'
 import type { ProfileRepository } from './projects'
 
 const exec = promisify(execFile)
@@ -31,9 +32,10 @@ export class AgentProbeService {
       if (isAbsolute(resolved)) this.profiles.setExecutable(profile.id, resolved)
       const version = versionResult.stdout.trim() || versionResult.stderr.trim() || null
       const authenticated = await this.authentication(profile, command, env)
-      return { profileId, provider: profile.provider, installed: true, authenticated, version, executablePath: command, capabilities: profile.provider === 'codex' ? ['app-server', 'streaming', 'resume', 'approvals', 'plan'] : ['stream-json', 'resume', 'permissions', 'plan'], checkedAt: new Date().toISOString(), error: null }
+      const account = authenticated ? readAccountEmail(profile) : null
+      return { profileId, provider: profile.provider, installed: true, authenticated, version, executablePath: command, capabilities: profile.provider === 'codex' ? ['app-server', 'streaming', 'resume', 'approvals', 'plan'] : ['stream-json', 'resume', 'permissions', 'plan'], checkedAt: new Date().toISOString(), error: null, account }
     } catch (error) {
-      return { profileId, provider: profile.provider, installed: false, authenticated: false, version: null, executablePath: command, capabilities: [], checkedAt: new Date().toISOString(), error: safeError(error) }
+      return { profileId, provider: profile.provider, installed: false, authenticated: false, version: null, executablePath: command, capabilities: [], checkedAt: new Date().toISOString(), error: safeError(error), account: null }
     }
   }
 
