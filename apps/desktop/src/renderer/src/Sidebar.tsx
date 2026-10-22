@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { dismissVoiceInstall, useVoiceInstall } from './voiceStore'
 import type { AgentProfile, AgentUsage, Project } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
 import { ChevronLeftIcon } from './icons'
@@ -13,6 +14,17 @@ const at = (iso: string | null): string => (iso ? new Date(iso).toLocaleString('
 const Bar = ({ percent }: { percent: number }): React.JSX.Element => <div className="ubar"><i className={level(percent)} style={{ width: `${percent}%` }} /></div>
 
 /** Uso das sessões: botão do rodapé com os provedores, lista por agente (5 h) e, ao clicar, o painel completo com a semana. */
+/** Instalação do ditado por voz: barra de progresso acima dos agentes e um aviso quando termina; fica visível em qualquer tela. */
+function VoiceInstallCard(): React.JSX.Element | null {
+  const voice = useVoiceInstall()
+  if (!voice.installing && !voice.done && !voice.error) return null
+  return <div className={`voicecard ${voice.error ? 'err' : ''}`} role="status">
+    {voice.installing && <><div className="vrow"><span>Instalando ditado por voz{voice.item ? ` · ${voice.item}` : ''}</span><b>{voice.percent === null ? `${voice.megabytes} MB` : `${voice.percent}%`}</b></div><div className="vbar"><i style={{ width: `${voice.percent ?? 8}%` }} /></div></>}
+    {!voice.installing && voice.done && <div className="vrow"><span>Ditado por voz instalado</span><button type="button" aria-label="Fechar aviso" onClick={dismissVoiceInstall}>×</button></div>}
+    {!voice.installing && voice.error && <div className="vrow"><span>Ditado por voz: {voice.error}</span><button type="button" aria-label="Fechar aviso" onClick={dismissVoiceInstall}>×</button></div>}
+  </div>
+}
+
 function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Element {
   const [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>(), [refreshing, setRefreshing] = useState(false)
   const load = useCallback(async () => { try { setUsage(await window.agentboard.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
@@ -64,6 +76,7 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
         const sub = running ? <small className="srun">{running} executando</small> : finished ? <small className="sfin">Terminou · clique para ver</small> : <small>{git ? `${git} ${git === 1 ? 'repositório' : 'repositórios'}` : 'Pasta sem Git'}</small>
         return <button type="button" key={project.id} className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''}`} onClick={() => onSelect(project.id)}><i>{project.name[0]?.toUpperCase()}</i><span>{project.name}{sub}</span>{running > 0 && <span className="spin sm" title="Executando" />}{finished > 0 && <b className="pdot" title="Terminou" />}</button>
       })}</nav>
+      <VoiceInstallCard />
       <div className="side-foot"><UsedAgents profiles={profiles} /><button className="iconbtn" title="Configurar agentes" aria-label="Configurar agentes" onClick={onSettings}>⚙</button></div>
     </aside>
   </>

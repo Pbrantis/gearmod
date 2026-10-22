@@ -7,6 +7,12 @@ import { ModelMenu, useAgentConfig } from './ModelMenu'
 import { QualityPanel } from './QualityPanel'
 import { useDictation } from './useDictation'
 
+/** Estado do dock que sobrevive à troca de aba (o chat remonta a cada etapa): recolhido/expandido e largura. */
+const dockMin = 440
+const stored = (): number => { try { return Number(localStorage.getItem('agentboard.dockWidth')) || dockMin } catch { return dockMin } }
+const dockState = { expanded: true, width: stored() }
+const clampWidth = (value: number): number => Math.max(dockMin, Math.min(Math.round(window.innerWidth / 2), value))
+
 const stepLabel: Record<AgentPurpose, string> = { planning: 'Planejamento', execution: 'Implementação', test: 'Teste' }
 const typeColor: Record<Card['type'], string> = { feature: '#8fb8d6', bug: '#ff9d91', improvement: 'var(--accent-strong)', task: '#98a099' }
 
@@ -35,10 +41,17 @@ function Activity({ board, cardId, profiles, openEdit }: { board: ProjectBoard; 
 export function CardChat({ project, card, board, profiles, columnLabel, mode, close, openEdit, onSwitch }: { project: Project; card: Card; board: ProjectBoard; profiles: AgentProfile[]; columnLabel: string; mode: AgentPurpose; close(): void; openEdit(card: Card): void; onSwitch(purpose: AgentPurpose): void }): React.JSX.Element {
   const usable = profiles.filter((profile) => project.allowedProfileIds.includes(profile.id))
   const [chat, setChat] = useState<Chat>(), [messages, setMessages] = useState<ChatMessage[]>([]), [run, setRun] = useState<Run>(), [live, setLive] = useState('')
-  const [input, setInput] = useState(''), [expanded, setExpanded] = useState(true), [error, setError] = useState(''), [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null)
+  const [input, setInput] = useState(''), [expanded, setExpandedState] = useState(dockState.expanded), [width, setWidthState] = useState(() => clampWidth(dockState.width)), [dragging, setDragging] = useState(false), [error, setError] = useState(''), [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null)
   const [menu, setMenu] = useState<'mode' | 'skill' | null>(null), [quality, setQuality] = useState(false), [voiceSetup, setVoiceSetup] = useState(false)
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), wrap = useRef<HTMLDivElement>(null)
   const planning = mode === 'planning'
+  const setExpanded = (value: boolean): void => { dockState.expanded = value; setExpandedState(value) }
+  const startResize = (event: React.PointerEvent<HTMLDivElement>): void => {
+    event.preventDefault(); setDragging(true)
+    const move = (e: PointerEvent): void => { const next = clampWidth(window.innerWidth - e.clientX); dockState.width = next; setWidthState(next) }
+    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); try { localStorage.setItem('agentboard.dockWidth', String(dockState.width)) } catch { /* só vale nesta sessão */ } }
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
+  }
   const [switchTo, setSwitchTo] = useState<AgentProfile>(), [chats, setChats] = useState<Chat[]>([])
   const agentState = useAgentConfig(card.id, mode, usable, chat?.profileId)
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []), card.title || undefined)
@@ -89,10 +102,12 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const currentMode = execModes.find((item) => item.id === agentState.config?.mode)
   const testing = mode === 'test', eyebrow = planning ? 'Planejando card' : card.run.state === 'running' || run ? (testing ? 'Testando' : 'Executando') : card.run.state === 'paused' ? 'Pausado' : testing ? 'Teste' : 'Implementação'
 
-  return <section className={`dock open ${expanded ? 'full' : ''}`} aria-label="Chat do card">
-    <div className="dock-in">
-      <div className="dock-head"><div className="top"><div><div className="eyebrow">{eyebrow}</div><h2>{card.title || 'Novo card'}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span></div>
-          <div className="tabs stepTabs" role="tablist" aria-label="Chats do card">{(['planning', 'execution', 'test'] as const).map((step) => { const has = chats.some((item) => item.purpose === step), working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{stepLabel[step]}{working ? <span className="spin sm" /> : has ? <span className="agdot" /> : null}</button> })}</div></div>
+  return <section className={`dock open ${expanded ? 'full' : ''} ${dragging ? 'dragging' : ''}`} aria-label="Chat do card" style={expanded ? undefined : { width }}>
+    {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label="Ajustar a largura do chat" onPointerDown={startResize} onDoubleClick={() => { dockState.width = dockMin; setWidthState(dockMin) }} />}
+    <div className="dock-in" style={expanded ? undefined : { width }}>
+      <div className="dock-head"><div className="top"><div><div className="headrow"><div className="eyebrow">{eyebrow}</div>
+          <div className="tabs stepTabs" role="tablist" aria-label="Chats do card">{(['planning', 'execution', 'test'] as const).filter((step) => step === mode || chats.some((item) => item.purpose === step)).map((step) => { const working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{stepLabel[step]}{working ? <span className="spin sm" /> : null}</button> })}</div></div>
+          <h2>{card.title || 'Novo card'}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span></div></div>
         <div className="dock-tools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
       <div className="chatlog" ref={log}>
         {!messages.length && !live && <div className="msg sys">{planning ? 'Skill de planejamento carregada. Este chat só planeja, não altera arquivos.' : testing ? 'Chat de teste do card. Use Testar no card ou escreva o que o agente deve conferir.' : 'Chat de implementação do card. Use Iniciar no card ou escreva uma instrução.'}</div>}

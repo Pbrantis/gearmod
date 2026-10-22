@@ -4,7 +4,7 @@ import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
 import { ChatIcon, EyeIcon, PencilIcon, SplitIcon } from './icons'
 import { Markdown } from './markdown'
-import { ModelMenu, useAgentConfig } from './ModelMenu'
+import { ModelMenu, effortLabel, useAgentConfig } from './ModelMenu'
 import { Select } from './Select'
 
 export interface Draft { id?: string; columnId: string; sourceId?: string | null; title: string; type: Card['type']; priority: Card['priority'] }
@@ -29,7 +29,7 @@ const toTexts = (docs: CardDocuments): Texts => ({ resumo: docs.resumo.contentMd
 const topLevel = (markdown: string): { done: number; total: number } => { const items = markdown.split('\n').filter((line) => /^[-*+]\s+\[( |x|X)\]/.test(line)); return { total: items.length, done: items.filter((line) => !/\[ \]/.test(line)).length } }
 
 /** Editor do card (protótipo): dados e agentes à esquerda, documento Markdown no meio e a lista dos 4 documentos à direita. */
-export function CardEditor({ projectId, sources, profiles, draft: start, close, saved, openChat, pending, onPending }: { projectId: string; sources: ProjectSource[]; profiles: AgentProfile[]; pending?: { changes: number; questions: number }; onPending?(): void; draft: Draft; close(): void; saved(): void; openChat?(purpose: AgentPurpose): void }): React.JSX.Element {
+export function CardEditor({ projectId, sources, profiles, draft: start, close, saved, openChat, onStart, pending, onPending }: { projectId: string; sources: ProjectSource[]; profiles: AgentProfile[]; pending?: { changes: number; questions: number }; onPending?(): void; draft: Draft; close(): void; saved(): void; openChat?(purpose: AgentPurpose): void; onStart?(purpose: 'execution' | 'test'): void }): React.JSX.Element {
   const [d, set] = useState(start), [kind, setKind] = useState<CardDocumentKind>('resumo'), [mode, setMode] = useState<Mode>('write'), [texts, setTexts] = useState<Texts>(empty), [original, setOriginal] = useState<Texts>(empty)
   const [versions, setVersions] = useState<DocumentVersion[]>(), [error, setError] = useState(''), [confirming, setConfirming] = useState(false), [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(!start.id)
   const [chats, setChats] = useState<Chat[]>([]), [resetting, setResetting] = useState<AgentPurpose>()
@@ -80,7 +80,7 @@ export function CardEditor({ projectId, sources, profiles, draft: start, close, 
   }
   const showVersions = async (): Promise<void> => { if (d.id) setVersions(await window.agentboard.invoke('cards:document-versions', { cardId: d.id, kind })) }
   const agentOptions = () => profiles.map((item) => ({ value: item.id, label: item.label, icon: <AgentIcon profile={item} tip={false} />, sub: item.provider === 'codex' ? 'Codex' : 'Claude' }))
-  const stepTitle: Record<AgentPurpose, string> = { planning: 'Planejamento', execution: 'Execução · responsável', test: 'Teste · responsável' }
+  const stepTitle: Record<AgentPurpose, string> = { planning: 'Planejamento', execution: 'Execução', test: 'Teste' }
   const agentField = (purpose: AgentPurpose, state: typeof planAgent): React.JSX.Element => {
     const profile = profiles.find((item) => item.id === state.config?.profileId)
     const modes = profile ? permissionModes[profile.provider].filter((item) => item.purposes.includes('execution')) : []
@@ -92,7 +92,21 @@ export function CardEditor({ projectId, sources, profiles, draft: start, close, 
       {purpose !== 'planning' && profile && <div className="f"><span>{purpose === 'test' ? 'Modo do teste' : 'Modo de execução'}</span><Select label="Modo" up options={modes.map((item) => ({ value: item.id, label: item.label, sub: item.recommended ? 'Recomendado' : item.needsApprovalUi ? 'em breve' : '', disabled: item.needsApprovalUi }))} value={state.config?.mode ?? ''} onChange={(value) => void state.update({ mode: value as never })} /></div>}
     </div>
   }
-  const section = (purpose: AgentPurpose, state: typeof planAgent): React.JSX.Element => <div className="sep"><div className="sechead"><span className="sectitle">{stepTitle[purpose]}</span>{d.id && openChat && <button type="button" className="ibtn tip" data-tip={chatOf(purpose) ? 'Abrir o chat desta etapa' : 'Abrir chat (ainda sem conversa)'} aria-label={`Abrir chat de ${stepTitle[purpose]}`} onClick={() => openChat(purpose)}><ChatIcon /></button>}</div>{agentField(purpose, state)}</div>
+  const [openSec, setOpenSec] = useState<Partial<Record<AgentPurpose, boolean>>>({})
+  const startLabel: Record<'execution' | 'test', string> = { execution: 'Iniciar execução', test: 'Iniciar teste' }
+  // Planejamento sempre aparece; execução e teste só depois de iniciados (antes disso é um botão que escolhe o agente e já começa).
+  const section = (purpose: AgentPurpose, state: typeof planAgent): React.JSX.Element | null => {
+    const chat = chatOf(purpose), profile = profiles.find((item) => item.id === state.config?.profileId)
+    const chatButton = d.id && openChat && <button type="button" className="ibtn tip" data-tip={chat ? 'Abrir o chat desta etapa' : 'Abrir chat (ainda sem conversa)'} aria-label={`Abrir chat de ${stepTitle[purpose]}`} onClick={() => openChat(purpose)}><ChatIcon /></button>
+    if (purpose !== 'planning' && !chat) {
+      if (!d.id || !onStart) return null
+      return <div className="sep"><div className="sechead"><span className="sectitle">{stepTitle[purpose]}</span></div><button type="button" className="mini startsec" onClick={() => onStart(purpose as 'execution' | 'test')}>{startLabel[purpose as 'execution' | 'test']}</button></div>
+    }
+    const expanded = openSec[purpose] ?? !d.id
+    const model = state.options?.models.find((item) => item.id === state.config?.model)
+    const preview = [profile?.label, model?.label ?? state.config?.model ?? 'Modelo padrão', state.config?.effort ? effortLabel[state.config.effort] : ''].filter(Boolean).join(' · ')
+    return <div className={`sep secfold ${expanded ? 'open' : ''}`}><div className="sechead"><button type="button" className="foldbtn" aria-expanded={expanded} onClick={() => setOpenSec({ ...openSec, [purpose]: !expanded })}><span className="chev" aria-hidden="true">›</span><span className="sectitle">{stepTitle[purpose]}</span></button>{chatButton}</div>{!expanded && <button type="button" className="foldprev" onClick={() => setOpenSec({ ...openSec, [purpose]: true })}>{profile && <AgentIcon profile={profile} size="sm" tip={false} />}<span>{preview}</span></button>}{expanded && agentField(purpose, state)}</div>
+  }
   const text = texts[kind]
   return <div className="overlay full"><div className="modal wide" role="dialog" aria-label={d.id ? 'Editar card' : 'Novo card'}>
     <header><div><div className="eyebrow">{d.id ? 'Editar card' : 'Novo card'}</div><h2>{d.title || 'Sem título'}</h2></div><div className="hdr-actions">{d.id && pending && (pending.changes > 0 || pending.questions > 0) && <button type="button" className="mini ask" onClick={onPending}>Autorizar mudanças ({pending.changes + pending.questions})</button>}{d.id && openChat && <button type="button" className="mini secondary openchat" onClick={() => openChat('planning')}><ChatIcon />Abrir chat</button>}<button type="button" className="x" onClick={close} aria-label="Fechar">×</button></div></header>
