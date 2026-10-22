@@ -3,6 +3,8 @@ import type Database from 'better-sqlite3'
 export interface Migration {
   version: number
   checksum: string
+  /** Migração que recria tabelas referenciadas por outras: roda com foreign_keys desligado (fora da transação) e confere as chaves no fim. */
+  disableForeignKeys?: boolean
   up(db: Database.Database): void
 }
 
@@ -340,6 +342,35 @@ export const migrations: readonly Migration[] = [
       // O planejador declara o plano concluído (ferramenta/marcador); antes disso o card só "está em planejamento". Cards antigos com Plano escrito seguem prontos.
       db.exec(`ALTER TABLE cards ADD COLUMN plan_ready_at TEXT;
         UPDATE cards SET plan_ready_at = datetime('now') WHERE EXISTS (SELECT 1 FROM card_documents d WHERE d.card_id = cards.id AND d.kind = 'plano' AND length(trim(d.content_md)) > 0);`)
+    }
+  },
+  {
+    version: 15,
+    checksum: 'sha256:agentboard-free-chat-v15-2026-10-21',
+    disableForeignKeys: true,
+    up(db) {
+      // Chat livre: conversa sem card. runs.card_id passa a aceitar NULL (recriação da tabela, mantendo run_events/test_runs/approvals) e o chat ganha um título.
+      db.exec(`
+        CREATE TABLE runs_new (
+          id TEXT PRIMARY KEY, card_id TEXT REFERENCES cards(id) ON DELETE CASCADE,
+          chat_id TEXT NOT NULL REFERENCES chats(id), profile_id TEXT NOT NULL REFERENCES agent_profiles(id),
+          status TEXT NOT NULL, started_at TEXT NOT NULL, ended_at TEXT, exit_reason TEXT,
+          worktree_id TEXT REFERENCES worktrees(id), provider_turn_id TEXT
+        );
+        INSERT INTO runs_new SELECT id, card_id, chat_id, profile_id, status, started_at, ended_at, exit_reason, worktree_id, provider_turn_id FROM runs;
+        DROP TABLE runs;
+        ALTER TABLE runs_new RENAME TO runs;
+        CREATE INDEX idx_runs_card ON runs(card_id, started_at);
+        ALTER TABLE chats ADD COLUMN title TEXT;
+      `)
+    }
+  },
+  {
+    version: 16,
+    checksum: 'sha256:agentboard-profile-removed-v16-2026-10-21',
+    up(db) {
+      // Remover um agente com histórico só o desativa: some das listas e não executa mais, mas os cards e chats seguem mostrando quem executou.
+      db.exec('ALTER TABLE agent_profiles ADD COLUMN removed_at TEXT;')
     }
   }
 ]

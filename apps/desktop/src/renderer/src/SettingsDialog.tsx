@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { agentColorPalette, defaultAgentColor, type AgentProbe, type AgentProfile, type AppLanguage, type AppSettings, type AppTheme, type VoiceModel } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
+import { NoticeDialog, plainError } from './NoticeDialog'
 import { SkillsPanel } from './SkillsPanel'
 
 const themes: ReadonlyArray<{ value: AppTheme; label: string; swatches: [string, string, string] }> = [
@@ -42,7 +43,15 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
     const created = await window.agentboard.invoke('profiles:create', { provider, label: label.trim() || (provider === 'codex' ? 'Meu Codex' : 'Meu Claude'), scope: scope.trim() || 'Pessoal', useExistingSession: existing, color })
     setCreatedHere(true); setPending(created); await checkAccount(created)
   }
-  const remove = async (): Promise<void> => { if (!profile) return; await window.agentboard.invoke('profiles:delete', { profileId: profile.id }); await changed(); close() }
+  const [notice, setNotice] = useState<{ title: string; text: string; after?: boolean }>()
+  const remove = async (): Promise<void> => {
+    if (!profile) return
+    try {
+      const result = await window.agentboard.invoke('profiles:delete', { profileId: profile.id }); await changed()
+      if (result.archived) setNotice({ title: 'Agente removido', text: `${profile.label} saiu da sua lista e não pode mais ser usado. Como ele já trabalhou em cards e chats, o histórico foi mantido: nesses lugares ele aparece como desativado, só para consulta.`, after: true })
+      else close()
+    } catch (reason) { setNotice({ title: 'Não foi possível remover o agente', text: plainError(reason) }) }
+  }
   const preview = { provider, label: label || 'Novo agente', color }
   return <div className="overlay top"><div className="modal" style={{ width: 'min(460px,100%)' }}>
     <header><div><div className="eyebrow">Agente</div><h2>{profile ? 'Editar agente' : 'Novo agente'}</h2></div><button className="x" onClick={() => void cancel()} aria-label="Fechar">×</button></header>
@@ -61,6 +70,7 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
     </div>
     <div className="actions">{profile && <button type="button" className="danger" style={{ marginRight: 'auto' }} disabled={busy} onClick={() => setRemoving(true)}>Remover</button>}<button type="button" className="secondary" onClick={() => void cancel()}>{pending ? 'Cancelar cadastro' : 'Cancelar'}</button>{!pending && (profile || installed) && <button type="button" disabled={busy} onClick={() => void run(save)}>{profile ? 'Salvar' : 'Continuar para conta'}</button>}</div>
     {removing && profile && <div className="overlay top"><div className="modal" style={{ width: 'min(430px,100%)' }}><header><div><div className="eyebrow">Agente</div><h2>Remover {profile.label}?</h2></div></header><p style={{ fontSize: 13, lineHeight: 1.5, color: '#cbd3cd' }}>O agente sai da lista. Agentes com conversas, planos ou execuções salvos não podem ser removidos.</p><div className="actions"><button className="secondary" onClick={() => setRemoving(false)}>Cancelar</button><button className="danger solid" onClick={() => { setRemoving(false); void run(remove) }}>Remover</button></div></div></div>}
+    {notice && <NoticeDialog eyebrow="Agente" title={notice.title} text={notice.text} close={() => { const after = notice.after; setNotice(undefined); if (after) close() }} />}
   </div></div>
 }
 const item = (provider: 'codex' | 'claude'): string => (provider === 'codex' ? 'Codex' : 'Claude')

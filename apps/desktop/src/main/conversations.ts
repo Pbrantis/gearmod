@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentPurpose, Chat, ChatMessage, Plan, Run, RunEvent } from '@agentboard/contracts'
+import type { AgentPurpose, Chat, ChatPurpose, ChatMessage, Plan, Run, RunEvent } from '@agentboard/contracts'
 import type { AgentProfile } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 
-type ChatRow = Omit<Chat, 'skill'> & { skillName: string | null; skillPath: string | null }
-const toChat = ({ skillName, skillPath, ...chat }: ChatRow): Chat => ({ ...chat, skill: skillName && skillPath ? { name: skillName, path: skillPath } : null })
+type ChatRow = Omit<Chat, 'skill' | 'busy'> & { skillName: string | null; skillPath: string | null; busy?: number }
+const toChat = ({ skillName, skillPath, busy, ...chat }: ChatRow): Chat => ({ ...chat, busy: Boolean(busy), skill: skillName && skillPath ? { name: skillName, path: skillPath } : null })
 
 export class ConversationRepository {
   constructor(private readonly database: AppDatabase) {}
@@ -13,7 +13,7 @@ export class ConversationRepository {
     const where = cardId === undefined ? 'project_id = ?' : cardId === null ? 'project_id = ? AND card_id IS NULL' : 'project_id = ? AND card_id = ?'
     const args = cardId === undefined || cardId === null ? [projectId] : [projectId, cardId]
     return this.database.db.prepare(`SELECT id, project_id AS projectId, card_id AS cardId, purpose, provider, profile_id AS profileId,
-      provider_session_id AS providerSessionId, skill_name AS skillName, skill_path AS skillPath, created_at AS createdAt, updated_at AS updatedAt FROM chats WHERE ${where} ORDER BY updated_at DESC`).all(...args)
+      provider_session_id AS providerSessionId, skill_name AS skillName, skill_path AS skillPath, title, EXISTS (SELECT 1 FROM runs r WHERE r.chat_id = chats.id AND r.status IN ('queued', 'running')) AS busy, created_at AS createdAt, updated_at AS updatedAt FROM chats WHERE ${where} ORDER BY updated_at DESC`).all(...args)
       .map((row) => toChat(row as ChatRow))
   }
 
@@ -30,9 +30,10 @@ export class ConversationRepository {
     return this.listChats(chat.projectId, chat.cardId).find((item) => item.id === chatId)!
   }
 
-  createChat(input: { projectId: string; cardId: string | null; purpose: AgentPurpose; profileId: string; skill?: { name: string; path: string } | null }): Chat {
+  createChat(input: { projectId: string; cardId: string | null; purpose: ChatPurpose; profileId: string; skill?: { name: string; path: string } | null }): Chat {
     const allowed = this.database.db.prepare('SELECT ap.provider FROM project_agent_profiles pap JOIN agent_profiles ap ON ap.id = pap.profile_id WHERE pap.project_id = ? AND pap.profile_id = ? AND pap.allowed = 1 AND ap.enabled = 1').get(input.projectId, input.profileId) as { provider: 'codex' | 'claude' } | undefined
     if (!allowed) throw new Error('Perfil não permitido para este projeto')
+    if (input.purpose === 'free' ? input.cardId !== null : input.cardId === null) throw new Error(input.purpose === 'free' ? 'O chat livre não tem card' : 'Este chat precisa de um card')
     if (input.cardId && !this.database.db.prepare('SELECT 1 FROM cards WHERE id = ? AND project_id = ?').get(input.cardId, input.projectId)) throw new Error('Card não pertence ao projeto')
     const id = randomUUID(), now = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO chats(id, project_id, card_id, purpose, provider, profile_id, created_at, updated_at)
@@ -54,8 +55,10 @@ export class ConversationRepository {
     return this.listMessages(input.chatId).find((message) => message.id === id)!
   }
 
-  createRun(input: { cardId: string; chatId: string; profileId: string }): Run {
-    const valid = this.database.db.prepare(`SELECT 1 FROM chats c JOIN cards k ON k.id = ? WHERE c.id = ? AND c.card_id = k.id AND c.profile_id = ?`).get(input.cardId, input.chatId, input.profileId)
+  createRun(input: { cardId: string | null; chatId: string; profileId: string }): Run {
+    const valid = input.cardId === null
+      ? this.database.db.prepare(`SELECT 1 FROM chats WHERE id = ? AND card_id IS NULL AND purpose = 'free' AND profile_id = ?`).get(input.chatId, input.profileId)
+      : this.database.db.prepare(`SELECT 1 FROM chats c JOIN cards k ON k.id = ? WHERE c.id = ? AND c.card_id = k.id AND c.profile_id = ?`).get(input.cardId, input.chatId, input.profileId)
     if (!valid) throw new Error('Run não corresponde ao card, chat e perfil')
     const id = randomUUID(), startedAt = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO runs(id, card_id, chat_id, profile_id, status, started_at) VALUES (?, ?, ?, ?, 'queued', ?)`).run(id, input.cardId, input.chatId, input.profileId, startedAt)
@@ -69,15 +72,30 @@ export class ConversationRepository {
     return event
   }
 
-  context(chatId: string): { chat: Chat; cardId: string; projectPath: string; profile: AgentProfile } {
+  context(chatId: string): { chat: Chat; cardId: string | null; projectPath: string; profile: AgentProfile } {
     const row = this.database.db.prepare(`SELECT c.id, c.project_id AS projectId, c.card_id AS cardId, c.purpose, c.provider,
-      c.profile_id AS profileId, c.provider_session_id AS providerSessionId, c.skill_name AS skillName, c.skill_path AS skillPath, c.created_at AS createdAt, c.updated_at AS updatedAt,
+      c.profile_id AS profileId, c.provider_session_id AS providerSessionId, c.skill_name AS skillName, c.skill_path AS skillPath, c.title, c.created_at AS createdAt, c.updated_at AS updatedAt,
       p.local_path AS projectPath, ap.label, ap.scope, ap.color, ap.config_dir AS configDir, ap.executable_path AS executablePath, ap.enabled
       FROM chats c JOIN projects p ON p.id = c.project_id JOIN agent_profiles ap ON ap.id = c.profile_id WHERE c.id = ?`).get(chatId) as (ChatRow & { projectPath: string; label: string; scope: string; color: string; configDir: string; executablePath: string | null; enabled: number }) | undefined
-    if (!row?.cardId) throw new Error('A execução exige um chat associado a um card')
+    if (!row) throw new Error('Chat não encontrado')
+    if (!row.cardId && row.purpose !== 'free') throw new Error('A execução exige um chat associado a um card')
     const { projectPath, label, scope, color, configDir, executablePath, enabled, ...rest } = row
     const chat = toChat(rest)
-    return { chat, cardId: row.cardId, projectPath, profile: { id: row.profileId, provider: row.provider, label, scope, color, configDir, executablePath, enabled: Boolean(enabled) } }
+    return { chat, cardId: row.cardId ?? null, projectPath, profile: { id: row.profileId, provider: row.provider, label, scope, color, configDir, executablePath, enabled: Boolean(enabled) } }
+  }
+
+  /** Título do chat livre (primeiro pedido), só se ainda não tiver. */
+  setTitleIfEmpty(chatId: string, title: string): void {
+    this.database.db.prepare("UPDATE chats SET title = ? WHERE id = ? AND (title IS NULL OR title = '')").run(title.slice(0, 120), chatId)
+  }
+
+  /** O chat livre virou planejamento de um card novo: passa a ser o chat de planejamento dele, com o histórico e a sessão do agente. */
+  convertToPlanning(chatId: string, cardId: string): void {
+    this.database.db.transaction(() => {
+      const converted = this.database.db.prepare("UPDATE chats SET card_id = ?, purpose = 'planning', updated_at = ? WHERE id = ? AND purpose = 'free'").run(cardId, new Date().toISOString(), chatId)
+      if (!converted.changes) throw new Error('Só um chat livre pode virar planejamento')
+      this.database.db.prepare('UPDATE runs SET card_id = ? WHERE chat_id = ?').run(cardId, chatId)
+    })()
   }
 
   updateSession(chatId: string, providerSessionId: string): void {

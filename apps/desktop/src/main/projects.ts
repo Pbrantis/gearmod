@@ -85,23 +85,39 @@ export class ProfileRepository {
     return this.get(input.profileId)
   }
 
-  delete(id: string): boolean {
+  /**
+   * Remove o agente. Sem histórico, apaga de vez; com conversas, planos ou execuções, só desativa (`archived`): ele sai das listas e dos
+   * projetos e não executa mais, mas continua aparecendo como "desativado" nos cards onde trabalhou. Com execução em andamento, recusa.
+   */
+  delete(id: string): { deleted: boolean; archived: boolean } {
     this.get(id)
+    const running = this.database.db.prepare(`SELECT COALESCE(k.title, '') AS title FROM runs r LEFT JOIN cards k ON k.id = r.card_id WHERE r.profile_id = ? AND r.status IN ('queued', 'running')`).all(id) as Array<{ title: string }>
+    if (running.length) throw new Error(`Este agente está executando agora (${running.map((item) => `“${item.title || 'chat livre'}”`).join(', ')}). Pare a execução antes de remover o agente.`)
     const references = ['plans', 'chats', 'runs'].some((table) => {
       const column = table === 'plans' ? 'agent_profile_id' : 'profile_id'
       return Boolean(this.database.db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id))
     })
-    if (references) throw new Error('Este agente possui conversas, planos ou execuções salvos e não pode ser excluído')
     return this.database.db.transaction(() => {
       this.database.db.prepare('DELETE FROM project_agent_profiles WHERE profile_id = ?').run(id)
       this.database.db.prepare('DELETE FROM card_agent_settings WHERE profile_id = ?').run(id)
-      return this.database.db.prepare('DELETE FROM agent_profiles WHERE id = ?').run(id).changes > 0
+      if (references) {
+        this.database.db.prepare('UPDATE agent_profiles SET enabled = 0, removed_at = ?, updated_at = ? WHERE id = ?').run(new Date().toISOString(), new Date().toISOString(), id)
+        return { deleted: true, archived: true }
+      }
+      return { deleted: this.database.db.prepare('DELETE FROM agent_profiles WHERE id = ?').run(id).changes > 0, archived: false }
     })()
+  }
+
+  /** Agentes removidos (desativados) que ainda têm histórico; só para mostrar quem executou. */
+  removed(): AgentProfile[] {
+    return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
+      executable_path AS executablePath FROM agent_profiles WHERE removed_at IS NOT NULL ORDER BY created_at`).all()
+      .map((row) => ({ ...(row as Omit<AgentProfile, 'enabled'>), enabled: false }))
   }
 
   list(): AgentProfile[] {
     return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
-      executable_path AS executablePath, enabled FROM agent_profiles WHERE enabled = 1 ORDER BY created_at`).all()
+      executable_path AS executablePath, enabled FROM agent_profiles WHERE enabled = 1 AND removed_at IS NULL ORDER BY created_at`).all()
       .map((row) => ({ ...(row as Omit<AgentProfile, 'enabled'> & { enabled: number }), enabled: Boolean((row as { enabled: number }).enabled) }))
   }
 
@@ -223,7 +239,7 @@ export class BoardRepository {
   card(cardId: string): Card {
     const row = this.database.db.prepare(`SELECT id, project_id AS projectId, column_id AS columnId, source_id AS sourceId, type, title, description,
       priority, order_key AS orderKey, created_at AS createdAt, updated_at AS updatedAt, archived_at AS archivedAt
-      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run' | 'hasPlan' | 'planningOpen' | 'pending' | 'execProfileId' | 'execModel'> | undefined
+      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run' | 'hasPlan' | 'planningOpen' | 'workspace' | 'pending' | 'execProfileId' | 'execModel'> | undefined
     if (!row) throw new Error('Card não encontrado')
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
@@ -232,7 +248,9 @@ export class BoardRepository {
     // Planejamento aberto: começou a planejar (card sem título ou com chat de planejamento) e ainda não saiu nada dele.
     const hasPlanningChat = Boolean(this.database.db.prepare("SELECT 1 FROM chats WHERE card_id = ? AND purpose = 'planning' LIMIT 1").get(cardId))
     const planningOpen = run.state === 'idle' && !hasPlan && tasks.total === 0 && !row.description.trim() && !this.documents.read(cardId, 'especificacao').trim() && (!row.title.trim() || hasPlanningChat)
-    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, pending: this.pendingCounts(cardId), ...this.execSettings(cardId) }
+    // Branch e worktree em que o card trabalha (a mais recente ativa), para mostrar no card.
+    const workspace = (this.database.db.prepare("SELECT branch, base_ref AS baseRef, path FROM worktrees WHERE card_id = ? AND cleanup_state = 'active' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(cardId) as { branch: string; baseRef: string; path: string } | undefined) ?? null
+    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace, pending: this.pendingCounts(cardId), ...this.execSettings(cardId) }
   }
 
   private pendingCounts(cardId: string): { changes: number; questions: number } {

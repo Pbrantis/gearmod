@@ -44,7 +44,7 @@ const agentConfigs = new AgentConfigRepository(database, board, profiles, (profi
 const usage = new UsageService(database, profiles, (profile) => probeClaudeLimits(profile))
 const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
 const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/card-updated', payload: { cardId, type: 'document' } })))
-const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab })
+const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations })
 const writeback = new AgentWriteback(board, mcpBridge)
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))

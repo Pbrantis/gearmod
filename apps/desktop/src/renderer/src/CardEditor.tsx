@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { cardDocumentKinds, permissionModes, defaultPermissionMode, type AgentProfile, type AgentPurpose, type Card, type Chat, type CardDocumentKind, type CardDocuments, type DocumentVersion, type ProjectSource } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
-import { ChatIcon, EyeIcon, PencilIcon, SplitIcon } from './icons'
+import { BranchIcon, ChatIcon, EyeIcon, PencilIcon, SplitIcon } from './icons'
 import { Markdown } from './markdown'
 import { ModelMenu, effortLabel, useAgentConfig } from './ModelMenu'
 import { Select } from './Select'
@@ -30,6 +30,8 @@ const topLevel = (markdown: string): { done: number; total: number } => { const 
 
 /** Editor do card (protótipo): dados e agentes à esquerda, documento Markdown no meio e a lista dos 4 documentos à direita. */
 export function CardEditor({ projectId, sources, profiles, draft: start, close, saved, openChat, onStart, pending, onPending }: { projectId: string; sources: ProjectSource[]; profiles: AgentProfile[]; pending?: { changes: number; questions: number }; onPending?(): void; draft: Draft; close(): void; saved(): void; openChat?(purpose: AgentPurpose): void; onStart?(purpose: 'execution' | 'test'): void }): React.JSX.Element {
+  const [workspace, setWorkspace] = useState<Card['workspace']>(null)
+  useEffect(() => { if (start.id) void window.agentboard.invoke('cards:get', { cardId: start.id }).then((card) => setWorkspace(card.workspace)).catch(() => undefined) }, [start.id])
   const [d, set] = useState(start), [kind, setKind] = useState<CardDocumentKind>('resumo'), [mode, setMode] = useState<Mode>('write'), [texts, setTexts] = useState<Texts>(empty), [original, setOriginal] = useState<Texts>(empty)
   const [versions, setVersions] = useState<DocumentVersion[]>(), [error, setError] = useState(''), [confirming, setConfirming] = useState(false), [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(!start.id)
   const [chats, setChats] = useState<Chat[]>([]), [resetting, setResetting] = useState<AgentPurpose>()
@@ -116,6 +118,7 @@ export function CardEditor({ projectId, sources, profiles, draft: start, close, 
           <label className="f">Título<input className="in" style={{ fontWeight: 600 }} value={d.title} onChange={(e) => set({ ...d, title: e.target.value })} required /></label>
           <div className="f"><span>Tipo</span><Select label="Tipo" options={types} value={d.type} onChange={(value) => set({ ...d, type: value as Card['type'] })} /></div>
           <div className="f"><span>Prioridade</span><Select label="Prioridade" options={priorities} value={d.priority} onChange={(value) => set({ ...d, priority: value as Card['priority'] })} /></div>
+          {d.id && workspace && <div className="f"><span>Branch e worktree</span><div className="wsbox"><div><BranchIcon /><b>{workspace.branch}</b><small>base {workspace.baseRef}</small></div><small title={workspace.path}>Worktree: {workspace.path}</small></div></div>}
           {gitSources.length > 1 && <div className="f"><span>Repositório</span><Select label="Repositório" options={gitSources.map((source) => ({ value: source.id, label: source.name, sub: source.currentBranch ?? '' }))} value={d.sourceId ?? gitSources[0]!.id} onChange={(value) => set({ ...d, sourceId: value })} /></div>}
           {profiles.length > 0 && <>{section('planning', planAgent)}{section('execution', execAgent)}{section('test', testAgent)}</>}
           {gitSources.length === 0 && <p className="hint">Este projeto não possui Git. O planejamento funciona normalmente; a execução com worktree exige um repositório.</p>}

@@ -1,4 +1,4 @@
-import type { AgentPurpose, CardDocumentKind } from '@agentboard/contracts'
+import type { CardDocumentKind, ChatPurpose } from '@agentboard/contracts'
 import { extractDocuments, type McpBridge, type McpEndpoint } from './mcp-bridge'
 import type { BoardRepository } from './projects'
 
@@ -18,13 +18,14 @@ export function titleFromPrompt(prompt: string): string {
 export class AgentWriteback {
   constructor(private readonly board: BoardRepository, private readonly bridge: McpBridge) {}
 
-  begin(runId: string, cardId: string, publish: Publish, chat?: { id: string; purpose: AgentPurpose }): McpEndpoint {
+  begin(runId: string, cardId: string | null, publish: Publish, chat?: { id: string; purpose: ChatPurpose }): McpEndpoint {
     return this.bridge.register(runId, cardId, (change) => publish('agentboard/card-updated', { cardId, ...change }), chat)
   }
 
   /** Devolve avisos (em português) para mostrar no chat quando algo não pôde ser aplicado. */
-  finish(input: { runId: string; cardId: string; planning: boolean; completed: boolean; text: string; prompt?: string; publish: Publish }): { notices: string[]; wroteDocuments: boolean } {
+  finish(input: { runId: string; cardId: string | null; planning: boolean; completed: boolean; text: string; prompt?: string; publish: Publish }): { notices: string[]; wroteDocuments: boolean } {
     const report = this.bridge.finish(input.runId), notices: string[] = []
+    if (!input.cardId) return { notices, wroteDocuments: false }
     const written = new Set<CardDocumentKind>(report.written)
     if (input.completed) {
       for (const document of extractDocuments(input.text)) {

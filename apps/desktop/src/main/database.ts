@@ -51,6 +51,8 @@ export class AppDatabase {
   private applyPending(currentVersion: number): void {
     const pending = this.migrationSet.filter((item) => item.version > currentVersion)
     if (pending.length === 0) return
+    const rebuilds = pending.some((item) => item.disableForeignKeys)
+    if (rebuilds) this.db.pragma('foreign_keys = OFF')
     const migrate = this.db.transaction(() => {
       for (const migration of pending) {
         const existing = this.db.prepare('SELECT checksum FROM schema_migrations WHERE version = ?').get(migration.version) as { checksum: string } | undefined
@@ -62,8 +64,12 @@ export class AppDatabase {
         this.db.prepare('INSERT INTO schema_migrations(version, applied_at, app_version, checksum) VALUES (?, ?, ?, ?)')
           .run(migration.version, new Date().toISOString(), this.appVersion, migration.checksum)
       }
+      if (rebuilds) {
+        const broken = this.db.pragma('foreign_key_check') as unknown[]
+        if (broken.length) throw new Error(`Migração deixou chaves estrangeiras inválidas (${broken.length})`)
+      }
     })
-    migrate()
+    try { migrate() } finally { if (rebuilds) this.db.pragma('foreign_keys = ON') }
   }
 
   close(): void {

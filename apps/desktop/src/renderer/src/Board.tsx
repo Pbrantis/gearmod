@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from 'react'
-import type { AgentProfile, AgentPurpose, Card, ProjectBoard } from '@agentboard/contracts'
+import type { AgentProfile, AgentPurpose, Card, Chat, ProjectBoard } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
 import { CardChat } from './CardChat'
+import { ChatsPanel } from './ChatsPanel'
+import { worktreeName } from './workspace'
+import { FreeChat } from './FreeChat'
 import { blankDraft, CardEditor, type Draft } from './CardEditor'
 import { ConfirmDialog } from './ConfirmDialog'
-import { ArchiveIcon, ChatIcon, EyeIcon, FolderGlyph, PlayIcon, SparkIcon, StopIcon } from './icons'
+import { ArchiveIcon, BranchIcon, ChatIcon, EyeIcon, FolderGlyph, PlayIcon, SparkIcon, StopIcon } from './icons'
 import { NewCardDialog } from './NewCardDialog'
 import { PendingDialog } from './PendingDialog'
 import { NoAgentDialog } from './ProjectDialogs'
@@ -41,6 +44,7 @@ function CardTile({ card, state, agent, dropLabel, dragProps, onPending, onOpen,
     {run === 'paused' && <span className="badge paused"><span className="dot" />Pausado</span>}
     {run === 'finished' && <span className="badge fin"><span className="dot pulse" />Terminou · clique para ver</span>}
     {run === 'running' && <div className="running" data-purpose={card.run.purpose} role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onChat() }} onKeyDown={(e) => { if (e.key === 'Enter') onChat() }}><div className="row"><span className="spin" />{agent && <AgentIcon profile={agent} />}<span style={{ color: '#8d968f' }}>{card.execModel ?? ''}</span></div><div className="bar"><i /></div><span style={{ fontSize: 11, color: 'var(--accent)' }}>{card.run.purpose === 'test' ? 'Testando · toque para ver' : 'Toque para ver execução'}</span></div>}
+    {card.workspace && <div className="wsline tip" data-tip={`Worktree: ${card.workspace.path}\nBranch base: ${card.workspace.baseRef}`}><div className="wsb"><BranchIcon /><b>{card.workspace.branch}</b></div><small>Worktree: {worktreeName(card.workspace.path)}</small></div>}
     <div className="cfoot">
       <span className="ownr">{agent && run !== 'running' && <span className="agentchip"><AgentIcon profile={agent} /></span>}{!open && <span className="cnt">{total ? `${done}/${total} tasks` : 'sem tasks'}</span>}</span>
       <div className="btns">
@@ -57,12 +61,20 @@ function CardTile({ card, state, agent, dropLabel, dragProps, onPending, onOpen,
   </article>
 }
 
-export function Board({ board, profiles, refresh, onProjectConfig, openSettings }: { board: ProjectBoard; profiles: AgentProfile[]; refresh(): Promise<void>; onProjectConfig(): void; openSettings(): void }): React.JSX.Element {
+export function Board({ board, profiles, history, refresh, onProjectConfig, openSettings, chatsOpen, closeChats }: { board: ProjectBoard; profiles: AgentProfile[]; history: AgentProfile[]; refresh(): Promise<void>; onProjectConfig(): void; openSettings(): void; chatsOpen: boolean; closeChats(): void }): React.JSX.Element {
   const [draft, setDraft] = useState<Draft>(), [chatCard, setChatCardState] = useState<Card>(), [chatPurpose, setChatPurpose] = useState<AgentPurpose>('planning'), [starting, setStartingState] = useState<{ card: Card; purpose: 'execution' | 'test' }>(), [choosing, setChoosing] = useState<string>(), [stopping, setStopping] = useState<Card>(), [pendingCard, setPendingCard] = useState<Card>()
   const [dragId, setDragId] = useState<string>(), [dropOn, setDropOn] = useState<string>(), [overColumn, setOverColumn] = useState<string>(), [toast, setToast] = useState('')
   const allowed = profiles.filter((profile) => board.project.allowedProfileIds.includes(profile.id))
   const active = board.cards.filter((card) => !card.archivedAt), archived = board.cards.filter((card) => card.archivedAt)
-  const setChatCard = (card: Card | undefined, purpose?: AgentPurpose): void => { setChatCardState(card); if (card) setChatPurpose(purpose ?? chatMode(board, card)) }
+  const [freeChat, setFreeChat] = useState<{ chat?: Chat; key: number }>(), [openAfterRefresh, setOpenAfterRefresh] = useState<string>()
+  const setChatCard = (card: Card | undefined, purpose?: AgentPurpose): void => { setChatCardState(card); if (card) { setFreeChat(undefined); setChatPurpose(purpose ?? chatMode(board, card)) } }
+  const openFree = (chat?: Chat): void => { setChatCardState(undefined); setFreeChat({ chat, key: Date.now() }); closeChats() }
+  // O chat livre virou planejamento de um card novo: espera o quadro atualizar e abre o chat do card (o mesmo chat, agora de planejamento).
+  useEffect(() => {
+    if (!openAfterRefresh) return
+    const card = board.cards.find((item) => item.id === openAfterRefresh)
+    if (card) { setOpenAfterRefresh(undefined); setChatCard(card, 'planning') }
+  }, [openAfterRefresh, board.cards])
   const say = (text: string): void => { setToast(text); window.setTimeout(() => setToast(''), 2600) }
   useEffect(() => window.agentboard.onRunEvent((event) => {
     if (!['agentboard/card-updated', 'agentboard/run-started', 'agentboard/run-completed'].includes(event.eventType)) return
@@ -96,7 +108,7 @@ export function Board({ board, profiles, refresh, onProjectConfig, openSettings 
       const cards = active.filter((card) => card.columnId === column.id)
       return <section className={`col ${overColumn === column.id ? 'over' : ''}`} key={column.id} onDragOver={(e) => { e.preventDefault(); setOverColumn(column.id) }} onDragLeave={() => setOverColumn(undefined)} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('card'); clear(); if (id) void move(id, column.id, null) }}>
         <header>{column.label}<span className="colTools"><button type="button" className="colAdd tip" data-tip="Adicionar card" aria-label={`Adicionar card em ${column.label}`} onClick={() => setChoosing(column.id)}>+</button><b>{cards.length}</b></span></header>
-        {cards.map((card) => <CardTile key={card.id} card={card} state={column.semanticState} agent={profiles.find((profile) => profile.id === (card.run.profileId ?? card.execProfileId))} dropLabel={dropOn === card.id ? dropLabel(card) : undefined}
+        {cards.map((card) => <CardTile key={card.id} card={card} state={column.semanticState} agent={history.find((profile) => profile.id === (card.run.profileId ?? card.execProfileId))} dropLabel={dropOn === card.id ? dropLabel(card) : undefined}
           onPending={() => setPendingCard(card)} onOpen={() => setDraft(edit(card))} onChat={() => setChatCard(card)} onPlan={() => setChatCard(card)} onStart={() => setStartingState({ card, purpose: 'execution' })} onTest={() => setStartingState({ card, purpose: 'test' })} onStop={() => setStopping(card)}
           onResume={() => void window.agentboard.invoke('cards:resume', { cardId: card.id, purpose: card.run.purpose === 'test' ? 'test' : card.run.purpose === 'execution' ? 'execution' : undefined }).then(refresh).catch((reason: unknown) => say(String(reason).replace(/^Error: /, '')))}
           onArchive={() => void window.agentboard.invoke('cards:archive', { cardId: card.id }).then(() => { say('Card arquivado'); return refresh() })}
@@ -113,6 +125,9 @@ export function Board({ board, profiles, refresh, onProjectConfig, openSettings 
     {toast && <div className="toast" role="status">{toast}</div>}
     </main>
     {chatCard && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setChatCard(undefined)} allowed={() => void refresh()} openSettings={() => { setChatCard(undefined); openSettings() }} />}
-    {chatCard && allowed.length > 0 && <CardChat key={`${chatCard.id}-${chatPurpose}`} project={board.project} card={fresh(chatCard)} board={board} profiles={profiles} columnLabel={columnLabel(chatCard)} mode={chatPurpose} onSwitch={setChatPurpose} close={() => setChatCard(undefined)} openEdit={(card) => setDraft(edit(card))} />}
+    {chatsOpen && <ChatsPanel board={board} close={closeChats} openCard={(card, purpose) => { closeChats(); setChatCard(card, purpose) }} openFree={openFree} />}
+    {freeChat && allowed.length > 0 && <FreeChat key={freeChat.key} project={board.project} profiles={allowed} chat={freeChat.chat} close={() => setFreeChat(undefined)} changed={() => void refresh()} onConverted={(cardId) => { void refresh().then(() => setOpenAfterRefresh(cardId)) }} />}
+    {freeChat && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setFreeChat(undefined)} allowed={() => void refresh()} openSettings={() => { setFreeChat(undefined); openSettings() }} />}
+    {chatCard && allowed.length > 0 && <CardChat key={`${chatCard.id}-${chatPurpose}`} project={board.project} card={fresh(chatCard)} board={board} profiles={history} columnLabel={columnLabel(chatCard)} mode={chatPurpose} onSwitch={setChatPurpose} close={() => setChatCard(undefined)} openEdit={(card) => setDraft(edit(card))} />}
   </div>
 }

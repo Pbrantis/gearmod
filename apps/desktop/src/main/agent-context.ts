@@ -35,6 +35,18 @@ export class AgentContextService {
     return `${this.block(cardId)}\n\n${lead}${prompt}`
   }
 
+  /** Chat livre: conversa solta, somente leitura. Se a conversa virar um planejamento, o agente cria o card e passa a planejar. */
+  freePrompt(prompt: string): string {
+    return `<agentboard-contexto>\n${JSON.stringify({ idioma: this.language(), tipo: 'chat-livre', regra: 'Conversa livre: você não altera arquivos nem cards, a não ser pela ferramenta agentboard_criar_card.' }, null, 2)}\n</agentboard-contexto>\n\n${prompt}`
+  }
+
+  /** Instruções fixas do chat livre; no Codex (sem plugin) levam também as skills de planejamento, usadas depois de criar o card. */
+  freeInstructions(withSkills: boolean): string {
+    const base = 'Você está em um chat livre do AgentBoard: converse, tire dúvidas e leia o projeto à vontade, sem alterar arquivos. Quando o usuário pedir para planejar algo (ou a conversa claramente virar um planejamento de tarefa), responda que consegue, chame agentboard_criar_card com um título curto, tipo, prioridade e um resumo, e em seguida planeje neste mesmo chat com a skill agentboard-planejamento (documentos com agentboard_escrever_documento e, no fim, agentboard_concluir_planejamento). Não crie card sem o usuário pedir.'
+    const skills = withSkills && this.pluginDir ? loadSkillInstructions(this.pluginDir, this.language(), true) : undefined
+    return [base, skills].filter(Boolean).join('\n\n---\n\n')
+  }
+
   /** Para agentes sem suporte a plugin (Codex): skills e modelos do idioma, em `developerInstructions`. */
   developerInstructions(planning: boolean, skill?: SkillRef | null): string | undefined {
     const system = this.pluginDir ? loadSkillInstructions(this.pluginDir, this.language(), planning) : undefined

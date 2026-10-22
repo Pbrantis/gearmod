@@ -55,7 +55,7 @@ describe('AgentBoard MCP server', () => {
     const init = await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('agentboard')
     const listed = await client.request('tools/list')
-    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_concluir_planejamento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_responder_duvida', 'agentboard_pedir_ao_usuario', 'agentboard_mover_card'])
+    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_criar_card', 'agentboard_concluir_planejamento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_responder_duvida', 'agentboard_pedir_ao_usuario', 'agentboard_mover_card'])
 
     expect((await client.call('agentboard_contexto_do_card', {})).content[0]!.text).toContain('"titulo": "MCP"')
     const bad = await client.call('agentboard_escrever_documento', { tipo: 'tasks', markdown: 'sem itens' })

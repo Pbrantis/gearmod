@@ -40,10 +40,12 @@ export class VoiceService {
   private get modelsDir(): string { return join(this.deps.dataDir, 'whisper', 'models') }
   private modelPath(model: VoiceModel): string { return join(this.modelsDir, voiceModels[model].file) }
 
-  private engineNames(): string[] { return this.platform === 'win32' ? ['whisper-cli.exe', 'main.exe'] : ['whisper-cli', 'whisper-cpp'] }
+  private engineNames(): string[] { return this.platform === 'win32' ? ['whisper-cli.exe'] : ['whisper-cli', 'whisper-cpp'] }
 
   async findEngine(): Promise<string | null> {
-    for (const name of this.engineNames()) { const local = join(this.binDir, name); if (existsSync(local)) return local }
+    // O pacote do Windows traz o whisper-cli.exe junto das DLLs (e um main.exe obsoleto que só avisa e sai com erro): usa o whisper-cli onde ele estiver.
+    const local = await findFile(this.binDir, this.engineNames()).catch(() => null)
+    if (local) return local
     for (const folder of (this.deps.pathEnv ?? process.env.PATH ?? '').split(delimiter).filter(Boolean)) {
       for (const name of this.engineNames()) { const candidate = join(folder, name); if (existsSync(candidate)) return candidate }
     }
@@ -84,8 +86,7 @@ export class VoiceService {
     await (this.deps.run ?? defaultRun)('tar', ['-xf', zip, '-C', this.binDir], 120_000)
     await rm(zip, { force: true })
     const found = await findFile(this.binDir, this.engineNames())
-    if (!found) throw new Error('O pacote baixado não trouxe o whisper-cli.exe')
-    if (found !== join(this.binDir, found.split(/[\\/]/).pop()!)) await rename(found, join(this.binDir, found.split(/[\\/]/).pop()!)).catch(() => undefined)
+    if (!found) throw new Error('O pacote baixado não trouxe o whisper-cli.exe (só o main.exe obsoleto). Instale o whisper.cpp manualmente.')
   }
 
   private async download(url: string, target: string, item: 'programa' | 'modelo'): Promise<void> {

@@ -3,15 +3,16 @@ import { chmodSync, mkdirSync, rmSync } from 'node:fs'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentPurpose, CardDocumentKind } from '@agentboard/contracts'
+import type { CardDocumentKind, ChatPurpose } from '@agentboard/contracts'
 import { cardDocumentKinds, systemDocumentKinds } from '@agentboard/contracts'
 import type { AgentContextService } from './agent-context'
 import type { CollaborationService } from './collaboration'
+import type { ConversationRepository } from './conversations'
 import type { BoardRepository } from './projects'
 
 export interface McpEndpoint { command: string; args: string[]; env: Record<string, string> }
-export type CardChange = { type: 'document'; kind: CardDocumentKind } | { type: 'task' } | { type: 'moved'; column: string } | { type: 'card' }
-interface RunState { runId: string; cardId: string; chatId: string; purpose: AgentPurpose; written: Set<CardDocumentKind>; pendingMove: string | null; notify(change: CardChange): void }
+export type CardChange = { type: 'document'; kind: CardDocumentKind } | { type: 'task' } | { type: 'moved'; column: string } | { type: 'card' } | { type: 'converted'; cardId: string; chatId: string }
+interface RunState { runId: string; cardId: string | null; chatId: string; purpose: ChatPurpose; written: Set<CardDocumentKind>; pendingMove: string | null; notify(change: CardChange): void }
 export interface RunReport { written: CardDocumentKind[]; pendingMove: string | null }
 type Reply = { ok: true; text: string } | { ok: false; error: string }
 
@@ -27,7 +28,7 @@ export class McpBridge {
   private readonly dir: string
   readonly socketPath: string
 
-  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block'>; serverScript: string; runtime?: string; collab?: CollaborationService }) {
+  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'> }) {
     const id = randomBytes(6).toString('hex')
     this.dir = join(tmpdir(), `agentboard-${id}`)
     this.socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\agentboard-${id}` : join(this.dir, 'mcp.sock')
@@ -56,7 +57,7 @@ export class McpBridge {
     if (process.platform !== 'win32') rmSync(this.dir, { recursive: true, force: true })
   }
 
-  register(runId: string, cardId: string, notify: (change: CardChange) => void, chat: { id: string; purpose: AgentPurpose } = { id: '', purpose: 'execution' }): McpEndpoint {
+  register(runId: string, cardId: string | null, notify: (change: CardChange) => void, chat: { id: string; purpose: ChatPurpose } = { id: '', purpose: 'execution' }): McpEndpoint {
     const token = randomBytes(24).toString('hex')
     this.runs.set(token, { runId, cardId, chatId: chat.id, purpose: chat.purpose, written: new Set(), pendingMove: null, notify })
     return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', AGENTBOARD_SOCKET: this.socketPath, AGENTBOARD_TOKEN: token } }
@@ -76,6 +77,24 @@ export class McpBridge {
     if (!run) return { ok: false, error: 'Execução desconhecida ou já encerrada.' }
     const { board, context } = this.deps
     try {
+      if (tool === 'agentboard_criar_card') {
+        if (run.purpose !== 'free' || run.cardId) return { ok: false, error: 'Esta conversa já tem card.' }
+        if (!this.deps.conversations) return { ok: false, error: 'O chat livre não está disponível' }
+        const title = args.titulo, type = args.tipo ?? 'task', priority = args.prioridade ?? 'medium', summary = args.resumo ?? ''
+        if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo deve ser um texto de 1 a 240 caracteres' }
+        if (!['feature', 'bug', 'improvement', 'task'].includes(String(type))) return { ok: false, error: 'tipo deve ser feature, bug, improvement ou task' }
+        if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade deve ser low, medium, high ou urgent' }
+        if (typeof summary !== 'string') return { ok: false, error: 'resumo deve ser um texto' }
+        const projectId = this.deps.conversations.projectOf(run.chatId), columns = board.get(projectId).columns
+        const column = columns.find((item) => item.semanticState === 'backlog') ?? columns[0]
+        if (!column) return { ok: false, error: 'O projeto não tem colunas' }
+        const card = board.create({ projectId, columnId: column.id, type: String(type), title: title.trim(), description: summary, priority: String(priority), acceptanceCriteria: [] })
+        this.deps.conversations.convertToPlanning(run.chatId, card.id)
+        run.cardId = card.id; run.purpose = 'planning'
+        run.notify({ type: 'converted', cardId: card.id, chatId: run.chatId })
+        return { ok: true, text: `Card "${card.title}" criado no ${column.label}. Este chat agora é o chat de planejamento dele: siga a skill agentboard-planejamento, grave Especificação, Plano e Tasks com agentboard_escrever_documento e chame agentboard_concluir_planejamento quando terminar.` }
+      }
+      if (!run.cardId) return { ok: false, error: 'Esta conversa ainda não tem card. Se o usuário pedir para planejar algo, chame agentboard_criar_card primeiro.' }
       if (tool === 'agentboard_contexto_do_card') return { ok: true, text: context.block(run.cardId) }
       if (tool === 'agentboard_escrever_documento') {
         const kind = args.tipo, markdown = args.markdown
@@ -109,7 +128,7 @@ export class McpBridge {
       }
       if (tool === 'agentboard_propor_mudanca' || tool === 'agentboard_perguntar_ao_planejador') {
         if (!this.deps.collab) return { ok: false, error: 'A colaboração entre etapas não está disponível' }
-        if (run.purpose === 'planning') return { ok: false, error: 'Esta ferramenta é do desenvolvedor e do testador; o planejador altera os documentos direto.' }
+        if (run.purpose === 'planning' || run.purpose === 'free') return { ok: false, error: 'Esta ferramenta é do desenvolvedor e do testador; o planejador altera os documentos direto.' }
         if (tool === 'agentboard_perguntar_ao_planejador') {
           if (typeof args.pergunta !== 'string' || !args.pergunta.trim()) return { ok: false, error: 'informe a pergunta' }
           const question = this.deps.collab.askQuestion({ cardId: run.cardId, chatId: run.chatId, purpose: run.purpose, question: args.pergunta })

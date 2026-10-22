@@ -5,6 +5,7 @@ import type { WorktreeService } from './worktrees'
 import type { AgentContextService } from './agent-context'
 import type { AgentWriteback } from './agent-writeback'
 import type { AgentConfigRepository } from './agent-config'
+import { titleFromPrompt } from './agent-writeback'
 
 type Job = { run: Run; chatId: string; prompt: string; planning: boolean }
 
@@ -18,7 +19,7 @@ export class AgentOrchestrator {
     private readonly emit: (event: { runId: string; eventType: string; payload: Record<string, unknown> }) => void,
     private readonly worktrees: WorktreeService,
     private readonly concurrency = 2,
-    private readonly agentContext?: Pick<AgentContextService, 'prompt' | 'developerInstructions' | 'pluginDir'>,
+    private readonly agentContext?: Pick<AgentContextService, 'prompt' | 'freePrompt' | 'freeInstructions' | 'developerInstructions' | 'pluginDir'>,
     private readonly writeback?: AgentWriteback,
     private readonly configs?: Pick<AgentConfigRepository, 'resolve' | 'recordUse'>,
     private readonly usage?: { recordClaude(profileId: string, payload: Record<string, unknown>): void },
@@ -27,7 +28,11 @@ export class AgentOrchestrator {
 
   start(input: { chatId: string; prompt: string; planning: boolean }): Run {
     const context = this.conversations.context(input.chatId)
-    if (input.planning && context.chat.purpose !== 'planning') throw new Error('Use um chat de planejamento para executar em modo read-only')
+    if (!context.profile.enabled) throw new Error(`O agente ${context.profile.label} foi removido e não pode mais executar. Reinicie o chat com outro agente.`)
+    const free = context.chat.purpose === 'free'
+    if (input.planning && context.chat.purpose !== 'planning' && !free) throw new Error('Use um chat de planejamento para executar em modo read-only')
+    // O chat livre nunca altera arquivos: roda sempre como o planejamento (somente leitura).
+    if (free) input = { ...input, planning: true }
     this.conversations.addMessage({ chatId: input.chatId, role: 'user', body: input.prompt, status: 'complete' })
     const run = this.conversations.createRun({ cardId: context.cardId, chatId: input.chatId, profileId: context.profile.id })
     this.queue.push({ run, ...input }); this.pump()
@@ -54,26 +59,30 @@ export class AgentOrchestrator {
       if (event.type === 'claude/rate_limit_event') { try { this.usage?.recordClaude(context.profile.id, event.payload) } catch { /* uso é informativo */ } }
       const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload }) }
     try {
-      const worktree = job.planning ? null : await this.worktrees.prepare(context.cardId)
+      const free = context.chat.purpose === 'free'
+      const worktree = job.planning || !context.cardId ? null : await this.worktrees.prepare(context.cardId)
       const cwd = worktree?.path ?? context.projectPath
       if (worktree) this.conversations.attachWorktree(job.run.id, worktree.id)
       this.conversations.updateRun(job.run.id, 'running', null)
       publish({ type: 'agentboard/run-started', payload: { cardId: context.cardId, planning: job.planning } })
-      const purpose = context.chat.purpose
-      const config = this.configs?.resolve(context.cardId, context.profile.id, purpose)
-      if (config) this.configs?.recordUse(config, purpose)
+      if (free) this.conversations.setTitleIfEmpty(job.chatId, titleFromPrompt(job.prompt))
+      const purpose = context.chat.purpose === 'free' ? null : context.chat.purpose
+      const config = context.cardId && purpose ? this.configs?.resolve(context.cardId, context.profile.id, purpose) : undefined
+      if (config && purpose) this.configs?.recordUse(config, purpose)
       const mcp = this.writeback?.begin(job.run.id, context.cardId, (type, payload) => publish({ type, payload }), { id: context.chat.id, purpose: context.chat.purpose })
-      const result = await this.adapters[context.profile.provider].run({ cwd, prompt: this.agentContext ? this.agentContext.prompt(context.cardId, job.prompt, job.planning, context.chat.skill) : job.prompt, pluginDir: this.agentContext?.pluginDir, mcp, model: config?.model, effort: config?.effort, mode: job.planning ? 'plan' : config?.mode, developerInstructions: this.agentContext?.developerInstructions(job.planning, context.chat.skill), sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
+      const result = await this.adapters[context.profile.provider].run({ cwd, prompt: this.agentContext ? (free || !context.cardId ? this.agentContext.freePrompt(job.prompt) : this.agentContext.prompt(context.cardId, job.prompt, job.planning, context.chat.skill)) : job.prompt, pluginDir: this.agentContext?.pluginDir, mcp, model: config?.model, effort: config?.effort, mode: job.planning ? 'plan' : config?.mode, developerInstructions: free ? this.agentContext?.freeInstructions(context.profile.provider === 'codex') : this.agentContext?.developerInstructions(job.planning, context.chat.skill), sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
       this.conversations.updateSession(job.chatId, result.sessionId)
       if (result.text) this.conversations.addMessage({ chatId: job.chatId, role: 'assistant', body: result.text, status: result.status === 'completed' ? 'complete' : 'failed' })
-      const applied = this.writeback?.finish({ runId: job.run.id, cardId: context.cardId, planning: job.planning, completed: result.status === 'completed', text: result.text, prompt: job.prompt, publish: (type, payload) => publish({ type, payload }) })
+      // O chat livre pode ter virado planejamento durante o turno (ferramenta agentboard_criar_card): daqui em diante vale o card novo.
+      const after = free ? this.conversations.context(job.chatId) : context
+      const applied = this.writeback?.finish({ runId: job.run.id, cardId: after.cardId, planning: job.planning, completed: result.status === 'completed', text: result.text, prompt: job.prompt, publish: (type, payload) => publish({ type, payload }) })
       applied?.notices.forEach((body) => this.conversations.addMessage({ chatId: job.chatId, role: 'system', body, status: 'failed' }))
-      if (job.planning && result.status === 'completed') {
-        this.conversations.savePlan(context.cardId, context.profile.id, result.text)
+      if (job.planning && result.status === 'completed' && after.cardId) {
+        this.conversations.savePlan(after.cardId, context.profile.id, result.text)
       }
       this.conversations.updateRun(job.run.id, result.status, result.error, result.turnId)
       publish({ type: 'agentboard/run-completed', payload: { status: result.status, error: result.error } })
-      try { this.collab?.afterRun({ cardId: context.cardId, chatId: job.chatId, purpose: context.chat.purpose, status: result.status }) } catch { /* encadeamento é best-effort; o chat mostra o aviso */ }
+      try { if (after.cardId && after.chat.purpose !== 'free') this.collab?.afterRun({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: result.status }) } catch { /* encadeamento é best-effort; o chat mostra o aviso */ }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.conversations.updateRun(job.run.id, controller.signal.aborted ? 'interrupted' : 'failed', message)

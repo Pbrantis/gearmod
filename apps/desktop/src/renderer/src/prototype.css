@@ -554,3 +554,45 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .dockgrip{position:absolute;left:-3px;top:0;bottom:0;width:7px;cursor:col-resize;z-index:30}
 .dockgrip::after{content:'';position:absolute;left:3px;top:0;bottom:0;width:1px;background:transparent;transition:background .15s}
 .dockgrip:hover::after,.dock.dragging .dockgrip::after{background:var(--accent)}
+
+/* ---- lista de chats (botão ao lado da configuração) ---- */
+.chatsbtn{position:relative}.chatsbtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.chatsbtn .cdot{position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px #131614}
+.chatspop{position:fixed;left:12px;bottom:70px;z-index:60;width:min(340px,calc(100vw - 24px));max-height:60vh;display:flex;flex-direction:column;background:#1a1f1c;border:1px solid #343a35;border-radius:12px;box-shadow:0 14px 40px #0009}
+.chatspop .cphead{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #2b322d}
+.cplist{overflow:auto;padding:6px;display:grid;gap:4px}
+.cprow{display:flex;align-items:center;gap:8px;justify-content:space-between;width:100%;text-align:left;padding:8px 10px;border-radius:9px;background:transparent;border:1px solid transparent;color:var(--text);cursor:pointer}
+.cprow:hover{background:#222823;filter:none}
+.cprow .cpt{display:grid;gap:3px;min-width:0}.cprow b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpchip{font-style:normal;font-size:11px;color:#a9d5b5;background:#223027;border-radius:999px;padding:1px 8px;width:fit-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpchip.free{color:#98a099;background:#252a27}
+.footbtns{display:flex;gap:6px}
+
+/* ---- chat: Markdown nas respostas e rolagem só na área das mensagens ---- */
+.msg{overflow-wrap:anywhere}
+.chatmd{font-size:inherit}
+.chatmd>*:first-child{margin-top:0}.chatmd>*:last-child{margin-bottom:0}
+.chatmd p{margin:6px 0;color:inherit}
+.chatmd h1,.chatmd h2,.chatmd h3{font-size:14px;margin:12px 0 4px}
+.chatmd ul,.chatmd ol{margin:6px 0;padding-left:20px}
+.chatmd pre{margin:8px 0;padding:10px 12px;border-radius:8px;background:#0f1311;border:1px solid #2b322d;overflow:auto;font-size:12.5px}
+.chatmd code{font-family:var(--mono);font-size:.92em;background:#0f1311;border-radius:4px;padding:1px 5px}.chatmd pre code{background:none;padding:0}
+.chatmd table{border-collapse:collapse;display:block;overflow:auto;max-width:100%}.chatmd th,.chatmd td{border:1px solid #2b322d;padding:4px 8px;text-align:left}
+.chatmd blockquote{margin:6px 0;padding-left:10px;border-left:3px solid #3a413c;color:#aab2ac}
+.dock{min-height:0;height:100%}
+.dock-in{min-height:0;overflow:hidden}
+.dock-head,.composer{flex:none}
+.chatlog{flex:1 1 0;min-height:0;overflow-y:auto}
+.dock.full{grid-template-rows:minmax(0,1fr)}
+.dock.full .activity{min-height:0;overflow-y:auto}
+.msg .chatmd{background:none;border:0;padding:0;margin:0;min-height:0;height:auto;box-shadow:none;border-radius:0}
+
+/* ---- branch e worktree do card ---- */
+.wsline{display:grid;gap:2px;margin-top:8px;padding:4px 8px;border-radius:8px;background:#161b18;border:1px solid #2b322d;font-size:11px;color:#98a099;min-width:0}
+.wsline svg{width:13px;height:13px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.wsline b{color:#c4ccc6;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wsline .wsb{display:flex;align-items:center;gap:6px;min-width:0}.wsline small{color:#78817b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:19px}
+.ctxchip.ws{display:inline-flex;align-items:center;gap:5px}.ctxchip.ws svg{width:12px;height:12px;fill:none;stroke:var(--accent);stroke-width:1.8}
+.wsbox{display:grid;gap:4px;padding:8px 10px;border-radius:9px;background:#161b18;border:1px solid #2b322d;font-size:12.5px}
+.wsbox>div{display:flex;align-items:center;gap:6px}.wsbox svg{width:14px;height:14px;fill:none;stroke:var(--accent);stroke-width:1.8}
+.wsbox small{color:#8d968f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

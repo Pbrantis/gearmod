@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { ConversationRepository } from './conversations'
 import { AppDatabase } from './database'
 import { migrations } from './migrations'
 import { BoardRepository, ProfileRepository, ProjectRepository } from './projects'
@@ -119,5 +120,27 @@ describe('project board', () => {
     expect(upgraded.db.prepare('SELECT COUNT(*) AS value FROM column_history WHERE card_id = ?').get(card)).toEqual({ value: 2 })
     expect(upgraded.db.prepare(`SELECT reason FROM column_history WHERE actor = 'system'`).get()).toEqual({ reason: 'migration-mr-to-test' })
     upgraded.close()
+  })
+
+  it('archives an agent that has history instead of failing, and refuses while it is running', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-profile-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
+    const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'P', repositories: [] }) } as never)
+    const [used, clean] = profiles.list()
+    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev', profileIds: [used!.id, clean!.id] })
+    const conversations = new ConversationRepository(database)
+    const chat = conversations.createChat({ projectId: project.id, cardId: null, purpose: 'free', profileId: used!.id })
+    const run = conversations.createRun({ cardId: null, chatId: chat.id, profileId: used!.id })
+    conversations.updateRun(run.id, 'running', null)
+    expect(() => profiles.delete(used!.id)).toThrow('está executando')
+    conversations.updateRun(run.id, 'completed', null)
+    expect(profiles.delete(used!.id)).toEqual({ deleted: true, archived: true })
+    expect(profiles.list().map((item) => item.id)).toEqual([clean!.id])
+    expect(profiles.removed().map((item) => [item.id, item.enabled])).toEqual([[used!.id, false]])
+    expect(() => conversations.createChat({ projectId: project.id, cardId: null, purpose: 'free', profileId: used!.id })).toThrow('não permitido')
+    expect(conversations.context(chat.id).profile.enabled).toBe(false)
+    expect(profiles.delete(clean!.id)).toEqual({ deleted: true, archived: false })
+    database.close()
   })
 })
