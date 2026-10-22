@@ -309,11 +309,11 @@ textarea.in.descarea{resize:none;overflow:auto;height:100%}
 .md.descarea{padding:14px 18px;font-size:14px}
 .descarea{flex:1;min-height:0;overflow:auto;resize:none}
 .stack.pane-crit{display:flex;flex-direction:column;gap:10px;min-height:0;overflow:hidden}
-.crit{flex:1;min-height:0;font-size:14px;overflow:auto;padding-right:2px;scrollbar-width:thin;scrollbar-color:#3a413c transparent}
+.crit{flex:1;min-height:0;font-size:14px;overflow:auto;padding-right:2px;}
 .crit.exp{max-height:none;overflow:visible}
 .expand{background:transparent;color:var(--accent-strong);border:1px solid #2f3a32;width:100%;padding:6px;font-size:12px}
 .expand:hover{background:var(--accent-deep);filter:none}
-.pane-right{overflow:auto;padding-right:6px;align-content:start;scrollbar-width:thin;scrollbar-color:#3a413c transparent}
+.pane-right{overflow:auto;padding-right:6px;align-content:start;}
 .crit-head.static{cursor:default;padding:2px 0}.crit-head.static:hover{background:transparent}
 .crit-head{display:flex;align-items:center;gap:8px;width:100%;background:transparent;color:var(--text);padding:6px 2px;border-radius:7px;text-align:left}
 .crit-head:hover{filter:none;background:#222823}
@@ -508,7 +508,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .uchev{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:transform .15s}.uchev.open{transform:rotate(180deg)}
 .seldot{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block}
 .srcbox{display:grid;gap:10px;background:#151816;border:1px solid #2c322d;border-radius:10px;padding:12px}.srchead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.srchead .t{display:grid;gap:2px;min-width:0}.srchead small{color:#78817b;overflow-wrap:anywhere}
-.repolist{list-style:none;margin:0;padding:0;display:grid;gap:5px;max-height:240px;overflow:auto;scrollbar-width:thin;scrollbar-color:#3a413c transparent}.repolist li{display:flex;align-items:center;gap:9px;background:#1b1f1c;border:1px solid #2c322d;border-radius:8px;padding:7px 10px;font-size:13px}.repolist svg{width:15px;height:15px;flex:none;color:var(--accent-muted)}.repolist .rn{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.repolist .ctxchip{max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.repolist{list-style:none;margin:0;padding:0;display:grid;gap:5px;max-height:240px;overflow:auto;}.repolist li{display:flex;align-items:center;gap:9px;background:#1b1f1c;border:1px solid #2c322d;border-radius:8px;padding:7px 10px;font-size:13px}.repolist svg{width:15px;height:15px;flex:none;color:var(--accent-muted)}.repolist .rn{flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.repolist .ctxchip{max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .repolist svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
 .head .tools{align-items:center}.agentsbar{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:640px}
 .agchip{display:inline-flex;align-items:center;gap:7px;background:#1a1f1c;border:1px solid #2c332e;border-radius:999px;padding:3px 10px 3px 4px;font-size:12px;font-weight:600;color:#cbd3cd}.agchip .agn{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.agchip small{font-size:11px;font-weight:600;color:#8d968f}
@@ -638,3 +638,58 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 @media (prefers-reduced-motion:reduce){.thinking .tverb,.atom .nucleus,.caret{animation:none}}
 
 .ck-line .t small.acct{display:block;color:#a9d5b5;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- barra de rolagem fininha e suave (metade da padrão) ---- */
+*{scrollbar-width:auto;scrollbar-color:auto}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(152,160,153,.26);border-radius:6px;border:0;transition:background .15s}
+::-webkit-scrollbar-thumb:hover{background:rgba(152,160,153,.5)}
+::-webkit-scrollbar-corner{background:transparent}
+
+/* ---- menu do botão direito no card ---- */
+.ctxmenu{position:fixed;z-index:120;min-width:230px;padding:6px;border-radius:12px;background:#1a1f1c;border:1px solid #343a35;box-shadow:0 18px 48px #000a,0 0 0 1px #0004;animation:ctxin .12s ease-out}
+@keyframes ctxin{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
+.ctxtitle{padding:7px 10px 8px;font-size:11.5px;font-weight:600;color:#78817b;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid #2b322d;margin-bottom:5px}
+.ctxitem{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:8px;background:transparent;border:0;color:#dfe4e0;font-size:13px;text-align:left;cursor:pointer}
+.ctxitem svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.ctxitem span{flex:1}
+.ctxitem kbd{font:600 11px var(--mono);min-width:20px;text-align:center;padding:2px 6px;border-radius:6px;background:#242a26;border:1px solid #343a35;color:#98a099}
+.ctxitem.on{background:#242b26;filter:none}
+.ctxitem.danger{color:#ff8f86}.ctxitem.danger.on{background:#3a2322}.ctxitem.danger kbd{color:#ff8f86;background:#2f1f1e;border-color:#5a3532}
+.ctxsep{height:1px;background:#2b322d;margin:5px 4px}
+
+/* ---- página de chats (no lugar do quadro) ---- */
+.chatspage{padding:22px 2px 90px;display:grid;gap:14px;max-width:880px}
+.cptools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cpsearch{flex:1;min-width:200px;max-width:420px}
+.cpnew{display:inline-flex;align-items:center;gap:7px;margin-left:auto;padding:8px 14px;border-radius:10px;font-weight:600;background:var(--accent-bg);color:var(--accent-strong);border:1px solid var(--accent-line)}
+.cpnew svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8}
+.cplistpage{display:grid;gap:8px}
+.cpitem{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 14px;border-radius:12px;background:#161b18;border:1px solid #262d28;color:var(--text);cursor:pointer;transition:border-color .12s,background .12s}
+.cpitem:hover{border-color:var(--accent-line);background:#1a201c;filter:none}.cpitem.on{border-color:var(--accent);background:#1b241f}
+.cpico{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#202622;flex:none}.cpico svg{width:17px;height:17px;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.cpmain{display:grid;gap:5px;min-width:0;flex:1}.cpmain b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cpmeta{display:flex;align-items:center;gap:10px;font-size:12px;color:#78817b}
+.cpempty{padding:28px;text-align:center}
+
+/* ---- skills: lista resumida (nome + origem + agentes), expande para a descrição ---- */
+.skill-row.compact .skill-top{display:flex;align-items:center;gap:10px;cursor:pointer;padding:2px 0}
+.skill-row.compact .chev{color:#78817b;font-size:16px;transition:transform .15s;flex:none;width:12px}.skill-row.compact.open .chev{transform:rotate(90deg)}
+.skill-row.compact .skname{display:grid;gap:2px;min-width:0;flex:1}.skill-row.compact .skname b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skill-row.compact .skname small.path{font-family:var(--mono);font-size:11.5px;color:#78817b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skill-row.compact .provs{flex:none}
+.skdetail{margin:8px 0 2px 22px;display:grid;gap:10px}.skdetail p{margin:0;font-size:13px;line-height:1.55;color:#aab2ac}
+.skactions{display:flex;justify-content:flex-end}
+.mini.danger{background:#3a2322;color:#ff8f86;border:1px solid #5a3532}.mini.danger:hover{filter:brightness(1.15)}
+.impmenu{position:relative;display:inline-block}.impdrop{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:280px}
+.impmenu .impdrop{left:auto;right:0;bottom:auto;top:calc(100% + 6px);width:300px;background:#1a1f1c;border:1px solid #343a35;border-radius:12px;padding:6px;box-shadow:0 18px 48px #000a}
+.impdrop .modeopt{display:flex;width:100%;text-align:left}
+
+/* ---- seletor de visão: Quadro | Chats ---- */
+.viewtoggle{display:inline-flex;padding:3px;border-radius:11px;background:#161b18;border:1px solid #2b322d;gap:2px}
+.viewtoggle button{display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:8px;background:transparent;border:0;color:#98a099;font-size:13px;font-weight:600;cursor:pointer}
+.viewtoggle button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.viewtoggle button:hover{color:#dfe4e0;filter:none}
+.viewtoggle button.on{background:var(--accent-bg);color:var(--accent-strong);box-shadow:inset 0 0 0 1px var(--accent-line)}
+.head .tools{align-items:center;gap:8px}

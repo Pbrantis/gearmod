@@ -98,7 +98,8 @@ export const skillProviderStateSchema = z.enum(['ready', 'none', 'converting'])
 export const skillEntrySchema = z.object({
   id: z.string(), name: z.string(), description: z.string(), scope: skillScopeSchema, detected: z.boolean(),
   providers: z.object({ claude: skillProviderStateSchema, codex: skillProviderStateSchema }),
-  paths: z.object({ claude: z.string().nullable(), codex: z.string().nullable() })
+  paths: z.object({ claude: z.string().nullable(), codex: z.string().nullable() }),
+  origin: z.string().nullable()
 })
 export const skillRefSchema = z.object({ name: z.string().min(1).max(64), path: z.string().min(1).max(2048) })
 export type SkillScope = z.infer<typeof skillScopeSchema>
@@ -215,6 +216,9 @@ export const ipcContracts = {
   , 'cards:set-agent-config': { input: z.object({ cardId: uuid, purpose: agentPurposeSchema, config: agentConfigSchema }).strict(), output: cardAgentsSchema }
   , 'skills:list': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional() }).strict(), output: z.array(skillEntrySchema) }
   , 'skills:choose-source': { input: z.undefined(), output: z.string().nullable() }
+  , 'skills:choose-folder': { input: z.undefined(), output: z.string().nullable() }
+  , 'skills:delete': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), name: z.string().trim().min(1).max(64), provider: agentProviderSchema.optional() }).strict(), output: z.array(skillEntrySchema) }
+  , 'skills:import-folder': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), folderPath: z.string().trim().min(1).max(2048), provider: agentProviderSchema }).strict(), output: z.object({ imported: z.array(z.string()), skipped: z.array(z.string()), skills: z.array(skillEntrySchema) }) }
   , 'skills:import': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), sourcePath: z.string().trim().min(1).max(2048), name: z.string().trim().min(1).max(64), provider: agentProviderSchema }).strict(), output: z.array(skillEntrySchema) }
   , 'skills:convert': { input: z.object({ scope: skillScopeSchema, projectId: uuid.optional(), name: z.string().trim().min(1).max(64), from: agentProviderSchema, to: agentProviderSchema, reviewProfileId: uuid.optional(), model: z.string().max(120).nullable().optional() }).strict(), output: z.object({ converted: z.literal(true), reviewing: z.boolean() }) }
   , 'chats:set-skill': { input: z.object({ chatId: uuid, skill: skillRefSchema.nullable() }).strict(), output: chatSchema }
@@ -288,3 +292,4 @@ export interface AgentBoardApi {
   onRunEvent(listener: (event: PushedRunEvent) => void): () => void
   getDroppedFilePath(file: File): string
 }
+export * from './questions'

@@ -93,4 +93,36 @@ describe('SkillService', () => {
     await expect(service.assertKnown({ name: 'a', path: join(home, '.claude', 'skills', 'a') }, project.id)).resolves.toBeUndefined()
     await expect(service.assertKnown({ name: 'a', path: '/etc' }, project.id)).rejects.toThrow('desconhecida')
   })
+
+  it('finds project skills anywhere (parent folder, nested repos, .agents), ignores node_modules and shows where each came from', async () => {
+    const { repo, service, project } = await setup()
+    const put = async (dir: string, name: string): Promise<void> => { await mkdir(dir, { recursive: true }); await writeFile(join(dir, 'SKILL.md'), skillMd(name, `Faz ${name}`)) }
+    await put(join(repo, '.claude', 'skills', 'action-creator'), 'action-creator')
+    await put(join(repo, 'backend', 'tools', 'skills', 'solta'), 'solta')
+    await put(join(repo, '.agents', 'skills', 'so-codex'), 'so-codex')
+    await put(join(repo, 'node_modules', 'pkg', '.claude', 'skills', 'lixo'), 'lixo')
+    const skills = await service.list('project', project.id)
+    expect(skills.map((item) => item.name)).toEqual(['action-creator', 'so-codex', 'solta'])
+    expect(skills.find((item) => item.name === 'action-creator')).toMatchObject({ origin: '.claude/skills/action-creator', providers: { claude: 'ready', codex: 'none' } })
+    expect(skills.find((item) => item.name === 'so-codex')).toMatchObject({ origin: '.agents/skills/so-codex', providers: { claude: 'none', codex: 'ready' } })
+    expect(skills.find((item) => item.name === 'solta')?.origin).toBe('backend/tools/skills/solta')
+  })
+
+  it('deletes a skill (one agent or all) and imports every skill from a folder, skipping the ones that already exist', async () => {
+    const { root, repo, service, project } = await setup()
+    const put = async (dir: string, name: string): Promise<void> => { await mkdir(dir, { recursive: true }); await writeFile(join(dir, 'SKILL.md'), skillMd(name, `Faz ${name}`)) }
+    await put(join(repo, '.claude', 'skills', 'velha'), 'velha')
+    await put(join(repo, '.agents', 'skills', 'velha'), 'velha')
+    expect((await service.delete({ scope: 'project', projectId: project.id, name: 'velha', provider: 'codex' })).find((item) => item.name === 'velha')?.providers).toEqual({ claude: 'ready', codex: 'none' })
+    expect(await service.delete({ scope: 'project', projectId: project.id, name: 'velha' })).toEqual([])
+    await expect(service.delete({ scope: 'project', projectId: project.id, name: 'velha' })).rejects.toThrow('não encontrada')
+
+    const pack = join(root, 'pacote')
+    await put(join(pack, 'a', 'skill-a'), 'skill-a'); await put(join(pack, 'b', 'c', 'skill-b'), 'skill-b')
+    const first = await service.importFolder({ scope: 'project', projectId: project.id, folderPath: pack, provider: 'claude' })
+    expect(first.imported.sort()).toEqual(['skill-a', 'skill-b']); expect(first.skipped).toEqual([])
+    const again = await service.importFolder({ scope: 'project', projectId: project.id, folderPath: pack, provider: 'claude' })
+    expect(again.imported).toEqual([]); expect(again.skipped.sort()).toEqual(['skill-a', 'skill-b'])
+    await expect(service.importFolder({ scope: 'project', projectId: project.id, folderPath: join(root, 'vazia'), provider: 'claude' })).rejects.toThrow('Nenhuma skill')
+  })
 })

@@ -1,7 +1,7 @@
-import { cp, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { AgentProfile, SkillEntry, SkillProviderState, SkillScope } from '@agentboard/contracts'
 import type { AgentAdapter } from './adapters'
 import type { ProfileRepository, ProjectRepository } from './projects'
@@ -56,6 +56,27 @@ async function scanSkills(base: string, provider: Provider): Promise<Found[]> {
   return found
 }
 
+const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', 'target', 'vendor', '__pycache__', '.venv', 'venv', '.cache', 'coverage'])
+
+/** Procura pastas com SKILL.md em qualquer lugar de uma raiz (até 5 níveis, ignorando node_modules, .git e builds). O agente é deduzido pelo caminho: .claude → Claude; .agents/.codex → Codex; o resto assume Claude. */
+export async function discoverSkills(root: string, maxDepth = 5, budget = { left: 6000 }): Promise<Found[]> {
+  const found: Found[] = []
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (budget.left-- <= 0) return
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+    if (entries.some((entry) => entry.isFile() && entry.name === 'SKILL.md')) {
+      const parsed = parseSkillMd(await readFile(join(dir, 'SKILL.md'), 'utf8').catch(() => ''))
+      const parts = dir.split(sep).map((part) => part.toLowerCase())
+      found.push({ provider: parts.includes('.agents') || parts.includes('.codex') ? 'codex' : 'claude', dir, name: parsed.name ?? basename(dir), description: parsed.description })
+      return
+    }
+    if (depth >= maxDepth) return
+    for (const entry of entries) if ((entry.isDirectory() || entry.isSymbolicLink()) && !skipDirs.has(entry.name)) await walk(join(dir, entry.name), depth + 1)
+  }
+  if (existsSync(root)) await walk(root, 0)
+  return found
+}
+
 export type SkillReviewer = { adapters: Record<Provider, AgentAdapter>; profile(profileId: string): AgentProfile }
 
 /** Skills globais (pastas dos agentes) e do projeto (`.claude/skills`, `.agents/skills`): detecção, importação e conversão com revisão por agente. */
@@ -82,17 +103,32 @@ export class SkillService {
     return [...new Set(roots)]
   }
 
+  /** Todas as skills do escopo (com todas as pastas de cada agente). Do projeto: procura em qualquer lugar da pasta do projeto e dos repositórios. */
+  private async collect(scope: SkillScope, projectId?: string): Promise<Array<Found & { origin: string }>> {
+    const result: Array<Found & { origin: string }> = []
+    if (scope === 'global') {
+      for (const provider of providers) for (const base of this.globalBases(provider)) for (const skill of await scanSkills(base, provider)) result.push({ ...skill, origin: `${relative(this.home, skill.dir).split(sep).join('/')}`.replace(/^(?!\.\.)/, '~/') })
+      return result
+    }
+    if (!projectId) throw new Error('Informe o projeto')
+    const project = this.projects.get(projectId), roots = [...new Set([project.localPath, ...project.sources.map((source) => source.localPath)])]
+    const seen = new Set<string>(), budget = { left: 6000 }
+    for (const root of roots) for (const skill of await discoverSkills(root, 5, budget)) {
+      if (seen.has(skill.dir)) continue
+      seen.add(skill.dir)
+      const base = roots.filter((item) => skill.dir.startsWith(item)).sort((a, b) => b.length - a.length)[0] ?? root
+      result.push({ ...skill, origin: relative(base, skill.dir).split(sep).join('/') })
+    }
+    return result
+  }
+
   async list(scope: SkillScope, projectId?: string): Promise<SkillEntry[]> {
     const merged = new Map<string, SkillEntry>()
-    for (const provider of providers) {
-      for (const base of this.bases(scope, provider, projectId)) {
-        for (const skill of await scanSkills(base, provider)) {
-          const entry = merged.get(skill.name) ?? { id: `${scope}:${skill.name}`, name: skill.name, description: skill.description, scope, detected: scope === 'project', providers: { claude: 'none', codex: 'none' }, paths: { claude: null, codex: null } }
-          entry.providers[provider] = 'ready'; entry.paths[provider] = skill.dir
-          if (!entry.description) entry.description = skill.description
-          merged.set(skill.name, entry)
-        }
-      }
+    for (const skill of await this.collect(scope, projectId)) {
+      const entry = merged.get(skill.name) ?? { id: `${scope}:${skill.name}`, name: skill.name, description: skill.description, scope, detected: scope === 'project', providers: { claude: 'none', codex: 'none' }, paths: { claude: null, codex: null }, origin: skill.origin }
+      entry.providers[skill.provider] = 'ready'; entry.paths[skill.provider] = skill.dir
+      if (!entry.description) entry.description = skill.description
+      merged.set(skill.name, entry)
     }
     for (const key of this.converting.keys()) {
       const [jobScope, jobProject, name, target] = key.split('|') as [SkillScope, string, string, Provider]
@@ -100,6 +136,27 @@ export class SkillService {
       if (entry && jobScope === scope && (scope === 'global' || jobProject === projectId)) entry.providers[target] = 'converting' satisfies SkillProviderState
     }
     return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  /** Exclui a skill (de um agente ou de todos). Só apaga pastas que a própria detecção encontrou, nunca um caminho qualquer. */
+  async delete(input: { scope: SkillScope; projectId?: string; name: string; provider?: Provider }): Promise<SkillEntry[]> {
+    const targets = (await this.collect(input.scope, input.projectId)).filter((skill) => skill.name === input.name && (!input.provider || skill.provider === input.provider))
+    if (!targets.length) throw new Error('Skill não encontrada')
+    for (const skill of targets) await rm(skill.dir, { recursive: true, force: true })
+    return this.list(input.scope, input.projectId)
+  }
+
+  /** Importa de uma vez todas as skills (pastas com SKILL.md) de uma pasta escolhida; as que já existem ficam de fora. */
+  async importFolder(input: { scope: SkillScope; projectId?: string; folderPath: string; provider: Provider }): Promise<{ imported: string[]; skipped: string[]; skills: SkillEntry[] }> {
+    const found = await discoverSkills(resolve(input.folderPath))
+    if (!found.length) throw new Error('Nenhuma skill (pasta com SKILL.md) encontrada nessa pasta')
+    const imported: string[] = [], skipped: string[] = []
+    for (const skill of found) {
+      const name = skill.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
+      if (!nameRule.test(name)) { skipped.push(skill.name); continue }
+      try { await this.import({ scope: input.scope, projectId: input.projectId, sourcePath: skill.dir, name, provider: input.provider }); imported.push(name) } catch { skipped.push(name) }
+    }
+    return { imported, skipped, skills: await this.list(input.scope, input.projectId) }
   }
 
   async import(input: { scope: SkillScope; projectId?: string; sourcePath: string; name: string; provider: Provider }): Promise<SkillEntry[]> {

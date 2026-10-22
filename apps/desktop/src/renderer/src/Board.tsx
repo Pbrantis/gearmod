@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react'
 import type { AgentProfile, AgentPurpose, Card, Chat, ProjectBoard } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
 import { CardChat } from './CardChat'
-import { ChatsPanel } from './ChatsPanel'
+import { CardContextMenu } from './CardContextMenu'
+import { ChatsPage } from './ChatsPage'
 import { worktreeName } from './workspace'
 import { FreeChat } from './FreeChat'
 import { blankDraft, CardEditor, type Draft } from './CardEditor'
 import { ConfirmDialog } from './ConfirmDialog'
-import { ArchiveIcon, BranchIcon, ChatIcon, EyeIcon, FolderGlyph, PlayIcon, SparkIcon, StopIcon } from './icons'
+import { ArchiveIcon, BoardIcon, BranchIcon, ChatIcon, EyeIcon, FolderGlyph, PlayIcon, SparkIcon, StopIcon } from './icons'
 import { NewCardDialog } from './NewCardDialog'
 import { PendingDialog } from './PendingDialog'
 import { NoAgentDialog } from './ProjectDialogs'
@@ -24,6 +25,12 @@ export function chatMode(board: ProjectBoard, card: Card): AgentPurpose {
   if (fresh.run.state !== 'idle' && fresh.run.purpose) return fresh.run.purpose
   if (state === 'test') return 'test'
   return state === 'doing' || state === 'done' ? 'execution' : 'planning'
+}
+
+/** Card "virtual" (ainda não existe no banco) do planejamento aberto sem card: id vazio até a primeira mensagem. */
+function draftCard(board: ProjectBoard, columnId: string): Card {
+  const now = new Date().toISOString()
+  return { id: '', projectId: board.project.id, columnId, sourceId: null, type: 'task', title: '', description: '', priority: 'medium', orderKey: 0, createdAt: now, updatedAt: now, archivedAt: null, acceptanceCriteria: [], tasks: { done: 0, total: 0 }, run: { state: 'idle', runId: null, profileId: null, purpose: null }, hasPlan: false, planningOpen: false, workspace: null, pending: { changes: 0, questions: 0 }, execProfileId: null, execModel: null } as Card
 }
 
 function CardTile({ card, state, agent, dropLabel, dragProps, onPending, onOpen, onChat, onPlan, onStart, onTest, onStop, onResume, onArchive }: { card: Card; state: State; agent?: AgentProfile; dropLabel?: string; dragProps: React.HTMLAttributes<HTMLElement>; onPending(): void; onOpen(): void; onChat(): void; onPlan(): void; onStart(): void; onTest(): void; onStop(): void; onResume(): void; onArchive(): void }): React.JSX.Element {
@@ -66,10 +73,15 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const [dragId, setDragId] = useState<string>(), [dropOn, setDropOn] = useState<string>(), [overColumn, setOverColumn] = useState<string>(), [toast, setToast] = useState('')
   const allowed = profiles.filter((profile) => board.project.allowedProfileIds.includes(profile.id))
   const active = board.cards.filter((card) => !card.archivedAt), archived = board.cards.filter((card) => card.archivedAt)
-  const [chatsOpen, setChatsOpen] = useState(false), closeChats = (): void => setChatsOpen(false)
+  const [chatsOpen, setChatsOpen] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number; card: Card }>(), [deleting, setDeleting] = useState<Card>()
+  // Excluiu o card (pelo menu, pelo editor ou por outro caminho) com o chat dele aberto: fecha o chat junto.
+  useEffect(() => { if (chatCard && !board.cards.some((item) => item.id === chatCard.id)) setChatCardState(undefined) }, [board.cards, chatCard])
+  // Planejamento aberto sem card: o card só é criado na primeira mensagem (ensureCard); fechar sem escrever não cria nada.
+  const [draftPlan, setDraftPlan] = useState<{ columnId: string }>(), [chatInstance, setChatInstance] = useState(0)
   const [freeChat, setFreeChat] = useState<{ chat?: Chat; key: number }>(), [openAfterRefresh, setOpenAfterRefresh] = useState<string>()
-  const setChatCard = (card: Card | undefined, purpose?: AgentPurpose): void => { setChatCardState(card); if (card) { setFreeChat(undefined); setChatPurpose(purpose ?? chatMode(board, card)) } }
-  const openFree = (chat?: Chat): void => { setChatCardState(undefined); setFreeChat({ chat, key: Date.now() }); closeChats() }
+  const setChatCard = (card: Card | undefined, purpose?: AgentPurpose): void => { setChatCardState(card); setDraftPlan(undefined); if (card) { setFreeChat(undefined); setChatPurpose(purpose ?? chatMode(board, card)); setChatInstance((value) => value + 1) } }
+  const openFree = (chat?: Chat): void => { setChatCardState(undefined); setFreeChat({ chat, key: Date.now() }) }
   // "+" do projeto na barra lateral: abre um chat livre novo neste projeto assim que o quadro dele carrega.
   useEffect(() => {
     if (!freeRequest || freeRequest.projectId !== board.project.id) return
@@ -109,8 +121,8 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const columnLabel = (card: Card): string => board.columns.find((column) => column.id === fresh(card).columnId)?.label ?? ''
   return <div className="content">
     <main>
-    <div className="head"><div className="lead"><div><span className="pathchip tip" data-tip="Pasta do projeto"><FolderGlyph />{board.project.localPath}</span><h1>{board.project.name}</h1><p>{active.length} cards ativos</p></div></div><div className="tools">{allowed.length > 0 && <div className="agentsbar" aria-label="Agentes do projeto">{allowed.map((profile) => { const status = agentStatus(profile.id); return <span key={profile.id} className={`agchip ${status.key}`} title={`${profile.label}: ${status.label}${status.cards ? ` (${status.cards})` : ''}`}><AgentIcon profile={profile} size="sm" tip={false} /><span className="agn">{profile.label}</span>{status.key === 'working' ? <span className="spin sm" /> : <span className="agdot" />}<small>{status.label}</small></span> })}</div>}<button type="button" className={`iconbtn chatsbtn ${chatsOpen ? 'on' : ''}`} title="Chats do projeto" aria-label="Chats do projeto" aria-expanded={chatsOpen} onClick={() => setChatsOpen(!chatsOpen)}><ChatIcon /></button><button className="iconbtn" title="Configurar projeto" aria-label="Configurar projeto" onClick={onProjectConfig}>⚙</button></div></div>
-    <div className="kanban">{board.columns.map((column) => {
+    <div className="head"><div className="lead"><div><span className="pathchip tip" data-tip="Pasta do projeto"><FolderGlyph />{board.project.localPath}</span><h1>{board.project.name}</h1><p>{chatsOpen ? 'Chats do projeto' : `${active.length} cards ativos`}</p></div></div><div className="tools">{allowed.length > 0 && <div className="agentsbar" aria-label="Agentes do projeto">{allowed.map((profile) => { const status = agentStatus(profile.id); return <span key={profile.id} className={`agchip ${status.key}`} title={`${profile.label}: ${status.label}${status.cards ? ` (${status.cards})` : ''}`}><AgentIcon profile={profile} size="sm" tip={false} /><span className="agn">{profile.label}</span>{status.key === 'working' ? <span className="spin sm" /> : <span className="agdot" />}<small>{status.label}</small></span> })}</div>}<div className="viewtoggle" role="group" aria-label="Visão do projeto"><button type="button" className={!chatsOpen ? 'on' : ''} aria-pressed={!chatsOpen} onClick={() => setChatsOpen(false)}><BoardIcon />Quadro</button><button type="button" className={chatsOpen ? 'on' : ''} aria-pressed={chatsOpen} onClick={() => setChatsOpen(true)}><ChatIcon />Chats</button></div><button className="iconbtn" title="Configurar projeto" aria-label="Configurar projeto" onClick={onProjectConfig}>⚙</button></div></div>
+    {chatsOpen ? <ChatsPage board={board} current={freeChat?.chat?.id} openCard={(card, purpose) => setChatCard(card, purpose)} openFree={openFree} /> : <div className="kanban">{board.columns.map((column) => {
       const cards = active.filter((card) => card.columnId === column.id)
       return <section className={`col ${overColumn === column.id ? 'over' : ''}`} key={column.id} onDragOver={(e) => { e.preventDefault(); setOverColumn(column.id) }} onDragLeave={() => setOverColumn(undefined)} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('card'); clear(); if (id) void move(id, column.id, null) }}>
         <header>{column.label}<span className="colTools"><button type="button" className="colAdd tip" data-tip="Adicionar card" aria-label={`Adicionar card em ${column.label}`} onClick={() => setChoosing(column.id)}>+</button><b>{cards.length}</b></span></header>
@@ -118,22 +130,25 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
           onPending={() => setPendingCard(card)} onOpen={() => setDraft(edit(card))} onChat={() => setChatCard(card)} onPlan={() => setChatCard(card)} onStart={() => setStartingState({ card, purpose: 'execution' })} onTest={() => setStartingState({ card, purpose: 'test' })} onStop={() => setStopping(card)}
           onResume={() => void window.agentboard.invoke('cards:resume', { cardId: card.id, purpose: card.run.purpose === 'test' ? 'test' : card.run.purpose === 'execution' ? 'execution' : undefined }).then(refresh).catch((reason: unknown) => say(String(reason).replace(/^Error: /, '')))}
           onArchive={() => void window.agentboard.invoke('cards:archive', { cardId: card.id }).then(() => { say('Card arquivado'); return refresh() })}
-          dragProps={{ draggable: true, onDragStart: (e) => { e.dataTransfer.setData('card', card.id); setDragId(card.id) }, onDragEnd: clear, onDragOver: (e) => { e.preventDefault(); e.stopPropagation(); setDropOn(card.id) }, onDrop: (e) => { e.stopPropagation(); const id = e.dataTransfer.getData('card'); clear(); if (id && id !== card.id) void move(id, column.id, card.id) } }} />)}
+          dragProps={{ draggable: true, onContextMenu: (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, card }) }, onDragStart: (e) => { e.dataTransfer.setData('card', card.id); setDragId(card.id) }, onDragEnd: clear, onDragOver: (e) => { e.preventDefault(); e.stopPropagation(); setDropOn(card.id) }, onDrop: (e) => { e.stopPropagation(); const id = e.dataTransfer.getData('card'); clear(); if (id && id !== card.id) void move(id, column.id, card.id) } }} />)}
         <button className="add" onClick={() => setChoosing(column.id)}>＋ Adicionar card</button>
       </section>
-    })}</div>
+    })}</div>}
     {archived.length > 0 && <details className="archivedbox"><summary>Arquivados ({archived.length})</summary>{archived.map((card) => <div className="archrow" key={card.id}><span>{card.title}</span><button type="button" className="mini secondary" onClick={() => void window.agentboard.invoke('cards:restore', { cardId: card.id }).then(refresh)}>Restaurar</button></div>)}</details>}
-    {choosing && <NewCardDialog close={() => setChoosing(undefined)} manual={() => { setDraft(blankDraft(choosing)); setChoosing(undefined) }} plan={() => void window.agentboard.invoke('cards:create', { projectId: board.project.id, columnId: choosing, title: '', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] }).then(async (created) => { setChoosing(undefined); await refresh(); setChatCard(created) }).catch((reason: unknown) => say(String(reason)))} />}
+    {choosing && <NewCardDialog close={() => setChoosing(undefined)} manual={() => { setDraft(blankDraft(choosing)); setChoosing(undefined) }} plan={() => { const columnId = choosing; setChoosing(undefined); setChatCardState(undefined); setFreeChat(undefined); setChatPurpose('planning'); setChatInstance(Date.now()); setDraftPlan({ columnId }) }} />}
     {draft && <CardEditor projectId={board.project.id} sources={board.project.sources} profiles={allowed} pending={draft.id ? (board.cards.find((item) => item.id === draft.id)?.pending) : undefined} onPending={() => { const card = board.cards.find((item) => item.id === draft.id); if (card) setPendingCard(card) }} draft={draft} close={() => setDraft(undefined)} saved={async () => { setDraft(undefined); await refresh() }} openChat={draft.id ? (purpose) => { const card = board.cards.find((item) => item.id === draft.id); setDraft(undefined); if (card) setChatCard(card, purpose) } : undefined} onStart={draft.id ? (purpose) => { const card = board.cards.find((item) => item.id === draft.id); setDraft(undefined); if (card) setStartingState({ card, purpose }) } : undefined} />}
     {starting && <StartDialog card={starting.card} purpose={starting.purpose} profiles={allowed} close={() => setStartingState(undefined)} start={async (config) => { await window.agentboard.invoke('cards:start', { cardId: starting.card.id, config, purpose: starting.purpose }); setStartingState(undefined); await refresh(); setChatCard(starting.card, starting.purpose) }} />}
     {stopping && <ConfirmDialog eyebrow="Execução" title="Parar a execução?" text="O agente para agora. O card fica Pausado e você pode continuar de onde parou pelo card ou pelo chat." ok="Parar execução" danger cancel={() => setStopping(undefined)} confirm={() => { const card = stopping; setStopping(undefined); if (card.run.runId) void window.agentboard.invoke('agents:cancel', { runId: card.run.runId }).then(refresh).catch((reason: unknown) => say(String(reason))) }} />}
     {pendingCard && <PendingDialog card={fresh(pendingCard)} close={() => setPendingCard(undefined)} changed={() => void refresh()} />}
+    {menu && <CardContextMenu x={menu.x} y={menu.y} card={menu.card} close={() => setMenu(undefined)} open={() => { const card = menu.card; setMenu(undefined); setDraft(edit(card)) }} chat={() => { const card = menu.card; setMenu(undefined); setChatCard(card) }} remove={() => { const card = menu.card; setMenu(undefined); setDeleting(card) }} />}
+    {deleting && <ConfirmDialog eyebrow="Excluir card" title={deleting.title || 'Novo card'} text="O card, os documentos, os planos e o histórico de conversas dele serão removidos. Isso não pode ser desfeito." ok="Excluir" danger cancel={() => setDeleting(undefined)} confirm={() => { const card = deleting; setDeleting(undefined); void window.agentboard.invoke('cards:delete', { cardId: card.id }).then(() => { say('Card excluído'); return refresh() }).catch((reason: unknown) => say(String(reason))) }} />}
     {toast && <div className="toast" role="status">{toast}</div>}
     </main>
     {chatCard && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setChatCard(undefined)} allowed={() => void refresh()} openSettings={() => { setChatCard(undefined); openSettings() }} />}
-    {chatsOpen && <ChatsPanel board={board} close={closeChats} openCard={(card, purpose) => { closeChats(); setChatCard(card, purpose) }} openFree={openFree} />}
     {freeChat && allowed.length > 0 && <FreeChat key={freeChat.key} project={board.project} profiles={allowed} chat={freeChat.chat} close={() => setFreeChat(undefined)} changed={() => void refresh()} onConverted={(cardId) => { void refresh().then(() => setOpenAfterRefresh(cardId)) }} />}
     {freeChat && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setFreeChat(undefined)} allowed={() => void refresh()} openSettings={() => { setFreeChat(undefined); openSettings() }} />}
-    {chatCard && allowed.length > 0 && <CardChat key={`${chatCard.id}-${chatPurpose}`} project={board.project} card={fresh(chatCard)} board={board} profiles={history} columnLabel={columnLabel(chatCard)} mode={chatPurpose} onSwitch={setChatPurpose} close={() => setChatCard(undefined)} openEdit={(card) => setDraft(edit(card))} />}
+    {draftPlan && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setDraftPlan(undefined)} allowed={() => void refresh()} openSettings={() => { setDraftPlan(undefined); openSettings() }} />}
+    {(chatCard || draftPlan) && allowed.length > 0 && <CardChat key={`chat-${chatInstance}-${chatPurpose}`} project={board.project} card={chatCard ? fresh(chatCard) : draftCard(board, draftPlan!.columnId)} board={board} profiles={history} columnLabel={chatCard ? columnLabel(chatCard) : board.columns.find((column) => column.id === draftPlan?.columnId)?.label ?? ''} mode={chatPurpose} onSwitch={setChatPurpose} close={() => { setChatCard(undefined); setDraftPlan(undefined) }} openEdit={(card) => setDraft(edit(card))}
+      ensureCard={draftPlan && !chatCard ? async () => { const created = await window.agentboard.invoke('cards:create', { projectId: board.project.id, columnId: draftPlan.columnId, title: '', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] }); await refresh(); setDraftPlan(undefined); setChatCardState(created); return created } : undefined} />}
   </div>
 }

@@ -56,7 +56,7 @@ function Activity({ board, cardId, profiles, openEdit }: { board: ProjectBoard; 
 }
 
 /** Chat do card (planejamento ou execução) como o dock do protótipo: encaixado à direita ou em tela cheia com a visão rápida. */
-export function CardChat({ project, card, board, profiles, columnLabel, mode, close, openEdit, onSwitch }: { project: Project; card: Card; board: ProjectBoard; profiles: AgentProfile[]; columnLabel: string; mode: AgentPurpose; close(): void; openEdit(card: Card): void; onSwitch(purpose: AgentPurpose): void }): React.JSX.Element {
+export function CardChat({ project, card, board, profiles, columnLabel, mode, close, openEdit, onSwitch, ensureCard }: { project: Project; card: Card; board: ProjectBoard; profiles: AgentProfile[]; columnLabel: string; mode: AgentPurpose; close(): void; openEdit(card: Card): void; onSwitch(purpose: AgentPurpose): void; ensureCard?(): Promise<Card> }): React.JSX.Element {
   const usable = profiles.filter((profile) => project.allowedProfileIds.includes(profile.id))
   const [chat, setChat] = useState<Chat>(), [messages, setMessages] = useState<ChatMessage[]>([]), [run, setRun] = useState<Run>(), [live, setLive] = useState('')
   const [input, setInput] = useState(''), [error, setError] = useState(''), [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null)
@@ -69,8 +69,8 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []), card.title || undefined)
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
   const loadMessages = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
-  useEffect(() => { void window.agentboard.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }, [card.id])
-  useEffect(() => { void window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id }).then((items) => { setChats(items); const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); void loadMessages(found.id) } }).catch((reason: unknown) => setError(String(reason))) }, [project.id, card.id, mode, loadMessages])
+  useEffect(() => { if (card.id) void window.agentboard.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }, [card.id])
+  useEffect(() => { if (!card.id) return; void window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id }).then((items) => { setChats(items); const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); void loadMessages(found.id) } }).catch((reason: unknown) => setError(String(reason))) }, [project.id, card.id, mode, loadMessages])
   useEffect(() => window.agentboard.onRunEvent((event) => {
     if (event.eventType === 'agentboard/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void loadMessages(id); return current }); return }
     if (event.runId !== runId.current) return
@@ -96,7 +96,14 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       setError(''); setInput('')
       let current = chat
       const chosen = agentState.config?.profileId
-      if (!current) { if (!chosen) throw new Error('Escolha um agente'); current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: mode, profileId: chosen, skill }); setChat(current) }
+      let cardId = card.id
+      // Planejamento começado sem card: ele só nasce agora, na primeira mensagem, para o chat ter a que se referir.
+      if (!cardId) {
+        if (!ensureCard) throw new Error('Card não encontrado')
+        cardId = (await ensureCard()).id
+        if (agentState.touched && agentState.config) await window.agentboard.invoke('cards:set-agent-config', { cardId, purpose: mode, config: agentState.config })
+      }
+      if (!current) { if (!chosen) throw new Error('Escolha um agente'); current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId, purpose: mode, profileId: chosen, skill }); setChat(current) }
       const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning })
       runId.current = started.id; setRun(started); setLive(''); await loadMessages(current.id)
     } catch (reason) { setError(String(reason).replace(/^Error: /, '')); setInput(prompt) }
@@ -108,7 +115,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       setError('')
       if (chat) { await window.agentboard.invoke('chats:reset', { chatId: chat.id }); setChat(undefined); setMessages([]); setSkill(null) }
       await agentState.update({ profileId: target.id, model: null, effort: null, mode: defaultPermissionMode(target.provider, mode) })
-      setChats(await window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id }))
+      if (card.id) setChats(await window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id }))
     } catch (reason) { setError(String(reason).replace(/^Error: /, '')) }
   }
   // Agente removido (desativado): o histórico fica, mas ele não executa mais; para continuar é preciso reiniciar o chat com outro.
