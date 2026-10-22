@@ -1,4 +1,4 @@
-import type { Run } from '@agentboard/contracts'
+import type { AgentPurpose, Run } from '@agentboard/contracts'
 import type { AgentAdapter, AgentEvent } from './adapters'
 import type { ConversationRepository } from './conversations'
 import type { WorktreeService } from './worktrees'
@@ -21,7 +21,8 @@ export class AgentOrchestrator {
     private readonly agentContext?: Pick<AgentContextService, 'prompt' | 'developerInstructions' | 'pluginDir'>,
     private readonly writeback?: AgentWriteback,
     private readonly configs?: Pick<AgentConfigRepository, 'resolve' | 'recordUse'>,
-    private readonly usage?: { recordClaude(profileId: string, payload: Record<string, unknown>): void }
+    private readonly usage?: { recordClaude(profileId: string, payload: Record<string, unknown>): void },
+    private readonly collab?: { afterRun(info: { cardId: string; chatId: string; purpose: AgentPurpose; status: string }): void }
   ) {}
 
   start(input: { chatId: string; prompt: string; planning: boolean }): Run {
@@ -58,21 +59,21 @@ export class AgentOrchestrator {
       if (worktree) this.conversations.attachWorktree(job.run.id, worktree.id)
       this.conversations.updateRun(job.run.id, 'running', null)
       publish({ type: 'agentboard/run-started', payload: { cardId: context.cardId, planning: job.planning } })
-      const purpose = job.planning ? 'planning' : 'execution'
+      const purpose = context.chat.purpose
       const config = this.configs?.resolve(context.cardId, context.profile.id, purpose)
       if (config) this.configs?.recordUse(config, purpose)
-      const mcp = this.writeback?.begin(job.run.id, context.cardId, (type, payload) => publish({ type, payload }))
+      const mcp = this.writeback?.begin(job.run.id, context.cardId, (type, payload) => publish({ type, payload }), { id: context.chat.id, purpose: context.chat.purpose })
       const result = await this.adapters[context.profile.provider].run({ cwd, prompt: this.agentContext ? this.agentContext.prompt(context.cardId, job.prompt, job.planning, context.chat.skill) : job.prompt, pluginDir: this.agentContext?.pluginDir, mcp, model: config?.model, effort: config?.effort, mode: job.planning ? 'plan' : config?.mode, developerInstructions: this.agentContext?.developerInstructions(job.planning, context.chat.skill), sessionId: context.chat.providerSessionId, planning: job.planning, profile: context.profile, signal: controller.signal, onEvent: publish })
       this.conversations.updateSession(job.chatId, result.sessionId)
       if (result.text) this.conversations.addMessage({ chatId: job.chatId, role: 'assistant', body: result.text, status: result.status === 'completed' ? 'complete' : 'failed' })
-      const applied = this.writeback?.finish({ runId: job.run.id, cardId: context.cardId, planning: job.planning, completed: result.status === 'completed', text: result.text, publish: (type, payload) => publish({ type, payload }) })
+      const applied = this.writeback?.finish({ runId: job.run.id, cardId: context.cardId, planning: job.planning, completed: result.status === 'completed', text: result.text, prompt: job.prompt, publish: (type, payload) => publish({ type, payload }) })
       applied?.notices.forEach((body) => this.conversations.addMessage({ chatId: job.chatId, role: 'system', body, status: 'failed' }))
       if (job.planning && result.status === 'completed') {
-        if (!applied?.wroteDocuments && result.text.trim()) this.writeback?.writePlan(context.cardId, result.text)
         this.conversations.savePlan(context.cardId, context.profile.id, result.text)
       }
       this.conversations.updateRun(job.run.id, result.status, result.error, result.turnId)
       publish({ type: 'agentboard/run-completed', payload: { status: result.status, error: result.error } })
+      try { this.collab?.afterRun({ cardId: context.cardId, chatId: job.chatId, purpose: context.chat.purpose, status: result.status }) } catch { /* encadeamento é best-effort; o chat mostra o aviso */ }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.conversations.updateRun(job.run.id, controller.signal.aborted ? 'interrupted' : 'failed', message)

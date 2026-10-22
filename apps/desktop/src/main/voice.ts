@@ -13,7 +13,9 @@ export const voiceModels: Record<VoiceModel, { file: string; label: string; size
   'large-v3-turbo': { file: 'ggml-large-v3-turbo.bin', label: 'Large v3 Turbo', sizeMb: 1624 }
 }
 const modelBase = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
-const windowsEngineUrl = 'https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip'
+const engineAsset = 'https://github.com/ggml-org/whisper.cpp/releases'
+/** "latest" muda de nome de pacote entre versões e já devolveu 404; as versões fixas são o plano B. */
+const windowsEngineUrls = [`${engineAsset}/latest/download/whisper-bin-x64.zip`, `${engineAsset}/download/v1.7.6/whisper-bin-x64.zip`, `${engineAsset}/download/v1.7.5/whisper-bin-x64.zip`]
 /** Termos em inglês que aparecem no meio do português; ajudam o Whisper a não "traduzir" worktree, commit etc. */
 export const supportVocabulary = 'worktree, commit, branch, pull request, merge, rebase, lint, typecheck, deploy, backend, frontend, Kanban, backlog, To do, Doing, Test, Done, Claude, Codex, AgentBoard, Markdown, SQLite, Electron, React, TypeScript, skill, prompt'
 
@@ -74,7 +76,11 @@ export class VoiceService {
   private async installEngine(): Promise<void> {
     await mkdir(this.binDir, { recursive: true })
     const zip = join(this.binDir, 'whisper-bin.zip')
-    await this.download(this.deps.engineUrl ?? windowsEngineUrl, zip, 'programa')
+    let failure: unknown
+    for (const url of this.deps.engineUrl ? [this.deps.engineUrl] : windowsEngineUrls) {
+      try { await this.download(url, zip, 'programa'); failure = undefined; break } catch (error) { failure = error }
+    }
+    if (failure) throw failure
     await (this.deps.run ?? defaultRun)('tar', ['-xf', zip, '-C', this.binDir], 120_000)
     await rm(zip, { force: true })
     const found = await findFile(this.binDir, this.engineNames())

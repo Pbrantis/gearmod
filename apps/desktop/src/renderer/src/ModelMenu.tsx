@@ -29,7 +29,7 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
   useEffect(() => {
     if (!profileId) return
     let alive = true
-    void window.agentboard.invoke('agents:options', { profileId }).then((loaded) => { if (alive) setOptions(loaded) }).catch(() => { if (alive) setOptions({ models: [], mostUsed: { planning: null, execution: null } }) })
+    void window.agentboard.invoke('agents:options', { profileId }).then((loaded) => { if (alive) setOptions(loaded) }).catch(() => { if (alive) setOptions({ models: [], mostUsed: { planning: null, execution: null, test: null } }) })
     return () => { alive = false }
   }, [profileId])
   // Sem escolha salva, mostra o padrão: o mais usado ou o recomendado para a finalidade.
@@ -52,20 +52,20 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
  * Menu de modelo do protótipo (`.mmbtn` + `.mmpop`): lista de modelos, e os submenus Agente e Esforço.
  * `field` = versão do editor (mostra o nome do agente); `noAgent` = o agente é escolhido em outro campo.
  */
-export function ModelMenu({ profiles, purpose, state, noAgent = false, field = false, lockProfile = false }: { profiles: AgentProfile[]; purpose: AgentPurpose; state: ReturnType<typeof useAgentConfig>; noAgent?: boolean; field?: boolean; lockProfile?: boolean }): React.JSX.Element {
+export function ModelMenu({ profiles, purpose, state, noAgent = false, field = false, lockProfile = false, onLockedPick }: { profiles: AgentProfile[]; purpose: AgentPurpose; state: ReturnType<typeof useAgentConfig>; noAgent?: boolean; field?: boolean; lockProfile?: boolean; onLockedPick?(profile: AgentProfile): void }): React.JSX.Element {
   const { config, options, update, error } = state
-  const [open, setOpen] = useState(false), [sub, setSub] = useState<'agent' | 'effort' | null>(null), [pos, setPos] = useState<{ right: number; bottom: number }>(), [subPos, setSubPos] = useState<React.CSSProperties>()
+  const [open, setOpen] = useState(false), [sub, setSub] = useState<'agent' | 'effort' | null>(null), [pos, setPos] = useState<{ right: number; bottom?: number; top?: number }>(), [subPos, setSubPos] = useState<React.CSSProperties>()
   const button = useRef<HTMLButtonElement>(null), pop = useRef<HTMLDivElement>(null), row = useRef<HTMLButtonElement | null>(null), wrap = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (!open || !button.current) return
     const rect = button.current.getBoundingClientRect()
-    setPos({ right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.top + 8 })
-  }, [open])
+    setPos({ right: window.innerWidth - rect.right, ...(field ? { top: rect.bottom + 8 } : { bottom: window.innerHeight - rect.top + 8 }) })
+  }, [open, field])
   useLayoutEffect(() => {
     if (!open || !sub || !pop.current || !row.current) { setSubPos(undefined); return }
     const popRect = pop.current.getBoundingClientRect(), rowRect = row.current.getBoundingClientRect(), width = 300
-    setSubPos({ bottom: window.innerHeight - rowRect.bottom - 6, ...(popRect.left - 6 - width >= 8 ? { right: window.innerWidth - popRect.left + 6 } : { left: popRect.right + 6 }) })
-  }, [open, sub])
+    setSubPos({ ...(field ? { top: rowRect.top - 6 } : { bottom: window.innerHeight - rowRect.bottom - 6 }), ...(popRect.left - 6 - width >= 8 ? { right: window.innerWidth - popRect.left + 6 } : { left: popRect.right + 6 }) })
+  }, [open, sub, field])
   useEffect(() => {
     if (!open) return
     const close = (event: Event): void => { if (!wrap.current?.contains(event.target as Node)) { setOpen(false); setSub(null) } }
@@ -81,16 +81,16 @@ export function ModelMenu({ profiles, purpose, state, noAgent = false, field = f
   const efforts = model?.efforts ?? []
   return <div className="mm" ref={wrap}>
     <button type="button" ref={button} className={`mmbtn ${field ? 'field' : ''} ${open ? 'on' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(!open); setSub(null) }}>{!noAgent && <AgentIcon profile={profile} size="sm" tip={false} />}{field && !noAgent && <span className="mag">{profile.label}</span>}<span className="mname">{model?.label ?? config.model ?? 'Modelo padrão'}</span>{config.effort && <span className="meff">{effortLabel[config.effort]}</span>}</button>
-    {open && pos && <div className="mmpop" ref={pop} role="menu" style={{ right: pos.right, bottom: pos.bottom }}>
+    {open && pos && <div className="mmpop" ref={pop} role="menu" style={{ right: pos.right, bottom: pos.bottom, top: pos.top, maxHeight: field ? window.innerHeight - (pos.top ?? 0) - 12 : undefined, overflowY: field ? 'auto' : undefined }}>
       <button type="button" role="menuitem" className="mmi" onClick={() => void update({ model: null, effort: null })}><span>Padrão do agente</span><small>{config.model === null ? <CheckIcon /> : ''}</small></button>
       {options?.models.map((item, index) => <button type="button" role="menuitem" key={item.id} className="mmi" onClick={() => void update({ model: item.id, effort: item.efforts.includes(config.effort as Effort) ? config.effort : item.defaultEffort })}><span>{item.label}{modelBadges(item.id, item.recommendedFor.includes(purpose))}</span><small>{config.model === item.id ? <CheckIcon /> : index + 1}</small></button>)}
-      {options && !options.models.length && <p className="mmnote">Não foi possível listar os modelos agora.</p>}
+      {options && !options.models.length && <p className="mmnote">Não foi possível listar os modelos agora.{options.error ? ` Motivo: ${options.error}` : ''}</p>}
       <div className="mmsep" />
       {!noAgent && <button type="button" role="menuitem" ref={sub === 'agent' ? row : undefined} className={`mmi sub ${sub === 'agent' ? 'mmact' : ''}`} onClick={() => setSub(sub === 'agent' ? null : 'agent')}><span>Agente</span><small>{profile.label} ›</small></button>}
       {efforts.length > 0 && <button type="button" role="menuitem" ref={sub === 'effort' ? row : undefined} className={`mmi sub ${sub === 'effort' ? 'mmact' : ''}`} onClick={() => setSub(sub === 'effort' ? null : 'effort')}><span>Esforço</span><small>{config.effort ? effortLabel[config.effort] : 'Padrão'} ›</small></button>}
     </div>}
     {open && sub === 'effort' && subPos && <div className="mmpop mmsub" style={subPos}><p className="mmnote">Mais esforço significa respostas mais completas, mas leva mais tempo e consome seus limites mais rápido.</p>{efforts.map((item) => <button type="button" key={item} className="mmi" onClick={() => void update({ effort: item })}><span>{effortLabel[item]}{used?.model === config.model && used.effort === item && <em className="used">Mais usado</em>}{model?.defaultEffort === item && <em>Recomendado</em>}</span><small>{config.effort === item && <CheckIcon />}</small></button>)}</div>}
-    {open && sub === 'agent' && subPos && <div className="mmpop mmsub" style={subPos}>{profiles.map((item) => <button type="button" key={item.id} disabled={lockProfile && item.id !== profile.id} className="mmi" onClick={() => { void update({ profileId: item.id, model: null, effort: null, mode: defaultPermissionMode(item.provider, purpose) }); setSub(null) }}><span className="mmag"><AgentIcon profile={item} size="sm" tip={false} />{item.label}</span><small>{item.id === profile.id && <CheckIcon />}</small></button>)}</div>}
+    {open && sub === 'agent' && subPos && <div className="mmpop mmsub" style={subPos}>{lockProfile && <p className="mmnote">Este chat já começou com {profile.label}. Trocar o agente reinicia o chat.</p>}{profiles.map((item) => <button type="button" key={item.id} className="mmi" onClick={() => { setSub(null); if (lockProfile && item.id !== profile.id) { setOpen(false); onLockedPick?.(item); return } void update({ profileId: item.id, model: null, effort: null, mode: defaultPermissionMode(item.provider, purpose) }) }}><span className="mmag"><AgentIcon profile={item} size="sm" tip={false} />{item.label}</span><small>{item.id === profile.id && <CheckIcon />}</small></button>)}</div>}
     {error && <small className="error">{error}</small>}
   </div>
 }

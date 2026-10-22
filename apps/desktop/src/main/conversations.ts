@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Chat, ChatMessage, Plan, Run, RunEvent } from '@agentboard/contracts'
+import type { AgentPurpose, Chat, ChatMessage, Plan, Run, RunEvent } from '@agentboard/contracts'
 import type { AgentProfile } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 
@@ -30,7 +30,7 @@ export class ConversationRepository {
     return this.listChats(chat.projectId, chat.cardId).find((item) => item.id === chatId)!
   }
 
-  createChat(input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string; skill?: { name: string; path: string } | null }): Chat {
+  createChat(input: { projectId: string; cardId: string | null; purpose: AgentPurpose; profileId: string; skill?: { name: string; path: string } | null }): Chat {
     const allowed = this.database.db.prepare('SELECT ap.provider FROM project_agent_profiles pap JOIN agent_profiles ap ON ap.id = pap.profile_id WHERE pap.project_id = ? AND pap.profile_id = ? AND pap.allowed = 1 AND ap.enabled = 1').get(input.projectId, input.profileId) as { provider: 'codex' | 'claude' } | undefined
     if (!allowed) throw new Error('Perfil não permitido para este projeto')
     if (input.cardId && !this.database.db.prepare('SELECT 1 FROM cards WHERE id = ? AND project_id = ?').get(input.cardId, input.projectId)) throw new Error('Card não pertence ao projeto')
@@ -124,10 +124,22 @@ export class ConversationRepository {
     return target ? this.approvePlan(target.id) : null
   }
 
-  /** Chat de execução do card (um por card, com o histórico), criado na primeira execução. */
-  executionChat(projectId: string, cardId: string, profileId: string): Chat {
-    const existing = this.listChats(projectId, cardId).find((chat) => chat.purpose === 'execution')
-    return existing ?? this.createChat({ projectId, cardId, purpose: 'execution', profileId })
+  /** Chat de cada etapa do card (planejamento, implementação, teste): um por etapa, com o histórico, criado na primeira vez. */
+  purposeChat(projectId: string, cardId: string, purpose: AgentPurpose, profileId: string): Chat {
+    const existing = this.listChats(projectId, cardId).find((chat) => chat.purpose === purpose)
+    return existing ?? this.createChat({ projectId, cardId, purpose, profileId })
+  }
+
+  /** Reinicia o chat de uma etapa (troca de agente): apaga mensagens, execuções e eventos dele. Recusa se ainda tem agente trabalhando. */
+  resetChat(chatId: string): void {
+    if (!this.database.db.prepare('SELECT 1 FROM chats WHERE id = ?').get(chatId)) throw new Error('Chat não encontrado')
+    if (this.database.db.prepare(`SELECT 1 FROM runs WHERE chat_id = ? AND status IN ('queued', 'running') LIMIT 1`).get(chatId)) throw new Error('Pare o agente antes de reiniciar o chat')
+    this.database.db.transaction(() => {
+      this.database.db.prepare('UPDATE test_runs SET run_id = NULL WHERE run_id IN (SELECT id FROM runs WHERE chat_id = ?)').run(chatId)
+      this.database.db.prepare('UPDATE runs SET worktree_id = NULL WHERE chat_id = ?').run(chatId)
+      this.database.db.prepare('DELETE FROM runs WHERE chat_id = ?').run(chatId)
+      this.database.db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
+    })()
   }
 
   reconcileInterrupted(): number {

@@ -5,7 +5,7 @@ import { cardDocumentKinds } from '@agentboard/contracts'
 import type { BoardRepository } from './projects'
 import type { SettingsRepository } from './settings'
 
-const docLabels: Record<CardDocumentKind, string> = { resumo: 'Resumo', especificacao: 'Especificação', plano: 'Plano', tasks: 'Tasks' }
+const docLabels: Record<CardDocumentKind, string> = { resumo: 'Resumo', especificacao: 'Especificação', plano: 'Plano', tasks: 'Tasks', duvidas: 'Dúvidas', mudancas: 'Mudanças' }
 
 /** Bloco que acompanha cada turno do agente: idioma, card, coluna atual, colunas disponíveis e os 4 documentos. */
 export class AgentContextService {
@@ -29,7 +29,9 @@ export class AgentContextService {
 
   /** Texto enviado ao agente: contexto + pedido. Em planejamento, pede explicitamente a skill de planejamento do sistema. */
   prompt(cardId: string, prompt: string, planning: boolean, skill?: SkillRef | null): string {
-    const lead = planning ? (skill ? `Use a skill ${skill.name} para conduzir este chat, no lugar de agentboard-planejamento. Os documentos do card, o idioma e as ferramentas do AgentBoard continuam valendo.\n\n` : 'Use a skill agentboard-planejamento para conduzir este chat.\n\n') : ''
+    const untitled = planning && !this.board.card(cardId).title.trim()
+    const naming = untitled ? 'Este card ainda não tem título: logo nesta primeira resposta, chame agentboard_atualizar_card com um título curto (até 60 caracteres) que identifique o assunto, como os chats fazem. Depois continue o planejamento.\n\n' : ''
+    const lead = naming + (planning ? (skill ? `Use a skill ${skill.name} para conduzir este chat, no lugar de agentboard-planejamento. Os documentos do card, o idioma e as ferramentas do AgentBoard continuam valendo.\n\n` : 'Use a skill agentboard-planejamento para conduzir este chat.\n\n') : '')
     return `${this.block(cardId)}\n\n${lead}${prompt}`
   }
 

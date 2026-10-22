@@ -120,9 +120,10 @@ export function cardRunState(db: Database.Database, cardId: string): CardRunStat
   const row = db.prepare(`SELECT r.id, r.status, r.ended_at AS endedAt, r.profile_id AS profileId, ch.purpose, k.viewed_at AS viewedAt
     FROM runs r JOIN chats ch ON ch.id = r.chat_id JOIN cards k ON k.id = r.card_id WHERE r.card_id = ? ORDER BY r.started_at DESC, r.rowid DESC LIMIT 1`).get(cardId) as
     { id: string; status: string; endedAt: string | null; profileId: string; purpose: string; viewedAt: string | null } | undefined
-  const none = { state: 'idle' as const, runId: null, profileId: null }
+  const none = { state: 'idle' as const, runId: null, profileId: null, purpose: null }
   if (!row) return none
-  const base = { runId: row.id, profileId: row.profileId }
+  const purpose = row.purpose === 'test' ? 'test' as const : row.purpose === 'planning' ? 'planning' as const : 'execution' as const
+  const base = { runId: row.id, profileId: row.profileId, purpose }
   const active = row.status === 'queued' || row.status === 'running'
   if (row.purpose === 'planning') return active ? { state: 'planning', ...base } : none
   if (active) return { state: 'running', ...base }
@@ -222,12 +223,21 @@ export class BoardRepository {
   card(cardId: string): Card {
     const row = this.database.db.prepare(`SELECT id, project_id AS projectId, column_id AS columnId, source_id AS sourceId, type, title, description,
       priority, order_key AS orderKey, created_at AS createdAt, updated_at AS updatedAt, archived_at AS archivedAt
-      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run' | 'hasPlan' | 'execProfileId' | 'execModel'> | undefined
+      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run' | 'hasPlan' | 'planningOpen' | 'pending' | 'execProfileId' | 'execModel'> | undefined
     if (!row) throw new Error('Card não encontrado')
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
       .map((item) => ({ ...item, checked: Boolean(item.checked) }))
-    return { ...row, acceptanceCriteria: criteria, tasks: countTasks(this.documents.read(cardId, 'tasks')), run: cardRunState(this.database.db, cardId), hasPlan: this.documents.read(cardId, 'plano').trim().length > 0, ...this.execSettings(cardId) }
+    const tasks = countTasks(this.documents.read(cardId, 'tasks')), run = cardRunState(this.database.db, cardId), hasPlan = Boolean(this.database.db.prepare('SELECT plan_ready_at FROM cards WHERE id = ?').pluck().get(cardId))
+    // Planejamento aberto: começou a planejar (card sem título ou com chat de planejamento) e ainda não saiu nada dele.
+    const hasPlanningChat = Boolean(this.database.db.prepare("SELECT 1 FROM chats WHERE card_id = ? AND purpose = 'planning' LIMIT 1").get(cardId))
+    const planningOpen = run.state === 'idle' && !hasPlan && tasks.total === 0 && !row.description.trim() && !this.documents.read(cardId, 'especificacao').trim() && (!row.title.trim() || hasPlanningChat)
+    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, pending: this.pendingCounts(cardId), ...this.execSettings(cardId) }
+  }
+
+  private pendingCounts(cardId: string): { changes: number; questions: number } {
+    const count = (sql: string): number => (this.database.db.prepare(sql).get(cardId) as { value: number }).value
+    return { changes: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status = 'pending'"), questions: count("SELECT COUNT(*) AS value FROM card_questions WHERE card_id = ? AND status = 'user'") }
   }
 
   private execSettings(cardId: string): { execProfileId: string | null; execModel: string | null } {
@@ -250,6 +260,14 @@ export class BoardRepository {
     if (input.description.trim()) this.documents.write(id, 'resumo', input.description, 'user')
     if (input.acceptanceCriteria.length) this.documents.write(id, 'tasks', input.acceptanceCriteria.map((item, index) => `- [${item.checked ? 'x' : ' '}] T${String(index + 1).padStart(3, '0')} ${item.body}`).join('\n'), 'user')
     return this.card(id)
+  }
+
+  /** O planejador só declara o plano concluído com Especificação, Plano e Tasks escritos; devolve o que falta. */
+  markPlanReady(cardId: string): string[] {
+    const missing = (['especificacao', 'plano', 'tasks'] as const).filter((kind) => !this.documents.read(cardId, kind).trim())
+    if (!missing.length && countTasks(this.documents.read(cardId, 'tasks')).total === 0) missing.push('tasks')
+    if (!missing.length) this.database.db.prepare("UPDATE cards SET plan_ready_at = COALESCE(plan_ready_at, ?) WHERE id = ?").run(new Date().toISOString(), cardId)
+    return missing
   }
 
   update(input: { cardId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {

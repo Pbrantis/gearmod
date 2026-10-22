@@ -1,7 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { delimiter, extname, isAbsolute, join } from 'node:path'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { resolveCommand } from './agents'
 import type { AgentProfile, Effort, ModelOption, PermissionMode } from '@agentboard/contracts'
 import type { McpEndpoint } from './mcp-bridge'
@@ -124,16 +125,60 @@ export class CodexAppServerAdapter implements AgentAdapter {
 }
 
 /** Lista os modelos do Codex pelo app-server (`model/list`); falha ou demora devolvem lista vazia. */
-export async function listCodexModels(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 10_000): Promise<ModelOption[]> {
+export async function listCodexModels(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 30_000): Promise<ModelOption[]> {
+  try {
+    const live = await listCodexModelsLive(profile, processes, timeoutMs)
+    if (live.length) return live
+  } catch (error) {
+    const cached = readCodexModelsCache(profile)
+    if (cached.length) return cached
+    throw error
+  }
+  const cached = readCodexModelsCache(profile)
+  if (cached.length) return cached
+  throw new Error('O Codex não devolveu nenhum modelo.')
+}
+
+/** Plano B: o Codex guarda o último catálogo em `models_cache.json` dentro do CODEX_HOME. */
+export function readCodexModelsCache(profile: AgentProfile): ModelOption[] {
+  try {
+    const raw = JSON.parse(readFileSync(join(profile.configDir || join(homedir(), '.codex'), 'models_cache.json'), 'utf8')) as { models?: Array<Record<string, unknown>> }
+    return (raw.models ?? []).filter((item) => typeof item.slug === 'string' && item.visibility !== 'hide' && item.visibility !== 'none').map((item) => {
+      const levels = (Array.isArray(item.supported_reasoning_levels) ? item.supported_reasoning_levels : []) as Array<{ effort?: string } | string>
+      const efforts = levels.map((level) => (typeof level === 'string' ? level : level.effort)).filter((effort): effort is Effort => typeof effort === 'string')
+      return { id: item.slug as string, label: typeof item.display_name === 'string' ? item.display_name : (item.slug as string), description: typeof item.description === 'string' ? item.description : '', efforts, recommendedFor: [] as Array<'planning' | 'execution' | 'test'>, defaultEffort: (typeof item.default_reasoning_level === 'string' ? item.default_reasoning_level : efforts[0] ?? null) as Effort | null }
+    }).map((model, index) => ({ ...model, recommendedFor: index === 0 ? ['planning' as const, 'execution' as const] : [] }))
+  } catch { return [] }
+}
+
+async function listCodexModelsLive(profile: AgentProfile, processes: ProcessFactory, timeoutMs: number): Promise<ModelOption[]> {
   const child = processes.start(profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: process.cwd(), env: { ...process.env, CODEX_HOME: profile.configDir } })
   const rpc = new JsonLineRpc(child)
-  const timer = setTimeout(() => rpc.stop(), timeoutMs)
+  let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; rpc.stop() }, timeoutMs)
   try {
     await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
     rpc.notify('initialized')
     const result = await rpc.request('model/list', {}) as unknown as { data?: Array<{ model: string; displayName: string; description: string; hidden: boolean; isDefault: boolean; defaultReasoningEffort: Effort; supportedReasoningEfforts: Array<{ reasoningEffort: Effort }> }> }
     return (result.data ?? []).filter((model) => !model.hidden).map((model) => ({ id: model.model, label: model.displayName, description: model.description, efforts: model.supportedReasoningEfforts.map((item) => item.reasoningEffort), recommendedFor: model.isDefault ? ['planning', 'execution'] as const : [], defaultEffort: model.defaultReasoningEffort })).map((model) => ({ ...model, recommendedFor: [...model.recommendedFor] }))
+  } catch (error) {
+    throw timedOut ? new Error('O Codex não respondeu a tempo ao listar os modelos.') : error
   } finally { clearTimeout(timer); rpc.stop() }
+}
+
+/** Chamada mínima ao Claude só para ler o `rate_limit_event` (limite de uso); encerra o processo assim que o evento chega. */
+export async function probeClaudeLimits(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 90_000): Promise<Record<string, unknown> | null> {
+  const child = processes.start(profile.executablePath || 'claude', ['--print', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--no-session-persistence', '--', 'responda apenas: ok'], { cwd: tmpdir(), env: { ...process.env, CLAUDE_CONFIG_DIR: profile.configDir } })
+  child.stdin.end()
+  return new Promise((resolve) => {
+    let done = false
+    const finish = (value: Record<string, unknown> | null): void => { if (done) return; done = true; clearTimeout(timer); if (!child.killed) child.kill(); resolve(value) }
+    const timer = setTimeout(() => finish(null), timeoutMs)
+    createInterface({ input: child.stdout }).on('line', (line) => {
+      try { const message = JSON.parse(line) as Record<string, unknown>; if (message.type === 'rate_limit_event') finish(message) } catch { /* linha que não é JSON */ }
+    })
+    child.on('error', () => finish(null)); child.on('exit', () => finish(null))
+  })
 }
 
 export class ClaudeCliAdapter implements AgentAdapter {

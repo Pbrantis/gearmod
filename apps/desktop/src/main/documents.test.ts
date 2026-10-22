@@ -55,8 +55,12 @@ describe('DocumentRepository', () => {
     expect(board.documents.get(card.id).resumo.contentMd).toBe('Resumo inicial')
     expect(board.card(card.id).hasPlan).toBe(false)
     board.documents.write(card.id, 'plano', '## Plano\nFazer')
-    expect(board.card(card.id)).toMatchObject({ hasPlan: true, execProfileId: null })
+    expect(board.card(card.id)).toMatchObject({ hasPlan: false, execProfileId: null })
     board.documents.write(card.id, 'especificacao', '## Especificação\nTexto', 'agent')
+    expect(board.markPlanReady(card.id)).toEqual(['tasks'])
+    board.documents.write(card.id, 'tasks', '- [ ] T001 Fazer')
+    expect(board.markPlanReady(card.id)).toEqual([])
+    expect(board.card(card.id).hasPlan).toBe(true)
     board.documents.write(card.id, 'resumo', 'Resumo novo')
     board.documents.write(card.id, 'resumo', 'Resumo novo')
     expect(board.card(card.id).description).toBe('Resumo novo')
@@ -74,6 +78,19 @@ describe('DocumentRepository', () => {
     expect(board.card(card.id).tasks).toEqual({ done: 2, total: 2 })
     expect(() => board.documents.write(card.id, 'tasks', 'sem itens')).toThrow('T001')
     expect(board.card(card.id).tasks).toEqual({ done: 2, total: 2 })
+    database.close()
+  })
+
+  it('flags a card as planning open while it is only a started, still empty planning', async () => {
+    const { database, board, project, card } = await setup()
+    expect(board.card(card.id).planningOpen).toBe(false)
+    const column = board.get(project.id).columns[1]!
+    const blank = board.create({ projectId: project.id, columnId: column.id, title: '', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    expect(board.card(blank.id).planningOpen).toBe(true)
+    board.documents.write(blank.id, 'especificacao', '## Especificação\nTexto')
+    expect(board.card(blank.id).planningOpen).toBe(false)
+    const named = board.create({ projectId: project.id, columnId: column.id, title: 'Com nome', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    expect(board.card(named.id).planningOpen).toBe(false)
     database.close()
   })
 

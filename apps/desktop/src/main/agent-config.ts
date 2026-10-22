@@ -6,7 +6,7 @@ const claudeEfforts: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 /** Claude aceita aliases de modelo; Opus para planejar e Sonnet para executar são as recomendações de partida. */
 export const claudeModels: ModelOption[] = [
   { id: 'opus', label: 'Opus', description: 'Mais capaz; bom para planejar.', efforts: claudeEfforts, recommendedFor: ['planning'], defaultEffort: 'high' },
-  { id: 'sonnet', label: 'Sonnet', description: 'Equilibrado; bom para executar.', efforts: claudeEfforts, recommendedFor: ['execution'], defaultEffort: 'medium' },
+  { id: 'sonnet', label: 'Sonnet', description: 'Equilibrado; bom para executar e testar.', efforts: claudeEfforts, recommendedFor: ['execution', 'test'], defaultEffort: 'medium' },
   { id: 'haiku', label: 'Haiku', description: 'Rápido e barato para tarefas simples.', efforts: ['low', 'medium', 'high'], recommendedFor: [], defaultEffort: 'low' }
 ]
 
@@ -21,14 +21,14 @@ export class AgentConfigRepository {
     this.board.card(cardId)
     const rows = this.database.db.prepare('SELECT purpose, profile_id AS profileId, model, effort, mode FROM card_agent_settings WHERE card_id = ?').all(cardId) as Array<AgentConfig & { purpose: AgentPurpose }>
     const pick = (purpose: AgentPurpose): AgentConfig | null => { const row = rows.find((item) => item.purpose === purpose); return row ? agentConfigSchema.parse({ profileId: row.profileId, model: row.model, effort: row.effort, mode: row.mode }) : null }
-    return { planning: pick('planning'), execution: pick('execution') }
+    return { planning: pick('planning'), execution: pick('execution'), test: pick('test') }
   }
 
   set(cardId: string, purpose: AgentPurpose, config: AgentConfig): CardAgents {
     this.board.card(cardId)
     const profile = this.profiles.get(config.profileId)
     const info = permissionModes[profile.provider].find((mode) => mode.id === config.mode)
-    if (!info || !info.purposes.includes(purpose)) throw new Error(`O modo "${config.mode}" não existe para ${purpose === 'planning' ? 'planejar' : 'executar'} com ${profile.provider === 'codex' ? 'Codex' : 'Claude'}`)
+    if (!info || !info.purposes.includes(purpose)) throw new Error(`O modo "${config.mode}" não existe para ${purpose === 'planning' ? 'planejar' : purpose === 'test' ? 'testar' : 'executar'} com ${profile.provider === 'codex' ? 'Codex' : 'Claude'}`)
     if (info.needsApprovalUi) throw new Error(`O modo "${info.label}" precisa da tela de aprovação, que ainda não existe.`)
     this.database.db.prepare(`INSERT INTO card_agent_settings(card_id, purpose, profile_id, model, effort, mode, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(card_id, purpose) DO UPDATE SET profile_id = excluded.profile_id, model = excluded.model, effort = excluded.effort, mode = excluded.mode, updated_at = excluded.updated_at`)
@@ -59,10 +59,14 @@ export class AgentConfigRepository {
   async options(profileId: string): Promise<AgentOptions> {
     const profile = this.profiles.get(profileId)
     let models = claudeModels
+    let error: string | undefined
     if (profile.provider === 'codex') {
-      if (!this.codexCache.has(profileId) && this.listCodexModels) { try { this.codexCache.set(profileId, await this.listCodexModels(profileId)) } catch { /* sem lista: usa o padrão do Codex */ } }
+      if (!this.codexCache.has(profileId) && this.listCodexModels) {
+        try { const listed = await this.listCodexModels(profileId); if (listed.length) this.codexCache.set(profileId, listed); else error = 'O Codex não devolveu nenhum modelo.' }
+        catch (reason) { error = (reason instanceof Error ? reason.message : String(reason)).slice(0, 300) }
+      }
       models = this.codexCache.get(profileId) ?? []
     }
-    return { models, mostUsed: { planning: this.mostUsed(profileId, 'planning'), execution: this.mostUsed(profileId, 'execution') } }
+    return { models, ...(error ? { error } : {}), mostUsed: { planning: this.mostUsed(profileId, 'planning'), execution: this.mostUsed(profileId, 'execution'), test: this.mostUsed(profileId, 'test') } }
   }
 }

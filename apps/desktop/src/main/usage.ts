@@ -8,6 +8,15 @@ import type { ProfileRepository } from './projects'
 const windowLabels: Record<string, string> = { five_hour: 'Sessão de 5 horas', seven_day: 'Semana' }
 const labelFor = (id: string, minutes?: number): string => windowLabels[id] ?? (minutes ? (minutes >= 10_080 ? 'Semana' : minutes >= 1440 ? `${Math.round(minutes / 1440)} dias` : `${Math.round(minutes / 60)} horas`) : id)
 const iso = (seconds: number): string => new Date(seconds * 1000).toISOString()
+const periods: Record<string, number> = { five_hour: 5 * 3600_000, seven_day: 7 * 86_400_000 }
+
+/** Janela que já reiniciou: volta a 0% e o próximo reset é projetado somando o período da janela (5 h ou semana). */
+export function rollWindow(window: UsageWindow, now = Date.now()): UsageWindow {
+  if (!window.resetsAt || Date.parse(window.resetsAt) > now) return window
+  const period = periods[window.id]
+  const next = period ? new Date(Date.parse(window.resetsAt) + Math.ceil((now - Date.parse(window.resetsAt) + 1) / period) * period).toISOString() : null
+  return { ...window, usedPercent: 0, resetsAt: next }
+}
 
 /** Janelas de uso numa linha das sessões do Codex (`rate_limits` com `primary` e `secondary`); aceita variações de nome dos campos. */
 export function parseCodexRateLimits(line: string): { windows: UsageWindow[]; at: string | null } | null {
@@ -57,7 +66,8 @@ async function tail(path: string, bytes: number): Promise<string> {
 
 /** Uso das sessões: Codex lido de `<CODEX_HOME>/sessions/**\/*.jsonl`; Claude a partir do `rate_limit_event` que o Claude Code emite em cada execução. */
 export class UsageService {
-  constructor(private readonly database: AppDatabase, private readonly profiles: ProfileRepository) {}
+  private readonly probing = new Set<string>()
+  constructor(private readonly database: AppDatabase, private readonly profiles: ProfileRepository, private readonly probeClaude?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly staleMs = 10 * 60_000) {}
 
   recordClaude(profileId: string, payload: Record<string, unknown>): void {
     const info = (payload.rate_limit_info ?? {}) as { unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }> }
@@ -69,8 +79,7 @@ export class UsageService {
 
   private claude(profile: AgentProfile): { windows: UsageWindow[]; capturedAt: string | null } {
     const rows = this.database.db.prepare('SELECT window AS id, utilization, resets_at AS resetsAt, captured_at AS capturedAt FROM agent_usage_snapshots WHERE profile_id = ? ORDER BY window').all(profile.id) as Array<{ id: string; utilization: number; resetsAt: string | null; capturedAt: string }>
-    const now = Date.now()
-    const windows = rows.map((row) => ({ id: row.id, label: labelFor(row.id), usedPercent: row.resetsAt && Date.parse(row.resetsAt) < now ? 0 : Math.round(row.utilization * 100), resetsAt: row.resetsAt && Date.parse(row.resetsAt) < now ? null : row.resetsAt }))
+    const windows = rows.map((row) => rollWindow({ id: row.id, label: labelFor(row.id), usedPercent: Math.round(row.utilization * 100), resetsAt: row.resetsAt }))
     return { windows, capturedAt: rows.map((row) => row.capturedAt).sort().at(-1) ?? null }
   }
 
@@ -81,10 +90,26 @@ export class UsageService {
       const lines = (await tail(file.path, 512 * 1024)).split('\n')
       for (let i = lines.length - 1; i >= 0; i -= 1) {
         const found = parseCodexRateLimits(lines[i]!)
-        if (found) return { windows: found.windows, capturedAt: found.at ?? new Date(file.mtime).toISOString() }
+        if (found) return { windows: found.windows.map((window) => rollWindow(window)), capturedAt: found.at ?? new Date(file.mtime).toISOString() }
       }
     }
     return { windows: [], capturedAt: null }
+  }
+
+  /**
+   * O Claude só informa o limite quando roda. Para o painel não ficar vazio ou velho, faz uma chamada mínima (modelo barato)
+   * por baixo dos panos e guarda o `rate_limit_event`. Só repete quando o dado tem mais de 10 minutos.
+   */
+  async refresh(): Promise<Array<{ profileId: string; provider: 'claude' | 'codex'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {
+    if (this.probeClaude) {
+      await Promise.all(this.profiles.list().filter((profile) => profile.provider === 'claude' && !this.probing.has(profile.id)).map(async (profile) => {
+        const last = this.claude(profile).capturedAt
+        if (last && Date.now() - Date.parse(last) < this.staleMs) return
+        this.probing.add(profile.id)
+        try { const payload = await this.probeClaude!(profile); if (payload) this.recordClaude(profile.id, payload) } catch { /* sem rede ou sem login: mantém o último dado */ } finally { this.probing.delete(profile.id) }
+      }))
+    }
+    return this.list()
   }
 
   async list(): Promise<Array<{ profileId: string; provider: 'claude' | 'codex'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {

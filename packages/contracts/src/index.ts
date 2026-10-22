@@ -34,7 +34,7 @@ export const semanticStateSchema = z.enum(['backlog', 'todo', 'doing', 'test', '
 export const agentProviderSchema = z.enum(['codex', 'claude'])
 export const agentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 /** Cores de personalidade oferecidas ao cadastrar um agente; a cor é independente do tema do sistema. */
-export const agentColorPalette = ['#D97757', '#E5A24B', '#9ccf6f', '#6fc3b2', '#8fb8d6', '#aeb9ff', '#b98fd6', '#e07a9a'] as const
+export const agentColorPalette = ['#D97757', '#E5A24B', '#9ccf6f', '#6fc3b2', '#8fb8d6', '#aeb9ff', '#b98fd6', '#e07a9a', '#e8c27a', '#c4d96b', '#5fbf8f', '#4fb8c9', '#6f9bf0', '#8c8cf0', '#d98fd9', '#f08a8a', '#d9a477', '#b5bdb7'] as const
 export const defaultAgentColor = (provider: z.infer<typeof agentProviderSchema>): string => (provider === 'claude' ? agentColorPalette[0] : agentColorPalette[5])
 export const themeSchema = z.enum(['green', 'purple', 'blue', 'orange'])
 export const languageSchema = z.enum(['pt-BR', 'en'])
@@ -63,14 +63,14 @@ export const projectSchema = z.object({
 export const projectInspectionSchema = z.object({
   localPath: z.string(), name: z.string(), repositories: z.array(z.object({ localPath: z.string(), name: z.string(), currentBranch: z.string(), branches: z.array(z.string()) }))
 })
-export const agentPurposeSchema = z.enum(['planning', 'execution'])
+export const agentPurposeSchema = z.enum(['planning', 'execution', 'test'])
 export const permissionModeSchema = z.enum(['plan', 'auto', 'accept_edits', 'manual', 'on_request', 'read_only', 'bypass'])
 export const effortSchema = z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
 export const agentConfigSchema = z.object({ profileId: uuid, model: z.string().trim().max(120).nullable(), effort: effortSchema.nullable(), mode: permissionModeSchema })
-export const cardAgentsSchema = z.object({ planning: agentConfigSchema.nullable(), execution: agentConfigSchema.nullable() })
+export const cardAgentsSchema = z.object({ planning: agentConfigSchema.nullable(), execution: agentConfigSchema.nullable(), test: agentConfigSchema.nullable() })
 export const modelOptionSchema = z.object({ id: z.string(), label: z.string(), description: z.string(), efforts: z.array(effortSchema), recommendedFor: z.array(agentPurposeSchema), defaultEffort: effortSchema.nullable() })
 export const mostUsedSchema = z.object({ model: z.string().nullable(), effort: effortSchema.nullable() }).nullable()
-export const agentOptionsSchema = z.object({ models: z.array(modelOptionSchema), mostUsed: z.object({ planning: mostUsedSchema, execution: mostUsedSchema }) })
+export const agentOptionsSchema = z.object({ models: z.array(modelOptionSchema), mostUsed: z.object({ planning: mostUsedSchema, execution: mostUsedSchema, test: mostUsedSchema }), error: z.string().optional() })
 
 export type PermissionMode = z.infer<typeof permissionModeSchema>
 export interface PermissionModeInfo { id: PermissionMode; label: string; description: string; purposes: Array<z.infer<typeof agentPurposeSchema>>; needsApprovalUi?: boolean; dangerous?: boolean; recommended?: boolean }
@@ -78,17 +78,17 @@ export interface PermissionModeInfo { id: PermissionMode; label: string; descrip
 export const permissionModes: Record<'claude' | 'codex', PermissionModeInfo[]> = {
   claude: [
     { id: 'plan', label: 'Plano', description: 'Só lê e planeja; não altera arquivos.', purposes: ['planning'], recommended: true },
-    { id: 'accept_edits', label: 'Aceitar edições', description: 'Edita arquivos sem perguntar; comandos fora da lista são negados.', purposes: ['execution'], recommended: true },
-    { id: 'auto', label: 'Automático', description: 'O próprio Claude decide o que é seguro aprovar.', purposes: ['execution'] },
-    { id: 'manual', label: 'Manual', description: 'Pergunta a cada ação. Precisa da tela de aprovação (em breve).', purposes: ['execution'], needsApprovalUi: true },
-    { id: 'bypass', label: 'Ignorar permissões', description: 'Executa tudo sem pedir. Use só em ambiente descartável.', purposes: ['execution'], dangerous: true }
+    { id: 'accept_edits', label: 'Aceitar edições', description: 'Edita arquivos sem perguntar; comandos fora da lista são negados.', purposes: ['execution', 'test'], recommended: true },
+    { id: 'auto', label: 'Automático', description: 'O próprio Claude decide o que é seguro aprovar.', purposes: ['execution', 'test'] },
+    { id: 'manual', label: 'Manual', description: 'Pergunta a cada ação. Precisa da tela de aprovação (em breve).', purposes: ['execution', 'test'], needsApprovalUi: true },
+    { id: 'bypass', label: 'Ignorar permissões', description: 'Executa tudo sem pedir. Use só em ambiente descartável.', purposes: ['execution', 'test'], dangerous: true }
   ],
   codex: [
     { id: 'plan', label: 'Plano', description: 'Somente leitura, só planeja.', purposes: ['planning'], recommended: true },
-    { id: 'auto', label: 'Automático', description: 'Edita na pasta do projeto e uma revisão automática aprova o que for seguro.', purposes: ['execution'], recommended: true },
-    { id: 'on_request', label: 'Sob pedido', description: 'Edita na pasta do projeto e pede aprovação para o resto. Precisa da tela de aprovação (em breve).', purposes: ['execution'], needsApprovalUi: true },
-    { id: 'read_only', label: 'Somente leitura', description: 'Lê e pede aprovação para qualquer mudança. Precisa da tela de aprovação (em breve).', purposes: ['execution'], needsApprovalUi: true },
-    { id: 'bypass', label: 'Ignorar permissões', description: 'Sem sandbox e sem aprovações. Use só em ambiente descartável.', purposes: ['execution'], dangerous: true }
+    { id: 'auto', label: 'Automático', description: 'Edita na pasta do projeto e uma revisão automática aprova o que for seguro.', purposes: ['execution', 'test'], recommended: true },
+    { id: 'on_request', label: 'Sob pedido', description: 'Edita na pasta do projeto e pede aprovação para o resto. Precisa da tela de aprovação (em breve).', purposes: ['execution', 'test'], needsApprovalUi: true },
+    { id: 'read_only', label: 'Somente leitura', description: 'Lê e pede aprovação para qualquer mudança. Precisa da tela de aprovação (em breve).', purposes: ['execution', 'test'], needsApprovalUi: true },
+    { id: 'bypass', label: 'Ignorar permissões', description: 'Sem sandbox e sem aprovações. Use só em ambiente descartável.', purposes: ['execution', 'test'], dangerous: true }
   ]
 }
 export const defaultPermissionMode = (provider: 'claude' | 'codex', purpose: z.infer<typeof agentPurposeSchema>): PermissionMode => (purpose === 'planning' ? 'plan' : provider === 'claude' ? 'accept_edits' : 'auto')
@@ -111,18 +111,27 @@ export const agentUsageSchema = z.object({ profileId: uuid, provider: agentProvi
 export type UsageWindow = z.infer<typeof usageWindowSchema>
 export type AgentUsage = z.infer<typeof agentUsageSchema>
 
-export const cardDocumentKinds = ['resumo', 'especificacao', 'plano', 'tasks'] as const
+/** Os 4 documentos do plano + Dúvidas e Mudanças, gerados pelo sistema a partir das perguntas e propostas entre as etapas. */
+export const questionSchema = z.object({ id: uuid, number: z.number().int(), askerPurpose: agentPurposeSchema, question: z.string(), status: z.enum(['open', 'planner', 'user', 'answered']), answer: z.string().nullable(), answeredBy: z.enum(['planner', 'user']).nullable(), userQuestion: z.string().nullable(), createdAt: isoDate, answeredAt: isoDate.nullable() })
+export const changeSchema = z.object({ id: uuid, number: z.number().int(), proposerPurpose: agentPurposeSchema, title: z.string(), details: z.string(), reason: z.string(), status: z.enum(['pending', 'accepted', 'suggested', 'rejected', 'applied']), userNote: z.string().nullable(), createdAt: isoDate, decidedAt: isoDate.nullable() })
+export const collaborationSchema = z.object({ questions: z.array(questionSchema), changes: z.array(changeSchema) })
+export type Question = z.infer<typeof questionSchema>
+export type Change = z.infer<typeof changeSchema>
+export type Collaboration = z.infer<typeof collaborationSchema>
+
+export const cardDocumentKinds = ['resumo', 'especificacao', 'plano', 'tasks', 'duvidas', 'mudancas'] as const
+export const systemDocumentKinds = ['duvidas', 'mudancas'] as const
 export const cardDocumentKindSchema = z.enum(cardDocumentKinds)
 export const cardDocumentSchema = z.object({ kind: cardDocumentKindSchema, contentMd: z.string(), updatedAt: isoDate.nullable(), updatedBy: z.enum(['user', 'agent', 'system']).nullable() })
-export const cardDocumentsSchema = z.object({ resumo: cardDocumentSchema, especificacao: cardDocumentSchema, plano: cardDocumentSchema, tasks: cardDocumentSchema })
+export const cardDocumentsSchema = z.object({ resumo: cardDocumentSchema, especificacao: cardDocumentSchema, plano: cardDocumentSchema, tasks: cardDocumentSchema, duvidas: cardDocumentSchema, mudancas: cardDocumentSchema })
 export const documentVersionSchema = z.object({ id: uuid, version: z.number().int().positive(), contentMd: z.string(), createdAt: isoDate, actor: z.enum(['user', 'agent', 'system']) })
 export const taskCountSchema = z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() })
 export const criterionSchema = z.object({ id: uuid, cardId: uuid, body: z.string(), checked: z.boolean(), sortOrder: z.number().int() })
-export const cardRunStateSchema = z.object({ state: z.enum(['idle', 'planning', 'running', 'paused', 'finished']), runId: uuid.nullable(), profileId: uuid.nullable() })
+export const cardRunStateSchema = z.object({ state: z.enum(['idle', 'planning', 'running', 'paused', 'finished']), runId: uuid.nullable(), profileId: uuid.nullable(), purpose: agentPurposeSchema.nullable() })
 export const cardSchema = z.object({
   id: uuid, projectId: uuid, columnId: uuid, sourceId: uuid.nullable(), type: cardTypeSchema, title: z.string(), description: z.string(),
   priority: cardPrioritySchema, orderKey: z.number(), createdAt: isoDate, updatedAt: isoDate,
-  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema, run: cardRunStateSchema, hasPlan: z.boolean(), execProfileId: uuid.nullable(), execModel: z.string().nullable()
+  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema, run: cardRunStateSchema, hasPlan: z.boolean(), planningOpen: z.boolean(), pending: z.object({ changes: z.number().int().nonnegative(), questions: z.number().int().nonnegative() }), execProfileId: uuid.nullable(), execModel: z.string().nullable()
 })
 export const projectBoardSchema = z.object({ project: projectSchema, columns: z.array(boardColumnSchema), cards: z.array(cardSchema) })
 export const agentProbeSchema = z.object({
@@ -130,7 +139,7 @@ export const agentProbeSchema = z.object({
   version: z.string().nullable(), executablePath: z.string().nullable(), capabilities: z.array(z.string()), checkedAt: isoDate,
   error: z.string().nullable()
 })
-export const chatSchema = z.object({ id: uuid, projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), provider: z.enum(['codex', 'claude']), profileId: uuid, providerSessionId: z.string().nullable(), skill: skillRefSchema.nullable(), createdAt: isoDate, updatedAt: isoDate })
+export const chatSchema = z.object({ id: uuid, projectId: uuid, cardId: uuid.nullable(), purpose: agentPurposeSchema, provider: z.enum(['codex', 'claude']), profileId: uuid, providerSessionId: z.string().nullable(), skill: skillRefSchema.nullable(), createdAt: isoDate, updatedAt: isoDate })
 export const chatMessageSchema = z.object({ id: uuid, chatId: uuid, role: z.enum(['user', 'assistant', 'system', 'tool']), body: z.string(), status: z.enum(['streaming', 'complete', 'failed']), createdAt: isoDate, providerMessageId: z.string().nullable() })
 export const runSchema = z.object({ id: uuid, cardId: uuid, chatId: uuid, profileId: uuid, status: z.enum(['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled']), startedAt: isoDate, endedAt: isoDate.nullable(), exitReason: z.string().nullable(), worktreeId: uuid.nullable(), providerTurnId: z.string().nullable() })
 export const runEventSchema = z.object({ id: uuid, runId: uuid, seq: z.number().int().nonnegative(), eventType: z.string(), payload: z.record(z.string(), z.unknown()), createdAt: isoDate })
@@ -194,8 +203,10 @@ export const ipcContracts = {
   , 'cards:write-document': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema, contentMd: z.string().max(200_000) }).strict(), output: cardDocumentSchema }
   , 'cards:document-versions': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema }).strict(), output: z.array(documentVersionSchema) }
   , 'cards:toggle-task': { input: z.object({ cardId: uuid, line: z.number().int().nonnegative(), checked: z.boolean() }).strict(), output: cardDocumentSchema }
-  , 'cards:start': { input: z.object({ cardId: uuid, config: agentConfigSchema }).strict(), output: runSchema }
-  , 'cards:resume': { input: cardIdInput, output: runSchema }
+  , 'cards:start': { input: z.object({ cardId: uuid, config: agentConfigSchema, purpose: z.enum(['execution', 'test']).optional() }).strict(), output: runSchema }
+  , 'cards:resume': { input: z.object({ cardId: uuid, purpose: z.enum(['execution', 'test']).optional() }).strict(), output: runSchema }
+  , 'chats:reset': { input: z.object({ chatId: uuid }).strict(), output: z.object({ reset: z.literal(true) }) }
+  , 'usage:refresh': { input: z.undefined(), output: z.array(agentUsageSchema) }
   , 'cards:mark-viewed': { input: cardIdInput, output: cardSchema }
   , 'agents:options': { input: z.object({ profileId: uuid }).strict(), output: agentOptionsSchema }
   , 'cards:agent-config': { input: cardIdInput, output: cardAgentsSchema }
@@ -209,9 +220,12 @@ export const ipcContracts = {
   , 'voice:install': { input: z.undefined(), output: voiceStatusSchema }
   , 'voice:transcribe': { input: z.object({ wav: z.instanceof(Uint8Array).refine((value) => value.byteLength <= 12 * 1024 * 1024, 'Gravação longa demais'), prompt: z.string().max(400).optional() }).strict(), output: z.object({ text: z.string() }) }
   , 'usage:list': { input: z.undefined(), output: z.array(agentUsageSchema) }
+  , 'collab:list': { input: cardIdInput, output: collaborationSchema }
+  , 'collab:decide-change': { input: z.object({ changeId: uuid, decision: z.enum(['accept', 'reject', 'suggest']), note: z.string().trim().max(4000).optional() }).strict(), output: collaborationSchema }
+  , 'collab:answer-question': { input: z.object({ questionId: uuid, answer: z.string().trim().min(1).max(8000) }).strict(), output: collaborationSchema }
   , 'cards:delete': { input: cardIdInput, output: z.object({ deleted: z.boolean() }) }
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
-  , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: z.enum(['planning', 'execution']), profileId: uuid, skill: skillRefSchema.nullable().optional() }).strict(), output: chatSchema }
+  , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: agentPurposeSchema, profileId: uuid, skill: skillRefSchema.nullable().optional() }).strict(), output: chatSchema }
   , 'messages:list': { input: z.object({ chatId: uuid }).strict(), output: z.array(chatMessageSchema) }
   , 'messages:add': { input: z.object({ chatId: uuid, role: z.enum(['user', 'assistant', 'system', 'tool']), body: z.string().min(1).max(100_000), status: z.enum(['streaming', 'complete', 'failed']).default('complete') }).strict(), output: chatMessageSchema }
   , 'runs:create': { input: z.object({ cardId: uuid, chatId: uuid, profileId: uuid }).strict(), output: runSchema }

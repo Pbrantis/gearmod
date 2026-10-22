@@ -5,11 +5,16 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AgentContextService } from './agent-context'
-import { AgentWriteback } from './agent-writeback'
+import { AgentWriteback, titleFromPrompt } from './agent-writeback'
 import { AppDatabase } from './database'
 import { extractDocuments, McpBridge, type CardChange } from './mcp-bridge'
 import { BoardRepository, ProjectRepository } from './projects'
 import { SettingsRepository } from './settings'
+import { AgentConfigRepository } from './agent-config'
+import { CollaborationService, type FollowUp } from './collaboration'
+import { ConversationRepository } from './conversations'
+import { ProfileRepository } from './projects'
+import { seedProfiles } from './test-helpers'
 
 const roots: string[] = []
 const closers: Array<() => Promise<void>> = []
@@ -27,7 +32,7 @@ async function setup() {
   const context = new AgentContextService(board, new SettingsRepository(database), null)
   const bridge = new McpBridge({ board, context, serverScript, runtime: process.execPath }); await bridge.listen()
   closers.push(async () => { await bridge.close(); database.close() })
-  return { board, bridge, card, columns }
+  return { board, bridge, card, columns, project }
 }
 
 /** Cliente MCP mínimo que fala com o servidor stdio real, como o Claude e o Codex fazem. */
@@ -50,7 +55,7 @@ describe('AgentBoard MCP server', () => {
     const init = await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('agentboard')
     const listed = await client.request('tools/list')
-    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_mover_card'])
+    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_concluir_planejamento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_responder_duvida', 'agentboard_pedir_ao_usuario', 'agentboard_mover_card'])
 
     expect((await client.call('agentboard_contexto_do_card', {})).content[0]!.text).toContain('"titulo": "MCP"')
     const bad = await client.call('agentboard_escrever_documento', { tipo: 'tasks', markdown: 'sem itens' })
@@ -81,6 +86,28 @@ describe('AgentBoard MCP server', () => {
   })
 })
 
+describe('card title', () => {
+  it('derives a short title from the first request', () => {
+    expect(titleFromPrompt('quero criar um guia de instalação do agente. Mostrar passo a passo')).toBe('Quero criar um guia de instalação do agente')
+    expect(titleFromPrompt('## Planeje **isto**\n\n```js\ncodigo\n```')).toBe('Planeje isto')
+    expect(titleFromPrompt('a'.repeat(30) + ' ' + 'b'.repeat(30) + ' ' + 'c'.repeat(30)).endsWith('…')).toBe(true)
+    expect(titleFromPrompt('   ')).toBe('')
+  })
+
+  it('names an untitled card after the first planning turn when the agent did not, and leaves named cards alone', async () => {
+    const { board, bridge, card, project, columns } = await setup()
+    const writeback = new AgentWriteback(board, bridge)
+    const blank = board.create({ projectId: project.id, columnId: columns[1]!.id, title: '', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    writeback.begin('run-t', blank.id, () => undefined)
+    const events: string[] = []
+    writeback.finish({ runId: 'run-t', cardId: blank.id, planning: true, completed: true, text: 'ok', prompt: 'Quero planejar o painel de uso. Com Codex e Claude', publish: (type) => events.push(type) })
+    expect(board.card(blank.id).title).toBe('Quero planejar o painel de uso'); expect(events).toContain('agentboard/card-updated')
+    writeback.begin('run-n', card.id, () => undefined)
+    writeback.finish({ runId: 'run-n', cardId: card.id, planning: true, completed: true, text: 'ok', prompt: 'Outro pedido qualquer', publish: () => undefined })
+    expect(board.card(card.id).title).toBe('MCP')
+  })
+})
+
 describe('Plano B and writeback', () => {
   it('extracts documents between markers', () => {
     const text = 'Pronto.\n<!-- agentboard:documento tipo=especificacao -->\n## Especificação\nTexto\n<!-- /agentboard:documento -->\n<!-- agentboard:documento tipo=invalido -->x<!-- /agentboard:documento -->'
@@ -100,6 +127,40 @@ describe('Plano B and writeback', () => {
     expect(events).toContain('agentboard/card-updated')
     const another = writeback.begin('run-4', card.id, () => undefined)
     expect(another.env.AGENTBOARD_TOKEN).not.toBe(endpoint.env.AGENTBOARD_TOKEN)
-    writeback.writePlan(card.id, 'Texto livre'); expect(board.documents.read(card.id, 'plano')).toBe('Texto livre')
+    expect(board.card(card.id).hasPlan).toBe(false)
+    expect((await mcpClient(another).call('agentboard_concluir_planejamento', {})).isError).toBe(true)
+  })
+})
+
+describe('collaboration tools', () => {
+  it('lets the developer ask and propose, the planner answer and escalate, and refuses the wrong role', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-collab-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
+    const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects), conversations = new ConversationRepository(database)
+    const profile = profiles.list()[0]!
+    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev', profileIds: [profile.id] })
+    const card = board.create({ projectId: project.id, columnId: board.get(project.id).columns[2]!.id, title: 'C', description: '', type: 'task', priority: 'low', acceptanceCriteria: [] })
+    const dev = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profile.id })
+    const planning = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'planning', profileId: profile.id })
+    const started: FollowUp[] = []
+    const collab = new CollaborationService(database, board, conversations, new AgentConfigRepository(database, board, profiles)); collab.setStarter((action) => { started.push(action) })
+    const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), null), serverScript, runtime: process.execPath, collab }); await bridge.listen()
+    closers.push(async () => { await bridge.close(); database.close() })
+    const developer = mcpClient(bridge.register('r-dev', card.id, () => undefined, { id: dev.id, purpose: 'execution' }))
+    expect((await developer.call('agentboard_perguntar_ao_planejador', { pergunta: 'Qual lib de datas?' })).content[0]!.text).toContain('D001')
+    expect((await developer.call('agentboard_propor_mudanca', { titulo: 'Cache', o_que_muda: 'Adicionar cache', motivo: 'Lento' })).content[0]!.text).toContain('M001')
+    expect((await developer.call('agentboard_propor_mudanca', { titulo: 'só título' })).isError).toBe(true)
+    expect((await developer.call('agentboard_responder_duvida', { numero: 1, resposta: 'x' })).isError).toBe(true)
+    expect((await developer.call('agentboard_escrever_documento', { tipo: 'duvidas', markdown: 'x' })).isError).toBe(true)
+    expect(board.card(card.id).pending).toEqual({ changes: 1, questions: 0 })
+    collab.afterRun({ cardId: card.id, chatId: dev.id, purpose: 'execution', status: 'completed' })
+    const planner = mcpClient(bridge.register('r-plan', card.id, () => undefined, { id: planning.id, purpose: 'planning' }))
+    expect((await planner.call('agentboard_perguntar_ao_planejador', { pergunta: 'eu?' })).isError).toBe(true)
+    expect((await planner.call('agentboard_propor_mudanca', { titulo: 'a', o_que_muda: 'b', motivo: 'c' })).isError).toBe(true)
+    expect((await planner.call('agentboard_responder_duvida', { numero: 1, resposta: 'Use date-fns.' })).isError).toBe(false)
+    expect((await planner.call('agentboard_pedir_ao_usuario', { numero: 1, pergunta: 'x' })).isError).toBe(true)
+    collab.afterRun({ cardId: card.id, chatId: planning.id, purpose: 'planning', status: 'completed' })
+    expect(started.map((action) => action.chatId)).toEqual([planning.id, dev.id]); expect(started[1]!.prompt).toContain('Use date-fns.')
   })
 })

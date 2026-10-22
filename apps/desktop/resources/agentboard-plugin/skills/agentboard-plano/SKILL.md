@@ -33,3 +33,7 @@ Escreva no idioma informado em `idioma`. Use `templates/<idioma>.md`; se não ho
 ## Entrega
 
 Envie com `tipo` = `plano` (ferramenta `agentboard_escrever_documento` ou marcadores, conforme `agentboard-planejamento`).
+
+## Plano de testes
+
+Inclua no Plano uma seção `## Plano de testes` com o que testar, como (comando ou passo) e o resultado esperado, por história. O testador e o desenvolvedor usam essa seção; o que faltar nela vira dúvida ou proposta de mudança.

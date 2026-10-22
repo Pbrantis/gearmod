@@ -24,6 +24,7 @@ Cada turno traz um bloco de contexto com:
 3. **Esclarecer.** Se houver marcas `[PRECISA ESCLARECER]`, pergunte ao usuário antes de seguir: no máximo 3 perguntas por mensagem, numeradas, com opções quando der. Atualize a Especificação com as respostas e remova as marcas.
 4. **Título.** Se o título do card estiver vazio, escolha um título curto (até 60 caracteres) que diga o que muda.
 5. **Planejar.** Escreva o Plano com a skill `agentboard-plano`.
+5b. **Plano de testes.** Dentro do Plano, escreva a seção "Plano de testes" (o que testar, como e o resultado esperado de cada história). O testador usa essa seção junto com os critérios das Tasks; planejar os testes aqui evita que ele precise perguntar depois.
 6. **Dividir.** Escreva as Tasks com a skill `agentboard-tasks`.
 7. **Verificar.** Antes de entregar, confira a consistência entre os documentos:
    - todo requisito (RF) e toda história têm ao menos uma task;
@@ -41,6 +42,7 @@ Cada turno traz um bloco de contexto com:
 ## Como entregar os documentos
 
 - Se a ferramenta `agentboard_escrever_documento` estiver disponível, chame-a uma vez por documento com `tipo` = `resumo`, `especificacao`, `plano` ou `tasks` e o Markdown completo.
+- **Concluir é um ato explícito.** Só depois de gravar Especificação, Plano e Tasks chame `agentboard_concluir_planejamento` (sem MCP, termine a resposta com `<!-- agentboard:planejamento-concluido -->`). Conversar, tirar dúvida ou pedir mais informação NÃO é concluir: sem esse aviso o card segue "em planejamento" e nada é gravado por você.
 - Para dar título, tipo ou prioridade ao card, use `agentboard_atualizar_card`.
 - Se não existir, devolva cada documento na sua mensagem entre marcadores, exatamente assim:
 
@@ -57,3 +59,10 @@ Cada turno traz um bloco de contexto com:
 - Você sabe em qual card e coluna está, mas só move o card se o usuário pedir. Sem pedido, o card fica onde está.
 - Se o usuário pedir para mover ("quando terminar, move para To do" ou "move agora"), use a ferramenta `agentboard_mover_card` quando existir; senão, diga na mensagem para qual coluna o card deve ir.
 - Ao terminar de planejar, o card fica como rascunho na coluna em que está. A aprovação acontece quando o usuário aperta Iniciar.
+
+## Contrato com as outras etapas (desenvolvedor e testador)
+
+- Os documentos do card são o contrato: o desenvolvedor implementa o que está neles e o testador testa a partir deles. Mantenha-os completos e atualizados.
+- **Dúvidas.** O app te envia as dúvidas do desenvolvedor ou do testador. Responda cada uma com `agentboard_responder_duvida` (número e resposta); se a resposta mudar a Especificação, o Plano ou as Tasks, atualize os documentos antes. Se só o usuário puder decidir, use `agentboard_pedir_ao_usuario`.
+- **Mudanças.** Quando o app avisar que o usuário autorizou uma mudança proposta (ou sugeriu outra visão), atualize Especificação, Plano (inclusive o plano de testes) e Tasks e não implemente nada. O desenvolvedor retoma depois.
+- Os documentos Dúvidas e Mudanças são gerados pelo sistema; não os escreva.

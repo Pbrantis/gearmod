@@ -25,9 +25,11 @@ async function setup(lister?: (profileId: string) => Promise<never[]>) {
 describe('AgentConfigRepository', () => {
   it('stores a config per card and purpose and falls back to recommended defaults', async () => {
     const { database, claude, card, configs } = await setup()
-    expect(configs.get(card.id)).toEqual({ planning: null, execution: null })
+    expect(configs.get(card.id)).toEqual({ planning: null, execution: null, test: null })
     expect(configs.resolve(card.id, claude.id, 'planning')).toEqual({ profileId: claude.id, model: 'opus', effort: 'high', mode: 'plan' })
     expect(configs.resolve(card.id, claude.id, 'execution')).toEqual({ profileId: claude.id, model: 'sonnet', effort: 'medium', mode: 'accept_edits' })
+    configs.set(card.id, 'test', { profileId: claude.id, model: 'sonnet', effort: 'low', mode: 'accept_edits' })
+    expect(configs.get(card.id).test?.model).toBe('sonnet')
     configs.set(card.id, 'execution', { profileId: claude.id, model: 'haiku', effort: 'low', mode: 'auto' })
     expect(configs.get(card.id).execution).toEqual({ profileId: claude.id, model: 'haiku', effort: 'low', mode: 'auto' })
     expect(configs.resolve(card.id, claude.id, 'execution').model).toBe('haiku')

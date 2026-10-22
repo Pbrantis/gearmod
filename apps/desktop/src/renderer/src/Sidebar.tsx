@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentProfile, AgentUsage, Project } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
 import { ChevronLeftIcon } from './icons'
@@ -14,15 +14,30 @@ const Bar = ({ percent }: { percent: number }): React.JSX.Element => <div classN
 
 /** Uso das sessões: botão do rodapé com os provedores, lista por agente (5 h) e, ao clicar, o painel completo com a semana. */
 function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Element {
-  const [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>()
+  const [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>(), [refreshing, setRefreshing] = useState(false)
   const load = useCallback(async () => { try { setUsage(await window.agentboard.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
-  useEffect(() => { if (open || detail) void load() }, [open, detail, load])
+  // Mostra o que já se sabe na hora e atualiza por baixo dos panos (o Claude só informa o limite quando roda).
+  useEffect(() => {
+    if (!open && !detail) return
+    let alive = true
+    void load(); setRefreshing(true)
+    void window.agentboard.invoke('usage:refresh', undefined).then((fresh) => { if (alive) setUsage(fresh) }).catch(() => undefined).finally(() => { if (alive) setRefreshing(false) })
+    return () => { alive = false }
+  }, [open, detail, load])
   useEffect(() => window.agentboard.onRunEvent((event) => { if ((open || detail) && event.eventType === 'agentboard/run-completed') void load() }), [open, detail, load])
-  const providers = [...new Set(profiles.map((item) => item.provider))]
+  const root = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const outside = (event: Event): void => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
+    const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', outside); document.addEventListener('keydown', key)
+    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key) }
+  }, [open])
+  const shown = profiles.slice(0, 4), extra = profiles.length - shown.length
   const session = (profileId: string) => usage.find((item) => item.profileId === profileId)?.windows.find((window) => window.id === 'five_hour')
-  return <div className="used">
-    <button type="button" className="usedbtn tip" data-tip="Agentes e uso da sessão" aria-expanded={open} aria-label="Agentes e uso da sessão" onClick={() => setOpen(!open)}>{providers.map((provider) => { const sample = profiles.find((item) => item.provider === provider)!; return <span key={provider} className={`av ptl ${provider}`} style={{ color: sample.color, background: `color-mix(in srgb, ${sample.color} 22%, #1b1e1c)` }}><ProviderLogo provider={provider} /></span> })}<span className={`uchev ${open ? 'open' : ''}`}>⌃</span></button>
-    {open && <div className="upop"><div className="sectitle">Uso da sessão (5 h)</div>{profiles.length === 0 && <p className="hint">Nenhum agente cadastrado.</p>}{profiles.map((profile) => { const window = session(profile.id); return <button type="button" className="urow" key={profile.id} onClick={() => { setDetail(profile.id); setOpen(false) }}><AgentIcon profile={profile} tip={false} /><span className="un"><b>{profile.label}</b><small className="rs">{window ? <>Reseta em<span>{left(window.resetsAt)}</span></> : 'Sem dados ainda'}</small>{window && <Bar percent={window.usedPercent} />}</span><span className="up">{window ? `${window.usedPercent}%` : ''}</span></button> })}</div>}
+  return <div className="used" ref={root}>
+    <button type="button" className="usedbtn tip" data-tip="Agentes e uso da sessão" aria-expanded={open} aria-label="Agentes e uso da sessão" onClick={() => setOpen(!open)}><span className="avstack">{shown.map((profile) => <span key={profile.id} className={`av ptl ${profile.provider}`} style={{ color: profile.color, background: `color-mix(in srgb, ${profile.color} 22%, #1b1e1c)` }}><ProviderLogo provider={profile.provider} /></span>)}{extra > 0 && <span className="av ptl more">+{extra}</span>}</span><svg className={`uchev ${open ? 'open' : ''}`} viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg></button>
+    {open && <div className="upop"><div className="sectitle">Uso da sessão (5 h){refreshing && <span className="refreshing"> · atualizando…</span>}</div>{profiles.length === 0 && <p className="hint">Nenhum agente cadastrado.</p>}{profiles.map((profile) => { const window = session(profile.id); return <button type="button" className="urow" key={profile.id} onClick={() => { setDetail(profile.id); setOpen(false) }}><AgentIcon profile={profile} tip={false} /><span className="un"><b>{profile.label}</b><small className="rs">{window ? <>Reseta em<span>{left(window.resetsAt)}</span></> : 'Sem dados ainda'}</small>{window && <Bar percent={window.usedPercent} />}</span><span className="up">{window ? `${window.usedPercent}%` : ''}</span></button> })}</div>}
     {detail && <UsageModal profiles={profiles} usage={usage} current={detail} close={() => setDetail(undefined)} />}
   </div>
 }

@@ -23,7 +23,7 @@ async function setup() {
   const card = board.create({ projectId: project.id, columnId: columns[1]!.id, title: 'Executar', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
   const started: Array<{ chatId: string; prompt: string; planning: boolean }> = []
   const orchestrator = { start(input: { chatId: string; prompt: string; planning: boolean }) { started.push(input); const run = conversations.createRun({ cardId: card.id, chatId: input.chatId, profileId: profile.id }); conversations.updateRun(run.id, 'running', null); return { ...run, status: 'running' as const } } }
-  return { database, board, conversations, projects, profile, project, columns, card, started, service: new ExecutionService(board, conversations, orchestrator) }
+  return { database, board, conversations, projects, profile, profiles: profiles.list(), project, columns, card, started, service: new ExecutionService(board, conversations, orchestrator) }
 }
 
 describe('ExecutionService', () => {
@@ -48,6 +48,39 @@ describe('ExecutionService', () => {
   it('does not resume a card that never ran', async () => {
     const { database, card, service } = await setup()
     expect(() => service.resume(card.id)).toThrow('ainda não tem execução')
+    database.close()
+  })
+})
+
+describe('test step and chat reset', () => {
+  it('runs the test step in its own chat, locks the agent per chat and resumes the right one', async () => {
+    const { database, board, conversations, profiles, card, started, service } = await setup()
+    const [codex, claude] = [profiles[0]!, profiles[1]!]
+    const exec = service.start(card.id, { profileId: codex.id, model: null, effort: null, mode: 'auto' })
+    conversations.updateRun(exec.id, 'completed', null)
+    const testRun = service.start(card.id, { profileId: codex.id, model: null, effort: null, mode: 'auto' }, 'test')
+    expect(started[1]!.prompt).toContain('Teste este card'); expect(started[0]!.chatId).not.toBe(started[1]!.chatId)
+    expect(board.card(card.id).run).toMatchObject({ state: 'running', purpose: 'test', runId: testRun.id })
+    conversations.updateRun(testRun.id, 'interrupted', 'x')
+    expect(() => service.start(card.id, { profileId: claude.id, model: null, effort: null, mode: 'accept_edits' }, 'test')).toThrow('reinicia o chat')
+    service.resume(card.id, 'execution'); expect(started[2]!.chatId).toBe(started[0]!.chatId)
+    database.close()
+  })
+
+  it('resets one chat without touching the others and refuses while an agent is working', async () => {
+    const { database, board, conversations, profiles, project, card, service } = await setup()
+    const profile = profiles[0]!
+    const planning = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'planning', profileId: profile.id })
+    conversations.addMessage({ chatId: planning.id, role: 'user', body: 'oi', status: 'complete' })
+    const run = service.start(card.id, { profileId: profile.id, model: null, effort: null, mode: 'auto' })
+    const execChat = conversations.listChats(project.id, card.id).find((chat) => chat.purpose === 'execution')!
+    expect(() => conversations.resetChat(execChat.id)).toThrow('Pare o agente')
+    conversations.updateRun(run.id, 'interrupted', 'x')
+    conversations.resetChat(execChat.id)
+    expect(conversations.listChats(project.id, card.id).map((chat) => chat.purpose)).toEqual(['planning'])
+    expect(conversations.listMessages(planning.id)).toHaveLength(1)
+    expect(board.card(card.id).run.state).toBe('idle')
+    expect(() => conversations.resetChat(execChat.id)).toThrow('não encontrado')
     database.close()
   })
 })

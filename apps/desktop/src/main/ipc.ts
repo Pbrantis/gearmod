@@ -1,4 +1,4 @@
-import { ipcContracts, type AppLanguage, type VoiceModel, type AppTheme, type AgentConfig, type AgentPurpose, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
+import { systemDocumentKinds, ipcContracts, type AppLanguage, type VoiceModel, type AppTheme, type AgentConfig, type AgentPurpose, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
 import type { BackupService } from './backup'
 import type { AppDatabase } from './database'
 import type { NoteRepository } from './repository'
@@ -14,6 +14,7 @@ import type { AgentConfigRepository } from './agent-config'
 import type { SkillService } from './skills'
 import type { VoiceService } from './voice'
 import type { UsageService } from './usage'
+import type { CollaborationService } from './collaboration'
 
 export interface IpcMainLike {
   handle(channel: string, listener: (event: unknown, input: unknown) => unknown): void
@@ -40,6 +41,7 @@ interface Services {
   skills: SkillService
   voice: VoiceService
   usage: UsageService
+  collab: CollaborationService
   chooseSkillSource(): Promise<string | null>
   appVersion: string
   dataDir: string
@@ -98,14 +100,18 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:restore': (input: { cardId: string }) => services.board.archive(input.cardId, true),
     'cards:get': (input: { cardId: string }) => services.board.card(input.cardId),
     'cards:documents': (input: { cardId: string }) => services.board.documents.get(input.cardId),
-    'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
+    'collab:list': (input: { cardId: string }) => services.collab.list(input.cardId),
+    'collab:decide-change': (input: { changeId: string; decision: 'accept' | 'reject' | 'suggest'; note?: string }) => services.collab.decideChange(input.changeId, input.decision, input.note),
+    'collab:answer-question': (input: { questionId: string; answer: string }) => services.collab.answerByUser(input.questionId, input.answer),
+    'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => (systemDocumentKinds as readonly string[]).includes(input.kind) ? (() => { throw new Error('Este documento é gerado pelo sistema') })() : services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
     'cards:document-versions': (input: { cardId: string; kind: CardDocumentKind }) => services.board.documents.versions(input.cardId, input.kind),
     'cards:toggle-task': (input: { cardId: string; line: number; checked: boolean }) => services.board.documents.setTask(input.cardId, input.line, input.checked, 'user'),
-    'cards:start': (input: { cardId: string; config: AgentConfig }) => services.executions.start(input.cardId, input.config),
+    'cards:start': (input: { cardId: string; config: AgentConfig; purpose?: 'execution' | 'test' }) => services.executions.start(input.cardId, input.config, input.purpose),
     'agents:options': (input: { profileId: string }) => services.agentConfigs.options(input.profileId),
     'cards:agent-config': (input: { cardId: string }) => services.agentConfigs.get(input.cardId),
     'cards:set-agent-config': (input: { cardId: string; purpose: AgentPurpose; config: AgentConfig }) => services.agentConfigs.set(input.cardId, input.purpose, input.config),
-    'cards:resume': (input: { cardId: string }) => services.executions.resume(input.cardId),
+    'cards:resume': (input: { cardId: string; purpose?: 'execution' | 'test' }) => services.executions.resume(input.cardId, input.purpose),
+    'chats:reset': (input: { chatId: string }) => { services.conversations.resetChat(input.chatId); return { reset: true as const } },
     'cards:mark-viewed': (input: { cardId: string }) => services.board.markViewed(input.cardId),
     'skills:list': (input: { scope: 'global' | 'project'; projectId?: string }) => services.skills.list(input.scope, input.projectId),
     'skills:choose-source': () => services.chooseSkillSource(),
@@ -119,9 +125,10 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'voice:install': () => services.voice.install(services.settings.get().voz),
     'voice:transcribe': async (input: { wav: Uint8Array; prompt?: string }) => { const settings = services.settings.get(); return { text: await services.voice.transcribe({ wav: input.wav, model: settings.voz, language: settings.idioma === 'en' ? 'en' : 'pt', prompt: input.prompt }) } },
     'usage:list': () => services.usage.list(),
+    'usage:refresh': () => services.usage.refresh(),
     'cards:delete': (input: { cardId: string }) => ({ deleted: services.board.delete(input.cardId) })
     , 'chats:list': (input: { projectId: string; cardId?: string | null }) => services.conversations.listChats(input.projectId, input.cardId)
-    , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: 'planning' | 'execution'; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }
+    , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: AgentPurpose; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }
     , 'messages:list': (input: { chatId: string }) => services.conversations.listMessages(input.chatId)
     , 'messages:add': (input: { chatId: string; role: string; body: string; status: string }) => services.conversations.addMessage(input)
     , 'runs:create': (input: { cardId: string; chatId: string; profileId: string }) => services.conversations.createRun(input)

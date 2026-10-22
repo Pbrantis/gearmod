@@ -282,6 +282,65 @@ export const migrations: readonly Migration[] = [
         utilization REAL NOT NULL, resets_at TEXT, captured_at TEXT NOT NULL, PRIMARY KEY(profile_id, window)
       )`)
     }
+  },
+  {
+    version: 12,
+    checksum: 'sha256:agentboard-test-purpose-v12-2026-10-21',
+    up(db) {
+      // A finalidade "test" (agente de teste) entra na tabela; o CHECK antigo só aceitava planning/execution, então a tabela é recriada.
+      db.exec(`
+        CREATE TABLE card_agent_settings_new (
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          purpose TEXT NOT NULL CHECK (purpose IN ('planning', 'execution', 'test')),
+          profile_id TEXT NOT NULL REFERENCES agent_profiles(id), model TEXT, effort TEXT, mode TEXT NOT NULL,
+          updated_at TEXT NOT NULL, PRIMARY KEY(card_id, purpose)
+        );
+        INSERT INTO card_agent_settings_new SELECT card_id, purpose, profile_id, model, effort, mode, updated_at FROM card_agent_settings;
+        DROP TABLE card_agent_settings;
+        ALTER TABLE card_agent_settings_new RENAME TO card_agent_settings;
+      `)
+    }
+  },
+  {
+    version: 13,
+    checksum: 'sha256:agentboard-collaboration-v13-2026-10-21',
+    up(db) {
+      // Comunicação entre as etapas: dúvidas (dev/teste → planejador → usuário) e propostas de mudança (esperam autorização).
+      // Os documentos Dúvidas e Mudanças são gerados a partir destas tabelas; card_documents é recriada para aceitar os dois tipos novos.
+      db.exec(`
+        CREATE TABLE card_documents_new (
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL CHECK (kind IN ('resumo', 'especificacao', 'plano', 'tasks', 'duvidas', 'mudancas')),
+          content_md TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL,
+          PRIMARY KEY(card_id, kind)
+        );
+        INSERT INTO card_documents_new SELECT card_id, kind, content_md, updated_at, updated_by FROM card_documents;
+        DROP TABLE card_documents;
+        ALTER TABLE card_documents_new RENAME TO card_documents;
+        CREATE TABLE card_questions (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, number INTEGER NOT NULL,
+          asker_purpose TEXT NOT NULL, asker_chat_id TEXT, question TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('open', 'planner', 'user', 'answered')),
+          answer TEXT, answered_by TEXT, user_question TEXT, rounds INTEGER NOT NULL DEFAULT 0, delivered INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL, answered_at TEXT, UNIQUE(card_id, number)
+        );
+        CREATE TABLE card_changes (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, number INTEGER NOT NULL,
+          proposer_purpose TEXT NOT NULL, proposer_chat_id TEXT, title TEXT NOT NULL, details TEXT NOT NULL, reason TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'suggested', 'rejected', 'applied')),
+          user_note TEXT, created_at TEXT NOT NULL, decided_at TEXT, UNIQUE(card_id, number)
+        );
+      `)
+    }
+  },
+  {
+    version: 14,
+    checksum: 'sha256:agentboard-plan-ready-v14-2026-10-21',
+    up(db) {
+      // O planejador declara o plano concluído (ferramenta/marcador); antes disso o card só "está em planejamento". Cards antigos com Plano escrito seguem prontos.
+      db.exec(`ALTER TABLE cards ADD COLUMN plan_ready_at TEXT;
+        UPDATE cards SET plan_ready_at = datetime('now') WHERE EXISTS (SELECT 1 FROM card_documents d WHERE d.card_id = cards.id AND d.kind = 'plano' AND length(trim(d.content_md)) > 0);`)
+    }
   }
 ]
 

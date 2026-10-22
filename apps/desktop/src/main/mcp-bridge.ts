@@ -3,14 +3,15 @@ import { chmodSync, mkdirSync, rmSync } from 'node:fs'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { CardDocumentKind } from '@agentboard/contracts'
-import { cardDocumentKinds } from '@agentboard/contracts'
+import type { AgentPurpose, CardDocumentKind } from '@agentboard/contracts'
+import { cardDocumentKinds, systemDocumentKinds } from '@agentboard/contracts'
 import type { AgentContextService } from './agent-context'
+import type { CollaborationService } from './collaboration'
 import type { BoardRepository } from './projects'
 
 export interface McpEndpoint { command: string; args: string[]; env: Record<string, string> }
 export type CardChange = { type: 'document'; kind: CardDocumentKind } | { type: 'task' } | { type: 'moved'; column: string } | { type: 'card' }
-interface RunState { runId: string; cardId: string; written: Set<CardDocumentKind>; pendingMove: string | null; notify(change: CardChange): void }
+interface RunState { runId: string; cardId: string; chatId: string; purpose: AgentPurpose; written: Set<CardDocumentKind>; pendingMove: string | null; notify(change: CardChange): void }
 export interface RunReport { written: CardDocumentKind[]; pendingMove: string | null }
 type Reply = { ok: true; text: string } | { ok: false; error: string }
 
@@ -26,7 +27,7 @@ export class McpBridge {
   private readonly dir: string
   readonly socketPath: string
 
-  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block'>; serverScript: string; runtime?: string }) {
+  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block'>; serverScript: string; runtime?: string; collab?: CollaborationService }) {
     const id = randomBytes(6).toString('hex')
     this.dir = join(tmpdir(), `agentboard-${id}`)
     this.socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\agentboard-${id}` : join(this.dir, 'mcp.sock')
@@ -55,9 +56,9 @@ export class McpBridge {
     if (process.platform !== 'win32') rmSync(this.dir, { recursive: true, force: true })
   }
 
-  register(runId: string, cardId: string, notify: (change: CardChange) => void): McpEndpoint {
+  register(runId: string, cardId: string, notify: (change: CardChange) => void, chat: { id: string; purpose: AgentPurpose } = { id: '', purpose: 'execution' }): McpEndpoint {
     const token = randomBytes(24).toString('hex')
-    this.runs.set(token, { runId, cardId, written: new Set(), pendingMove: null, notify })
+    this.runs.set(token, { runId, cardId, chatId: chat.id, purpose: chat.purpose, written: new Set(), pendingMove: null, notify })
     return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', AGENTBOARD_SOCKET: this.socketPath, AGENTBOARD_TOKEN: token } }
   }
 
@@ -78,11 +79,18 @@ export class McpBridge {
       if (tool === 'agentboard_contexto_do_card') return { ok: true, text: context.block(run.cardId) }
       if (tool === 'agentboard_escrever_documento') {
         const kind = args.tipo, markdown = args.markdown
-        if (typeof kind !== 'string' || !(cardDocumentKinds as readonly string[]).includes(kind)) return { ok: false, error: `tipo deve ser um destes: ${cardDocumentKinds.join(', ')}` }
+        if (typeof kind !== 'string' || !(cardDocumentKinds as readonly string[]).includes(kind) || (systemDocumentKinds as readonly string[]).includes(kind)) return { ok: false, error: `tipo deve ser um destes: ${cardDocumentKinds.filter((item) => !(systemDocumentKinds as readonly string[]).includes(item)).join(', ')}` }
         if (typeof markdown !== 'string' || markdown.length > 200_000) return { ok: false, error: 'markdown deve ser um texto de até 200.000 caracteres' }
         board.documents.write(run.cardId, kind as CardDocumentKind, markdown, 'agent')
         run.written.add(kind as CardDocumentKind); run.notify({ type: 'document', kind: kind as CardDocumentKind })
         return { ok: true, text: `Documento ${kind} gravado.` }
+      }
+      if (tool === 'agentboard_concluir_planejamento') {
+        if (run.purpose !== 'planning') return { ok: false, error: 'Esta ferramenta é do planejador.' }
+        const missing = board.markPlanReady(run.cardId)
+        if (missing.length) return { ok: false, error: `Ainda faltam documentos escritos: ${missing.join(', ')}. Grave-os e chame de novo.` }
+        run.notify({ type: 'card' })
+        return { ok: true, text: 'Planejamento concluído; o card agora aparece como "Plano pronto".' }
       }
       if (tool === 'agentboard_marcar_task') {
         if (!Number.isInteger(args.linha) || (args.linha as number) < 1 || typeof args.feito !== 'boolean') return { ok: false, error: 'linha deve ser um inteiro a partir de 1 e feito um booleano' }
@@ -98,6 +106,29 @@ export class McpBridge {
         board.update({ cardId: run.cardId, type: String(type), title: title.trim(), description: current.description, priority: String(priority), acceptanceCriteria: current.acceptanceCriteria.map(({ body, checked }) => ({ body, checked })) })
         run.notify({ type: 'card' })
         return { ok: true, text: `Card atualizado: ${title.trim()} (${String(type)}, ${String(priority)}).` }
+      }
+      if (tool === 'agentboard_propor_mudanca' || tool === 'agentboard_perguntar_ao_planejador') {
+        if (!this.deps.collab) return { ok: false, error: 'A colaboração entre etapas não está disponível' }
+        if (run.purpose === 'planning') return { ok: false, error: 'Esta ferramenta é do desenvolvedor e do testador; o planejador altera os documentos direto.' }
+        if (tool === 'agentboard_perguntar_ao_planejador') {
+          if (typeof args.pergunta !== 'string' || !args.pergunta.trim()) return { ok: false, error: 'informe a pergunta' }
+          const question = this.deps.collab.askQuestion({ cardId: run.cardId, chatId: run.chatId, purpose: run.purpose, question: args.pergunta })
+          run.notify({ type: 'card' })
+          return { ok: true, text: `Dúvida D${String(question.number).padStart(3, '0')} registrada. Continue só com o que não depende dela e TERMINE esta execução: o app leva a dúvida ao planejador e te retoma com a resposta.` }
+        }
+        if (![args.titulo, args.o_que_muda, args.motivo].every((value) => typeof value === 'string' && value.trim())) return { ok: false, error: 'informe titulo, o_que_muda e motivo' }
+        const change = this.deps.collab.proposeChange({ cardId: run.cardId, chatId: run.chatId, purpose: run.purpose, title: args.titulo as string, details: args.o_que_muda as string, reason: args.motivo as string })
+        run.notify({ type: 'card' })
+        return { ok: true, text: `Proposta M${String(change.number).padStart(3, '0')} registrada e aguardando a autorização do usuário. NÃO implemente essa mudança. Continue só com o que está nos documentos e termine esta execução; o app te retoma quando houver decisão.` }
+      }
+      if (tool === 'agentboard_responder_duvida' || tool === 'agentboard_pedir_ao_usuario') {
+        if (!this.deps.collab) return { ok: false, error: 'A colaboração entre etapas não está disponível' }
+        if (run.purpose !== 'planning') return { ok: false, error: 'Esta ferramenta é do planejador.' }
+        if (!Number.isInteger(args.numero) || typeof (tool === 'agentboard_responder_duvida' ? args.resposta : args.pergunta) !== 'string') return { ok: false, error: 'informe numero (inteiro) e ' + (tool === 'agentboard_responder_duvida' ? 'resposta' : 'pergunta') }
+        if (tool === 'agentboard_responder_duvida') this.deps.collab.answerFromPlanner(run.cardId, args.numero as number, args.resposta as string)
+        else this.deps.collab.escalateToUser(run.cardId, args.numero as number, args.pergunta as string)
+        run.notify({ type: 'card' })
+        return { ok: true, text: tool === 'agentboard_responder_duvida' ? `Dúvida ${String(args.numero)} respondida; o app devolve a resposta a quem perguntou.` : `Dúvida ${String(args.numero)} enviada ao usuário; o app retoma quem perguntou quando ele responder.` }
       }
       if (tool === 'agentboard_mover_card') {
         if (typeof args.coluna !== 'string' || (args.quando !== 'agora' && args.quando !== 'ao_terminar')) return { ok: false, error: 'informe coluna e quando ("agora" ou "ao_terminar")' }
