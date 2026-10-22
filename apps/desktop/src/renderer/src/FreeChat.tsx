@@ -4,7 +4,9 @@ import { useDockSize } from './CardChat'
 import { CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { Select } from './Select'
 import { AgentIcon } from './AgentIcon'
+import { ChatMessageView } from './ChatMessageView'
 import { Markdown } from './markdown'
+import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { startVoiceInstall } from './voiceStore'
 import { useDictation } from './useDictation'
 
@@ -22,6 +24,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const load = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
   useEffect(() => { if (start) void load(start.id).catch((reason: unknown) => setError(String(reason))) }, [start, load])
   useEffect(() => window.agentboard.onRunEvent((event) => {
+    if (event.eventType === 'agentboard/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void load(id); return current }); return }
     if (!runId.current || event.runId !== runId.current) return
     if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
     if (event.eventType === 'agentboard/card-updated' && event.payload.type === 'converted') converted.current = String(event.payload.cardId)
@@ -43,6 +46,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
     } catch (reason) { setError(String(reason).replace(/^Error: /, '')); setInput(prompt) }
   }
   const stop = async (): Promise<void> => { if (runId.current) await window.agentboard.invoke('agents:cancel', { runId: runId.current }).catch((reason: unknown) => setError(String(reason))) }
+  const typed = useTypewriter(live), busySince = useBusySince(busy)
   const agent = profiles.find((item) => item.id === profileId)
   return <section className={`dock open ${expanded ? 'full' : ''} ${dragging ? 'dragging' : ''}`} aria-label="Chat livre" style={expanded ? undefined : { width }}>
     {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label="Ajustar a largura do chat" onPointerDown={startResize} onDoubleClick={resetWidth} />}
@@ -51,9 +55,9 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
         <div className="dock-tools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
       <div className="chatlog" ref={log}>
         {!messages.length && !live && <div className="msg sys">Chat livre: conversa solta, não altera arquivos nem cards. Se virar um planejamento, peça e eu crio o card aqui mesmo.</div>}
-        {messages.map((m) => <div className={`msg ${m.role === 'assistant' ? 'agent' : m.role === 'system' ? 'sys' : m.role}`} key={m.id}>{m.role === 'system' && m.status === 'failed' ? '⚠ ' : ''}{m.role === 'assistant' ? <div className="md chatmd"><Markdown source={m.body} /></div> : m.body}</div>)}
-        {live && <div className="msg agent"><div className="md chatmd"><Markdown source={live} /></div></div>}
-        {busy && !live && <div className="msg agent typing" aria-label="O agente está escrevendo"><i /><i /><i /></div>}
+        {messages.map((m) => <ChatMessageView key={m.id} message={m} />)}
+        {live && <div className="msg agent"><div className="md chatmd"><Markdown source={typed} /><span className="caret" /></div></div>}
+        {busy && <ThinkingIndicator purpose="free" messages={messages} since={busySince} />}
       </div>
       <div className="composer">
         {(error || dictation.error) && <p className="error">{error || dictation.error}</p>}

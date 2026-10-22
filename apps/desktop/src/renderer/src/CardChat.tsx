@@ -5,7 +5,9 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { BranchIcon, CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { ModelMenu, useAgentConfig } from './ModelMenu'
 import { worktreeName } from './workspace'
+import { ChatMessageView } from './ChatMessageView'
 import { Markdown } from './markdown'
+import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { plainError } from './NoticeDialog'
 import { QualityPanel } from './QualityPanel'
 import { useDictation } from './useDictation'
@@ -70,6 +72,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   useEffect(() => { void window.agentboard.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }, [card.id])
   useEffect(() => { void window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id }).then((items) => { setChats(items); const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); void loadMessages(found.id) } }).catch((reason: unknown) => setError(String(reason))) }, [project.id, card.id, mode, loadMessages])
   useEffect(() => window.agentboard.onRunEvent((event) => {
+    if (event.eventType === 'agentboard/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void loadMessages(id); return current }); return }
     if (event.runId !== runId.current) return
     if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
     if (event.eventType === 'agentboard/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void window.agentboard.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }
@@ -115,7 +118,9 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     try { setError(''); await window.agentboard.invoke('chats:reset', { chatId: chat.id }); setChat(undefined); setMessages([]); setSkill(null); setChats(await window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id })) }
     catch (reason) { setError(plainError(reason)) }
   }
+  const typed = useTypewriter(live)
   const busy = Boolean(run) || ((card.run.state === 'running' || card.run.state === 'planning') && card.run.purpose === mode)
+  const busySince = useBusySince(busy, run?.startedAt)
   const execModes = provider ? permissionModes[provider].filter((item) => item.purposes.includes('execution')) : []
   const currentMode = execModes.find((item) => item.id === agentState.config?.mode)
   const testing = mode === 'test', eyebrow = planning ? 'Planejando card' : card.run.state === 'running' || run ? (testing ? 'Testando' : 'Executando') : card.run.state === 'paused' ? 'Pausado' : testing ? 'Teste' : 'Implementação'
@@ -129,9 +134,9 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
         <div className="dock-tools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
       <div className="chatlog" ref={log}>
         {!messages.length && !live && <div className="msg sys">{planning ? 'Skill de planejamento carregada. Este chat só planeja, não altera arquivos.' : testing ? 'Chat de teste do card. Use Testar no card ou escreva o que o agente deve conferir.' : 'Chat de implementação do card. Use Iniciar no card ou escreva uma instrução.'}</div>}
-        {messages.map((m) => <div className={`msg ${m.role === 'assistant' ? 'agent' : m.role === 'system' ? 'sys' : m.role}`} key={m.id}>{m.role === 'system' && m.status === 'failed' ? '⚠ ' : ''}{m.role === 'assistant' ? <div className="md chatmd"><Markdown source={m.body} /></div> : m.body}</div>)}
-        {live && <div className="msg agent"><div className="md chatmd"><Markdown source={live} /></div></div>}
-        {busy && !live && <div className="msg agent typing" aria-label="O agente está escrevendo"><i /><i /><i /></div>}
+        {messages.map((m) => <ChatMessageView key={m.id} message={m} />)}
+        {live && <div className="msg agent"><div className="md chatmd"><Markdown source={typed} /><span className="caret" /></div></div>}
+        {busy && <ThinkingIndicator purpose={mode} messages={messages} since={busySince} />}
       </div>
       <div className="composer" ref={wrap}>
         {inactive && <div className="convbox"><p>O agente <b>{inactive.label.replace(' (desativado)', '')}</b> foi removido (desativado) e não pode mais executar nada neste chat. O histórico continua aqui para consulta. Para seguir neste card, reinicie o chat com outro agente.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => void resetInactive()}>Reiniciar chat</button></div></div>}

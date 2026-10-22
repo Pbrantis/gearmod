@@ -558,7 +558,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 /* ---- lista de chats (botão ao lado da configuração) ---- */
 .chatsbtn{position:relative}.chatsbtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .chatsbtn .cdot{position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px #131614}
-.chatspop{position:fixed;left:12px;bottom:70px;z-index:60;width:min(340px,calc(100vw - 24px));max-height:60vh;display:flex;flex-direction:column;background:#1a1f1c;border:1px solid #343a35;border-radius:12px;box-shadow:0 14px 40px #0009}
+.chatspop{position:fixed;left:auto;bottom:auto;right:16px;top:64px;z-index:60;width:min(340px,calc(100vw - 24px));max-height:60vh;display:flex;flex-direction:column;background:#1a1f1c;border:1px solid #343a35;border-radius:12px;box-shadow:0 14px 40px #0009}
 .chatspop .cphead{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #2b322d}
 .cplist{overflow:auto;padding:6px;display:grid;gap:4px}
 .cprow{display:flex;align-items:center;gap:8px;justify-content:space-between;width:100%;text-align:left;padding:8px 10px;border-radius:9px;background:transparent;border:1px solid transparent;color:var(--text);cursor:pointer}
@@ -596,3 +596,43 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .wsbox{display:grid;gap:4px;padding:8px 10px;border-radius:9px;background:#161b18;border:1px solid #2b322d;font-size:12.5px}
 .wsbox>div{display:flex;align-items:center;gap:6px}.wsbox svg{width:14px;height:14px;fill:none;stroke:var(--accent);stroke-width:1.8}
 .wsbox small{color:#8d968f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ---- mensagens: a minha no balão; a do agente direto no fundo, sem caixa ---- */
+.msg.agent{background:none;border:0;border-radius:0;padding:2px 0;max-width:100%;font-size:14px;line-height:1.65;white-space:normal;color:#e4e8e4}
+.msg.user{max-width:85%}
+.msg.sys{justify-self:start;font-size:12.5px;color:#78817b;max-width:100%;white-space:normal}
+.dock.full .msg.agent{font-size:14.5px}
+
+/* ---- visual do Claude Code: código em coral, links azuis, ferramentas como linhas cinzas que expandem ---- */
+.chatmd code{color:#ff8f86;background:#241c1c;border:1px solid #3a2a29}
+.chatmd pre code{color:#d4dad5;background:none;border:0}
+.chatmd .mdLink{color:#6fb1ff;text-decoration:underline;text-underline-offset:2px}
+.chatmd strong{color:#f1f3ef}
+.msg.toolrow{background:none;border:0;padding:0;color:#78817b;font:13px/1.5 var(--sans,inherit);max-width:100%;white-space:normal;border-radius:0;justify-self:start}
+.msg.toolrow summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg.toolrow summary::-webkit-details-marker{display:none}
+.msg.toolrow summary::after{content:'›';font-size:15px;transition:transform .15s;flex:none}
+.msg.toolrow[open] summary::after{transform:rotate(90deg)}
+.msg.toolrow:hover summary{color:#a9b1ab}
+.msg.toolrow pre{margin:6px 0 2px;padding:8px 10px;border-radius:8px;background:#0f1311;border:1px solid #2b322d;color:#98a099;font:12px/1.5 var(--mono);overflow:auto;max-height:200px;white-space:pre-wrap}
+.msg.toolplain{color:#78817b}
+
+/* ---- + do projeto na barra lateral ---- */
+.projrow{position:relative}
+.projnew{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:24px;height:24px;padding:0;border-radius:7px;background:#1d231f;border:1px solid #2f3631;color:#aab2ac;font-size:15px;line-height:1;display:grid;place-items:center;opacity:0;transition:opacity .12s}
+.projrow:hover .projnew,.projnew:focus-visible,.proj.on+.projnew{opacity:1}
+.projnew:hover{border-color:var(--accent);color:var(--accent-strong);filter:none}
+.projnew.tip::after{left:auto;right:calc(100% + 6px);bottom:50%;transform:translateY(50%)}
+
+/* ---- agente trabalhando: átomo animado, verbo, tempo e digitação ---- */
+.thinking{display:flex;align-items:center;gap:9px;padding:4px 0;color:#98a099;font-size:13.5px}
+.atom{flex:none;overflow:visible}
+.atom .orbit{fill:none;stroke:var(--accent);stroke-width:.9;opacity:.55}
+.atom .electron{fill:var(--accent-strong)}
+.atom .nucleus{fill:var(--accent-strong);animation:atomPulse 1.4s ease-in-out infinite;transform-origin:12px 12px}
+@keyframes atomPulse{0%,100%{transform:scale(.8);opacity:.8}50%{transform:scale(1.15);opacity:1}}
+.thinking .tverb{background:linear-gradient(90deg,#78817b 0%,#e4e8e4 50%,#78817b 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shimmer 2.2s linear infinite}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+.thinking .tmeta{color:#5f6862;font-variant-numeric:tabular-nums;font-size:12.5px}
+.caret{display:inline-block;width:7px;height:1em;margin-left:2px;vertical-align:text-bottom;background:var(--accent);border-radius:1px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.thinking .tverb,.atom .nucleus,.caret{animation:none}}

@@ -6,6 +6,7 @@ import type { AgentContextService } from './agent-context'
 import type { AgentWriteback } from './agent-writeback'
 import type { AgentConfigRepository } from './agent-config'
 import { titleFromPrompt } from './agent-writeback'
+import { toolActivities } from './tool-activity'
 
 type Job = { run: Run; chatId: string; prompt: string; planning: boolean }
 
@@ -57,7 +58,14 @@ export class AgentOrchestrator {
     const context = this.conversations.context(job.chatId)
     const publish = (event: AgentEvent): void => {
       if (event.type === 'claude/rate_limit_event') { try { this.usage?.recordClaude(context.profile.id, event.payload) } catch { /* uso é informativo */ } }
-      const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload }) }
+      const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload })
+      // Ferramentas usadas viram linhas cinzas no chat (como no Claude Code); a tela recarrega as mensagens ao receber o aviso.
+      const tools = toolActivities(event.type, event.payload)
+      if (tools.length) {
+        for (const tool of tools) this.conversations.addMessage({ chatId: job.chatId, role: 'tool', body: tool.detail ? `${tool.title}\n${tool.detail}` : tool.title, status: 'complete' })
+        this.emit({ runId: job.run.id, eventType: 'agentboard/tool-activity', payload: { chatId: job.chatId } })
+      }
+    }
     try {
       const free = context.chat.purpose === 'free'
       const worktree = job.planning || !context.cardId ? null : await this.worktrees.prepare(context.cardId)

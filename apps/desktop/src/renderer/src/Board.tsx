@@ -61,14 +61,20 @@ function CardTile({ card, state, agent, dropLabel, dragProps, onPending, onOpen,
   </article>
 }
 
-export function Board({ board, profiles, history, refresh, onProjectConfig, openSettings, chatsOpen, closeChats }: { board: ProjectBoard; profiles: AgentProfile[]; history: AgentProfile[]; refresh(): Promise<void>; onProjectConfig(): void; openSettings(): void; chatsOpen: boolean; closeChats(): void }): React.JSX.Element {
+export function Board({ board, profiles, history, refresh, onProjectConfig, openSettings, freeRequest, freeHandled }: { board: ProjectBoard; profiles: AgentProfile[]; history: AgentProfile[]; refresh(): Promise<void>; onProjectConfig(): void; openSettings(): void; freeRequest?: { projectId: string; at: number }; freeHandled(): void }): React.JSX.Element {
   const [draft, setDraft] = useState<Draft>(), [chatCard, setChatCardState] = useState<Card>(), [chatPurpose, setChatPurpose] = useState<AgentPurpose>('planning'), [starting, setStartingState] = useState<{ card: Card; purpose: 'execution' | 'test' }>(), [choosing, setChoosing] = useState<string>(), [stopping, setStopping] = useState<Card>(), [pendingCard, setPendingCard] = useState<Card>()
   const [dragId, setDragId] = useState<string>(), [dropOn, setDropOn] = useState<string>(), [overColumn, setOverColumn] = useState<string>(), [toast, setToast] = useState('')
   const allowed = profiles.filter((profile) => board.project.allowedProfileIds.includes(profile.id))
   const active = board.cards.filter((card) => !card.archivedAt), archived = board.cards.filter((card) => card.archivedAt)
+  const [chatsOpen, setChatsOpen] = useState(false), closeChats = (): void => setChatsOpen(false)
   const [freeChat, setFreeChat] = useState<{ chat?: Chat; key: number }>(), [openAfterRefresh, setOpenAfterRefresh] = useState<string>()
   const setChatCard = (card: Card | undefined, purpose?: AgentPurpose): void => { setChatCardState(card); if (card) { setFreeChat(undefined); setChatPurpose(purpose ?? chatMode(board, card)) } }
   const openFree = (chat?: Chat): void => { setChatCardState(undefined); setFreeChat({ chat, key: Date.now() }); closeChats() }
+  // "+" do projeto na barra lateral: abre um chat livre novo neste projeto assim que o quadro dele carrega.
+  useEffect(() => {
+    if (!freeRequest || freeRequest.projectId !== board.project.id) return
+    freeHandled(); setChatCardState(undefined); setFreeChat({ key: Date.now() })
+  }, [freeRequest, board.project.id, freeHandled])
   // O chat livre virou planejamento de um card novo: espera o quadro atualizar e abre o chat do card (o mesmo chat, agora de planejamento).
   useEffect(() => {
     if (!openAfterRefresh) return
@@ -103,7 +109,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const columnLabel = (card: Card): string => board.columns.find((column) => column.id === fresh(card).columnId)?.label ?? ''
   return <div className="content">
     <main>
-    <div className="head"><div className="lead"><div><span className="pathchip tip" data-tip="Pasta do projeto"><FolderGlyph />{board.project.localPath}</span><h1>{board.project.name}</h1><p>{active.length} cards ativos</p></div></div><div className="tools">{allowed.length > 0 && <div className="agentsbar" aria-label="Agentes do projeto">{allowed.map((profile) => { const status = agentStatus(profile.id); return <span key={profile.id} className={`agchip ${status.key}`} title={`${profile.label}: ${status.label}${status.cards ? ` (${status.cards})` : ''}`}><AgentIcon profile={profile} size="sm" tip={false} /><span className="agn">{profile.label}</span>{status.key === 'working' ? <span className="spin sm" /> : <span className="agdot" />}<small>{status.label}</small></span> })}</div>}<button className="iconbtn" title="Configurar projeto" aria-label="Configurar projeto" onClick={onProjectConfig}>⚙</button></div></div>
+    <div className="head"><div className="lead"><div><span className="pathchip tip" data-tip="Pasta do projeto"><FolderGlyph />{board.project.localPath}</span><h1>{board.project.name}</h1><p>{active.length} cards ativos</p></div></div><div className="tools">{allowed.length > 0 && <div className="agentsbar" aria-label="Agentes do projeto">{allowed.map((profile) => { const status = agentStatus(profile.id); return <span key={profile.id} className={`agchip ${status.key}`} title={`${profile.label}: ${status.label}${status.cards ? ` (${status.cards})` : ''}`}><AgentIcon profile={profile} size="sm" tip={false} /><span className="agn">{profile.label}</span>{status.key === 'working' ? <span className="spin sm" /> : <span className="agdot" />}<small>{status.label}</small></span> })}</div>}<button type="button" className={`iconbtn chatsbtn ${chatsOpen ? 'on' : ''}`} title="Chats do projeto" aria-label="Chats do projeto" aria-expanded={chatsOpen} onClick={() => setChatsOpen(!chatsOpen)}><ChatIcon /></button><button className="iconbtn" title="Configurar projeto" aria-label="Configurar projeto" onClick={onProjectConfig}>⚙</button></div></div>
     <div className="kanban">{board.columns.map((column) => {
       const cards = active.filter((card) => card.columnId === column.id)
       return <section className={`col ${overColumn === column.id ? 'over' : ''}`} key={column.id} onDragOver={(e) => { e.preventDefault(); setOverColumn(column.id) }} onDragLeave={() => setOverColumn(undefined)} onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('card'); clear(); if (id) void move(id, column.id, null) }}>

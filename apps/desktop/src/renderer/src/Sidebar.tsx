@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { dismissVoiceInstall, useVoiceInstall } from './voiceStore'
 import type { AgentProfile, AgentUsage, Project } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
-import { ChatIcon, ChevronLeftIcon } from './icons'
+import { ChevronLeftIcon } from './icons'
 
 const level = (percent: number): string => (percent >= 90 ? 'hi' : percent >= 70 ? 'mid' : 'ok')
 function left(iso: string | null): string {
@@ -65,7 +65,7 @@ function UsageModal({ profiles, usage, current, close }: { profiles: AgentProfil
     <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div></div></div>
 }
 
-export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onChats, onToggle }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onChats(): void; onToggle(): void }): React.JSX.Element {
+export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onNewChat, onToggle }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onNewChat(projectId: string): void; onToggle(): void }): React.JSX.Element {
   return <>
     <button type="button" className="side-toggle tip" data-tip={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} aria-label={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} onClick={onToggle}><ChevronLeftIcon /></button>
     <aside>
@@ -74,10 +74,10 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
       <nav className="projs">{projects.map((project) => {
         const { running, finished } = project.activity, git = project.sources.filter((source) => source.isGitRepository).length
         const sub = running ? <small className="srun">{running} executando</small> : finished ? <small className="sfin">Terminou · clique para ver</small> : <small>{git ? `${git} ${git === 1 ? 'repositório' : 'repositórios'}` : 'Pasta sem Git'}</small>
-        return <button type="button" key={project.id} className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''}`} onClick={() => onSelect(project.id)}><i>{project.name[0]?.toUpperCase()}</i><span>{project.name}{sub}</span>{running > 0 && <span className="spin sm" title="Executando" />}{finished > 0 && <b className="pdot" title="Terminou" />}</button>
+        return <div className="projrow" key={project.id}><button type="button" className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''}`} onClick={() => onSelect(project.id)}><i>{project.name[0]?.toUpperCase()}</i><span>{project.name}{sub}</span>{running > 0 && <span className="spin sm" title="Executando" />}{finished > 0 && <b className="pdot" title="Terminou" />}</button><button type="button" className="projnew tip" data-tip="Novo chat livre neste projeto" aria-label={`Novo chat livre em ${project.name}`} onClick={() => onNewChat(project.id)}>＋</button></div>
       })}</nav>
       <VoiceInstallCard />
-      <div className="side-foot"><UsedAgents profiles={profiles} /><span className="footbtns"><button type="button" className="iconbtn chatsbtn" title="Chats" aria-label="Chats" onClick={onChats}><ChatIcon /></button><button className="iconbtn" title="Configurar agentes" aria-label="Configurar agentes" onClick={onSettings}>⚙</button></span></div>
+      <div className="side-foot"><UsedAgents profiles={profiles} /><button className="iconbtn" title="Configurar agentes" aria-label="Configurar agentes" onClick={onSettings}>⚙</button></div>
     </aside>
   </>
 }
