@@ -8,7 +8,7 @@ import type { AgentConfigRepository } from './agent-config'
 import { titleFromPrompt } from './agent-writeback'
 import { toolActivities } from './tool-activity'
 
-type Job = { run: Run; chatId: string; prompt: string; planning: boolean }
+type Job = { run: Run; chatId: string; prompt: string; planning: boolean; notice?: string }
 
 export class AgentOrchestrator {
   private active = 0
@@ -28,14 +28,15 @@ export class AgentOrchestrator {
     private readonly onFinished?: (info: { cardId: string | null; chatId: string; purpose: ChatPurpose; status: Run['status']; error: string | null }) => void
   ) {}
 
-  start(input: { chatId: string; prompt: string; planning: boolean }): Run {
+  /** `notice` troca o prompt no chat por um aviso curto (instruções internas do app não aparecem como mensagem do usuário). */
+  start(input: { chatId: string; prompt: string; planning: boolean; notice?: string }): Run {
     const context = this.conversations.context(input.chatId)
     if (!context.profile.enabled) throw new Error(`O agente ${context.profile.label} foi removido e não pode mais executar. Reinicie o chat com outro agente.`)
     const free = context.chat.purpose === 'free'
     if (input.planning && context.chat.purpose !== 'planning' && !free) throw new Error('Use um chat de planejamento para executar em modo read-only')
     // O chat livre nunca altera arquivos: roda sempre como o planejamento (somente leitura).
     if (free) input = { ...input, planning: true }
-    this.conversations.addMessage({ chatId: input.chatId, role: 'user', body: input.prompt, status: 'complete' })
+    this.conversations.addMessage(input.notice ? { chatId: input.chatId, role: 'system', body: input.notice, status: 'complete' } : { chatId: input.chatId, role: 'user', body: input.prompt, status: 'complete' })
     const run = this.conversations.createRun({ cardId: context.cardId, chatId: input.chatId, profileId: context.profile.id })
     this.queue.push({ run, ...input }); this.pump()
     return run
@@ -89,12 +90,15 @@ export class AgentOrchestrator {
       if (job.planning && result.status === 'completed' && after.cardId) {
         this.conversations.savePlan(after.cardId, context.profile.id, result.text)
       }
+      if (result.status === 'failed' && !result.text && result.error) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: result.error, status: 'failed' })
       this.conversations.updateRun(job.run.id, result.status, result.error, result.turnId)
       publish({ type: 'agentboard/run-completed', payload: { status: result.status, error: result.error } })
       try { if (after.cardId && after.chat.purpose !== 'free') this.collab?.afterRun({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: result.status }) } catch { /* encadeamento é best-effort; o chat mostra o aviso */ }
       try { this.onFinished?.({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: result.status, error: result.error ?? null }) } catch { /* notificação é best-effort */ }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
+      // Sem isto o card só ficava Pausado, sem dizer por quê (ex.: a worktree não pôde ser criada).
+      if (!controller.signal.aborted) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: message, status: 'failed' })
       this.conversations.updateRun(job.run.id, controller.signal.aborted ? 'interrupted' : 'failed', message)
       publish({ type: 'agentboard/run-completed', payload: { status: controller.signal.aborted ? 'interrupted' : 'failed', error: message } })
       try { const after = this.conversations.context(job.chatId); this.onFinished?.({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: controller.signal.aborted ? 'interrupted' : 'failed', error: message }) } catch { /* notificação é best-effort */ }

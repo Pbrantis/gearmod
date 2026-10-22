@@ -716,3 +716,46 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .dot.softpulse{animation:softpulse 1.8s ease-in-out infinite}
 .badge.ready .dot.softpulse{animation-name:softpulseG}
 @media (prefers-reduced-motion:reduce){.badge.ready .dot.softpulse{animation:none}}
+
+/* ---- card "Alterações" flutuando à esquerda do chat do card ---- */
+.dock.open{overflow:visible}
+.changes{position:absolute;right:calc(100% + 14px);bottom:16px;width:310px;max-height:calc(100% - 32px);display:flex;flex-direction:column;gap:10px;padding:12px 14px;border-radius:14px;background:#161a17;border:1px solid #2a302b;box-shadow:0 14px 40px #0008;z-index:25;animation:chin .18s ease-out}
+@keyframes chin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
+.dock.full .changes{right:auto;left:18px}
+.changes.open{width:380px}
+.ch-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ch-title{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:0;color:#dfe4e0;font-size:13.5px;font-weight:600;cursor:pointer}
+.ch-title:hover{filter:none;color:#fff}
+.ch-title .chev{color:#78817b;font-size:15px;transition:transform .15s;transform:rotate(90deg)}
+.changes.open .ch-title .chev{transform:rotate(-90deg)}
+.ch-icon{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:transparent;border:0;color:#78817b;cursor:pointer}
+.ch-icon:hover{background:#222824;color:#dfe4e0;filter:none}
+.ch-icon svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.ch-row{display:flex;align-items:center;gap:9px;font:600 13px var(--mono)}
+.ch-row>svg{width:17px;height:17px;flex:none;fill:none;stroke:#98a099;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ch-add{color:#5fd38a}.ch-del{color:#ff6b6b}
+.ch-muted{color:#78817b;font:500 12px var(--sans,inherit)}
+.ch-spacer{flex:1}
+.ch-btn{padding:6px 12px;border-radius:9px;background:#2a302c;border:1px solid #363d38;color:#e6ebe7;font:600 12.5px var(--sans,inherit);cursor:pointer;min-width:64px;display:inline-flex;justify-content:center}
+.ch-btn:hover:not(:disabled){background:#333a35;filter:none}
+.ch-btn:disabled{opacity:.55;cursor:default}
+.ch-ready{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:9px;background:var(--accent-bg);color:var(--accent-strong);border:1px solid var(--accent-line);font:600 12px var(--sans,inherit)}
+.ch-ready svg{width:13px;height:13px}
+.ch-steps{display:flex;gap:6px;flex-wrap:wrap}
+.ch-step{font-size:11.5px;font-weight:600;color:#78817b;padding:3px 8px;border-radius:999px;background:#1d221f;border:1px solid #2a302b}
+.ch-step.ok{color:#8fdcaa;border-color:#2f5a40;background:#18241c}
+.ch-step.bad{color:#ff8f86;border-color:#5a3532;background:#2a1b1a}
+.ch-body{display:grid;gap:10px;min-height:0;overflow:auto;border-top:1px solid #252b27;padding-top:10px}
+.ch-files{list-style:none;margin:0;padding:0;display:grid;gap:2px;max-height:210px;overflow:auto}
+.ch-file{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;border-radius:7px;background:transparent;border:0;color:#cbd3cd;font:500 12px var(--mono);text-align:left;cursor:pointer}
+.ch-file:hover:not(:disabled),.ch-file.on{background:#202622;filter:none}
+.ch-file:disabled{cursor:default}
+.ch-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.ch-new{font:600 10.5px var(--sans,inherit);color:#8fb3d9;padding:1px 6px;border-radius:6px;background:#1a2430}
+.ch-diff{margin:0;max-height:260px;overflow:auto;padding:8px 10px;border-radius:8px;background:#0f1210;border:1px solid #232925;font:12px/1.5 var(--mono);color:#aab2ac;white-space:pre}
+.ch-diff .a{color:#5fd38a;background:#5fd38a12;display:inline-block;min-width:100%}
+.ch-diff .d{color:#ff8f86;background:#ff6b6b12;display:inline-block;min-width:100%}
+.ch-diff .h{color:#8fb3d9}
+.ch-log{white-space:pre-wrap;color:#ff8f86}
+.ch-cmd{display:grid;gap:5px;font-size:11.5px;font-weight:600;color:#98a099}
+.ch-error{margin:0;font-size:12px;line-height:1.45;color:#ff8f86}

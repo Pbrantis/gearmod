@@ -23,3 +23,5 @@ export const PencilIcon = make(<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l
 export const SplitIcon = make(<><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M12 3v18" /></>)
 export const ChevronLeftIcon = make(<path d="M15 6l-6 6 6 6" />)
 export const CheckIcon = (): React.JSX.Element => <svg className="chk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+export const DiffIcon = make(<><rect x="4" y="3" width="16" height="18" rx="2.5" /><path d="M12 7v6M9 10h6M9 17h6" /></>)
+export const RefreshIcon = make(<><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8" /><path d="M4 4v4h4" /><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16" /><path d="M20 20v-4h-4" /></>)

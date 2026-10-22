@@ -147,6 +147,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'worktrees:prepare': (input: { cardId: string }) => services.worktrees.prepare(input.cardId)
     , 'worktrees:snapshot': (input: { cardId: string }) => services.worktrees.snapshot(input.cardId)
     , 'tests:run': (input: { cardId: string; executable: string; args: string[] }) => services.quality.runTest(input.cardId, input.executable, input.args)
+    , 'quality:status': (input: { cardId: string }) => services.quality.status(input.cardId)
     , 'reviews:prepare-local': (input: { cardId: string }) => services.quality.prepareLocalReview(input.cardId)
     , 'reviews:approve-local': (input: { reviewId: string }) => services.quality.approveLocal(input.reviewId)
   }

@@ -9,7 +9,7 @@ import { ChatMessageList } from './ChatMessageView'
 import { Markdown } from './markdown'
 import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { plainError } from './NoticeDialog'
-import { QualityPanel } from './QualityPanel'
+import { ChangesCard } from './ChangesCard'
 import { useDictation } from './useDictation'
 
 /** Estado do dock que sobrevive à troca de aba (o chat remonta a cada etapa): recolhido/expandido e largura. */
@@ -60,7 +60,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const usable = profiles.filter((profile) => project.allowedProfileIds.includes(profile.id))
   const [chat, setChat] = useState<Chat>(), [messages, setMessages] = useState<ChatMessage[]>([]), [run, setRun] = useState<Run>(), [live, setLive] = useState('')
   const [input, setInput] = useState(''), [error, setError] = useState(''), [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null)
-  const [menu, setMenu] = useState<'mode' | 'skill' | null>(null), [quality, setQuality] = useState(false), [voiceSetup, setVoiceSetup] = useState(false)
+  const [menu, setMenu] = useState<'mode' | 'skill' | null>(null), [voiceSetup, setVoiceSetup] = useState(false)
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), wrap = useRef<HTMLDivElement>(null)
   const planning = mode === 'planning'
   const { expanded, setExpanded, width, dragging, startResize, resetWidth } = useDockSize()
@@ -150,7 +150,6 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
         {(error || dictation.error) && <p className="error">{error || dictation.error}</p>}
         {voiceSetup && !voiceReady && dictation.status?.cloud && <div className="convbox"><p>O ditado está configurado para o Groq, mas falta a chave da API. Cadastre em Configurações › Aparência.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Fechar</button></div></div>}
         {voiceSetup && !voiceReady && dictation.status && !dictation.status.cloud && <div className="convbox"><p>O ditado por voz roda no seu computador, sem gastar token. Falta baixar {!dictation.status.engineInstalled ? (dictation.status.canInstallEngine ? 'o programa de transcrição e ' : 'o programa de transcrição (whisper-cli no PATH) e ') : ''}o modelo ({dictation.status.sizeMb} MB), só uma vez.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Agora não</button><button type="button" disabled={Boolean(dictation.progress) || (!dictation.status.engineInstalled && !dictation.status.canInstallEngine)} onClick={() => void dictation.install().then(() => setVoiceSetup(false))}>{dictation.progress || 'Baixar'}</button></div></div>}
-        {!planning && <><button type="button" className="expand" aria-expanded={quality} onClick={() => setQuality(!quality)}>Worktree, teste e revisão {quality ? '▴' : '▾'}</button>{quality && <QualityPanel cardId={card.id} />}</>}
         <div className="cbox">
           <textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : planning ? 'Descreva o que você quer planejar…' : testing ? 'Diga o que o agente deve testar…' : 'Envie uma instrução ao agente…'} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
@@ -170,6 +169,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       </div>
     </div>
     {switchTo && <ConfirmDialog eyebrow="Trocar agente" title={`Reiniciar o chat com ${switchTo.label}?`} text="Este chat já começou com outro agente. Trocar apaga as mensagens e as execuções deste chat e ele recomeça do zero com o novo agente. Os documentos do card ficam como estão." ok="Trocar e reiniciar" danger cancel={() => setSwitchTo(undefined)} confirm={() => void resetAndSwitch(switchTo)} />}
+    {!planning && card.workspace && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} />}
     {expanded && <Activity board={board} cardId={card.id} profiles={profiles} openEdit={openEdit} />}
   </section>
 }

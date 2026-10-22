@@ -27,6 +27,15 @@ export class QualityService {
     return { id, cardId, command, status, exitCode, summary: redact(summary), startedAt, endedAt }
   }
 
+  /** Último teste e última revisão do card: o que o gate de Done confere. */
+  status(cardId: string): { test: TestRun | null; review: Review | null } {
+    const test = this.database.db.prepare(`SELECT id, card_id AS cardId, command, status, exit_code AS exitCode, summary, started_at AS startedAt, ended_at AS endedAt
+      FROM test_runs WHERE card_id = ? ORDER BY started_at DESC LIMIT 1`).get(cardId) as TestRun | undefined
+    const review = this.database.db.prepare(`SELECT id, card_id AS cardId, provider, remote_url AS remoteUrl, remote_id AS remoteId,
+      state, target_branch AS targetBranch, source_branch AS sourceBranch, updated_at AS updatedAt FROM reviews WHERE card_id = ? ORDER BY updated_at DESC LIMIT 1`).get(cardId) as Review | undefined
+    return { test: test ?? null, review: review ?? null }
+  }
+
   prepareLocalReview(cardId: string): Review {
     const worktree = this.worktrees.get(cardId)
     if (!worktree) throw new Error('Crie a worktree antes da revisão')

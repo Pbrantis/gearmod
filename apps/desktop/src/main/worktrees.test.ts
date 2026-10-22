@@ -44,6 +44,14 @@ describe('WorktreeService', () => {
     expect(snapshot.exists).toBe(true); expect(snapshot.status).toContain('change.txt')
     expect((await service.snapshot(second.id)).status).not.toContain('change.txt')
     expect((await service.prepare(first.id)).id).toBe(one.id)
+    expect(one.path.length).toBeLessThan(data.length + 16)
+    // Uma tentativa anterior que falhou deixou a branch presa numa worktree pela metade: a próxima solta e recria.
+    const accented = board.create({ projectId: project.id, columnId: column.id, title: 'Botão de reset', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const stale = join(data, 'worktrees', 'antiga'), branch = `agentboard/botao-de-reset-${accented.id.slice(0, 8)}`
+    await exec('git', ['-C', repo, 'worktree', 'add', '-b', branch, stale, 'dev'])
+    const recovered = await service.prepare(accented.id)
+    expect(recovered.branch).toBe(branch)
+    expect((await exec('git', ['-C', repo, 'worktree', 'list'])).stdout).not.toContain('antiga')
     const done = board.get(project.id).columns.find((item) => item.semanticState === 'done')!
     expect(() => board.move(first.id, done.id, null)).toThrow('teste aprovado')
     const quality = new QualityService(database, service)

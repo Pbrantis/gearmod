@@ -247,6 +247,7 @@ export const ipcContracts = {
   , 'worktrees:prepare': { input: cardIdInput, output: worktreeSchema }
   , 'worktrees:snapshot': { input: cardIdInput, output: gitSnapshotSchema }
   , 'tests:run': { input: z.object({ cardId: uuid, executable: z.string().min(1).max(2048), args: z.array(z.string().max(4096)).max(100) }).strict(), output: testRunSchema }
+  , 'quality:status': { input: cardIdInput, output: z.object({ test: testRunSchema.nullable(), review: reviewSchema.nullable() }) }
   , 'reviews:prepare-local': { input: cardIdInput, output: reviewSchema }
   , 'reviews:approve-local': { input: z.object({ reviewId: uuid }).strict(), output: reviewSchema }
 } as const

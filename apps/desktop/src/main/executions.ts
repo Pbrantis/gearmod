@@ -49,7 +49,7 @@ export class ExecutionService {
       this.conversations.approveCurrentPlan(cardId, profileId, this.board.documents.read(cardId, 'plano'))
     }
     const chat = this.conversations.purposeChat(card.projectId, cardId, purpose, profileId)
-    return this.orchestrator.start({ chatId: chat.id, prompt: purpose === 'test' ? testPrompt : startPrompt, planning: false })
+    return this.orchestrator.start({ chatId: chat.id, prompt: purpose === 'test' ? testPrompt : startPrompt, planning: false, notice: purpose === 'test' ? '▶ Teste iniciado: o agente confere as Tasks e os critérios de aceite.' : '▶ Implementação iniciada: o agente segue o Plano e as Tasks do card.' })
   }
 
   resume(cardId: string, purpose?: 'execution' | 'test'): Run {
@@ -57,7 +57,7 @@ export class ExecutionService {
     const chats = this.conversations.listChats(card.projectId, cardId).filter((item) => purpose ? item.purpose === purpose : item.purpose !== 'planning')
     const chat = chats[0]
     if (!chat) throw new Error('Este card ainda não tem execução para continuar')
-    return this.orchestrator.start({ chatId: chat.id, prompt: chat.purpose === 'test' ? resumeTestPrompt : resumePrompt, planning: false })
+    return this.orchestrator.start({ chatId: chat.id, prompt: chat.purpose === 'test' ? resumeTestPrompt : resumePrompt, planning: false, notice: chat.purpose === 'test' ? '▶ Teste retomado de onde parou.' : '▶ Implementação retomada de onde parou.' })
   }
 
   private assertIdle(cardId: string) {
