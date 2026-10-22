@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, safeStorage, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -19,6 +19,7 @@ import { UsageService } from './usage'
 import { CollaborationService } from './collaboration'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import { AgentProbeService } from './agents'
+import { finishNotice, Notifier } from './notifier'
 import { ConversationRepository } from './conversations'
 import { ClaudeCliAdapter, CodexAppServerAdapter, listCodexModels, probeClaudeLimits } from './adapters'
 import { AgentOrchestrator } from './orchestrator'
@@ -47,9 +48,35 @@ const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getApp
 const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/card-updated', payload: { cardId, type: 'document' } })))
 const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations })
 const writeback = new AgentWriteback(board, mcpBridge)
+const shownNotifications = new Set<Notification>()
+const notifier = new Notifier({
+  enabled: () => settings.get().notificacoes,
+  focused: () => BrowserWindow.getAllWindows().some((window) => window.isFocused()),
+  show: (notice, onClick) => {
+    if (!Notification.isSupported()) return
+    const notification = new Notification({ title: notice.title, body: notice.body })
+    shownNotifications.add(notification)  // guarda a referência até o clique ou o fechamento, senão o sistema pode descartá-la
+    notification.on('click', () => { shownNotifications.delete(notification); onClick() })
+    notification.on('close', () => shownNotifications.delete(notification))
+    notification.show()
+  },
+  open: (target) => {
+    const window = BrowserWindow.getAllWindows()[0]
+    if (!window) return
+    if (window.isMinimized()) window.restore()
+    window.show(); window.focus()
+    window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/open-target', payload: target })
+  }
+})
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
-}, worktrees, 2, agentContext, writeback, agentConfigs, usage, collab)
+}, worktrees, 2, agentContext, writeback, agentConfigs, usage, collab, (info) => {
+  // Notificação do sistema quando um agente termina (só com o app fora de foco); o clique abre o chat do card ou o chat livre.
+  const card = info.cardId ? board.card(info.cardId) : null
+  const title = card?.title || conversations.listChats(conversations.projectOf(info.chatId)).find((chat) => chat.id === info.chatId)?.title || ''
+  const notice = finishNotice({ status: info.status, purpose: info.purpose, title, hasPlan: card?.hasPlan ?? false, pending: card?.pending ?? { changes: 0, questions: 0 }, error: info.error })
+  if (notice) notifier.notify(notice, { projectId: card?.projectId ?? conversations.projectOf(info.chatId), cardId: info.cardId, chatId: info.chatId, purpose: info.purpose })
+})
 const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })))
 collab.setStarter((action) => { orchestrator.start(action) })
 /** Chave do Groq cifrada pelo sistema (DPAPI no Windows); nunca vai para o banco nem para o backup. */
@@ -63,7 +90,7 @@ const voiceSecrets = {
   }
 }
 const voice = new VoiceService({ dataDir, secrets: voiceSecrets, emit: (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })) })
-const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs)
+const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs, git)
 let disposeIpc: (() => void) | undefined
 
 async function openDatabase(): Promise<void> {
@@ -113,6 +140,7 @@ async function chooseSkillSource(): Promise<string | null> {
 }
 
 app.whenReady().then(async () => {
+  app.setAppUserModelId('com.agentboard.desktop')  // necessário para as notificações do Windows
   await openDatabase()
   await mcpBridge.listen()
   disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, voice, usage, collab, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })

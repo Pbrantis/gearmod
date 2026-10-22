@@ -40,8 +40,8 @@ export const themeSchema = z.enum(['green', 'purple', 'blue', 'orange'])
 export const languageSchema = z.enum(['pt-BR', 'en'])
 /** `groq` transcreve na nuvem (Groq, whisper-large-v3-turbo); os outros rodam o whisper.cpp local. */
 export const voiceModelSchema = z.enum(['small', 'large-v3-turbo', 'groq'])
-export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema })
-export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional() }).strict()
+export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema, notificacoes: z.boolean() })
+export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional(), notificacoes: z.boolean().optional() }).strict()
 export const voiceStatusSchema = z.object({ model: voiceModelSchema, cloud: z.boolean(), modelInstalled: z.boolean(), engineInstalled: z.boolean(), canInstallEngine: z.boolean(), sizeMb: z.number(), downloading: z.object({ item: z.enum(['programa', 'modelo']), received: z.number(), total: z.number().nullable() }).nullable() })
 export type VoiceModel = z.infer<typeof voiceModelSchema>
 export type VoiceStatus = z.infer<typeof voiceStatusSchema>
@@ -207,7 +207,8 @@ export const ipcContracts = {
   , 'cards:write-document': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema, contentMd: z.string().max(200_000) }).strict(), output: cardDocumentSchema }
   , 'cards:document-versions': { input: z.object({ cardId: uuid, kind: cardDocumentKindSchema }).strict(), output: z.array(documentVersionSchema) }
   , 'cards:toggle-task': { input: z.object({ cardId: uuid, line: z.number().int().nonnegative(), checked: z.boolean() }).strict(), output: cardDocumentSchema }
-  , 'cards:start': { input: z.object({ cardId: uuid, config: agentConfigSchema, purpose: z.enum(['execution', 'test']).optional() }).strict(), output: runSchema }
+  , 'cards:start': { input: z.object({ cardId: uuid, config: agentConfigSchema, purpose: z.enum(['execution', 'test']).optional(), baseBranch: z.string().trim().min(1).max(200).optional() }).strict(), output: runSchema }
+  , 'cards:branches': { input: cardIdInput, output: z.object({ branches: z.array(z.string()), current: z.string().nullable(), selected: z.string().nullable(), locked: z.boolean() }) }
   , 'cards:resume': { input: z.object({ cardId: uuid, purpose: z.enum(['execution', 'test']).optional() }).strict(), output: runSchema }
   , 'chats:reset': { input: z.object({ chatId: uuid }).strict(), output: z.object({ reset: z.literal(true) }) }
   , 'usage:refresh': { input: z.undefined(), output: z.array(agentUsageSchema) }

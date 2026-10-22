@@ -372,6 +372,14 @@ export const migrations: readonly Migration[] = [
       // Remover um agente com histórico só o desativa: some das listas e não executa mais, mas os cards e chats seguem mostrando quem executou.
       db.exec('ALTER TABLE agent_profiles ADD COLUMN removed_at TEXT;')
     }
+  },
+  {
+    version: 17,
+    checksum: 'sha256:agentboard-card-base-branch-v17-2026-10-22',
+    up(db) {
+      // Branch base escolhida ao iniciar a execução: a worktree do card nasce a partir dela (vazio = a branch atual de cada repositório).
+      db.exec('ALTER TABLE cards ADD COLUMN base_branch TEXT;')
+    }
   }
 ]
 

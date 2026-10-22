@@ -23,8 +23,8 @@ export class WorktreeService {
     const existing = this.get(cardId)
     if (existing && await exists(existing.path)) return existing
     if (existing) this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(existing.id)
-    const card = this.database.db.prepare(`SELECT c.title, c.project_id AS projectId, p.local_path AS projectPath
-      FROM cards c JOIN projects p ON p.id = c.project_id WHERE c.id = ?`).get(cardId) as { title: string; projectId: string; projectPath: string } | undefined
+    const card = this.database.db.prepare(`SELECT c.title, c.project_id AS projectId, c.base_branch AS baseBranch, p.local_path AS projectPath
+      FROM cards c JOIN projects p ON p.id = c.project_id WHERE c.id = ?`).get(cardId) as { title: string; projectId: string; baseBranch: string | null; projectPath: string } | undefined
     if (!card) throw new Error('Card não encontrado')
     let sources = this.database.db.prepare(`SELECT name, local_path AS repoPath, current_branch AS baseRef
       FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order`).all(card.projectId) as Array<{ name: string; repoPath: string; baseRef: string }>
@@ -50,6 +50,8 @@ export class WorktreeService {
     for (const [index, source] of sources.entries()) {
       const repoName = source.name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || `repo-${index + 1}`
       const memberPath = join(path, `${index + 1}-${repoName}`)
+      // Branch escolhida ao iniciar: vale nos repositórios que a têm (local ou em origin); nos outros fica a branch atual deles.
+      if (card.baseBranch) for (const candidate of [card.baseBranch, `origin/${card.baseBranch}`]) { if (await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', candidate]).then(() => true, () => false)) { source.baseRef = candidate; break } }
       await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', source.baseRef])
       try { await this.git.run(['-C', source.repoPath, 'worktree', 'add', '-b', branch, memberPath, source.baseRef]) }
       catch (error) {

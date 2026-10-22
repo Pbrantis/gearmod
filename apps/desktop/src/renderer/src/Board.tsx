@@ -37,7 +37,7 @@ function CardTile({ card, state, agent, dropLabel, dragProps, onPending, onOpen,
   const run = card.run.state, open = card.planningOpen, ready = run === 'idle' && card.hasPlan && (state === 'backlog' || state === 'todo')
   const { done, total } = card.tasks
   const button = (cls: string, tip: string, click: () => void, icon: React.ReactNode): React.JSX.Element => <button type="button" className={`ib ${cls} tip`} data-tip={tip} aria-label={tip} onClick={(e) => { e.stopPropagation(); click() }}>{icon}</button>
-  return <article className={`card ${run === 'finished' ? 'fin' : ''} ${open ? 'planopen' : ''} ${dropLabel ? 'drop-before' : ''}`} data-plabel={dropLabel} onClick={() => (run === 'finished' || open ? onChat() : onOpen())} {...dragProps}>
+  return <article className={`card ${run === 'finished' ? 'fin' : ''} ${run === 'paused' ? 'paused' : ''} ${open ? 'planopen' : ''} ${dropLabel ? 'drop-before' : ''}`} data-plabel={dropLabel} onClick={() => (run === 'finished' || open ? onChat() : onOpen())} {...dragProps}>
     <div className="pills"><span className={`pill ${card.type}`}>{card.type}</span><span className={`pill ${card.priority}`}>{card.priority}</span></div>
     <button type="button" className="cardchat tip" data-tip="Abrir chat" aria-label="Abrir chat" onClick={(e) => { e.stopPropagation(); onChat() }}><ChatIcon /></button>
     <h3>{card.title || 'Novo card'}</h3>
@@ -47,10 +47,10 @@ function CardTile({ card, state, agent, dropLabel, dragProps, onPending, onOpen,
     {open && <span className="badge plan"><span className="dot" />Em planejamento</span>}
     {run === 'idle' && !card.hasPlan && (state === 'backlog' || state === 'todo') && <button type="button" className="mini planbtn" onClick={(e) => { e.stopPropagation(); onPlan() }}><SparkIcon />{open ? 'Continuar planejamento' : 'Ir para planejamento'}</button>}
     {run === 'planning' && <span className="badge plan"><span className="dot pulse" />Planejando com agente</span>}
-    {ready && <span className="badge ready"><span className="dot" />Plano pronto</span>}
-    {run === 'paused' && <span className="badge paused"><span className="dot" />Pausado</span>}
+    {ready && <span className="badge ready"><span className="dot softpulse" />Plano pronto</span>}
+    {run === 'paused' && <span className="badge paused"><span className="dot softpulse" />Pausado</span>}
     {run === 'finished' && <span className="badge fin"><span className="dot pulse" />Terminou · clique para ver</span>}
-    {run === 'running' && <div className="running" data-purpose={card.run.purpose} role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onChat() }} onKeyDown={(e) => { if (e.key === 'Enter') onChat() }}><div className="row"><span className="spin" />{agent && <AgentIcon profile={agent} />}<span style={{ color: '#8d968f' }}>{card.execModel ?? ''}</span></div><div className="bar"><i /></div><span style={{ fontSize: 11, color: 'var(--accent)' }}>{card.run.purpose === 'test' ? 'Testando · toque para ver' : 'Toque para ver execução'}</span></div>}
+    {run === 'running' && <div className="running" data-purpose={card.run.purpose} role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); onChat() }} onKeyDown={(e) => { if (e.key === 'Enter') onChat() }}><div className="row"><span className="spin" />{agent && <AgentIcon profile={agent} />}<span style={{ color: '#8d968f' }}>{card.execModel ?? ''}</span></div><span style={{ fontSize: 11, color: 'var(--accent)' }}>{card.run.purpose === 'test' ? 'Testando · toque para ver' : 'Toque para ver execução'}</span></div>}
     {card.workspace && <div className="wsline tip" data-tip={`Worktree: ${card.workspace.path}\nBranch base: ${card.workspace.baseRef}`}><div className="wsb"><BranchIcon /><b>{card.workspace.branch}</b></div><small>Worktree: {worktreeName(card.workspace.path)}</small></div>}
     <div className="cfoot">
       <span className="ownr">{agent && run !== 'running' && <span className="agentchip"><AgentIcon profile={agent} /></span>}{!open && <span className="cnt">{total ? `${done}/${total} tasks` : 'sem tasks'}</span>}</span>
@@ -68,7 +68,7 @@ function CardTile({ card, state, agent, dropLabel, dragProps, onPending, onOpen,
   </article>
 }
 
-export function Board({ board, profiles, history, refresh, onProjectConfig, openSettings, freeRequest, freeHandled }: { board: ProjectBoard; profiles: AgentProfile[]; history: AgentProfile[]; refresh(): Promise<void>; onProjectConfig(): void; openSettings(): void; freeRequest?: { projectId: string; at: number }; freeHandled(): void }): React.JSX.Element {
+export function Board({ board, profiles, history, refresh, onProjectConfig, openSettings, freeRequest, freeHandled, openTarget, targetHandled }: { board: ProjectBoard; profiles: AgentProfile[]; history: AgentProfile[]; refresh(): Promise<void>; onProjectConfig(): void; openSettings(): void; freeRequest?: { projectId: string; at: number }; freeHandled(): void; openTarget?: { projectId: string; cardId: string | null; chatId: string | null; purpose: string | null }; targetHandled(): void }): React.JSX.Element {
   const [draft, setDraft] = useState<Draft>(), [chatCard, setChatCardState] = useState<Card>(), [chatPurpose, setChatPurpose] = useState<AgentPurpose>('planning'), [starting, setStartingState] = useState<{ card: Card; purpose: 'execution' | 'test' }>(), [choosing, setChoosing] = useState<string>(), [stopping, setStopping] = useState<Card>(), [pendingCard, setPendingCard] = useState<Card>()
   const [dragId, setDragId] = useState<string>(), [dropOn, setDropOn] = useState<string>(), [overColumn, setOverColumn] = useState<string>(), [toast, setToast] = useState('')
   const allowed = profiles.filter((profile) => board.project.allowedProfileIds.includes(profile.id))
@@ -87,6 +87,18 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
     if (!freeRequest || freeRequest.projectId !== board.project.id) return
     freeHandled(); setChatCardState(undefined); setFreeChat({ key: Date.now() })
   }, [freeRequest, board.project.id, freeHandled])
+  // Clique numa notificação do sistema: abre o chat do card (na etapa certa) ou o chat livre.
+  useEffect(() => {
+    if (!openTarget || openTarget.projectId !== board.project.id) return
+    if (openTarget.cardId) {
+      const card = board.cards.find((item) => item.id === openTarget.cardId)
+      if (!card) return
+      targetHandled(); setChatsOpen(false); setChatCard(card, openTarget.purpose === 'planning' || openTarget.purpose === 'execution' || openTarget.purpose === 'test' ? openTarget.purpose : undefined)
+    } else if (openTarget.chatId) {
+      const chatId = openTarget.chatId
+      targetHandled(); void window.agentboard.invoke('chats:list', { projectId: board.project.id }).then((items) => { const chat = items.find((item) => item.id === chatId); if (chat) { setChatsOpen(false); openFree(chat) } })
+    }
+  }, [openTarget, board.project.id, board.cards])
   // O chat livre virou planejamento de um card novo: espera o quadro atualizar e abre o chat do card (o mesmo chat, agora de planejamento).
   useEffect(() => {
     if (!openAfterRefresh) return
@@ -137,7 +149,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
     {archived.length > 0 && <details className="archivedbox"><summary>Arquivados ({archived.length})</summary>{archived.map((card) => <div className="archrow" key={card.id}><span>{card.title}</span><button type="button" className="mini secondary" onClick={() => void window.agentboard.invoke('cards:restore', { cardId: card.id }).then(refresh)}>Restaurar</button></div>)}</details>}
     {choosing && <NewCardDialog close={() => setChoosing(undefined)} manual={() => { setDraft(blankDraft(choosing)); setChoosing(undefined) }} plan={() => { const columnId = choosing; setChoosing(undefined); setChatCardState(undefined); setFreeChat(undefined); setChatPurpose('planning'); setChatInstance(Date.now()); setDraftPlan({ columnId }) }} />}
     {draft && <CardEditor projectId={board.project.id} sources={board.project.sources} profiles={allowed} pending={draft.id ? (board.cards.find((item) => item.id === draft.id)?.pending) : undefined} onPending={() => { const card = board.cards.find((item) => item.id === draft.id); if (card) setPendingCard(card) }} draft={draft} close={() => setDraft(undefined)} saved={async () => { setDraft(undefined); await refresh() }} openChat={draft.id ? (purpose) => { const card = board.cards.find((item) => item.id === draft.id); setDraft(undefined); if (card) setChatCard(card, purpose) } : undefined} onStart={draft.id ? (purpose) => { const card = board.cards.find((item) => item.id === draft.id); setDraft(undefined); if (card) setStartingState({ card, purpose }) } : undefined} />}
-    {starting && <StartDialog card={starting.card} purpose={starting.purpose} profiles={allowed} close={() => setStartingState(undefined)} start={async (config) => { await window.agentboard.invoke('cards:start', { cardId: starting.card.id, config, purpose: starting.purpose }); setStartingState(undefined); await refresh(); setChatCard(starting.card, starting.purpose) }} />}
+    {starting && <StartDialog card={starting.card} purpose={starting.purpose} profiles={allowed} close={() => setStartingState(undefined)} start={async (config, baseBranch) => { await window.agentboard.invoke('cards:start', { cardId: starting.card.id, config, purpose: starting.purpose, baseBranch }); setStartingState(undefined); await refresh(); setChatCard(starting.card, starting.purpose) }} />}
     {stopping && <ConfirmDialog eyebrow="Execução" title="Parar a execução?" text="O agente para agora. O card fica Pausado e você pode continuar de onde parou pelo card ou pelo chat." ok="Parar execução" danger cancel={() => setStopping(undefined)} confirm={() => { const card = stopping; setStopping(undefined); if (card.run.runId) void window.agentboard.invoke('agents:cancel', { runId: card.run.runId }).then(refresh).catch((reason: unknown) => say(String(reason))) }} />}
     {pendingCard && <PendingDialog card={fresh(pendingCard)} close={() => setPendingCard(undefined)} changed={() => void refresh()} />}
     {menu && <CardContextMenu x={menu.x} y={menu.y} card={menu.card} close={() => setMenu(undefined)} open={() => { const card = menu.card; setMenu(undefined); setDraft(edit(card)) }} chat={() => { const card = menu.card; setMenu(undefined); setChatCard(card) }} remove={() => { const card = menu.card; setMenu(undefined); setDeleting(card) }} />}

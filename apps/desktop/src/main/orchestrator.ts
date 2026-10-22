@@ -1,4 +1,4 @@
-import type { AgentPurpose, Run } from '@agentboard/contracts'
+import type { AgentPurpose, ChatPurpose, Run } from '@agentboard/contracts'
 import type { AgentAdapter, AgentEvent } from './adapters'
 import type { ConversationRepository } from './conversations'
 import type { WorktreeService } from './worktrees'
@@ -24,7 +24,8 @@ export class AgentOrchestrator {
     private readonly writeback?: AgentWriteback,
     private readonly configs?: Pick<AgentConfigRepository, 'resolve' | 'recordUse'>,
     private readonly usage?: { recordClaude(profileId: string, payload: Record<string, unknown>): void },
-    private readonly collab?: { afterRun(info: { cardId: string; chatId: string; purpose: AgentPurpose; status: string }): void }
+    private readonly collab?: { afterRun(info: { cardId: string; chatId: string; purpose: AgentPurpose; status: string }): void },
+    private readonly onFinished?: (info: { cardId: string | null; chatId: string; purpose: ChatPurpose; status: Run['status']; error: string | null }) => void
   ) {}
 
   start(input: { chatId: string; prompt: string; planning: boolean }): Run {
@@ -91,10 +92,12 @@ export class AgentOrchestrator {
       this.conversations.updateRun(job.run.id, result.status, result.error, result.turnId)
       publish({ type: 'agentboard/run-completed', payload: { status: result.status, error: result.error } })
       try { if (after.cardId && after.chat.purpose !== 'free') this.collab?.afterRun({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: result.status }) } catch { /* encadeamento é best-effort; o chat mostra o aviso */ }
+      try { this.onFinished?.({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: result.status, error: result.error ?? null }) } catch { /* notificação é best-effort */ }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.conversations.updateRun(job.run.id, controller.signal.aborted ? 'interrupted' : 'failed', message)
       publish({ type: 'agentboard/run-completed', payload: { status: controller.signal.aborted ? 'interrupted' : 'failed', error: message } })
+      try { const after = this.conversations.context(job.chatId); this.onFinished?.({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: controller.signal.aborted ? 'interrupted' : 'failed', error: message }) } catch { /* notificação é best-effort */ }
     } finally { this.controllers.delete(job.run.id) }
   }
 }

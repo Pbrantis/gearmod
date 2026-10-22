@@ -114,6 +114,8 @@ export function SettingsDialog({ profiles, settings, close, changed, settingsCha
       <div className="stack" style={{ marginTop: 16 }}>
         <label className="f">Idioma dos agentes<select className="in" value={settings.idioma} onChange={(e) => void save({ idioma: e.target.value as AppLanguage })}>{languages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}</select></label>
         <p className="hint">Tudo o que o agente escreve segue este idioma. A interface continua em português por enquanto.</p>
+        <label className="autosave" style={{ marginRight: 0 }}><input type="checkbox" role="switch" checked={settings.notificacoes} onChange={(e) => void save({ notificacoes: e.target.checked })} /><span className="sw" aria-hidden="true" />Notificações do sistema</label>
+        <p className="hint">Avisa quando um card termina, o plano fica pronto ou algo precisa de você, com o AgentBoard em segundo plano. Tocar na notificação abre o chat do card.</p>
         <label className="f">Ditado por voz<select className="in" value={settings.voz} onChange={(e) => void save({ voz: e.target.value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })}>{voices.map((voice) => <option key={voice.value} value={voice.value}>{voice.label}</option>)}</select></label>
         {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do AgentBoard.</p>}
       </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}

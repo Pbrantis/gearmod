@@ -26,11 +26,19 @@ const resumePrompt = 'Continue de onde parou, seguindo o Plano e as Tasks do con
 
 /** Iniciar e continuar execuções: Iniciar aprova o plano atual, leva o card para Doing e usa o chat de execução do card. */
 export class ExecutionService {
-  constructor(private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly orchestrator: Pick<AgentOrchestrator, 'start'>, private readonly configs?: Pick<AgentConfigRepository, 'set'>) {}
+  constructor(private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly orchestrator: Pick<AgentOrchestrator, 'start'>, private readonly configs?: Pick<AgentConfigRepository, 'set'>, private readonly git?: { branches(localPath: string): Promise<string[]> }) {}
 
   /** Implementação (padrão) ou teste: cada etapa tem o seu chat e o seu agente; depois de iniciado o agente fica travado (trocar reinicia o chat). */
-  start(cardId: string, config: AgentConfig, purpose: 'execution' | 'test' = 'execution'): Run {
+  /** Branches para a worktree do card sair delas: as do primeiro repositório Git do projeto. `locked` quando a worktree já existe (a base não muda mais). */
+  async branches(cardId: string): Promise<{ branches: string[]; current: string | null; selected: string | null; locked: boolean }> {
+    const card = this.board.card(cardId), source = this.board.get(card.projectId).project.sources.find((item) => item.isGitRepository)
+    const branches = source && this.git ? await this.git.branches(source.localPath).catch(() => []) : []
+    return { branches, current: source?.currentBranch ?? null, selected: this.board.baseBranch(cardId), locked: Boolean(card.workspace) }
+  }
+
+  start(cardId: string, config: AgentConfig, purpose: 'execution' | 'test' = 'execution', baseBranch?: string): Run {
     const card = this.assertIdle(cardId)
+    if (baseBranch && !card.workspace) this.board.setBaseBranch(cardId, baseBranch)
     const profileId = config.profileId
     const existing = this.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === purpose)
     if (existing && existing.profileId !== profileId) throw new Error('Esta etapa já tem um chat com outro agente. Trocar o agente reinicia o chat.')

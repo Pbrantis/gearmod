@@ -703,3 +703,16 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .toolgroup .msg.toolrow{min-width:0;max-width:100%}
 .toolgroup-list{display:grid;gap:4px;max-height:260px;overflow:auto;padding-right:4px;scrollbar-width:thin}
 .toolgroup-more{font-size:11px;color:#6f7871;text-align:center;padding:2px 0}
+
+/* ---- pausado: borda amarela e bolinha pulsando de leve ---- */
+.card.paused{border-color:#7d6a2c;box-shadow:0 0 0 1px #7d6a2c66,0 0 16px #c9a22722}
+.dot.softpulse,.agchip.paused .agdot{animation:softpulse 1.8s ease-in-out infinite}
+@keyframes softpulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 0 #e8c36a55}50%{opacity:.55;transform:scale(1.22);box-shadow:0 0 0 4px #e8c36a00}}
+@media (prefers-reduced-motion:reduce){.dot.softpulse,.agchip.paused .agdot{animation:none}}
+
+/* ---- plano pronto: bolinha também pulsa de leve (verde) ---- */
+.badge.ready .dot.softpulse,.tstatus .dot.softpulse{animation:softpulseG 1.8s ease-in-out infinite}
+@keyframes softpulseG{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 0 #a9d5b555}50%{opacity:.55;transform:scale(1.22);box-shadow:0 0 0 4px #a9d5b500}}
+.dot.softpulse{animation:softpulse 1.8s ease-in-out infinite}
+.badge.ready .dot.softpulse{animation-name:softpulseG}
+@media (prefers-reduced-motion:reduce){.badge.ready .dot.softpulse{animation:none}}

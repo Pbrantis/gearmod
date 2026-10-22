@@ -280,6 +280,14 @@ export class BoardRepository {
     return this.card(id)
   }
 
+  baseBranch(cardId: string): string | null {
+    return (this.database.db.prepare('SELECT base_branch FROM cards WHERE id = ?').pluck().get(cardId) as string | null | undefined) ?? null
+  }
+
+  setBaseBranch(cardId: string, branch: string | null): void {
+    this.database.db.prepare('UPDATE cards SET base_branch = ? WHERE id = ?').run(branch, cardId)
+  }
+
   /** O planejador só declara o plano concluído com Especificação, Plano e Tasks escritos; devolve o que falta. */
   markPlanReady(cardId: string): string[] {
     const missing = (['especificacao', 'plano', 'tasks'] as const).filter((kind) => !this.documents.read(cardId, kind).trim())
