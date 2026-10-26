@@ -21,7 +21,7 @@ export function finishNotice(input: NoticeInput): Notice | null {
   if (input.pending.changes > 0) return { title: 'Mudança aguardando sua autorização', body: name }
   if (input.pending.questions > 0) return { title: 'Pergunta para você', body: name }
   if (input.status === 'failed') {
-    const what = input.purpose === 'planning' ? 'O planejamento falhou' : input.purpose === 'test' ? 'O teste falhou' : input.purpose === 'free' ? 'O chat falhou' : 'A execução falhou'
+    const what = input.purpose === 'planning' ? 'O planejamento falhou' : input.purpose === 'test' ? 'O teste falhou' : input.purpose === 'free' || input.purpose === 'constitution' ? 'O chat falhou' : 'A execução falhou'
     return { title: what, body: input.error ? `${name} — ${clip(input.error, 100)}` : name }
   }
   if (input.purpose === 'execution') return { title: 'Execução concluída', body: name }

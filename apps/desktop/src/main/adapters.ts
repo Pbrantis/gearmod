@@ -1,10 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import { delimiter, extname, isAbsolute, join } from 'node:path'
+import { delimiter, dirname, extname, isAbsolute, join } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { resolveCommand } from './agents'
 import type { AgentProfile, Effort, ModelOption, PermissionMode } from '@agentboard/contracts'
+import { effortSchema } from '@agentboard/contracts'
 import type { McpEndpoint } from './mcp-bridge'
 import type { ServerNotification } from './generated/codex-app-server/ServerNotification'
 import type { ThreadStartParams } from './generated/codex-app-server/v2/ThreadStartParams'
@@ -15,8 +16,10 @@ import type { ApprovalsReviewer } from './generated/codex-app-server/v2/Approval
 import type { TurnStartParams } from './generated/codex-app-server/v2/TurnStartParams'
 
 export type AgentEvent = { type: string; payload: Record<string, unknown> }
-export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; signal?: AbortSignal; onEvent(event: AgentEvent): void }
-export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null }
+export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; attachments?: string[]; signal?: AbortSignal; onEvent(event: AgentEvent): void }
+/** `costUsd`: só quando o próprio agente informa (Claude: `total_cost_usd` do result); nunca estimado aqui. */
+export type RunTokens = { input: number; cached: number; output: number; costUsd?: number }
+export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null; usage?: RunTokens }
 export interface AgentAdapter { run(options: AgentRunOptions): Promise<AgentRunResult> }
 
 type JsonObject = Record<string, unknown>
@@ -66,7 +69,16 @@ class JsonLineRpc {
   private failAll(error: Error): void { for (const pending of this.pending.values()) pending.reject(error); this.pending.clear() }
 }
 
-const codexEfforts = new Set<string>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const codexEfforts = new Set<string>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+/** Anexos que vão para o Codex como imagem (ele vê o conteúdo), além do caminho no texto. */
+const imageExtensions = /\.(png|jpe?g|gif|webp|bmp)$/i
+/** Esforços que o AgentBoard conhece; um nível novo do provedor é ignorado em vez de invalidar a lista de modelos inteira. */
+const knownEffort = (value: unknown): value is Effort => effortSchema.safeParse(value).success
+/**
+ * As ferramentas do AgentBoard já checam quem pode chamar o quê (ex.: só o chat da Constituição a grava). Sem isto, no modo só leitura
+ * (aprovação "never") o Codex recusa toda ferramenta que escreve, e o planejamento e o chat da Constituição não conseguiam gravar.
+ */
+export const agentboardToolApproval = { default_tools_approval_mode: 'approve' } as const
 
 /** Modos de permissão do AgentBoard → sandbox, política de aprovação e revisor do Codex (plano 08, seção 6). */
 export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; approvalPolicy: AskForApproval; approvalsReviewer?: ApprovalsReviewer } {
@@ -90,17 +102,19 @@ export class CodexAppServerAdapter implements AgentAdapter {
     const rpc = new JsonLineRpc(child)
     const abort = () => rpc.stop(); options.signal?.addEventListener('abort', abort, { once: true })
     let text = '', turnId: string | null = null
+    // O Codex avisa o uso a cada chamada ao modelo (`last`); soma só quando o total do thread muda, para não contar aviso repetido.
+    const usage: RunTokens = { input: 0, cached: 0, output: 0 }; let lastTotal = -1
     try {
       await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
       rpc.notify('initialized')
       const access = codexAccess(options.planning ? 'plan' : options.mode ?? 'auto')
-      const policy = { cwd: options.cwd, ...access, ...(options.model ? { model: options.model } : {}), ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp ? { config: { mcp_servers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } } } : {}) } satisfies ThreadStartParams
+      const policy = { cwd: options.cwd, ...access, ...(options.model ? { model: options.model } : {}), ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp ? { config: { mcp_servers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env, ...agentboardToolApproval } } } } : {}) } satisfies ThreadStartParams
       const threadResult = options.sessionId
         ? await rpc.request('thread/resume', { threadId: options.sessionId, ...policy })
         : await rpc.request('thread/start', policy)
       const thread = threadResult.thread as { id: string }
       const completed = new Promise<AgentRunResult>((resolve, reject) => {
-        const onAbort = () => resolve({ sessionId: thread.id, turnId, text, status: 'interrupted', error: 'Interrompido pelo usuário' })
+        const onAbort = () => resolve({ sessionId: thread.id, turnId, text, status: 'interrupted', error: 'Interrompido pelo usuário', usage: { ...usage } })
         options.signal?.addEventListener('abort', onAbort, { once: true })
         rpc.onMessage((raw) => {
           const event = raw as unknown as ServerNotification
@@ -108,15 +122,23 @@ export class CodexAppServerAdapter implements AgentAdapter {
           const params = event.params as unknown as Record<string, unknown>
           if (event.method === 'item/agentMessage/delta') { const delta = String(params.delta ?? ''); text += delta; options.onEvent({ type: event.method, payload: { delta } }) }
           else options.onEvent({ type: event.method, payload: redactObject(params) })
+          if (event.method === 'thread/tokenUsage/updated') {
+            const token = params.tokenUsage as { total?: { totalTokens?: number }; last?: { inputTokens?: number; cachedInputTokens?: number; outputTokens?: number } } | undefined
+            if (token?.last && token.total?.totalTokens !== lastTotal) {
+              lastTotal = token.total?.totalTokens ?? lastTotal
+              const cached = token.last.cachedInputTokens ?? 0
+              usage.cached += cached; usage.input += Math.max(0, (token.last.inputTokens ?? 0) - cached); usage.output += token.last.outputTokens ?? 0
+            }
+          }
           if (event.method === 'turn/completed') {
             const turn = params.turn as { id?: string; status?: string; error?: unknown }; turnId = turn.id ?? turnId
             const status = turn.status === 'completed' ? 'completed' : turn.status === 'interrupted' ? 'interrupted' : 'failed'
-            resolve({ sessionId: thread.id, turnId, text, status, error: status === 'failed' ? sanitize(JSON.stringify(turn.error ?? 'Turn failed')) : null })
+            resolve({ sessionId: thread.id, turnId, text, status, error: status === 'failed' ? sanitize(JSON.stringify(turn.error ?? 'Turn failed')) : null, usage: { ...usage } })
           }
           if (event.method === 'error') reject(new Error(sanitize(JSON.stringify(params))))
         })
       })
-      const turnParams: TurnStartParams = { threadId: thread.id, input: [{ type: 'text', text: options.prompt, text_elements: [] }], approvalPolicy: access.approvalPolicy, ...(access.approvalsReviewer ? { approvalsReviewer: access.approvalsReviewer } : {}), ...(options.model ? { model: options.model } : {}), ...(options.effort && codexEfforts.has(options.effort) ? { effort: options.effort as ReasoningEffort } : {}) }
+      const turnParams: TurnStartParams = { threadId: thread.id, input: [{ type: 'text', text: options.prompt, text_elements: [] }, ...(options.attachments ?? []).filter((path) => imageExtensions.test(path)).map((path) => ({ type: 'localImage' as const, path }))], approvalPolicy: access.approvalPolicy, ...(access.approvalsReviewer ? { approvalsReviewer: access.approvalsReviewer } : {}), ...(options.model ? { model: options.model } : {}), ...(options.effort && codexEfforts.has(options.effort) ? { effort: options.effort as ReasoningEffort } : {}) }
       const started = await rpc.request('turn/start', turnParams as unknown as JsonObject)
       turnId = (started.turn as { id?: string } | undefined)?.id ?? null
       return await completed
@@ -145,8 +167,8 @@ export function readCodexModelsCache(profile: AgentProfile): ModelOption[] {
     const raw = JSON.parse(readFileSync(join(profile.configDir || join(homedir(), '.codex'), 'models_cache.json'), 'utf8')) as { models?: Array<Record<string, unknown>> }
     return (raw.models ?? []).filter((item) => typeof item.slug === 'string' && item.visibility !== 'hide' && item.visibility !== 'none').map((item) => {
       const levels = (Array.isArray(item.supported_reasoning_levels) ? item.supported_reasoning_levels : []) as Array<{ effort?: string } | string>
-      const efforts = levels.map((level) => (typeof level === 'string' ? level : level.effort)).filter((effort): effort is Effort => typeof effort === 'string')
-      return { id: item.slug as string, label: typeof item.display_name === 'string' ? item.display_name : (item.slug as string), description: typeof item.description === 'string' ? item.description : '', efforts, recommendedFor: [] as Array<'planning' | 'execution' | 'test'>, defaultEffort: (typeof item.default_reasoning_level === 'string' ? item.default_reasoning_level : efforts[0] ?? null) as Effort | null }
+      const efforts = levels.map((level) => (typeof level === 'string' ? level : level.effort)).filter(knownEffort)
+      return { id: item.slug as string, label: typeof item.display_name === 'string' ? item.display_name : (item.slug as string), description: typeof item.description === 'string' ? item.description : '', efforts, recommendedFor: [] as Array<'planning' | 'execution' | 'test'>, defaultEffort: knownEffort(item.default_reasoning_level) ? item.default_reasoning_level : efforts[0] ?? null }
     }).map((model, index) => ({ ...model, recommendedFor: index === 0 ? ['planning' as const, 'execution' as const] : [] }))
   } catch { return [] }
 }
@@ -160,7 +182,7 @@ async function listCodexModelsLive(profile: AgentProfile, processes: ProcessFact
     await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
     rpc.notify('initialized')
     const result = await rpc.request('model/list', {}) as unknown as { data?: Array<{ model: string; displayName: string; description: string; hidden: boolean; isDefault: boolean; defaultReasoningEffort: Effort; supportedReasoningEfforts: Array<{ reasoningEffort: Effort }> }> }
-    return (result.data ?? []).filter((model) => !model.hidden).map((model) => ({ id: model.model, label: model.displayName, description: model.description, efforts: model.supportedReasoningEfforts.map((item) => item.reasoningEffort), recommendedFor: model.isDefault ? ['planning', 'execution'] as const : [], defaultEffort: model.defaultReasoningEffort })).map((model) => ({ ...model, recommendedFor: [...model.recommendedFor] }))
+    return (result.data ?? []).filter((model) => !model.hidden).map((model) => ({ id: model.model, label: model.displayName, description: model.description, efforts: model.supportedReasoningEfforts.map((item) => item.reasoningEffort).filter(knownEffort), recommendedFor: model.isDefault ? ['planning', 'execution'] as const : [], defaultEffort: knownEffort(model.defaultReasoningEffort) ? model.defaultReasoningEffort : null })).map((model) => ({ ...model, recommendedFor: [...model.recommendedFor] }))
   } catch (error) {
     throw timedOut ? new Error('O Codex não respondeu a tempo ao listar os modelos.') : error
   } finally { clearTimeout(timer); rpc.stop() }
@@ -196,6 +218,8 @@ export class ClaudeCliAdapter implements AgentAdapter {
     if (options.pluginDir) args.push('--plugin-dir', options.pluginDir)
     if (options.mcp) args.push('--mcp-config', JSON.stringify({ mcpServers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } }), '--allowedTools', 'mcp__agentboard')
     if (options.sessionId) args.push('--resume', options.sessionId)
+    // Anexos fora da pasta do projeto: libera a leitura da pasta de cada um.
+    for (const dir of new Set((options.attachments ?? []).map((path) => dirname(path)))) args.push('--add-dir', dir)
     args.push('--', options.prompt)
     const child = this.processes.start(options.profile.executablePath || 'claude', args, { cwd: options.cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: options.profile.configDir } })
     child.stdin.end()
@@ -211,7 +235,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
         else options.onEvent({ type: `claude/${String(message.type ?? 'event')}`, payload: redactObject(message) })
         if (message.type === 'result') {
           if (!text && typeof message.result === 'string') text = message.result
-          resolve({ sessionId, turnId: null, text, status: message.is_error ? 'failed' : 'completed', error: message.is_error ? sanitize(String(message.result ?? 'Claude failed')) : null })
+          resolve({ sessionId, turnId: null, text, status: message.is_error ? 'failed' : 'completed', error: message.is_error ? sanitize(String(message.result ?? 'Claude failed')) : null, usage: claudeUsage(message.usage, message.total_cost_usd) })
         }
       })
       child.on('error', (error) => reject(error))
@@ -220,6 +244,12 @@ export class ClaudeCliAdapter implements AgentAdapter {
   }
 }
 
+/** Uso informado no `result` do Claude: o que foi criado no cache conta como leitura nova; a leitura do cache fica à parte. */
+function claudeUsage(value: unknown, cost?: unknown): RunTokens | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const usage = value as Record<string, unknown>, count = (key: string): number => (typeof usage[key] === 'number' && Number.isFinite(usage[key]) ? Math.max(0, Math.round(usage[key] as number)) : 0)
+  return { input: count('input_tokens') + count('cache_creation_input_tokens'), cached: count('cache_read_input_tokens'), output: count('output_tokens'), ...(typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {}) }
+}
 function redactObject(value: Record<string, unknown>): Record<string, unknown> { return JSON.parse(sanitize(JSON.stringify(value))) as Record<string, unknown> }
 function sanitize(value: string): string { return value.replace(/(?:sk-|Bearer\s+)[A-Za-z0-9._-]+/gi, '[redacted]').slice(0, 100_000) }
 

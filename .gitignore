@@ -9,3 +9,8 @@ coverage/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Cópias manuais do app empacotado
+/exe/
+/apps/desktop/teste/
+/apps/desktop/dist - Copia/

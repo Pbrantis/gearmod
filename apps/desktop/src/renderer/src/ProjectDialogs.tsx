@@ -1,14 +1,22 @@
 import React, { useEffect, useState } from 'react'
-import type { AgentProbe, AgentProfile, Project, ProjectInspection } from '@agentboard/contracts'
+import type { AgentProbe, AgentProfile, AppTheme, Project, ProjectInspection } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
+import { GitMenu } from './BranchMenu'
 import { FolderGlyph } from './icons'
 import { SkillsPanel } from './SkillsPanel'
+import { ConstitutionPanel } from './ConstitutionPanel'
+import { GitPolicyPanel } from './GitPolicyPanel'
+import { WorkflowPanel } from './WorkflowPanel'
+import { ProjectIconPicker } from './ProjectIcon'
+import { themes } from './SettingsDialog'
+import { projectTheme, setProjectTheme } from './projectTheme'
+import { Checkbox } from './Checkbox'
 
 const useEscape = (close: () => void): void => { useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') close() }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [close]) }
 
 /** Novo projeto: escolher ou arrastar a pasta (protótipo: `.sourcePick`). */
 export function ProjectDialog({ close, created }: { close(): void; created(project: Project): void }): React.JSX.Element {
-  const [name, setName] = useState(''), [sources, setSources] = useState<ProjectInspection[]>([]), [error, setError] = useState(''), [choosing, setChoosing] = useState(false), [dragging, setDragging] = useState(false)
+  const [name, setName] = useState(''), [icon, setIcon] = useState<string | null>(null), [sources, setSources] = useState<ProjectInspection[]>([]), [error, setError] = useState(''), [choosing, setChoosing] = useState(false), [dragging, setDragging] = useState(false)
   useEscape(close)
   const addPath = async (path: string): Promise<void> => {
     const inspected = await window.agentboard.invoke('projects:inspect', { localPath: path })
@@ -20,11 +28,12 @@ export function ProjectDialog({ close, created }: { close(): void; created(proje
     event.preventDefault(); setDragging(false); setError('')
     try { for (const file of Array.from(event.dataTransfer.files)) { const path = window.agentboard.getDroppedFilePath(file); if (path) await addPath(path) } } catch (reason) { setError(String(reason).replace(/^Error: /, '')) }
   }
-  const submit = async (): Promise<void> => { try { created(await window.agentboard.invoke('projects:create', { name: name.trim() || undefined, sourcePaths: sources.map((source) => source.localPath), profileIds: [] })) } catch (reason) { setError(String(reason).replace(/^Error: /, '')) } }
+  const submit = async (): Promise<void> => { try { created(await window.agentboard.invoke('projects:create', { name: name.trim() || undefined, sourcePaths: sources.map((source) => source.localPath), profileIds: [], icon })) } catch (reason) { setError(String(reason).replace(/^Error: /, '')) } }
   return <div className="overlay"><div className="modal">
     <header><div><div className="eyebrow">Novo projeto</div><h2>Criar projeto</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
     <div className="stack">
       <label className="f">Nome do projeto<input className="in" placeholder="Nome do projeto" value={name} onChange={(e) => setName(e.target.value)} /></label>
+      <ProjectIconPicker name={name} icon={icon} onChange={setIcon} />
       {sources.map((source) => <div className="srcbox" key={source.localPath}>
         <div className="srchead"><span className="t"><b>{source.name}</b><small>{source.localPath}</small></span><button type="button" className="mini secondary" onClick={() => setSources((current) => current.filter((item) => item.localPath !== source.localPath))}>Remover</button></div>
         {source.repositories.length ? <><span className="sectitle">{source.repositories.length} {source.repositories.length === 1 ? 'repositório' : 'repositórios'}</span>
@@ -38,24 +47,68 @@ export function ProjectDialog({ close, created }: { close(): void; created(proje
   </div></div>
 }
 
-/** Configurar projeto (protótipo `pcfg`): aba Geral (nome e agentes permitidos) e aba Skills do repositório. */
-export function ProjectConfigDialog({ project, profiles, close, saved }: { project: Project; profiles: AgentProfile[]; close(): void; saved(): void }): React.JSX.Element {
-  const [tab, setTab] = useState<'general' | 'skills'>('general'), [name, setName] = useState(project.name), [allowed, setAllowed] = useState(project.allowedProfileIds), [error, setError] = useState(''), [probes, setProbes] = useState<Record<string, AgentProbe>>({})
+/** Configurar projeto (protótipo `pcfg`): aba Geral (nome e agentes permitidos), Constituição e Skills do repositório. */
+
+/** Tema do projeto: mostra só o escolhido; ao clicar abre a lista com as cores de cada tema. Vale na hora, só para este projeto. */
+function ThemePicker({ value, onChange }: { value: AppTheme | null; onChange(value: AppTheme | null): void }): React.JSX.Element {
+  const [open, setOpen] = useState(false), root = React.useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const away = (event: MouseEvent): void => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
+    const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) } }
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', key, true)
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', key, true) }
+  }, [open])
+  const current = themes.find((theme) => theme.value === value)
+  const face = (label: string, swatches?: readonly string[]): React.JSX.Element => <><span className="sw3">{swatches ? swatches.map((color) => <i key={color} style={{ background: color }} />) : <i className="auto" />}</span><span className="tn">{label}</span></>
+  return <div className="f themepick" ref={root}><span>Tema</span>
+    <button type="button" className="themetrigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>{face(current?.label ?? 'Padrão do app', current?.swatches)}<span className="chev">▾</span></button>
+    {open && <div className="themelist" role="listbox" aria-label="Tema do projeto">
+      <button type="button" role="option" aria-selected={value === null} className={value === null ? 'on' : ''} onClick={() => { onChange(null); setOpen(false) }}>{face('Padrão do app')}</button>
+      {themes.map((theme) => <button type="button" role="option" aria-selected={value === theme.value} key={theme.value} className={value === theme.value ? 'on' : ''} onClick={() => { onChange(theme.value); setOpen(false) }}>{face(theme.label, theme.swatches)}</button>)}
+    </div>}
+    <small className="hint">Vale só para este projeto e é aplicado na hora.</small>
+  </div>
+}
+
+/** Time de agentes do projeto: só os liberados, com o ícone, o nome embaixo e uma bolinha de conexão; o "+" no fim adiciona outro. */
+function AgentTeam({ profiles, allowed, setAllowed, probes }: { profiles: AgentProfile[]; allowed: string[]; setAllowed(value: string[]): void; probes: Record<string, AgentProbe> }): React.JSX.Element {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const team = profiles.filter((profile) => allowed.includes(profile.id)), rest = profiles.filter((profile) => !allowed.includes(profile.id))
+  const state = (id: string): { tone: 'on' | 'off' | 'wait'; text: string } => { const probe = probes[id]; return !probe ? { tone: 'wait', text: 'verificando…' } : !probe.installed ? { tone: 'off', text: 'não instalado' } : !probe.authenticated ? { tone: 'off', text: 'login necessário' } : { tone: 'on', text: 'conectado' } }
+  return <div className="stack" style={{ gap: 8 }}><span className="sectitle">Time de agentes</span>
+    {profiles.length === 0 && <div className="emptyBox">Cadastre um agente em Configurações para liberar aqui.</div>}
+    <div className="team">
+      {team.map((profile) => { const info = state(profile.id); return <div className="teamcard" key={profile.id}>
+        <span className="teamav"><AgentIcon profile={profile} size="lg" tip={false} /><i className={`teamdot ${info.tone} tip`} data-tip={info.text} aria-label={info.text} /></span>
+        <b title={profile.label}>{profile.label}</b><small>{profile.provider === 'codex' ? 'Codex' : 'Claude'}</small>
+        <button type="button" className="teamx tip" data-tip="Tirar do time" aria-label={`Tirar ${profile.label} do time`} onClick={() => setAllowed(allowed.filter((id) => id !== profile.id))}>×</button></div> })}
+      {profiles.length > 0 && <button type="button" className="teamadd tip" data-tip={rest.length ? 'Adicionar ao time' : 'Todos os agentes já estão no time'} aria-label="Adicionar agente ao time" disabled={!rest.length} onClick={(event) => { const box = event.currentTarget.getBoundingClientRect(); setMenu({ x: box.left, y: box.bottom + 6 }) }}><span>+</span></button>}
+    </div>
+    {team.length === 0 && profiles.length > 0 && <small className="hint">Nenhum agente no time ainda: sem agentes, o projeto não consegue rodar nada.</small>}
+    {menu && <GitMenu x={menu.x} y={menu.y} title="Adicionar ao time" label="Adicionar agente ao time" items={rest.map((profile) => ({ key: profile.id, label: `${profile.label} · ${state(profile.id).text}` }))} run={(id) => { setMenu(null); setAllowed([...allowed, id]) }} close={() => setMenu(null)} />}
+  </div>
+}
+
+export function ProjectConfigDialog({ project, profiles, close, saved, openConstitutionChat, initialTab }: { project: Project; profiles: AgentProfile[]; close(): void; saved(): void; openConstitutionChat(prompt?: string): void; initialTab?: 'general' | 'git' }): React.JSX.Element {
+  const [tab, setTab] = useState<'general' | 'git' | 'workflow' | 'theme' | 'constitution' | 'skills'>(initialTab ?? 'general'), [name, setName] = useState(project.name), [icon, setIcon] = useState(project.icon), [allowed, setAllowed] = useState(project.allowedProfileIds), [error, setError] = useState(''), [ownTheme, setOwnTheme] = useState<AppTheme | null>(() => projectTheme(project.id)), [probes, setProbes] = useState<Record<string, AgentProbe>>({})
   useEscape(close)
   useEffect(() => { void window.agentboard.invoke('profiles:probe-all', undefined).then((all) => setProbes(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }, [])
-  const submit = async (): Promise<void> => { try { await window.agentboard.invoke('projects:update', { projectId: project.id, name }); await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: allowed }); saved() } catch (reason) { setError(String(reason).replace(/^Error: /, '')) } }
+  const submit = async (): Promise<void> => { try { await window.agentboard.invoke('projects:update', { projectId: project.id, name, icon }); await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: allowed }); saved() } catch (reason) { setError(String(reason).replace(/^Error: /, '')) } }
   const status = (id: string): string => { const probe = probes[id]; return probe ? (probe.installed ? (probe.authenticated ? 'conectado' : 'login necessário') : 'não instalado') : 'verificando…' }
-  return <div className="overlay"><div className="modal" style={{ width: 'min(680px,100%)' }}>
-    <header><div><div className="eyebrow">Configurar projeto</div><h2>{project.name}</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
-    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['general', 'Geral'], ['skills', 'Skills']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div>
-    {tab === 'general' ? <>
+  return <div className="overlay"><div className="modal pcfg" style={{ width: 'min(920px,100%)' }}>
+    <header><div className="pcfg-heading"><div className="eyebrow">Configurar projeto</div><div className="pcfg-identity"><ProjectIconPicker compact name={name} icon={icon} onChange={setIcon} /><h2>{name.trim() || project.name}</h2></div></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
+    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['general', 'Geral'], ['git', 'Git'], ['workflow', 'Workflow'], ['skills', 'Skills']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div>
+    <div className={`pcfg-body ${tab === 'skills' ? 'fill' : ''}`}>{tab === 'general' ? <>
       <div className="stack"><label className="f">Nome<input className="in" value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <div className="stack" style={{ gap: 8 }}><span className="sectitle">Agentes permitidos</span>{profiles.length === 0 && <div className="emptyBox">Cadastre um agente em Configurações para liberar aqui.</div>}{profiles.map((profile) => <label className="ck-line" key={profile.id}>
-          <span className="ckwrap"><input type="checkbox" checked={allowed.includes(profile.id)} onChange={() => setAllowed(allowed.includes(profile.id) ? allowed.filter((id) => id !== profile.id) : [...allowed, profile.id])} /><span className="ck"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" /></svg></span></span>
-          <AgentIcon profile={profile} tip={false} /><span className="t">{profile.label}<small>{profile.provider === 'codex' ? 'Codex' : 'Claude'} · {status(profile.id)}</small></span></label>)}</div></div>
+        <ThemePicker value={ownTheme} onChange={(value) => { setOwnTheme(value); setProjectTheme(project.id, value) }} />
+        <AgentTeam profiles={profiles} allowed={allowed} setAllowed={setAllowed} probes={probes} />
+        <div className="stack" style={{ gap: 8 }}><span className="sectitle">Constituição</span><ConstitutionPanel projectId={project.id} openChat={openConstitutionChat} /></div></div>
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
       <div className="actions"><button className="secondary" onClick={close}>Cancelar</button><button onClick={() => void submit()}>Salvar</button></div></>
-      : <><SkillsPanel scope="project" projectId={project.id} profiles={profiles.filter((profile) => allowed.includes(profile.id))} globalCount={0} /><div className="actions"><button className="secondary" onClick={close}>Fechar</button></div></>}
+      : tab === 'git' ? <GitPolicyPanel projectId={project.id} />
+      : tab === 'workflow' ? <WorkflowPanel projectId={project.id} />
+      : <div className="skwrap"><SkillsPanel scope="project" projectId={project.id} profiles={profiles.filter((profile) => allowed.includes(profile.id))} globalCount={0} /></div>}</div>
   </div></div>
 }
 
@@ -93,7 +146,7 @@ export function ProjectAgentsDialog({ project, profiles, close, saved, openSetti
     : <>
       <p style={{ marginBottom: 12 }}>Escolha quais dos agentes cadastrados podem trabalhar neste projeto. Você pode mudar isso depois em Configurar projeto.</p>
       <div className="stack" style={{ gap: 8 }}>{profiles.map((profile) => <label className="ck-line" key={profile.id}>
-        <span className="ckwrap"><input type="checkbox" checked={allowed.includes(profile.id)} onChange={() => setAllowed(allowed.includes(profile.id) ? allowed.filter((id) => id !== profile.id) : [...allowed, profile.id])} /><span className="ck"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5.5" /></svg></span></span>
+        <Checkbox checked={allowed.includes(profile.id)} onChange={() => setAllowed(allowed.includes(profile.id) ? allowed.filter((id) => id !== profile.id) : [...allowed, profile.id])} />
         <AgentIcon profile={profile} tip={false} /><span className="t">{profile.label}<small>{profile.provider === 'codex' ? 'Codex' : 'Claude'} · {profile.scope}</small></span></label>)}</div>
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
       <div className="actions"><button className="secondary" onClick={openSettings}>Cadastrar outro agente</button><button className="secondary" onClick={close}>Agora não</button><button disabled={busy || allowed.length === 0} onClick={() => void submit()}>Liberar agentes</button></div></>}

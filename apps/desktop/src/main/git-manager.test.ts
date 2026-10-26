@@ -1,0 +1,231 @@
+import { execFile } from 'node:child_process'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+import { afterEach, describe, expect, it } from 'vitest'
+import { defaultGitPolicy } from '@agentboard/contracts'
+import { ConversationRepository } from './conversations'
+import { AppDatabase } from './database'
+import { assignLanes, friendlyError, GitManager, resolveRule } from './git-manager'
+import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
+import { seedProfiles } from './test-helpers'
+import { WorktreeService } from './worktrees'
+
+const exec = promisify(execFile), roots: string[] = [], opened: AppDatabase[] = []
+afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
+
+const git = (dir: string, ...args: string[]): Promise<{ stdout: string }> => exec('git', ['-C', dir, ...args])
+
+async function setup(): Promise<{ root: string; repo: string; database: AppDatabase; manager: GitManager; projectId: string; sourceId: string; cardId: string; wt: string; branch: string; chatId: string; profileId: string }> {
+  const root = await mkdtemp(join(tmpdir(), 'agentboard-gitm-')); roots.push(root)
+  const repo = join(root, 'repo'), data = join(root, 'data')
+  await exec('git', ['init', '-b', 'main', repo])
+  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'AgentBoard Test'); await git(repo, 'config', 'core.autocrlf', 'false')
+  await writeFile(join(repo, 'README.md'), '# fixture\n'); await git(repo, 'add', 'README.md'); await git(repo, 'commit', '-m', 'primeiro')
+  const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open(); opened.push(database)
+  const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
+  const projects = new ProjectRepository(database, new GitService()), project = await projects.create({ localPath: repo })
+  const board = new BoardRepository(database, projects), column = board.get(project.id).columns[0]!
+  const card = board.create({ projectId: project.id, columnId: column.id, title: 'Tela de teste', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+  const worktree = await new WorktreeService(database, data).prepare(card.id)
+  const member = database.db.prepare('SELECT path FROM worktree_members WHERE worktree_id = ?').get(worktree.id) as { path: string }
+  const source = database.db.prepare('SELECT id FROM project_sources WHERE project_id = ?').get(project.id) as { id: string }
+  const profileId = profiles.list()[0]!.id
+  projects.setProfiles(project.id, [profileId])
+  const chatId = new ConversationRepository(database).createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId }).id
+  return { root, repo, database, manager: new GitManager(database), projectId: project.id, sourceId: source.id, cardId: card.id, wt: member.path, branch: worktree.branch, chatId, profileId }
+}
+
+describe('assignLanes', () => {
+  it('mantém a história linear numa faixa e abre outra para a branch', () => {
+    // topo → base: merge(m) junta a (faixa 0) e b (faixa 1); base é pai de ambos.
+    const lanes = assignLanes([
+      { hash: 'm', parents: ['a', 'b'] }, { hash: 'a', parents: ['base'] }, { hash: 'b', parents: ['base'] }, { hash: 'base', parents: [] }
+    ])
+    expect(lanes).toEqual([0, 0, 1, 0])
+  })
+
+  it('a história principal fica na faixa da esquerda mesmo depois de uma branch que a alcança', () => {
+    // main: m2 → base; feature: f → base (f é mais velho que m2 na ordem do log)
+    const lanes = assignLanes([{ hash: 'merge', parents: ['m2', 'f'] }, { hash: 'f', parents: ['base'] }, { hash: 'm2', parents: ['base'] }, { hash: 'base', parents: [] }])
+    expect(lanes).toEqual([0, 1, 0, 0])
+  })
+
+  it('a faixa do pai continua reservada até ele aparecer', () => {
+    const lanes = assignLanes([
+      { hash: 'tip1', parents: ['x'] }, { hash: 'tip2', parents: ['x'] }, { hash: 'x', parents: ['y'] }, { hash: 'z', parents: [] }
+    ])
+    expect(lanes).toEqual([0, 1, 0, 1])
+  })
+})
+
+describe('regra de commit do agente', () => {
+  it('padrão do projeto: pedir permissão, exceção nunca em main, develop e release/*', () => {
+    expect(resolveRule(defaultGitPolicy, 'agentboard/tela-1234')).toEqual({ rule: 'ask', why: 'padrão do projeto' })
+    expect(resolveRule(defaultGitPolicy, 'main')).toEqual({ rule: 'never', why: 'exceção da branch main' })
+    expect(resolveRule(defaultGitPolicy, 'develop').rule).toBe('never')
+    expect(resolveRule(defaultGitPolicy, 'release/1.2').rule).toBe('never')
+    expect(resolveRule(defaultGitPolicy, 'releases').rule).toBe('ask')
+  })
+
+  it('a primeira exceção que bater vence e * cobre qualquer trecho', () => {
+    const policy = { def: 'auto' as const, rules: [{ pattern: 'agentboard/*-x', rule: 'never' as const }, { pattern: 'agentboard/*', rule: 'ask' as const }, { pattern: '  ', rule: 'never' as const }] }
+    expect(resolveRule(policy, 'agentboard/a-x').rule).toBe('never')
+    expect(resolveRule(policy, 'agentboard/a-y').rule).toBe('ask')
+    expect(resolveRule(policy, 'feature/z').rule).toBe('auto')
+  })
+
+  it('guarda a regra no banco e volta ao padrão sem nada salvo', async () => {
+    const { manager, projectId } = await setup()
+    expect(manager.policy(projectId)).toEqual(defaultGitPolicy)
+    const saved = manager.setPolicy(projectId, { def: 'auto', rules: [{ pattern: ' hotfix/* ', rule: 'ask' }, { pattern: '', rule: 'never' }] })
+    expect(saved).toEqual({ def: 'auto', rules: [{ pattern: 'hotfix/*', rule: 'ask' }] })
+    expect(manager.policy(projectId)).toEqual(saved)
+    expect(manager.ruleFor(projectId, 'hotfix/1')).toEqual({ rule: 'ask', why: 'exceção da branch hotfix/*' })
+  })
+
+  it('traduz erros comuns do Git', () => {
+    expect(friendlyError(new Error('fatal: unable to auto-detect email address'))).toContain('não sabe quem você é')
+    expect(friendlyError(Object.assign(new Error('x'), { stderr: '! [rejected] main -> main (non-fast-forward)' }))).toContain('Faça Pull')
+  })
+})
+
+describe('GitManager com repositórios reais', () => {
+  it('lista repositórios, grafo com commits do card, WIP e worktrees', async () => {
+    const { manager, projectId, sourceId, cardId, wt, branch, repo } = await setup()
+    const repos = await manager.repos(projectId)
+    expect(repos).toHaveLength(1); expect(repos[0]).toMatchObject({ sourceId, name: 'repo', head: 'main', hasRemote: false })
+    await writeFile(join(wt, 'a.txt'), 'um\ndois\n'); await git(wt, 'add', 'a.txt'); await git(wt, 'commit', '-m', 'Card: cria a.txt')
+    await writeFile(join(wt, 'b.txt'), 'novo\n')
+    await writeFile(join(repo, 'README.md'), '# fixture\nmudou\n')
+    await git(repo, 'stash'); await writeFile(join(repo, 'README.md'), '# fixture\nde novo\n')
+    const graph = await manager.graph(projectId, sourceId)
+    const commits = graph.rows.filter((row) => !row.wip)
+    expect(commits.map((row) => row.subject)).toEqual(['Card: cria a.txt', 'primeiro'])
+    expect(commits[0]).toMatchObject({ cardId, author: 'AgentBoard Test', agentProfileId: null }); expect(commits[0]!.refs.some((ref) => ref.name === branch)).toBe(true)
+    expect(commits[1]!.cardId).toBeNull(); expect(commits[1]!.refs).toContainEqual({ name: 'main', kind: 'head' })
+    const wips = graph.rows.filter((row) => row.wip)
+    expect(wips.map((row) => row.cardId)).toEqual([null, cardId])
+    expect(wips[0]!.wip).toMatchObject({ modified: 1, added: 0, deleted: 0, branch: 'main' }); expect(wips[1]!.wip).toMatchObject({ added: 1, branch })
+    expect(graph.rows[0]).toMatchObject({ hash: 'wip:main' })
+    expect(Math.max(...graph.rows.map((row) => row.lane))).toBeGreaterThanOrEqual(1)
+    expect(graph.worktrees).toEqual([{ cardId, title: 'Tela de teste', branch, path: wt }])
+    expect(graph.branches.local.find((item) => item.name === branch)?.cardId).toBe(cardId)
+    expect(graph.stashes).toHaveLength(1); expect(graph.truncated).toBe(false)
+    expect((await manager.graph(projectId, sourceId, 20)).rows.filter((row) => !row.wip)).toHaveLength(2)
+  })
+
+  it('stage, unstage, diff, commit e amend na worktree do card', async () => {
+    const { manager, sourceId, cardId, wt } = await setup()
+    await writeFile(join(wt, 'x.txt'), 'x1\nx2\nx3\n'); await writeFile(join(wt, 'y.txt'), 'y\n'); await writeFile(join(wt, 'README.md'), '# fixture\nmais\n')
+    let state = await manager.changes(sourceId, cardId)
+    expect(state.files.map((file) => [file.path, file.status, file.staged, file.additions, file.deletions])).toEqual([['README.md', 'M', false, 1, 0], ['x.txt', 'A', false, 3, 0], ['y.txt', 'A', false, 1, 0]])
+    state = await manager.stage(sourceId, cardId, ['x.txt'], true)
+    expect(state.files.filter((file) => file.staged).map((file) => file.path)).toEqual(['x.txt'])
+    expect(await manager.diff(sourceId, cardId, 'y.txt', false)).toContain('+y')
+    expect(await manager.diff(sourceId, cardId, 'README.md', false)).toContain('+mais')
+    state = await manager.stage(sourceId, cardId, ['x.txt'], false)
+    expect(state.files.some((file) => file.staged)).toBe(false)
+    await expect(manager.commit({ sourceId, cardId, message: 'vazio' })).rejects.toThrow('nada preparado')
+    await manager.stage(sourceId, cardId, [], true)
+    const { hash } = await manager.commit({ sourceId, cardId, message: 'Adiciona x e y', description: 'Detalhe do commit' })
+    expect((await git(wt, 'log', '-1', '--format=%s|%b')).stdout.trim()).toBe('Adiciona x e y|Detalhe do commit')
+    expect((await manager.changes(sourceId, cardId))).toMatchObject({ files: [], lastMessage: 'Adiciona x e y' })
+    await writeFile(join(wt, 'z.txt'), 'z\n'); await manager.stage(sourceId, cardId, ['z.txt'], true)
+    const amended = await manager.commit({ sourceId, cardId, message: 'Adiciona x, y e z', amend: true })
+    expect(amended.hash).not.toBe(hash)
+    expect((await git(wt, 'rev-list', '--count', 'HEAD')).stdout.trim()).toBe('2')
+    const detail = await manager.commitDetail(sourceId, amended.hash)
+    expect(detail.files.map((file) => [file.path, file.status, file.additions]).sort()).toEqual([['README.md', 'M', 1], ['x.txt', 'A', 3], ['y.txt', 'A', 1], ['z.txt', 'A', 1]])
+    const root = await manager.commitDetail(sourceId, (await git(wt, 'rev-list', '--max-parents=0', 'HEAD')).stdout.trim())
+    expect(root.files).toEqual([{ path: 'README.md', status: 'A', additions: 1, deletions: 0 }])
+  })
+
+  it('commit só dos caminhos escolhidos deixa o resto sem commit; sync sem remoto avisa', async () => {
+    const { manager, sourceId, cardId, wt } = await setup()
+    await writeFile(join(wt, 'um.txt'), '1\n'); await writeFile(join(wt, 'dois.txt'), '2\n')
+    await manager.commit({ sourceId, cardId, message: 'Só o um', paths: ['um.txt'] })
+    expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toEqual(['dois.txt'])
+    await expect(manager.sync(sourceId, cardId, 'push')).rejects.toThrow('não tem remoto')
+    await expect(manager.stage(sourceId, null, [], true)).resolves.toBeDefined()
+  })
+
+  it('publica a branch do card, vê o painel e atualiza com fetch e pull', async () => {
+    const { manager, projectId, root, sourceId, cardId, wt, branch, repo } = await setup()
+    const remote = join(root, 'remote.git'); await mkdir(remote); await exec('git', ['init', '--bare', '-b', 'main', remote])
+    await git(repo, 'remote', 'add', 'origin', remote); await git(repo, 'push', '-u', 'origin', 'main')
+    await writeFile(join(wt, 'p.txt'), 'p\n'); await manager.commit({ sourceId, cardId, message: 'Primeira do card', paths: ['p.txt'] })
+    await writeFile(join(wt, 'q.txt'), 'q\n')
+    let card = await manager.card(cardId)
+    expect(card).toMatchObject({ branch, baseBranch: 'main', rule: { rule: 'ask' } })
+    expect(card.repos[0]).toMatchObject({ ahead: 1, behind: 0, published: false, hasRemote: true })
+    expect(card.repos[0]!.commits.map((item) => item.subject)).toEqual(['Primeira do card']); expect(card.repos[0]!.files.map((file) => file.path)).toEqual(['q.txt'])
+    expect((await manager.sync(sourceId, cardId, 'push')).output).toBeTypeOf('string')
+    card = await manager.card(cardId); expect(card.repos[0]!.published).toBe(true)
+    await manager.sync(sourceId, null, 'fetch')
+    expect((await manager.graph(projectId, sourceId)).branches.remote.map((item) => item.name)).toContain(`origin/${branch}`)
+    await manager.sync(sourceId, null, 'pull')
+  })
+
+  it('rebase da branch do card sobre outra branch não mistura os commits dela nos do card', async () => {
+    const { manager, projectId, sourceId, cardId, wt, repo } = await setup()
+    await git(repo, 'branch', 'outra'); await git(repo, 'worktree', 'add', join(repo, '..', 'outra'), 'outra')
+    await writeFile(join(repo, '..', 'outra', 'o.txt'), 'o\n'); await git(join(repo, '..', 'outra'), 'add', 'o.txt'); await git(join(repo, '..', 'outra'), 'commit', '-m', 'Commit da outra')
+    await writeFile(join(wt, 'c.txt'), 'c\n'); await manager.commit({ sourceId, cardId, message: 'Commit do card', paths: ['c.txt'] })
+    await git(wt, 'rebase', 'outra')
+    expect((await manager.card(cardId)).repos[0]!.commits.map((item) => item.subject)).toEqual(['Commit do card'])
+    const graph = await manager.graph(projectId, sourceId)
+    expect(graph.rows.filter((item) => item.cardId === cardId).map((item) => item.subject)).toEqual(['Commit do card'])
+    expect(graph.branches.local.map((item) => item.name)).toEqual(expect.arrayContaining(['main', 'outra']))
+  })
+})
+
+describe('commit do agente', () => {
+  it('nunca: recusa e explica; fora disso segue a regra da branch', async () => {
+    const { manager, projectId, cardId, chatId, wt, branch } = await setup()
+    await writeFile(join(wt, 'n.txt'), 'n\n')
+    manager.setPolicy(projectId, { def: 'ask', rules: [{ pattern: branch, rule: 'never' }] })
+    await expect(manager.agentCommit({ cardId, chatId, message: 'Tenta' })).rejects.toThrow(`desligado na branch ${branch}`)
+    expect(manager.agentRule(cardId)).toContain('Não faça commit')
+    expect(manager.requests(cardId)).toEqual([])
+  })
+
+  it('pedir permissão: registra o pedido, autoriza, commita só os arquivos e marca o agente como autor', async () => {
+    const { manager, projectId, sourceId, cardId, chatId, wt, profileId, database } = await setup()
+    await writeFile(join(wt, 'a.txt'), 'a\n'); await writeFile(join(wt, 'b.txt'), 'b\n')
+    expect(manager.agentRule(cardId)).toContain('agentboard_pedir_commit')
+    const asked = await manager.agentCommit({ cardId, chatId, message: 'Cria a e b\n\nDetalhes', files: ['a.txt'] })
+    expect(asked.rule).toBe('ask')
+    const [request] = manager.requests(cardId)
+    expect(request).toMatchObject({ status: 'pending', repoName: 'repo', files: ['a.txt'], agentProfileId: profileId })
+    expect(database.db.prepare('SELECT COUNT(*) AS n FROM git_commit_requests WHERE status = ?').get('pending')).toEqual({ n: 1 })
+    // um pedido novo no mesmo repositório substitui o pendente
+    await manager.agentCommit({ cardId, chatId, message: 'Cria a', files: ['a.txt'] })
+    expect(manager.requests(cardId).filter((item) => item.status === 'pending')).toHaveLength(1)
+    const pending = manager.requests(cardId)[0]!
+    expect((await manager.card(cardId)).repos[0]!.request?.id).toBe(pending.id)
+    const done = await manager.decide(pending.id, 'allow', 'Cria o arquivo a')
+    expect(done).toMatchObject({ status: 'done' }); expect(done.hash).toMatch(/^[0-9a-f]{40}$/)
+    expect((await git(wt, 'log', '-1', '--format=%s')).stdout.trim()).toBe('Cria o arquivo a')
+    expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toEqual(['b.txt'])
+    const graph = await manager.graph(projectId, sourceId)
+    expect(graph.rows.find((row) => row.hash === done.hash)).toMatchObject({ agentProfileId: profileId, cardId })
+    expect((await manager.decide(pending.id, 'deny')).status).toBe('done')
+  })
+
+  it('recusar não commita; automático commita na hora e sem arquivos novos avisa', async () => {
+    const { manager, projectId, sourceId, cardId, chatId, wt } = await setup()
+    await writeFile(join(wt, 'r.txt'), 'r\n')
+    await manager.agentCommit({ cardId, chatId, message: 'Quer commitar' })
+    const id = manager.requests(cardId)[0]!.id
+    expect((await manager.decide(id, 'deny')).status).toBe('denied')
+    expect((await manager.changes(sourceId, cardId)).files).toHaveLength(1)
+    manager.setPolicy(projectId, { def: 'auto', rules: [] })
+    const auto = await manager.agentCommit({ cardId, chatId, message: 'Commit automático' })
+    expect(auto.text).toContain('Commit feito')
+    expect((await manager.changes(sourceId, cardId)).files).toEqual([])
+    await expect(manager.agentCommit({ cardId, chatId, message: 'Nada mais' })).rejects.toThrow('Não há alterações')
+    expect((await git(wt, 'log', '-1', '--format=%s')).stdout.trim()).toBe('Commit automático')
+  })
+})

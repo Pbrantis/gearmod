@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { questionRule } from './agent-context'
 import { answersMessage, questionMessage, splitQuestionBlocks, type QuestionBlock } from '@agentboard/contracts'
 
 const block: QuestionBlock = { perguntas: [{ pergunta: 'Quem recebe o botão?', cabecalho: 'Botão', opcoes: [{ rotulo: 'Admin', descricao: 'Só administradores' }, { rotulo: 'Todos' }] }] }
@@ -16,5 +17,14 @@ describe('question blocks', () => {
   it('formats the answers as a readable message', () => {
     expect(answersMessage(block, [['Admin']])).toBe('Quem recebe o botão?\n→ Admin')
     expect(answersMessage(block, [[]])).toContain('(sem resposta)')
+  })
+  it('o exemplo ensinado aos agentes é um bloco válido', () => {
+    const sample = /```agentboard-perguntas com este JSON: (\{.*\})\. De 1 a 4/.exec(questionRule)![1]!
+    const parts = splitQuestionBlocks(`Antes:
+
+\`\`\`agentboard-perguntas
+${sample}
+\`\`\``)
+    expect(parts.map((part) => part.kind)).toEqual(['text', 'questions'])
   })
 })

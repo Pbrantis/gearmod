@@ -10,12 +10,12 @@ const roleName: Record<AgentPurpose, string> = { planning: 'planejador', executi
 const maxPlannerRounds = 2
 
 interface QuestionRow { id: string; number: number; askerPurpose: AgentPurpose; askerChatId: string | null; question: string; status: Question['status']; answer: string | null; answeredBy: Question['answeredBy']; userQuestion: string | null; rounds: number; delivered: number; createdAt: string; answeredAt: string | null }
-interface ChangeRow { id: string; number: number; proposerPurpose: AgentPurpose; proposerChatId: string | null; title: string; details: string; reason: string; status: Change['status']; userNote: string | null; createdAt: string; decidedAt: string | null }
+interface ChangeRow { id: string; number: number; proposerPurpose: AgentPurpose; proposerChatId: string | null; title: string; details: string; reason: string; status: Change['status']; userNote: string | null; createdAt: string; decidedAt: string | null; sentAt: string | null }
 
 const qLabel = (n: number): string => `D${String(n).padStart(3, '0')}`
 const mLabel = (n: number): string => `M${String(n).padStart(3, '0')}`
 const questionStatus: Record<Question['status'], string> = { open: 'aberta', planner: 'com o planejador', user: 'aguardando você', answered: 'respondida' }
-const changeStatus: Record<Change['status'], string> = { pending: 'aguardando sua autorização', accepted: 'autorizada (planejador atualizando os documentos)', suggested: 'outra visão sugerida (planejador ajustando)', rejected: 'recusada', applied: 'aplicada nos documentos' }
+const changeStatus: Record<Change['status'], string> = { pending: 'aguardando sua autorização', accepted: 'autorizada (planejador atualizando os documentos; depois vai para o desenvolvedor)', suggested: 'outra visão sugerida (planejador ajustando)', rejected: 'recusada', applied: 'aplicada nos documentos' }
 
 /**
  * Comunicação entre as etapas do card. O desenvolvedor e o testador mandam dúvidas ao planejador (o app orquestra, e o planejador só
@@ -44,7 +44,7 @@ export class CollaborationService {
   }
 
   private changes(cardId: string): ChangeRow[] {
-    return this.database.db.prepare(`SELECT id, number, proposer_purpose AS proposerPurpose, proposer_chat_id AS proposerChatId, title, details, reason, status, user_note AS userNote, created_at AS createdAt, decided_at AS decidedAt FROM card_changes WHERE card_id = ? ORDER BY number`).all(cardId) as ChangeRow[]
+    return this.database.db.prepare(`SELECT id, number, proposer_purpose AS proposerPurpose, proposer_chat_id AS proposerChatId, title, details, reason, status, user_note AS userNote, created_at AS createdAt, decided_at AS decidedAt, sent_at AS sentAt FROM card_changes WHERE card_id = ? ORDER BY number`).all(cardId) as ChangeRow[]
   }
 
   list(cardId: string): Collaboration {
@@ -55,8 +55,9 @@ export class CollaborationService {
     }
   }
 
-  counts(cardId: string): { changes: number; questions: number } {
+  counts(cardId: string): { changes: number; questions: number; toSend: number } {
     return {
+      toSend: (this.database.db.prepare(`SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status IN ('accepted', 'applied') AND sent_at IS NULL`).get(cardId) as { value: number }).value,
       changes: (this.database.db.prepare(`SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status = 'pending'`).get(cardId) as { value: number }).value,
       questions: (this.database.db.prepare(`SELECT COUNT(*) AS value FROM card_questions WHERE card_id = ? AND status = 'user'`).get(cardId) as { value: number }).value
     }
@@ -145,6 +146,25 @@ export class CollaborationService {
     return this.list(row.cardId)
   }
 
+  /**
+   * Manda ao desenvolvedor (o chat de implementação) implementar uma mudança já autorizada. Normalmente acontece sozinho quando o
+   * planejador termina de atualizar os documentos; este é o botão de lembrete para quando isso ainda não aconteceu.
+   */
+  sendChange(changeId: string): Collaboration {
+    const row = this.database.db.prepare(`SELECT card_id AS cardId FROM card_changes WHERE id = ?`).get(changeId) as { cardId: string } | undefined
+    if (!row) throw new Error('Proposta não encontrada')
+    const change = this.changes(row.cardId).find((item) => item.id === changeId)!
+    if (change.status !== 'accepted' && change.status !== 'applied') throw new Error('Só uma mudança autorizada pode ser mandada para implementar')
+    const card = this.board.card(row.cardId)
+    const execution = this.conversations.listChats(card.projectId, row.cardId).find((chat) => chat.purpose === 'execution')
+    const chatId = change.proposerChatId ?? execution?.id
+    if (!chatId) throw new Error('Este card ainda não tem chat de implementação. Inicie a execução primeiro.')
+    this.database.db.prepare(`UPDATE card_changes SET status = 'applied', sent_at = ? WHERE id = ?`).run(new Date().toISOString(), changeId)
+    this.render(row.cardId)
+    this.start({ chatId, planning: false, prompt: `A mudança ${mLabel(change.number)} (${change.title}) foi AUTORIZADA pelo usuário. Trabalhe nela agora.\n\nO que muda: ${change.details}\nMotivo: ${change.reason}${change.userNote ? `\nAnotação do usuário: ${change.userNote}` : ''}\n\nSiga os documentos do card; se algum ainda não refletir esta mudança, siga os detalhes acima e avise no Resumo.` })
+    return this.list(row.cardId)
+  }
+
   /** Chamado quando uma execução termina com sucesso: encadeia o que estava esperando por ela. */
   afterRun(info: { cardId: string; chatId: string; purpose: AgentPurpose; status: string }): void {
     if (info.status !== 'completed') return
@@ -169,7 +189,7 @@ export class CollaborationService {
     if (stuck.length) this.render(info.cardId)
     // Mudanças autorizadas/ajustadas: os documentos já foram atualizados, o autor retoma.
     for (const change of this.changes(info.cardId).filter((item) => item.status === 'accepted' || item.status === 'suggested')) {
-      this.database.db.prepare(`UPDATE card_changes SET status = 'applied' WHERE id = ?`).run(change.id)
+      this.database.db.prepare(`UPDATE card_changes SET status = 'applied', sent_at = ? WHERE id = ?`).run(new Date().toISOString(), change.id)
       this.start(this.resumeChange(change, change.status === 'accepted'
         ? `A mudança ${mLabel(change.number)} (${change.title}) foi AUTORIZADA e já está nos documentos do card. Retome de onde parou e implemente conforme os documentos atualizados.`
         : `O usuário sugeriu outra visão para ${mLabel(change.number)} (${change.title}): ${change.userNote}. O planejador ajustou os documentos; siga os documentos atualizados e retome de onde parou.`))

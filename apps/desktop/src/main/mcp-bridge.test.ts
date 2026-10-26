@@ -32,7 +32,7 @@ async function setup() {
   const context = new AgentContextService(board, new SettingsRepository(database), null)
   const bridge = new McpBridge({ board, context, serverScript, runtime: process.execPath }); await bridge.listen()
   closers.push(async () => { await bridge.close(); database.close() })
-  return { board, bridge, card, columns, project }
+  return { board, bridge, card, columns, project, database, projects }
 }
 
 /** Cliente MCP mínimo que fala com o servidor stdio real, como o Claude e o Codex fazem. */
@@ -55,7 +55,7 @@ describe('AgentBoard MCP server', () => {
     const init = await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('agentboard')
     const listed = await client.request('tools/list')
-    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_criar_card', 'agentboard_concluir_planejamento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_responder_duvida', 'agentboard_pedir_ao_usuario', 'agentboard_mover_card'])
+    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_criar_card', 'agentboard_concluir_planejamento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_responder_duvida', 'agentboard_pedir_ao_usuario', 'agentboard_ler_constituicao', 'agentboard_escrever_constituicao', 'agentboard_propor_constituicao', 'agentboard_checklist_teste', 'agentboard_mover_card', 'agentboard_pedir_commit', 'agentboard_registrar_entendimento', 'agentboard_registrar_exploracao', 'agentboard_avaliar_complexidade', 'agentboard_escolher_fluxo', 'agentboard_definir_repositorios', 'agentboard_registrar_decisao'])
 
     expect((await client.call('agentboard_contexto_do_card', {})).content[0]!.text).toContain('"titulo": "MCP"')
     const bad = await client.call('agentboard_escrever_documento', { tipo: 'tasks', markdown: 'sem itens' })
@@ -153,7 +153,7 @@ describe('collaboration tools', () => {
     expect((await developer.call('agentboard_propor_mudanca', { titulo: 'só título' })).isError).toBe(true)
     expect((await developer.call('agentboard_responder_duvida', { numero: 1, resposta: 'x' })).isError).toBe(true)
     expect((await developer.call('agentboard_escrever_documento', { tipo: 'duvidas', markdown: 'x' })).isError).toBe(true)
-    expect(board.card(card.id).pending).toEqual({ changes: 1, questions: 0 })
+    expect(board.card(card.id).pending).toEqual({ changes: 1, questions: 0, commits: 0, toSend: 0 })
     collab.afterRun({ cardId: card.id, chatId: dev.id, purpose: 'execution', status: 'completed' })
     const planner = mcpClient(bridge.register('r-plan', card.id, () => undefined, { id: planning.id, purpose: 'planning' }))
     expect((await planner.call('agentboard_perguntar_ao_planejador', { pergunta: 'eu?' })).isError).toBe(true)
@@ -162,5 +162,26 @@ describe('collaboration tools', () => {
     expect((await planner.call('agentboard_pedir_ao_usuario', { numero: 1, pergunta: 'x' })).isError).toBe(true)
     collab.afterRun({ cardId: card.id, chatId: planning.id, purpose: 'planning', status: 'completed' })
     expect(started.map((action) => action.chatId)).toEqual([planning.id, dev.id]); expect(started[1]!.prompt).toContain('Use date-fns.')
+  })
+
+  it('commit do agente: só a implementação pede, a regra fica com o GitManager e o card é avisado', async () => {
+    const { board, card, project, database, projects } = await setup()
+    const conversations = new ConversationRepository(database), profiles = new ProfileRepository(database, tmpdir()); seedProfiles(profiles)
+    const profile = profiles.list()[0]!.id
+    projects.setProfiles(project.id, [profile])
+    const dev = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profile }), plan = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'planning', profileId: profile })
+    const asked: Array<Record<string, unknown>> = [], changes: CardChange[] = []
+    const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), null), serverScript, runtime: process.execPath, git: { agentCommit: async (input) => { asked.push(input); if (input.message === 'recusa') throw new Error('Commit do agente desligado na branch main'); return { rule: 'ask', text: 'Pedido de commit registrado.' } } } }); await bridge.listen()
+    closers.push(async () => { await bridge.close() })
+    const developer = mcpClient(bridge.register('r-dev', card.id, (change) => changes.push(change), { id: dev.id, purpose: 'execution' }))
+    const ok = await developer.call('agentboard_pedir_commit', { mensagem: 'Cria a tela', arquivos: ['a.txt'], repositorio: 'repo' })
+    expect(ok).toMatchObject({ isError: false }); expect(ok.content[0]!.text).toContain('Pedido de commit registrado')
+    expect(asked).toEqual([{ cardId: card.id, chatId: dev.id, message: 'Cria a tela', files: ['a.txt'], repo: 'repo' }]); expect(changes).toEqual([{ type: 'commit' }])
+    expect((await developer.call('agentboard_pedir_commit', { mensagem: 'recusa' }))).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('desligado') }] })
+    expect((await developer.call('agentboard_pedir_commit', {})).isError).toBe(true)
+    expect((await developer.call('agentboard_pedir_commit', { mensagem: 'x', arquivos: 'a.txt' })).isError).toBe(true)
+    const planner = mcpClient(bridge.register('r-plan', card.id, () => undefined, { id: plan.id, purpose: 'planning' }))
+    expect((await planner.call('agentboard_pedir_commit', { mensagem: 'x' })).content[0]!.text).toContain('desenvolvedor')
+    expect(asked).toHaveLength(2)
   })
 })

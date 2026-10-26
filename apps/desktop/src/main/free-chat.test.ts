@@ -60,12 +60,13 @@ describe('free chat', () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-v15-')); roots.push(root)
     const path = join(root, 'db.sqlite')
     const old = new AppDatabase(path, '0.1.0', migrations.filter((item) => item.version <= 14)); await old.open()
-    const projects = new ProjectRepository(old, git), board = new BoardRepository(old, projects)
     const profile = { id: 'profile-1' }
     old.db.prepare("INSERT INTO agent_profiles(id, provider, label, scope, color, config_dir, enabled, created_at, updated_at) VALUES ('profile-1', 'codex', 'Codex', 'Pessoal', '#fff', ?, 1, ?, ?)").run(root, new Date().toISOString(), new Date().toISOString())
-    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
-    const card = board.create({ projectId: project.id, columnId: board.get(project.id).columns[0]!.id, title: 'Antigo', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
-    const now = new Date().toISOString()
+    // Banco antigo montado com SQL puro: os repositórios atuais leem colunas que a v14 ainda não tem.
+    const now = new Date().toISOString(), project = { id: 'project-1' }, card = { id: 'card-1' }
+    old.db.prepare("INSERT INTO projects(id, name, local_path, base_branch, created_at, updated_at) VALUES ('project-1', 'P', ?, 'dev', ?, ?)").run(root, now, now)
+    old.db.prepare("INSERT INTO board_columns(id, project_id, label, sort_order, semantic_state) VALUES ('col-1', 'project-1', 'Backlog', 0, 'backlog')").run()
+    old.db.prepare("INSERT INTO cards(id, project_id, column_id, type, title, priority, order_key, created_at, updated_at) VALUES ('card-1', 'project-1', 'col-1', 'task', 'Antigo', 'medium', 1, ?, ?)").run(now, now)
     old.db.prepare('INSERT INTO chats(id, project_id, card_id, purpose, provider, profile_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run('chat-1', project.id, card.id, 'execution', 'codex', profile.id, now, now)
     old.db.prepare("INSERT INTO runs(id, card_id, chat_id, profile_id, status, started_at) VALUES ('run-1', ?, 'chat-1', ?, 'completed', ?)").run(card.id, profile.id, now)
     old.db.prepare("INSERT INTO run_events(id, run_id, seq, event_type, payload_json_sanitized, created_at) VALUES ('ev-1', 'run-1', 0, 'x', '{}', ?)").run(now)

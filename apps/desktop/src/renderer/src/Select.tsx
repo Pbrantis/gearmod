@@ -10,7 +10,10 @@ export function Select({ options, value, onChange, up = false, label, className 
   useLayoutEffect(() => {
     if (!open || !button.current) return
     const rect = button.current.getBoundingClientRect()
-    setBox({ position: 'fixed', left: rect.left, width: rect.width, right: 'auto', ...(up ? { bottom: window.innerHeight - rect.top + 5, top: 'auto' } : { top: rect.bottom + 5 }), maxHeight: Math.min(320, up ? rect.top - 16 : window.innerHeight - rect.bottom - 16) })
+    // Sem espaço embaixo (menos de ~200px) e mais espaço em cima: a lista abre para cima.
+    const below = window.innerHeight - rect.bottom - 16, above = rect.top - 16, flip = up || (below < 200 && above > below)
+    const width = Math.min(Math.max(rect.width, 200), window.innerWidth - 16), left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+    setBox({ position: 'fixed', left, width, right: 'auto', ...(flip ? { bottom: window.innerHeight - rect.top + 5, top: 'auto' } : { top: rect.bottom + 5 }), maxHeight: Math.min(320, flip ? above : below) })
   }, [open, up])
   useEffect(() => {
     if (!open) return
@@ -22,6 +25,6 @@ export function Select({ options, value, onChange, up = false, label, className 
   const item = (option: SelectOption): React.JSX.Element => <>{option.color && <span className="seldot" style={{ background: option.color }} />}{option.icon}<span>{option.label}</span></>
   return <div className={`sel ${className}`} ref={root}>
     <button type="button" ref={button} className="sel-btn" disabled={disabled} aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}><span className="l">{current && item(current)}</span><span className="chev">▾</span></button>
-    {open && <div className="sel-list fx" role="listbox" style={box}>{options.map((option) => <button type="button" role="option" aria-selected={option.value === value} key={option.value} disabled={option.disabled} title={option.disabled ? 'Precisa da tela de aprovação (em breve)' : undefined} className={`sel-opt ${option.value === value ? 'on' : ''}`} onClick={() => { onChange(option.value); setOpen(false) }}>{item(option)}{option.sub && <small>{option.sub}</small>}</button>)}</div>}
+    {open && <div className="sel-list fx" role="listbox" style={box} onClick={(event) => event.preventDefault()}>{options.map((option) => <button type="button" role="option" aria-selected={option.value === value} key={option.value} disabled={option.disabled} title={option.disabled ? 'Precisa da tela de aprovação (em breve)' : undefined} className={`sel-opt ${option.value === value ? 'on' : ''}`} onClick={() => { onChange(option.value); setOpen(false) }}>{item(option)}{option.sub && <small>{option.sub}</small>}</button>)}</div>}
   </div>
 }

@@ -4,22 +4,36 @@ import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
 import { BranchIcon, CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { ModelMenu, useAgentConfig } from './ModelMenu'
+import { AssessmentDialog, ComplexityBadge } from './Assessment'
 import { worktreeName } from './workspace'
 import { ChatMessageList } from './ChatMessageView'
-import { Markdown } from './markdown'
+import { FileOpenContext } from './markdown'
+import { AgentMessage, QuestionAnswerContext } from './AgentMessage'
+import { FileViewer, ViewGrip, useFileViewer } from './FileViewer'
+import { UsageRings } from './UsageRings'
+import { QueuedPreview, useQueuedMessage } from './QueuedMessage'
+import { AttachButton, AttachmentChips, useAttachments, useContextText } from './Attachments'
 import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { plainError } from './NoticeDialog'
 import { ChangesCard } from './ChangesCard'
+import { CommitAsks, DiffPane, GitCardPanel, type DiffTarget } from './GitCardPanel'
+import { ProgressCard } from './ProgressCard'
+import { PopMenu } from './PopMenu'
+import { ChatSearch, searchMessages, snippet } from './ChatSearch'
+import { useFitInView } from './useFitInView'
+import { terminal } from './terminalStore'
 import { useDictation } from './useDictation'
+import { useStickToBottom } from './useStickToBottom'
+import { pop } from './popout'
 
 /** Estado do dock que sobrevive à troca de aba (o chat remonta a cada etapa): recolhido/expandido e largura. */
 const dockMin = 440
 const stored = (): number => { try { return Number(localStorage.getItem('agentboard.dockWidth')) || dockMin } catch { return dockMin } }
 const dockState = { expanded: true, width: stored() }
-const clampWidth = (value: number): number => Math.max(dockMin, Math.min(Math.round(window.innerWidth / 2), value))
+const clampWidth = (value: number): number => Math.max(dockMin, Math.min(Math.round(window.innerWidth * 0.65), value))
 
 /** Recolhido/expandido e largura do dock, compartilhados entre o chat do card e o chat livre. */
-export function useDockSize(): { expanded: boolean; setExpanded(value: boolean): void; width: number; dragging: boolean; startResize(event: React.PointerEvent<HTMLDivElement>): void; resetWidth(): void } {
+export function useDockSize(): { expanded: boolean; setExpanded(value: boolean): void; width: number; setWidth(value: number): void; dragging: boolean; startResize(event: React.PointerEvent<HTMLDivElement>): void; resetWidth(): void } {
   const [expanded, setExpandedState] = useState(dockState.expanded), [width, setWidthState] = useState(() => clampWidth(dockState.width)), [dragging, setDragging] = useState(false)
   const setExpanded = (value: boolean): void => { dockState.expanded = value; setExpandedState(value) }
   const startResize = (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -28,11 +42,60 @@ export function useDockSize(): { expanded: boolean; setExpanded(value: boolean):
     const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); try { localStorage.setItem('agentboard.dockWidth', String(dockState.width)) } catch { /* só vale nesta sessão */ } }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  return { expanded, setExpanded, width, dragging, startResize, resetWidth: () => { dockState.width = dockMin; setWidthState(dockMin) } }
+  const setWidth = (value: number): void => { dockState.width = value; setWidthState(value); try { localStorage.setItem('agentboard.dockWidth', String(value)) } catch { /* só vale nesta sessão */ } }
+  return { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth: () => { dockState.width = dockMin; setWidthState(dockMin) } }
 }
 
 const stepLabel: Record<AgentPurpose, string> = { planning: 'Planejamento', execution: 'Implementação', test: 'Teste' }
-const typeColor: Record<Card['type'], string> = { feature: '#8fb8d6', bug: '#ff9d91', improvement: 'var(--accent-strong)', task: '#98a099' }
+const typeColor: Record<Card['type'], string> = { feature: '#8fb8d6', bug: '#ff9d91', improvement: 'var(--accent-strong)', task: 'var(--muted)', minor: '#d9c27a' }
+
+/** Ações do cabeçalho agrupadas quando o dock estreito não comporta todos os botões. */
+function ChatMoreMenu({ messages, log, projectId, cardId, purpose, expand, close, view }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; projectId: string; cardId?: string; purpose: AgentPurpose; expand(): void; close(): void; view?: { git: boolean; set(value: 'chat' | 'git'): void } }): React.JSX.Element {
+  const [open, setOpen] = useState(false), [page, setPage] = useState<'main' | 'search' | 'window'>('main'), [query, setQuery] = useState('')
+  const box = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), menu = useRef<HTMLDivElement>(null), results = searchMessages(messages, query)
+  useFitInView(menu, open)
+  useEffect(() => {
+    if (!open) return
+    if (page === 'search') input.current?.focus()
+    const away = (event: PointerEvent): void => { if (!box.current?.contains(event.target as Node)) { setOpen(false); setPage('main') } }
+    const esc = (event: KeyboardEvent): void => { if (event.key === 'Escape') { setOpen(false); setPage('main') } }
+    document.addEventListener('pointerdown', away); document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc) }
+  }, [open, page])
+  const dismiss = (): void => { setOpen(false); setPage('main') }
+  const goMessage = (id: string): void => {
+    if (view?.git) view.set('chat'); dismiss()
+    window.setTimeout(() => {
+      const target = [...(log.current?.querySelectorAll<HTMLElement>('[data-mid]') ?? [])].find((element) => element.dataset.mid === id)
+      if (!target) return
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' }); target.classList.add('searchhit'); window.setTimeout(() => target.classList.remove('searchhit'), 1800)
+    }, view?.git ? 80 : 0)
+  }
+  const place = (placement: 'left' | 'right' | 'top' | 'bottom' | 'new'): void => {
+    dismiss()
+    if (pop) { if (placement !== 'new') void window.agentboard.invoke('windows:place', { placement }); return }
+    if (cardId) void window.agentboard.invoke('windows:open', { kind: 'chat', projectId, cardId, purpose, placement })
+  }
+  return <span className="popwrap dockmore" ref={box}>
+    <button type="button" className="ibtn morebtn" aria-label="Mais opções" aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(!open); setPage('main') }}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.35" /><circle cx="10" cy="10" r="1.35" /><circle cx="16" cy="10" r="1.35" /></svg></button>
+    {open && <div className="popmenu dockmore-menu" ref={menu} role={page === 'search' ? 'dialog' : 'menu'} aria-label="Mais opções do chat">
+      {page !== 'main' && <button type="button" className="pm-back" onClick={() => setPage('main')}>‹ <span>{page === 'search' ? 'Pesquisar' : pop ? 'Mover janela' : 'Abrir em outra janela'}</span></button>}
+      {page === 'main' && <>
+        {view && <button type="button" role="menuitem" className="pm-item" onClick={() => { dismiss(); view.set(view.git ? 'chat' : 'git') }}>{view.git ? 'Voltar ao chat' : 'Ver Git do card'}</button>}
+        <button type="button" role="menuitem" className="pm-item" onClick={() => setPage('search')}>Pesquisar no chat</button>
+        {cardId && <button type="button" role="menuitem" className="pm-item" onClick={() => setPage('window')}>{pop ? 'Mover esta janela' : 'Abrir em outra janela'}</button>}
+        <button type="button" role="menuitem" className="pm-item" onClick={() => { dismiss(); expand() }}>Expandir em tela cheia</button>
+        <div className="pm-sep" />
+        <button type="button" role="menuitem" className="pm-item danger" onClick={() => { dismiss(); close() }}>Fechar chat</button>
+      </>}
+      {page === 'search' && <>
+        <input ref={input} className="in" value={query} placeholder="Pesquisar no chat" aria-label="Pesquisar no chat" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && results[0]) goMessage(results[0].id) }} />
+        <div className="cs-list">{query.trim().length < 2 ? <p className="ch-muted">Digite pelo menos 2 letras.</p> : !results.length ? <p className="ch-muted">Nada encontrado.</p> : results.slice(0, 40).map((message) => <button type="button" key={message.id} className="cs-item" onClick={() => goMessage(message.id)}><b>{message.role === 'user' ? 'Você' : message.role === 'assistant' ? 'Agente' : 'Sistema'}</b><span>{snippet(message.body, query.trim())}</span></button>)}</div>
+      </>}
+      {page === 'window' && <div className="pm-places">{(['left', 'right', 'top', 'bottom'] as const).map((placement) => <button type="button" role="menuitem" className="pm-item" key={placement} onClick={() => place(placement)}>{{ left: 'À esquerda', right: 'À direita', top: 'Em cima', bottom: 'Embaixo' }[placement]}</button>)}{!pop && <><div className="pm-sep" /><button type="button" role="menuitem" className="pm-item" onClick={() => place('new')}>Abrir em nova janela</button></>}</div>}
+    </div>}
+  </span>
+}
 
 function Tile({ card, board, here, profiles, open }: { card: Card; board: ProjectBoard; here: boolean; profiles: AgentProfile[]; open(): void }): React.JSX.Element {
   const run = card.run.state, agent = profiles.find((profile) => profile.id === (card.run.profileId ?? card.execProfileId))
@@ -56,16 +119,23 @@ function Activity({ board, cardId, profiles, openEdit }: { board: ProjectBoard; 
 }
 
 /** Chat do card (planejamento ou execução) como o dock do protótipo: encaixado à direita ou em tela cheia com a visão rápida. */
-export function CardChat({ project, card, board, profiles, columnLabel, mode, close, openEdit, onSwitch, ensureCard }: { project: Project; card: Card; board: ProjectBoard; profiles: AgentProfile[]; columnLabel: string; mode: AgentPurpose; close(): void; openEdit(card: Card): void; onSwitch(purpose: AgentPurpose): void; ensureCard?(): Promise<Card> }): React.JSX.Element {
+export function CardChat({ project, card, board, profiles, columnLabel, mode, close, openEdit, onSwitch, ensureCard, initialView = 'chat', openRules, openGraph }: { initialView?: 'chat' | 'git'; openRules?(): void; openGraph?(cardId: string): void; project: Project; card: Card; board: ProjectBoard; profiles: AgentProfile[]; columnLabel: string; mode: AgentPurpose; close(): void; openEdit(card: Card): void; onSwitch(purpose: AgentPurpose): void; ensureCard?(): Promise<Card> }): React.JSX.Element {
   const usable = profiles.filter((profile) => project.allowedProfileIds.includes(profile.id))
-  const [chat, setChat] = useState<Chat>(), [messages, setMessages] = useState<ChatMessage[]>([]), [run, setRun] = useState<Run>(), [live, setLive] = useState('')
+  const [assessing, setAssessing] = useState(false), [chat, setChat] = useState<Chat>(), [messages, setMessages] = useState<ChatMessage[]>([]), [run, setRun] = useState<Run>(), [live, setLive] = useState('')
   const [input, setInput] = useState(''), [error, setError] = useState(''), [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null)
   const [menu, setMenu] = useState<'mode' | 'skill' | null>(null), [voiceSetup, setVoiceSetup] = useState(false)
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), wrap = useRef<HTMLDivElement>(null)
   const planning = mode === 'planning'
-  const { expanded, setExpanded, width, dragging, startResize, resetWidth } = useDockSize()
+  const [view, setView] = useState<'chat' | 'git'>(initialView), [diff, setDiff] = useState<DiffTarget>()
+  const gitView = view === 'git' && Boolean(card.id) && !planning
+  const { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth } = useDockSize()
+  useEffect(() => { if (!card.id) return; terminal.setContext({ projectId: project.id, cardId: card.id }); return () => terminal.setContext({ projectId: project.id, cardId: null }) }, [card.id, project.id])
+  const viewer = useFileViewer(chat?.id, width, setWidth)
+  const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
   const [switchTo, setSwitchTo] = useState<AgentProfile>(), [chats, setChats] = useState<Chat[]>([])
   const agentState = useAgentConfig(card.id, mode, usable, chat?.profileId)
+  const attach = useAttachments({ projectId: project.id, cardId: card.id || null })
+  useContextText({ projectId: project.id, cardId: card.id || null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []), card.title || undefined)
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
   const loadMessages = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
@@ -78,6 +148,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     if (event.eventType === 'agentboard/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void window.agentboard.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }
   }), [card.id, loadMessages])
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }) }, [messages, live])
+  useStickToBottom(log)
   useEffect(() => { void Promise.all([window.agentboard.invoke('skills:list', { scope: 'global' }), window.agentboard.invoke('skills:list', { scope: 'project', projectId: project.id })]).then(([global, local]) => setSkills([...local, ...global])).catch(() => undefined) }, [project.id])
   useEffect(() => { setSkill(chat?.skill ?? null) }, [chat?.id, chat?.skill])
   useEffect(() => {
@@ -89,11 +160,11 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const provider = usable.find((item) => item.id === (agentState.config?.profileId ?? chat?.profileId))?.provider
   const available = skills.filter((item) => provider && item.paths[provider])
   const chooseSkill = async (next: SkillRef | null): Promise<void> => { setMenu(null); try { setError(''); if (chat) setChat(await window.agentboard.invoke('chats:set-skill', { chatId: chat.id, skill: next })); setSkill(next) } catch (reason) { setError(String(reason)) } }
-  const send = async (): Promise<void> => {
-    const prompt = input.trim(); if (!prompt || run) return
+  const deliver = async (prompt: string): Promise<void> => {
+    const files = attach.take()
     if (inactive) { setError(`O agente ${inactive.label.replace(' (desativado)', '')} foi removido e não pode mais executar. Reinicie o chat com outro agente.`); return }
     try {
-      setError(''); setInput('')
+      setError('')
       let current = chat
       const chosen = agentState.config?.profileId
       let cardId = card.id
@@ -104,11 +175,45 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
         if (agentState.touched && agentState.config) await window.agentboard.invoke('cards:set-agent-config', { cardId, purpose: mode, config: agentState.config })
       }
       if (!current) { if (!chosen) throw new Error('Escolha um agente'); current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId, purpose: mode, profileId: chosen, skill }); setChat(current) }
-      const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning })
+      const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning, attachments: files.length ? files : undefined })
       runId.current = started.id; setRun(started); setLive(''); await loadMessages(current.id)
-    } catch (reason) { setError(String(reason).replace(/^Error: /, '')); setInput(prompt) }
+    } catch (reason) { setError(String(reason).replace(/^Error: /, '')); setInput(prompt); attach.add(files) }
   }
-  const stop = async (): Promise<void> => { if (run) await window.agentboard.invoke('agents:cancel', { runId: run.id }).catch((reason: unknown) => setError(String(reason))) }
+  const cancel = async (): Promise<void> => { const id = run?.id ?? card.run.runId; if (id) await window.agentboard.invoke('agents:cancel', { runId: id }).catch((reason: unknown) => setError(String(reason))) }
+  const send = async (): Promise<void> => {
+    const prompt = input.trim() || (attach.files.length ? 'Veja os arquivos anexados.' : ''); if (!prompt) return
+    setInput('')
+    if (busy) later.queue(prompt); else await deliver(prompt)
+  }
+  const stop = async (): Promise<void> => { later.markStopped(); await cancel() }
+  // Respostas das perguntas do agente voltam como mensagem normal (na fila, se ele ainda estiver trabalhando).
+  const answerQuestions = (text: string): void => { if (busy) later.queue(text); else void deliver(text) }
+  /** Comentário feito sobre o diff é feedback de implementação: sempre segue para o desenvolvedor. */
+  const sendReview = async (text: string): Promise<boolean> => {
+    if (mode === 'execution') { answerQuestions(text); setDiff(undefined); setView('chat'); return true }
+    if (!card.id) return false
+    try {
+      setError('')
+      const currentChats = await window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id })
+      let developer = currentChats.find((item) => item.purpose === 'execution')
+      if (developer?.busy) throw new Error('O desenvolvedor já está trabalhando. Aguarde ele terminar para enviar este comentário.')
+      if (!developer) {
+        const config = (await window.agentboard.invoke('cards:agent-config', { cardId: card.id })).execution
+        if (!config) throw new Error('Escolha um agente de implementação antes de comentar no diff.')
+        developer = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: 'execution', profileId: config.profileId })
+      }
+      await window.agentboard.invoke('agents:start', { chatId: developer.id, prompt: text, planning: false })
+      setDiff(undefined); setView('chat'); onSwitch('execution'); return true
+    } catch (reason) { setError(plainError(reason)); return false }
+  }
+  // Atalhos do modo teste, acima da caixa de conversa: cada botão manda um pedido pronto ao testador (entra na fila se ele estiver ocupado).
+  const [headed, setHeaded] = useState(() => { try { return localStorage.getItem('agentboard.testHeaded') === '1' } catch { return false } })
+  const toggleHeaded = (): void => { const next = !headed; setHeaded(next); try { localStorage.setItem('agentboard.testHeaded', next ? '1' : '0') } catch { /* só vale nesta sessão */ } }
+  const testShortcuts = mode === 'test' ? [
+    { label: 'Rodar testes do projeto', prompt: 'Rode os testes, o lint e o typecheck do projeto e registre cada resultado no checklist do teste.' },
+    { label: 'Testar na tela (Playwright)', prompt: `Teste os critérios de aceite que dependem da tela usando o Playwright CLI, seguindo a skill agentboard-testar.${headed ? ' Rode com o navegador visível (--headed) e com slowMo para eu acompanhar.' : ' Rode sem janela (headless), guardando screenshot e trace do que falhar.'}` },
+    { label: 'Testar de novo', prompt: 'Refaça o teste deste card do começo: monte o checklist de novo, rode tudo e me diga o que passou e o que falhou.' }
+  ] : []
   const resetAndSwitch = async (target: AgentProfile): Promise<void> => {
     setSwitchTo(undefined)
     try {
@@ -128,32 +233,47 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const typed = useTypewriter(live)
   const busy = Boolean(run) || ((card.run.state === 'running' || card.run.state === 'planning') && card.run.purpose === mode)
   const busySince = useBusySince(busy, run?.startedAt)
+  const later = useQueuedMessage(busy, deliver)
   const execModes = provider ? permissionModes[provider].filter((item) => item.purposes.includes('execution')) : []
   const currentMode = execModes.find((item) => item.id === agentState.config?.mode)
-  const testing = mode === 'test', eyebrow = planning ? 'Planejando card' : card.run.state === 'running' || run ? (testing ? 'Testando' : 'Executando') : card.run.state === 'paused' ? 'Pausado' : testing ? 'Teste' : 'Implementação'
+  const testing = mode === 'test'
 
-  return <section className={`dock open ${expanded ? 'full' : ''} ${dragging ? 'dragging' : ''}`} aria-label="Chat do card" style={expanded ? undefined : { width }}>
-    {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label="Ajustar a largura do chat" onPointerDown={startResize} onDoubleClick={resetWidth} />}
+  const diffOpen = Boolean(diff) && view === 'git' && Boolean(card.id) && !planning
+  const viewing = !expanded && (viewer.requested !== null || diffOpen)
+  const compactTools = !expanded && width < 560
+  return <section className={`dock open ${expanded ? 'full' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label="Chat do card" style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
+    {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label={viewing ? 'Ajustar a largura do arquivo' : 'Ajustar a largura do chat'} onPointerDown={viewing ? viewer.startResize : startResize} onDoubleClick={viewing ? undefined : resetWidth} />}
+    {viewing && <>{diffOpen && diff ? <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} style={{ width: viewer.width }} /> : <FileViewer viewer={viewer} style={{ width: viewer.width }} />}<ViewGrip viewer={viewer} /></>}
+    <FileOpenContext.Provider value={openFile}><QuestionAnswerContext.Provider value={answerQuestions}>
     <div className="dock-in" style={expanded ? undefined : { width }}>
-      <div className="dock-head"><div className="top"><div><div className="headrow"><div className="eyebrow">{eyebrow}</div>
-          <div className="tabs stepTabs" role="tablist" aria-label="Chats do card">{(['planning', 'execution', 'test'] as const).filter((step) => step === mode || chats.some((item) => item.purpose === step)).map((step) => { const working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{stepLabel[step]}{working ? <span className="spin sm" /> : null}</button> })}</div></div>
-          <h2>{card.title || 'Novo card'}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span>{card.workspace && <span className="ctxchip ws tip" data-tip={`Worktree: ${card.workspace.path}`}><BranchIcon />{card.workspace.branch} · {worktreeName(card.workspace.path)}</span>}</div></div>
-        <div className="dock-tools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
-      <div className="chatlog" ref={log}>
+      <div className="dock-head"><div className="top"><div><div className="headrow">          <div className="tabs stepTabs" role="tablist" aria-label="Chats do card">{(['planning', 'execution', 'test'] as const).filter((step) => step === mode || chats.some((item) => item.purpose === step)).map((step) => { const working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{stepLabel[step]}{working ? <span className="spin sm" /> : null}</button> })}</div></div>
+          <h2>{card.title || 'Novo card'}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span>{card.id && <ComplexityBadge complexity={card.complexity} onClick={() => setAssessing(true)} />}{assessing && <AssessmentDialog card={card} close={() => setAssessing(false)} changed={() => undefined} />}{card.workspace && <span className="ctxchip ws tip" data-tip={`Worktree: ${card.workspace.path}`}><BranchIcon /><span className="wsname">{card.workspace.branch} · {worktreeName(card.workspace.path)}</span></span>}</div></div>
+        <div className="dock-tools">{card.id && !planning && !compactTools && <div className="viewtoggle sm" role="group" aria-label="Chat ou Git"><button type="button" className={gitView ? '' : 'on'} aria-pressed={!gitView} onClick={() => setView('chat')}>Chat</button><button type="button" className={gitView ? 'on' : ''} aria-pressed={gitView} onClick={() => setView('git')}><BranchIcon />Git{card.pending.commits > 0 && <i className="pendot" />}</button></div>}{compactTools ? <ChatMoreMenu messages={messages} log={log} projectId={project.id} cardId={card.id || undefined} purpose={mode} expand={() => setExpanded(true)} close={close} view={card.id && !planning ? { git: gitView, set: setView } : undefined} /> : <><ChatSearch messages={messages} log={log} reveal={gitView ? () => setView('chat') : undefined} />{card.id && <PopMenu target={{ kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode }} />}<button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></>}</div></div></div>
+      {gitView && <GitCardPanel cardId={card.id} profiles={profiles} openRules={() => openRules?.()} openGraph={(id) => openGraph?.(id)} diff={diff} setDiff={setDiff} />}
+      <div className="chatlog" ref={log} style={gitView ? { display: 'none' } : undefined}>
         {!messages.length && !live && <div className="msg sys">{planning ? 'Skill de planejamento carregada. Este chat só planeja, não altera arquivos.' : testing ? 'Chat de teste do card. Use Testar no card ou escreva o que o agente deve conferir.' : 'Chat de implementação do card. Use Iniciar no card ou escreva uma instrução.'}</div>}
         <ChatMessageList messages={messages} busy={busy} />
-        {live && <div className="msg agent"><div className="md chatmd"><Markdown source={typed} /><span className="caret" /></div></div>}
+        {live && <div className="msg agent"><div className="md chatmd"><AgentMessage source={typed} live /><span className="caret" /></div></div>}
+        {mode === 'execution' && card.id && <CommitAsks cardId={card.id} branch={card.workspace?.branch} profiles={profiles} openGit={() => setView('git')} />}
         {busy && <ThinkingIndicator purpose={mode} messages={messages} since={busySince} />}
       </div>
-      <div className="composer" ref={wrap}>
+      <div className="composer" ref={wrap} style={gitView ? { display: 'none' } : undefined}>
         {inactive && <div className="convbox"><p>O agente <b>{inactive.label.replace(' (desativado)', '')}</b> foi removido (desativado) e não pode mais executar nada neste chat. O histórico continua aqui para consulta. Para seguir neste card, reinicie o chat com outro agente.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => void resetInactive()}>Reiniciar chat</button></div></div>}
         {(error || dictation.error) && <p className="error">{error || dictation.error}</p>}
-        {voiceSetup && !voiceReady && dictation.status?.cloud && <div className="convbox"><p>O ditado está configurado para o Groq, mas falta a chave da API. Cadastre em Configurações › Aparência.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Fechar</button></div></div>}
+        {voiceSetup && !voiceReady && dictation.status?.cloud && <div className="convbox"><p>O ditado está configurado para o Groq, mas falta a chave da API. Cadastre em Configurações › Geral.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Fechar</button></div></div>}
         {voiceSetup && !voiceReady && dictation.status && !dictation.status.cloud && <div className="convbox"><p>O ditado por voz roda no seu computador, sem gastar token. Falta baixar {!dictation.status.engineInstalled ? (dictation.status.canInstallEngine ? 'o programa de transcrição e ' : 'o programa de transcrição (whisper-cli no PATH) e ') : ''}o modelo ({dictation.status.sizeMb} MB), só uma vez.</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setVoiceSetup(false)}>Agora não</button><button type="button" disabled={Boolean(dictation.progress) || (!dictation.status.engineInstalled && !dictation.status.canInstallEngine)} onClick={() => void dictation.install().then(() => setVoiceSetup(false))}>{dictation.progress || 'Baixar'}</button></div></div>}
-        <div className="cbox">
+        {later.queued && <QueuedPreview text={later.queued} busy={busy} sendNow={() => later.sendNow(cancel)} edit={() => setInput((value) => `${later.take()}${value ? `
+${value}` : ''}`)} discard={later.discard} />}
+        <div className={`cbox ${attach.dragging ? 'dropping' : ''}`} {...attach.dropProps}>
+          {((!inactive && testShortcuts.length > 0) || attach.files.length > 0) && <div className="cbox-top">
+            {!inactive && testShortcuts.length > 0 && <div className="testbar" role="group" aria-label="Atalhos do teste">{testShortcuts.map((item) => <button type="button" key={item.label} className="mini secondary" onClick={() => answerQuestions(item.prompt)}>{item.label}</button>)}
+          <label className="autosave tip" data-tip="Abre o navegador na sua tela quando o Playwright testar"><input type="checkbox" role="switch" checked={headed} onChange={toggleHeaded} /><span className="sw" aria-hidden="true" />Ver o navegador</label></div>}
+            <AttachmentChips files={attach.files} remove={attach.remove} />
+          </div>}
+          <AttachButton onClick={() => void attach.choose()} />
           <textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : planning ? 'Descreva o que você quer planejar…' : testing ? 'Diga o que o agente deve testar…' : 'Envie uma instrução ao agente…'} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
-          {busy ? <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button> : <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" hidden={!input.trim()} onClick={() => void send()}><SendIcon /></button>}
+          {busy && <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button>}<button type="button" className="sendbtn tip" data-tip={busy ? 'Colocar na fila (Enter)' : 'Enviar (Enter)'} aria-label={busy ? 'Colocar na fila' : 'Enviar'} hidden={!input.trim()} onClick={() => void send()}><SendIcon /></button>
           <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? 'Parar de ouvir' : dictation.transcribing ? 'Transcrevendo…' : 'Ditar por voz'} aria-label="Ditar por voz" aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : setVoiceSetup(true))}>{dictation.transcribing ? <span className="spin sm" /> : <MicIcon />}</button>
         </div>
         <div className="cmeta">
@@ -164,12 +284,15 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
                 {available.map((item) => { const path = provider ? item.paths[provider]! : ''; return <button type="button" role="menuitem" key={item.id} className="modeopt" onClick={() => void chooseSkill({ name: item.name, path })}><span className="mo-t"><b>{item.name}</b><small>{item.scope === 'project' ? 'Do projeto' : 'Global'}</small></span><span className="mo-r">{skill?.path === path && <CheckIcon />}</span></button> })}</div>}</span></>
             : <span className="modewrap"><button type="button" className={`modechip ${menu === 'mode' ? 'on' : ''}`} aria-haspopup="menu" aria-expanded={menu === 'mode'} onClick={() => setMenu(menu === 'mode' ? null : 'mode')}>{currentMode?.label ?? 'Modo'}</button>
               {menu === 'mode' && <div className="modemenu" role="menu"><div className="mm-title">Modo</div>{execModes.map((item, index) => <button type="button" role="menuitem" key={item.id} disabled={item.needsApprovalUi} title={item.needsApprovalUi ? 'Precisa da tela de aprovação (em breve)' : undefined} className="modeopt" onClick={() => { setMenu(null); void agentState.update({ mode: item.id }) }}><span className="mo-t"><b>{item.label}</b>{item.recommended && <em>Recomendado</em>}<small>{item.description}</small></span><span className="mo-r">{agentState.config?.mode === item.id ? <CheckIcon /> : index + 1}</span></button>)}</div>}</span>}
-          <div className="pick"><ModelMenu profiles={usable} purpose={mode} state={agentState} lockProfile={Boolean(chat)} onLockedPick={setSwitchTo} /></div>
+          <div className="pick"><UsageRings profileId={agentState.config?.profileId ?? chat?.profileId} /><ModelMenu profiles={usable} purpose={mode} state={agentState} lockProfile={Boolean(chat)} onLockedPick={setSwitchTo} /></div>
         </div>
       </div>
     </div>
+    </QuestionAnswerContext.Provider></FileOpenContext.Provider>
     {switchTo && <ConfirmDialog eyebrow="Trocar agente" title={`Reiniciar o chat com ${switchTo.label}?`} text="Este chat já começou com outro agente. Trocar apaga as mensagens e as execuções deste chat e ele recomeça do zero com o novo agente. Os documentos do card ficam como estão." ok="Trocar e reiniciar" danger cancel={() => setSwitchTo(undefined)} confirm={() => void resetAndSwitch(switchTo)} />}
-    {!planning && card.workspace && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} />}
-    {expanded && <Activity board={board} cardId={card.id} profiles={profiles} openEdit={openEdit} />}
+    {/* Só com o chat em tela cheia: coluna à esquerda com o progresso (Tasks ou checklist do teste) e as Alterações. Dividindo a tela com o quadro, não aparece. */}
+    {expanded && diffOpen && diff && <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} />}
+    {expanded && !diffOpen && !planning && card.id && <div className="dockside"><ProgressCard key={`${card.id}-${mode}`} cardId={card.id} purpose={mode === 'test' ? 'test' : 'execution'} />{card.workspace && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} />}</div>}
+    {expanded && !diffOpen && <Activity board={board} cardId={card.id} profiles={profiles} openEdit={openEdit} />}
   </section>
 }

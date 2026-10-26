@@ -4,25 +4,14 @@ import type { ConversationRepository } from './conversations'
 import type { AgentOrchestrator } from './orchestrator'
 import type { BoardRepository } from './projects'
 
-const startPrompt = [
-  'Execute este card seguindo o Plano e as Tasks do contexto, na worktree atual.',
-  'Preserve mudanças existentes e valide o resultado (testes, lint e typecheck do projeto).',
-  'Marque cada task concluída com agentboard_marcar_task e, ao terminar, atualize o Resumo com agentboard_escrever_documento (status, progresso e próximo passo).',
-  'Os documentos do card são o contrato entre as etapas: implemente o que está neles e nada além.',
-  'Se algo fora dos documentos for necessário (escopo novo, requisito, refatoração extra), NÃO faça: registre com agentboard_propor_mudanca e continue só com o que está nos documentos; o usuário autoriza antes de qualquer alteração.',
-  'Se tiver uma dúvida que os documentos não respondem, registre com agentboard_perguntar_ao_planejador, continue só com o que não depende dela e termine a execução: o app leva a dúvida ao planejador e te retoma com a resposta.',
-  'Não mova o card de coluna: isso é com o usuário.'
-].join('\n')
-const testPrompt = [
-  'Teste este card na worktree atual: confira as Tasks e os critérios de aceite do contexto contra o que foi implementado.',
-  'Rode os testes, o lint e o typecheck do projeto, revise o diff e aponte o que falhar, com o motivo e onde.',
-  'Marque com agentboard_marcar_task só o que você verificou de fato e, ao terminar, atualize o Resumo com agentboard_escrever_documento dizendo se está pronto ou o que falta.',
-  'Use o plano de testes do Plano e os critérios das Tasks como roteiro; o que não estiver nos documentos e for preciso testar vira proposta com agentboard_propor_mudanca.',
-  'Se tiver uma dúvida que os documentos não respondem, use agentboard_perguntar_ao_planejador, continue só com o que não depende dela e termine a execução; o app te retoma com a resposta.',
-  'Não altere o código a menos que o usuário peça, e não mova o card de coluna.'
-].join('\n')
-const resumeTestPrompt = 'Continue o teste de onde parou, seguindo as Tasks e os critérios do contexto. Atualize o Resumo ao terminar.'
-const resumePrompt = 'Continue de onde parou, seguindo o Plano e as Tasks do contexto. Marque as tasks que concluir e atualize o Resumo ao terminar.'
+// O passo a passo vive nas skills do plugin (agentboard-implementar, agentboard-testar, agentboard-pequena): o prompt só aponta para a skill.
+const steps = {
+  execution: { skill: 'agentboard-implementar', start: 'implementar este card', resume: 'continuar a implementação de onde parou' },
+  test: { skill: 'agentboard-testar', start: 'testar este card', resume: 'continuar o teste de onde parou' },
+  minor: { skill: 'agentboard-pequena', start: 'fazer esta tarefa pequena do começo ao fim', resume: 'continuar a tarefa pequena de onde parou' }
+} as const
+const skillPrompt = (what: string, skill: string): string => `Use a skill ${skill} para ${what}.`
+const skillNotice = (skill: string, extra = ''): string => `▶ Usando a skill ${skill}${extra}`
 
 /** Iniciar e continuar execuções: Iniciar aprova o plano atual, leva o card para Doing e usa o chat de execução do card. */
 export class ExecutionService {
@@ -37,7 +26,8 @@ export class ExecutionService {
   }
 
   start(cardId: string, config: AgentConfig, purpose: 'execution' | 'test' = 'execution', baseBranch?: string): Run {
-    const card = this.assertIdle(cardId)
+    const card = this.assertIdle(cardId), small = card.type === 'minor'
+    if (small && purpose === 'test') throw new Error('Tarefa pequena não tem etapa de teste separada: o mesmo agente já valida.')
     if (baseBranch && !card.workspace) this.board.setBaseBranch(cardId, baseBranch)
     const profileId = config.profileId
     const existing = this.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === purpose)
@@ -46,10 +36,11 @@ export class ExecutionService {
     if (purpose === 'execution') {
       const columns = this.board.get(card.projectId).columns, doing = columns.find((column) => column.semanticState === 'doing')
       if (doing && card.columnId !== doing.id) this.board.move(cardId, doing.id, null, 'user')
-      this.conversations.approveCurrentPlan(cardId, profileId, this.board.documents.read(cardId, 'plano'))
+      if (!small) this.conversations.approveCurrentPlan(cardId, profileId, this.board.documents.read(cardId, 'plano'))
     }
     const chat = this.conversations.purposeChat(card.projectId, cardId, purpose, profileId)
-    return this.orchestrator.start({ chatId: chat.id, prompt: purpose === 'test' ? testPrompt : startPrompt, planning: false, notice: purpose === 'test' ? '▶ Teste iniciado: o agente confere as Tasks e os critérios de aceite.' : '▶ Implementação iniciada: o agente segue o Plano e as Tasks do card.' })
+    const step = steps[small ? 'minor' : purpose]
+    return this.orchestrator.start({ chatId: chat.id, prompt: skillPrompt(step.start, step.skill), planning: false, notice: skillNotice(step.skill) })
   }
 
   resume(cardId: string, purpose?: 'execution' | 'test'): Run {
@@ -57,7 +48,8 @@ export class ExecutionService {
     const chats = this.conversations.listChats(card.projectId, cardId).filter((item) => purpose ? item.purpose === purpose : item.purpose !== 'planning')
     const chat = chats[0]
     if (!chat) throw new Error('Este card ainda não tem execução para continuar')
-    return this.orchestrator.start({ chatId: chat.id, prompt: chat.purpose === 'test' ? resumeTestPrompt : resumePrompt, planning: false, notice: chat.purpose === 'test' ? '▶ Teste retomado de onde parou.' : '▶ Implementação retomada de onde parou.' })
+    const step = steps[card.type === 'minor' ? 'minor' : chat.purpose === 'test' ? 'test' : 'execution']
+    return this.orchestrator.start({ chatId: chat.id, prompt: skillPrompt(step.resume, step.skill), planning: false, notice: skillNotice(step.skill, ' · retomando de onde parou') })
   }
 
   private assertIdle(cardId: string) {

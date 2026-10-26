@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import type { AgentProfile, SkillEntry, SkillScope } from '@agentboard/contracts'
 import { ProviderLogo } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
+import { tasks } from './backgroundTasks'
 import { plainError } from './NoticeDialog'
 
 const providerName = { claude: 'Claude', codex: 'Codex' } as const
@@ -15,7 +16,10 @@ export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope
   const load = useCallback(async () => { try { setSkills(await window.agentboard.invoke('skills:list', { scope, projectId })) } catch (reason) { setError(String(reason)) } }, [scope, projectId])
   useEffect(() => { void load() }, [load])
   useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType.startsWith('skills/review-')) void load() }), [load])
-  const guard = async (action: () => Promise<void>): Promise<void> => { setBusy(true); setError(''); try { await action() } catch (reason) { setError(String(reason).replace(/^Error: /, '')) } finally { setBusy(false) } }
+  const guard = async (action: () => Promise<void>, process?: { title: string; detail: string }): Promise<void> => {
+    setBusy(true); setError('')
+    try { if (process) await tasks.track(process, action).promise; else await action() } catch (reason) { setError(String(reason).replace(/^Error: /, '')) } finally { setBusy(false) }
+  }
   const choose = async (): Promise<void> => { const picked = await window.agentboard.invoke(mode === 'folder' ? 'skills:choose-folder' : 'skills:choose-source', undefined); if (!picked) return; setSource(picked); if (mode === 'one' && !name) setName(slug(picked.replace(/[\\/]SKILL\.md$/i, '').split(/[\\/]/).pop() ?? '')) }
   const running = skills.find((skill) => skill.providers.claude === 'converting' || skill.providers.codex === 'converting')
   return <>
@@ -26,8 +30,8 @@ export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope
       <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setImporting(false)}>Cancelar</button><button type="button" disabled={busy || !source || (mode === 'one' && !name)} onClick={() => void guard(async () => {
         if (mode === 'folder') { const result = await window.agentboard.invoke('skills:import-folder', { scope, projectId, folderPath: source, provider: origin }); setSkills(result.skills); setNotice(`${result.imported.length} ${result.imported.length === 1 ? 'skill importada' : 'skills importadas'}${result.skipped.length ? `; ${result.skipped.length} já existiam ou tinham nome inválido` : ''}.`) }
         else setSkills(await window.agentboard.invoke('skills:import', { scope, projectId, sourcePath: source, name, provider: origin }))
-        setImporting(false) })}>Importar</button></div></div>}
-    <div className="stack" style={{ gap: 8 }}>{skills.length === 0 && !importing ? <div className="emptyBox">{scope === 'project' ? 'Nenhuma skill encontrada neste projeto (procurei em todas as pastas). Use “Importar skill” para trazer uma ou uma pasta com várias.' : 'Nenhuma skill ainda.'}</div> : skills.map((skill) => {
+        setImporting(false) }, { title: mode === 'folder' ? 'Importar skills da pasta' : `Importar a skill ${name}`, detail: source })}>Importar</button></div></div>}
+    <div className="stack sklist" style={{ gap: 8 }}>{skills.length === 0 && !importing ? <div className="emptyBox">{scope === 'project' ? 'Nenhuma skill encontrada neste projeto (procurei em todas as pastas). Use “Importar skill” para trazer uma ou uma pasta com várias.' : 'Nenhuma skill ainda.'}</div> : skills.map((skill) => {
       const from = skill.providers.claude === 'ready' ? 'claude' : 'codex'
       const expanded = open === skill.id
       return <div className={`skill-row compact ${expanded ? 'open' : ''}`} key={skill.id}>
@@ -44,7 +48,7 @@ export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope
         {running?.name === skill.name && <div className="running"><div className="row"><span className="spin" /><b>Convertendo e revisando…</b></div><div className="bar"><i /></div><span style={{ fontSize: 11, color: 'var(--accent)' }}>Um agente confere se a skill ficou completa.</span></div>}
         {converting?.name === skill.name && <div className="convbox"><p>Vou converter <b>{skill.name}</b> para uma skill <b>{providerName[converting.to]}</b> e usar um agente para revisar se ficou faltando algo. Escolha o agente revisor.</p>
           <div className="agentbar col2"><div className="sel"><select className="in" aria-label="Agente revisor" value={reviewer} onChange={(e) => setReviewer(e.target.value)}><option value="">Sem revisão por agente</option>{profiles.map((item) => <option key={item.id} value={item.id}>{item.label} · {providerName[item.provider]}</option>)}</select></div></div>
-          <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setConverting(undefined)}>Cancelar</button><button type="button" disabled={busy} onClick={() => void guard(async () => { await window.agentboard.invoke('skills:convert', { scope, projectId, name: skill.name, from, to: converting.to, reviewProfileId: reviewer || undefined }); setConverting(undefined); await load() })}>Converter e revisar</button></div></div>}
+          <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setConverting(undefined)}>Cancelar</button><button type="button" disabled={busy} onClick={() => void guard(async () => { await window.agentboard.invoke('skills:convert', { scope, projectId, name: skill.name, from, to: converting.to, reviewProfileId: reviewer || undefined }); setConverting(undefined); await load() }, { title: `Converter a skill ${skill.name}`, detail: `de ${providerName[from]} para ${providerName[converting.to]}` })}>Converter e revisar</button></div></div>}
       </div>
     })}</div>
     {scope === 'project' && globalCount !== undefined && <p className="foot">Também valem neste projeto as skills globais.</p>}

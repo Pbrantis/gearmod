@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentPurpose, Chat, ChatPurpose, ChatMessage, Plan, Run, RunEvent } from '@agentboard/contracts'
+import type { AgentPurpose, CardUsage, Chat, ChatPurpose, ChatMessage, Plan, Run, RunEvent, RunMetric, TokenCount } from '@agentboard/contracts'
 import type { AgentProfile } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 
@@ -33,7 +33,8 @@ export class ConversationRepository {
   createChat(input: { projectId: string; cardId: string | null; purpose: ChatPurpose; profileId: string; skill?: { name: string; path: string } | null }): Chat {
     const allowed = this.database.db.prepare('SELECT ap.provider FROM project_agent_profiles pap JOIN agent_profiles ap ON ap.id = pap.profile_id WHERE pap.project_id = ? AND pap.profile_id = ? AND pap.allowed = 1 AND ap.enabled = 1').get(input.projectId, input.profileId) as { provider: 'codex' | 'claude' } | undefined
     if (!allowed) throw new Error('Perfil não permitido para este projeto')
-    if (input.purpose === 'free' ? input.cardId !== null : input.cardId === null) throw new Error(input.purpose === 'free' ? 'O chat livre não tem card' : 'Este chat precisa de um card')
+    const projectChat = input.purpose === 'free' || input.purpose === 'constitution'
+    if (projectChat ? input.cardId !== null : input.cardId === null) throw new Error(projectChat ? 'Este chat é do projeto e não tem card' : 'Este chat precisa de um card')
     if (input.cardId && !this.database.db.prepare('SELECT 1 FROM cards WHERE id = ? AND project_id = ?').get(input.cardId, input.projectId)) throw new Error('Card não pertence ao projeto')
     const id = randomUUID(), now = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO chats(id, project_id, card_id, purpose, provider, profile_id, created_at, updated_at)
@@ -57,7 +58,7 @@ export class ConversationRepository {
 
   createRun(input: { cardId: string | null; chatId: string; profileId: string }): Run {
     const valid = input.cardId === null
-      ? this.database.db.prepare(`SELECT 1 FROM chats WHERE id = ? AND card_id IS NULL AND purpose = 'free' AND profile_id = ?`).get(input.chatId, input.profileId)
+      ? this.database.db.prepare(`SELECT 1 FROM chats WHERE id = ? AND card_id IS NULL AND purpose IN ('free', 'constitution') AND profile_id = ?`).get(input.chatId, input.profileId)
       : this.database.db.prepare(`SELECT 1 FROM chats c JOIN cards k ON k.id = ? WHERE c.id = ? AND c.card_id = k.id AND c.profile_id = ?`).get(input.cardId, input.chatId, input.profileId)
     if (!valid) throw new Error('Run não corresponde ao card, chat e perfil')
     const id = randomUUID(), startedAt = new Date().toISOString()
@@ -78,7 +79,7 @@ export class ConversationRepository {
       p.local_path AS projectPath, ap.label, ap.scope, ap.color, ap.config_dir AS configDir, ap.executable_path AS executablePath, ap.enabled
       FROM chats c JOIN projects p ON p.id = c.project_id JOIN agent_profiles ap ON ap.id = c.profile_id WHERE c.id = ?`).get(chatId) as (ChatRow & { projectPath: string; label: string; scope: string; color: string; configDir: string; executablePath: string | null; enabled: number }) | undefined
     if (!row) throw new Error('Chat não encontrado')
-    if (!row.cardId && row.purpose !== 'free') throw new Error('A execução exige um chat associado a um card')
+    if (!row.cardId && row.purpose !== 'free' && row.purpose !== 'constitution') throw new Error('A execução exige um chat associado a um card')
     const { projectPath, label, scope, color, configDir, executablePath, enabled, ...rest } = row
     const chat = toChat(rest)
     return { chat, cardId: row.cardId ?? null, projectPath, profile: { id: row.profileId, provider: row.provider, label, scope, color, configDir, executablePath, enabled: Boolean(enabled) } }
@@ -105,6 +106,36 @@ export class ConversationRepository {
   updateRun(runId: string, status: Run['status'], exitReason: string | null, providerTurnId: string | null = null): void {
     const ended = ['completed', 'failed', 'interrupted', 'cancelled'].includes(status) ? new Date().toISOString() : null
     this.database.db.prepare('UPDATE runs SET status = ?, ended_at = ?, exit_reason = ?, provider_turn_id = COALESCE(?, provider_turn_id) WHERE id = ?').run(status, ended, exitReason, providerTurnId, runId)
+  }
+
+  /** Guarda os tokens da execução (o agente informa ao terminar, também quando foi interrompido). */
+  recordUsage(runId: string, usage: { input: number; cached: number; output: number; costUsd?: number } | undefined): void {
+    if (!usage) return
+    this.database.db.prepare('UPDATE runs SET input_tokens = ?, cached_tokens = ?, output_tokens = ?, cost_usd = ? WHERE id = ?').run(usage.input, usage.cached, usage.output, usage.costUsd ?? null, runId)
+  }
+
+  /** Identificação da execução para as métricas: etapa, provedor, modelo e esforço usados e o tamanho do texto enviado ao agente. */
+  recordRunMeta(runId: string, meta: { purpose: string; provider: string; model: string | null; effort: string | null; promptChars: number }): void {
+    this.database.db.prepare('UPDATE runs SET purpose = ?, provider = ?, model = ?, effort = ?, prompt_chars = ? WHERE id = ?').run(meta.purpose, meta.provider, meta.model, meta.effort, meta.promptChars, runId)
+  }
+
+  /** Métricas das execuções do card, só com o que o agente informou (custo sem valor do agente fica `unavailable`). */
+  runMetrics(cardId: string): RunMetric[] {
+    const rows = this.database.db.prepare(`SELECT r.id AS runId, COALESCE(r.purpose, c.purpose) AS purpose, r.provider, r.model, r.effort, r.status, r.started_at AS startedAt, r.ended_at AS endedAt,
+      r.input_tokens AS input, r.cached_tokens AS cached, r.output_tokens AS output, r.cost_usd AS costUsd, r.prompt_chars AS promptChars, r.used_playwright_cli AS usedPlaywrightCli FROM runs r JOIN chats c ON c.id = r.chat_id WHERE r.card_id = ? ORDER BY r.started_at`).all(cardId) as Array<Omit<RunMetric, 'durationMs' | 'costSource' | 'usedPlaywrightCli'> & { usedPlaywrightCli: number }>
+    return rows.map((row) => ({ ...row, usedPlaywrightCli: Boolean(row.usedPlaywrightCli), durationMs: row.endedAt ? Math.max(0, Date.parse(row.endedAt) - Date.parse(row.startedAt)) : null, costSource: row.costUsd === null ? 'unavailable' : 'reported' }))
+  }
+
+  /** Tokens do card somados por etapa (planejamento, implementação e teste), pelo propósito do chat de cada execução. */
+  cardUsage(cardId: string): CardUsage {
+    const total = (): TokenCount => ({ input: 0, cached: 0, output: 0, runs: 0 })
+    const usage: CardUsage = { planning: total(), execution: total(), test: total(), agents: [] }
+    const rows = this.database.db.prepare(`SELECT c.purpose AS purpose, SUM(r.input_tokens) AS input, SUM(r.cached_tokens) AS cached, SUM(r.output_tokens) AS output, COUNT(*) AS runs
+      FROM runs r JOIN chats c ON c.id = r.chat_id WHERE r.card_id = ? GROUP BY c.purpose`).all(cardId) as Array<{ purpose: string; input: number; cached: number; output: number; runs: number }>
+    for (const row of rows) if (row.purpose === 'planning' || row.purpose === 'execution' || row.purpose === 'test') usage[row.purpose] = { input: row.input, cached: row.cached, output: row.output, runs: row.runs }
+    usage.agents = this.database.db.prepare(`SELECT c.purpose AS purpose, r.profile_id AS profileId, ap.label AS label, ap.provider AS provider, SUM(r.input_tokens) AS input, SUM(r.cached_tokens) AS cached, SUM(r.output_tokens) AS output, COUNT(*) AS runs
+      FROM runs r JOIN chats c ON c.id = r.chat_id JOIN agent_profiles ap ON ap.id = r.profile_id WHERE r.card_id = ? AND c.purpose IN ('planning', 'execution', 'test') GROUP BY c.purpose, r.profile_id ORDER BY MIN(r.started_at)`).all(cardId) as CardUsage['agents']
+    return usage
   }
 
   attachWorktree(runId: string, worktreeId: string): void {

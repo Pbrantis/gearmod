@@ -1,23 +1,64 @@
-import React from 'react'
+import React, { useState } from 'react'
+import { terminal, useTerminal } from './terminalStore'
 
 /** Renderizador Markdown mínimo e seguro (sem HTML cru). Devolve só os blocos: quem chama põe dentro de um `.md`. Checklists no formato do protótipo (`ul.tasks > li.tk`). */
 interface Item { indent: number; ordered: boolean; checked: boolean | null; text: string; line: number; children: Item[] }
 
 const inlinePattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|\[[^\]]+\]\([^)]*\))/g
 
+/** Quem estiver acima (o chat) recebe o clique em um arquivo citado e abre o visualizador; sem ele, a citação fica como texto. */
+export const FileOpenContext = React.createContext<((path: string) => void) | null>(null)
+const codeExtensions = /\.(md|mdx|txt|json|jsonc|ya?ml|toml|ini|env|csv|html?|css|scss|less|svg|[cm]?[jt]sx?|vue|svelte|py|rb|go|rs|java|kt|cs|php|sh|bat|ps1|sql|xml|lock|log|c|h|cpp|hpp)$/i
+const withoutLine = (target: string): string => target.replace(/#L?\d+(-L?\d+)?$/, '').replace(/:\d+(:\d+)?$/, '')
+/** Link de Markdown aponta para um arquivo local (não é URL, âncora nem e-mail). */
+const shellLangs = /^(bash|sh|shell|zsh|powershell|pwsh|ps1|ps|cmd|bat|console|terminal)$/i
+
+/** Bloco de código do chat; os de shell (ou sem linguagem) ganham ▶ para rodar no terminal do app, e todos ganham copiar. */
+function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.Element {
+  const { context } = useTerminal(), [copied, setCopied] = useState(false)
+  const runnable = Boolean(context) && (!lang || shellLangs.test(lang)) && code.trim().length > 0 && code.length < 4000
+  const command = code.split('\n').map((line) => line.replace(/^\s*(\$|PS [^>]*>|>)\s+/, '')).join('\n')
+  const copy = (): void => { void navigator.clipboard.writeText(code).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1400) }).catch(() => undefined) }
+  return <div className="codeblock"><pre><code>{code}</code></pre>
+    <div className="cb-tools">
+      {runnable && <button type="button" className="cb-btn tip" data-tip="Executar no terminal" aria-label="Executar no terminal" onClick={() => void terminal.run(command)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z" /></svg></button>}
+      <button type="button" className="cb-btn tip" data-tip={copied ? 'Copiado' : 'Copiar'} aria-label="Copiar" onClick={copy}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="9" rx="2" /><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" /></svg></button>
+    </div></div>
+}
+
+function isFileLink(target: string): boolean {
+  if (/\s/.test(target) || target.startsWith('#')) return false
+  if (/^file:/i.test(target)) return true
+  if (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) return false
+  return /\.[A-Za-z0-9]{1,8}$|[\\/]/.test(withoutLine(target))
+}
+/** Trecho de código que parece um caminho de arquivo conhecido (ex.: `src/App.tsx`, `README.md:12`). */
+const isFileCode = (text: string): boolean => /^[\w@.~/\\:-]+$/.test(text) && codeExtensions.test(withoutLine(text))
+
+function FileRef({ target, children, code }: { target: string; children: React.ReactNode; code?: boolean }): React.JSX.Element {
+  const open = React.useContext(FileOpenContext)
+  const ok = open && (code ? isFileCode(target) : isFileLink(target))
+  if (!ok && !code && /^(https?:\/\/|mailto:)/i.test(target)) return <a className="mdLink ext" href={target} title={target} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void window.agentboard.invoke('app:open-link', { url: target }).catch(() => undefined) }}>{children}</a>
+  if (!ok) return code ? <code>{children}</code> : <span className="mdLink" title={target}>{children}</span>
+  return <button type="button" className={`mdFile ${code ? 'code' : ''}`} title={`Abrir ${target}`} onClick={() => open(target.replace(/^file:\/\/\/?/i, '').replace(/^\/([A-Za-z]:)/, '$1'))}>{children}</button>
+}
+
 function inline(text: string, key: string): React.ReactNode[] {
   return text.split(inlinePattern).filter((part) => part !== '').map((part, index) => {
     const k = `${key}-${index}`
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <code key={k}>{part.slice(1, -1)}</code>
+    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <FileRef key={k} target={part.slice(1, -1)} code>{part.slice(1, -1)}</FileRef>
     if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) return <strong key={k}>{inline(part.slice(2, -2), k)}</strong>
     if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) return part.length > 2 ? <em key={k}>{inline(part.slice(1, -1), k)}</em> : part
     const link = /^\[([^\]]+)\]\(([^)]*)\)$/.exec(part)
-    if (link) return <span className="mdLink" key={k} title={link[2]}>{link[1]}</span>
+    if (link) return <FileRef key={k} target={link[2]!}>{inline(link[1]!, k)}</FileRef>
     return part
   })
 }
 
-const listLine = /^(\s*)([-*+]|\d+\.)\s+(?:\[( |x|X)\]\s+)?(.*)$/
+/** Uma linha de Markdown sem blocos (código, negrito, itálico, links), para títulos curtos como o de uma task. */
+export function InlineMarkdown({ text }: { text: string }): React.JSX.Element { return <>{inline(text, 'il')}</> }
+
+const listLine =/^(\s*)([-*+]|\d+\.)\s+(?:\[( |x|X)\]\s+)?(.*)$/
 const isSpecial = (line: string): boolean => /^(#{1,6}\s|```|>\s?|\s*([-*+]|\d+\.)\s|---+\s*$)/.test(line) || /^\|.*\|\s*$/.test(line)
 
 function renderItems(items: Item[], onToggle: ((line: number, checked: boolean) => void) | undefined, key: string): React.JSX.Element {
@@ -25,7 +66,7 @@ function renderItems(items: Item[], onToggle: ((line: number, checked: boolean) 
     const flat: Array<{ item: Item; depth: number }> = []
     const walk = (list: Item[], depth: number): void => list.forEach((item) => { flat.push({ item, depth }); walk(item.children, depth + 1) })
     walk(items, 0)
-    return <ul key={key} className="tasks">{flat.map(({ item, depth }) => <li key={`${key}-${item.line}`} className={`tk ${depth ? 'sub' : ''}`} data-ln={onToggle ? item.line : undefined} onClick={onToggle ? () => onToggle(item.line, !item.checked) : undefined}><span className={`tkb ${item.checked ? 'on' : ''}`} />{inline(item.text, `${key}-${item.line}`)}</li>)}</ul>
+    return <ul key={key} className="tasks">{flat.map(({ item, depth }) => <li key={`${key}-${item.line}`} className={`tk ${depth ? 'sub' : ''} ${item.checked ? 'done' : ''}`} data-ln={onToggle ? item.line : undefined} onClick={onToggle ? () => onToggle(item.line, !item.checked) : undefined}><span className={`tkb ${item.checked ? 'on' : ''}`}>{item.checked && <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 5 8.6l4.5-5" /></svg>}</span><span className="tkt">{inline(item.text, `${key}-${item.line}`)}</span></li>)}</ul>
   }
   const Tag = items[0]?.ordered ? 'ol' : 'ul'
   return <Tag key={key}>{items.map((item) => <li key={`${key}-${item.line}`}>{inline(item.text, `${key}-${item.line}`)}{item.children.length > 0 && renderItems(item.children, onToggle, `${key}-${item.line}c`)}</li>)}</Tag>
@@ -43,15 +84,23 @@ function buildTree(lines: Array<{ match: RegExpExecArray; line: number }>): Item
 }
 
 export function Markdown({ source, onToggle }: { source: string; onToggle?(line: number, checked: boolean): void }): React.JSX.Element {
-  const lines = source.split('\n'), blocks: React.ReactNode[] = []
+  // Aceita quebras do Windows (CRLF): o `\r` no fim da linha impedia de reconhecer títulos e listas.
+  const lines = source.split(/\r?\n/), blocks: React.ReactNode[] = []
   let i = 0
   while (i < lines.length) {
     const line = lines[i]!
     if (!line.trim()) { i += 1; continue }
-    if (line.startsWith('```')) {
-      const start = i; const body: string[] = []; i += 1
-      while (i < lines.length && !lines[i]!.startsWith('```')) { body.push(lines[i]!); i += 1 }
-      i += 1; blocks.push(<pre key={`b${start}`}><code>{body.join('\n')}</code></pre>); continue
+    // Comentário HTML (ex.: o relatório de versões que o Spec Kit põe no topo da constituição) não aparece.
+    if (/^\s*<!--/.test(line)) { while (i < lines.length && !lines[i]!.includes('-->')) i += 1; i += 1; continue }
+    const fence = /^(`{3,})\s*([\w-]*)/.exec(line)
+    if (fence) {
+      const start = i; const body: string[] = []; const size = fence[1]!.length; i += 1
+      while (i < lines.length && !new RegExp(`^\`{${size},}\\s*$`).test(lines[i]!)) { body.push(lines[i]!); i += 1 }
+      i += 1
+      // Arquivo Markdown colado no chat: mostra renderizado, não como código.
+      if (/^(md|markdown)$/i.test(fence[2]!)) blocks.push(<div key={`b${start}`} className="mdfile"><Markdown source={body.join('\n')} /></div>)
+      else blocks.push(<CodeBlock key={`b${start}`} code={body.join('\n')} lang={fence[2]!} />)
+      continue
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line)
     if (heading) { const Tag = `h${Math.min(3, heading[1]!.length)}` as 'h1'; blocks.push(<Tag key={`b${i}`}>{inline(heading[2]!, `b${i}`)}</Tag>); i += 1; continue }
@@ -63,7 +112,13 @@ export function Markdown({ source, onToggle }: { source: string; onToggle?(line:
     }
     if (listLine.test(line)) {
       const start = i; const collected: Array<{ match: RegExpExecArray; line: number }> = []
-      while (i < lines.length) { const match = listLine.exec(lines[i]!); if (!match) break; collected.push({ match, line: i }); i += 1 }
+      while (i < lines.length) {
+        const match = listLine.exec(lines[i]!)
+        // Linha recuada logo depois de um item é a continuação do texto dele, não um parágrafo novo.
+        if (!match && /^\s+\S/.test(lines[i]!) && collected.length) { const last = collected[collected.length - 1]!.match; last[4] = `${last[4]} ${lines[i]!.trim()}`; i += 1; continue }
+        if (!match) break
+        collected.push({ match, line: i }); i += 1
+      }
       blocks.push(renderItems(buildTree(collected), onToggle, `b${start}`)); continue
     }
     if (/^\|.*\|\s*$/.test(line) && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1] ?? '')) {

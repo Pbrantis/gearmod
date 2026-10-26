@@ -380,6 +380,148 @@ export const migrations: readonly Migration[] = [
       // Branch base escolhida ao iniciar a execução: a worktree do card nasce a partir dela (vazio = a branch atual de cada repositório).
       db.exec('ALTER TABLE cards ADD COLUMN base_branch TEXT;')
     }
+  },
+  {
+    version: 18,
+    checksum: 'sha256:agentboard-run-tokens-v18-2026-10-22',
+    up(db) {
+      // Tokens gastos por execução (somados por etapa do card): lidos de novo, vindos do cache e escritos pelo agente.
+      db.exec(`ALTER TABLE runs ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE runs ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE runs ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;`)
+    }
+  },
+  {
+    version: 19,
+    checksum: 'sha256:agentboard-constitution-v19-2026-10-21',
+    up(db) {
+      // Constituição do projeto (opcional): texto atual, versões e as mudanças que os agentes sugerem fora do chat dela.
+      db.exec(`CREATE TABLE project_constitutions (
+          project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, content_md TEXT NOT NULL, version INTEGER NOT NULL,
+          updated_at TEXT NOT NULL, updated_by TEXT NOT NULL CHECK (updated_by IN ('user', 'agent', 'system')));
+        CREATE TABLE project_constitution_versions (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, version INTEGER NOT NULL, content_md TEXT NOT NULL,
+          created_at TEXT NOT NULL, actor TEXT NOT NULL CHECK (actor IN ('user', 'agent', 'system')), UNIQUE(project_id, version));
+        CREATE TABLE constitution_proposals (
+          id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, number INTEGER NOT NULL,
+          card_id TEXT REFERENCES cards(id) ON DELETE SET NULL, chat_id TEXT, title TEXT NOT NULL, details TEXT NOT NULL, reason TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'applied', 'dismissed')), created_at TEXT NOT NULL, UNIQUE(project_id, number));`)
+    }
+  },
+  {
+    version: 20,
+    checksum: 'sha256:agentboard-project-icon-v20-2026-10-21',
+    up(db) {
+      // Ícone do projeto (imagem em data URL) no lugar da inicial na barra lateral.
+      db.exec('ALTER TABLE projects ADD COLUMN icon TEXT;')
+    }
+  },
+  {
+    version: 21,
+    checksum: 'sha256:agentboard-test-checklist-v21-2026-10-21',
+    up(db) {
+      // Checklist do testador: o que ele vai verificar, marcado conforme verifica (aparece ao lado do chat do teste).
+      db.exec(`CREATE TABLE card_checklists (
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, purpose TEXT NOT NULL CHECK (purpose IN ('test')),
+          content_md TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(card_id, purpose));`)
+    }
+  },
+  {
+    version: 22,
+    checksum: 'sha256:agentboard-project-order-v22-2026-10-21',
+    up(db) {
+      // Ordem dos projetos na barra lateral (o usuário arrasta). Começa na ordem de antes: o mais recente em cima.
+      db.exec(`ALTER TABLE projects ADD COLUMN sort_order INTEGER;
+        UPDATE projects SET sort_order = (SELECT COUNT(*) FROM projects p WHERE p.updated_at > projects.updated_at OR (p.updated_at = projects.updated_at AND p.id < projects.id));`)
+    }
+  },
+  {
+    version: 23,
+    checksum: 'sha256:agentboard-auto-resume-v23-2026-10-21',
+    up(db) {
+      // Retomadas agendadas para quando o limite de uso do agente voltar.
+      db.exec(`CREATE TABLE auto_resumes (
+          id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE, card_id TEXT REFERENCES cards(id) ON DELETE CASCADE,
+          purpose TEXT NOT NULL, profile_id TEXT NOT NULL, resume_at TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'cancelled', 'replaced')), created_at TEXT NOT NULL);
+        CREATE INDEX idx_auto_resumes_pending ON auto_resumes(status, resume_at);`)
+    }
+  },
+  {
+    version: 24,
+    checksum: 'sha256:agentboard-git-manager-v24-2026-10-22',
+    up(db) {
+      // Gerenciador Git: regra de commit do agente por projeto (JSON), pedidos de commit esperando o usuário e quem (agente) fez cada commit.
+      db.exec(`ALTER TABLE projects ADD COLUMN git_policy TEXT;
+        CREATE TABLE git_commit_requests (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, source_id TEXT NOT NULL, repo_name TEXT NOT NULL, repo_path TEXT NOT NULL,
+          chat_id TEXT, profile_id TEXT, message TEXT NOT NULL, files TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'denied', 'failed')),
+          hash TEXT, error TEXT, created_at TEXT NOT NULL, decided_at TEXT);
+        CREATE INDEX idx_git_commit_requests_card ON git_commit_requests(card_id, status);
+        CREATE TABLE git_commit_agents (repo_path TEXT NOT NULL, hash TEXT NOT NULL, profile_id TEXT NOT NULL, PRIMARY KEY(repo_path, hash));`)
+    }
+  },
+  {
+    version: 25,
+    checksum: 'sha256:agentboard-change-sent-v25-2026-10-22',
+    up(db) {
+      // Mudança autorizada só deixa de lembrar o usuário quando foi mandada ao desenvolvedor (automático ao fim do planejador, ou pelo botão). As já aplicadas contam como enviadas.
+      db.exec(`ALTER TABLE card_changes ADD COLUMN sent_at TEXT;
+        UPDATE card_changes SET sent_at = COALESCE(decided_at, created_at) WHERE status = 'applied';`)
+    }
+  },
+  {
+    version: 26,
+    checksum: 'sha256:agentboard-assessments-v26-2026-10-23',
+    up(db) {
+      // Complexity Engine e rastreabilidade (docs/09): avaliações versionadas (nunca sobrescritas), decisões, eventos espelhados em
+      // history.jsonl, fluxo escolhido do card, configuração de workflow do projeto e métricas por execução (só o que o agente informa).
+      db.exec(`CREATE TABLE card_assessments (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, version INTEGER NOT NULL, preliminary INTEGER NOT NULL,
+          scores_json TEXT NOT NULL, weights_json TEXT NOT NULL, total INTEGER NOT NULL, level TEXT NOT NULL CHECK (level IN ('simple', 'medium', 'complex')),
+          confidence TEXT NOT NULL CHECK (confidence IN ('low', 'medium', 'high')), critical_risks_json TEXT NOT NULL, justifications_json TEXT NOT NULL, evidence_json TEXT NOT NULL,
+          workflow TEXT NOT NULL, trigger TEXT NOT NULL, reason TEXT NOT NULL, actor TEXT NOT NULL CHECK (actor IN ('agent', 'user')),
+          profile_id TEXT, provider TEXT, model TEXT, effort TEXT, code_version TEXT, supersedes_id TEXT, created_at TEXT NOT NULL, UNIQUE(card_id, version));
+        CREATE TABLE card_decisions (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, number INTEGER NOT NULL, kind TEXT NOT NULL, statement TEXT NOT NULL,
+          rationale TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('proposed', 'approved', 'superseded')), actor TEXT NOT NULL CHECK (actor IN ('agent', 'user')),
+          supersedes_id TEXT, created_at TEXT NOT NULL, UNIQUE(card_id, number));
+        CREATE TABLE card_events (
+          id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, project_id TEXT NOT NULL, type TEXT NOT NULL, schema_version INTEGER NOT NULL,
+          actor TEXT NOT NULL, created_at TEXT NOT NULL, json TEXT NOT NULL, synced_at TEXT);
+        CREATE INDEX idx_card_assessments_card ON card_assessments(card_id, version);
+        CREATE INDEX idx_card_events_card ON card_events(card_id, created_at);
+        CREATE INDEX idx_card_events_unsynced ON card_events(synced_at) WHERE synced_at IS NULL;
+        ALTER TABLE cards ADD COLUMN workflow TEXT;
+        ALTER TABLE projects ADD COLUMN workflow_config TEXT;
+        ALTER TABLE runs ADD COLUMN purpose TEXT;
+        ALTER TABLE runs ADD COLUMN provider TEXT;
+        ALTER TABLE runs ADD COLUMN model TEXT;
+        ALTER TABLE runs ADD COLUMN effort TEXT;
+        ALTER TABLE runs ADD COLUMN cost_usd REAL;
+        ALTER TABLE runs ADD COLUMN prompt_chars INTEGER;`)
+    }
+  },
+  {
+    version: 27,
+    checksum: 'sha256:agentboard-coordinated-worktrees-v27-2026-10-23',
+    up(db) {
+      // Worktrees coordenados: repositórios envolvidos no card (vazio = todos, como antes), estado de cada repositório da worktree
+      // (falha parcial não derruba os outros) e o PR de cada um. Uso do Playwright CLI por execução, para comparar custo.
+      db.exec(`ALTER TABLE cards ADD COLUMN repo_ids TEXT;
+        ALTER TABLE worktree_members ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
+        ALTER TABLE worktree_members ADD COLUMN error TEXT;
+        ALTER TABLE worktree_members ADD COLUMN pr_url TEXT;
+        ALTER TABLE runs ADD COLUMN used_playwright_cli INTEGER NOT NULL DEFAULT 0;`)
+    }
+  },
+  {
+    version: 28,
+    checksum: 'sha256:agentboard-checklist-marks-v28-2026-10-26',
+    up(db) {
+      // Quem marcou cada item do checklist de teste (usuário ou agente) e quando: JSON { "<texto do item>": { by, at } }.
+      db.exec(`ALTER TABLE card_checklists ADD COLUMN marks TEXT;`)
+    }
   }
 ]
 

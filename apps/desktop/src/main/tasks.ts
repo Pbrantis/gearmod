@@ -23,6 +23,26 @@ export function validateTasks(markdown: string): string | null {
   return indentedOnly ? 'Os critérios de aceite devem ficar recuados (dois espaços) abaixo da task.' : null
 }
 
+const plainText = (text: string): string => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const checkVerb = /^(rodar|executar|verificar|validar|confirmar|garantir|checar|conferir|testar manualmente|run|execute|verify|validate|confirm|ensure|check)\b/
+const checkTarget = /\b(lint|type-?check|typecheck|tsc|suite|testes|tests?|regress\w*|continua\w* funcionando|still works?|build)\b/
+
+/**
+ * Tasks que são só verificação ("rodar lint, type-check e a suíte", "confirmar que X continua funcionando"): isso é da etapa de teste
+ * (Plano de testes) ou da regra de pronto do desenvolvedor, não uma task. Escrever testes continua sendo task normal.
+ */
+export function verificationOnlyTasks(markdown: string): string[] {
+  const found: string[] = []
+  for (const line of markdown.split(/\r?\n/)) {
+    const match = topLevelItem.exec(line)
+    if (!match) continue
+    const id = /\bT\d{2,4}\b/.exec(match[2]!)?.[0]
+    const text = plainText(match[2]!.replace(/\bT\d{2,4}\b/, '').replace(/\[[^\]]*\]/g, '').trim())
+    if (checkVerb.test(text) && checkTarget.test(text)) found.push(id ?? match[2]!.slice(0, 40))
+  }
+  return found
+}
+
 /** Marca ou desmarca o item (de qualquer nível) da linha informada, contando linhas a partir de 0. */
 export function setTaskChecked(markdown: string, lineIndex: number, checked: boolean): string {
   const lines = markdown.split('\n')

@@ -1,0 +1,97 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+
+type Line = { kind: 'ctx' | 'add' | 'del'; text: string; oldNo: number | null; newNo: number | null; mark?: [number, number] }
+export type DiffRow =
+  | { kind: 'hunk'; text: string }
+  | { kind: 'ctx' | 'add' | 'del'; text: string; oldNo: number | null; newNo: number | null; mark?: [number, number] }
+
+/** Trecho do meio que mudou entre duas linhas (tira o começo e o fim iguais): vira o destaque forte dentro da linha. */
+function changedPart(before: string, after: string): { del: [number, number]; add: [number, number] } {
+  let start = 0
+  while (start < before.length && start < after.length && before[start] === after[start]) start++
+  let endB = before.length, endA = after.length
+  while (endB > start && endA > start && before[endB - 1] === after[endA - 1]) { endB--; endA-- }
+  return { del: [start, endB], add: [start, endA] }
+}
+
+/** Lê o diff unificado do git: some o cabeçalho técnico, numera as linhas (antes/depois) e marca o que mudou dentro de linhas editadas. */
+export function parseDiff(text: string): DiffRow[] {
+  const rows: DiffRow[] = []
+  let oldNo = 0, newNo = 0, inHunk = false
+  const lines = text.replace(/\r$/gm, '').split('\n')
+  if (lines[lines.length - 1] === '') lines.pop()
+  const fresh = /^Arquivo novo: /.test(lines[0] ?? '')
+  if (fresh) { lines.shift(); lines.forEach((line, index) => rows.push({ kind: 'add', text: line.replace(/^\+/, ''), oldNo: null, newNo: index + 1 })); return rows }
+  for (const line of lines) {
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(line)
+    if (hunk) { oldNo = Number(hunk[1]); newNo = Number(hunk[2]); inHunk = true; rows.push({ kind: 'hunk', text: hunk[3]?.trim() ?? '' }); continue }
+    if (!inHunk || line.startsWith('\\')) continue
+    if (line.startsWith('+')) rows.push({ kind: 'add', text: line.slice(1), oldNo: null, newNo: newNo++ })
+    else if (line.startsWith('-')) rows.push({ kind: 'del', text: line.slice(1), oldNo: oldNo++, newNo: null })
+    else rows.push({ kind: 'ctx', text: line.slice(1), oldNo: oldNo++, newNo: newNo++ })
+  }
+  // Bloco de removidas seguido de adicionadas com o mesmo tamanho = linhas editadas: marca só o pedaço que mudou.
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i]!.kind !== 'del') continue
+    let d = i; while (rows[d]?.kind === 'del') d++
+    let a = d; while (rows[a]?.kind === 'add') a++
+    const dels = d - i, adds = a - d
+    if (dels === adds) for (let k = 0; k < dels; k++) {
+      const before = rows[i + k] as unknown as Line, after = rows[d + k] as unknown as Line
+      const part = changedPart(before.text, after.text)
+      if (part.del[1] > part.del[0] || part.add[1] > part.add[0]) { before.mark = part.del; after.mark = part.add }
+    }
+    i = a - 1
+  }
+  return rows
+}
+
+function Code({ row }: { row: Extract<DiffRow, { kind: 'ctx' | 'add' | 'del' }> }): React.JSX.Element {
+  if (!row.mark) return <>{row.text || ' '}</>
+  const [from, to] = row.mark
+  return <>{row.text.slice(0, from)}<mark>{row.text.slice(from, to) || ' '}</mark>{row.text.slice(to)}</>
+}
+
+/** Texto do pedido de revisão: onde está (arquivo e linhas), o trecho escolhido e o que o usuário escreveu. */
+export function reviewPrompt(path: string, rows: Array<Extract<DiffRow, { kind: 'ctx' | 'add' | 'del' }>>, comment: string): string {
+  const nums = rows.map((row) => row.newNo ?? row.oldNo).filter((value): value is number => value !== null)
+  const onlyOld = rows.every((row) => row.newNo === null)
+  const span = nums.length ? (Math.min(...nums) === Math.max(...nums) ? `linha ${nums[0]}` : `linhas ${Math.min(...nums)}–${Math.max(...nums)}`) : 'trecho'
+  const code = rows.map((row) => `${row.kind === 'add' ? '+' : row.kind === 'del' ? '-' : ' '} ${row.text}`).join('\n')
+  return `Revisão de código em \`${path}\` (${span}${onlyOld ? ', do código antigo' : ''}):\n\n\`\`\`diff\n${code}\n\`\`\`\n\n${comment.trim()}`
+}
+
+/**
+ * Diff com duas colunas de número, vermelho para o que saiu, verde para o que entrou e destaque forte no trecho exato que mudou.
+ * Com `review`, as linhas podem ser escolhidas (clique, arraste ou Shift+clique): aparece um botão de chat ao lado da seleção e,
+ * ao clicar nele, o campo para dizer à IA o que fazer com essas linhas.
+ */
+export function DiffLines({ text, review }: { text: string; review?: { path: string; send(prompt: string): boolean | Promise<boolean> } }): React.JSX.Element {
+  const rows = useMemo(() => parseDiff(text), [text])
+  const [range, setRange] = useState<[number, number] | null>(null), [composing, setComposing] = useState(false), [comment, setComment] = useState(''), [top, setTop] = useState(0)
+  const drag = useRef<number | null>(null), box = useRef<HTMLDivElement>(null), field = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => { setRange(null); setComposing(false); setComment('') }, [text])
+  useEffect(() => { const up = (): void => { drag.current = null }; document.addEventListener('mouseup', up); return () => document.removeEventListener('mouseup', up) }, [])
+  const lo = range ? Math.min(...range) : -1, hi = range ? Math.max(...range) : -1
+  const chosen = range ? rows.slice(lo, hi + 1).filter((row): row is Extract<DiffRow, { kind: 'ctx' | 'add' | 'del' }> => row.kind !== 'hunk') : []
+  useEffect(() => { if (lo >= 0) setTop((box.current?.querySelectorAll<HTMLElement>('.gdl-row')[lo]?.offsetTop ?? 0)) }, [lo, hi])
+  useEffect(() => { if (composing) field.current?.focus() }, [composing])
+  const clear = (): void => { setRange(null); setComposing(false); setComment('') }
+  const down = (index: number, event: React.MouseEvent): void => {
+    if (!review || event.button !== 0 || rows[index]?.kind === 'hunk') return
+    if (event.shiftKey && range) { setRange([range[0], index]); return }
+    drag.current = index; setComposing(false); setRange([index, index])
+  }
+  const send = async (): Promise<void> => { if (!review || !chosen.length || !comment.trim()) return; if (await review.send(reviewPrompt(review.path, chosen, comment))) clear() }
+  return <div className="gdlwrap">
+    <div className={`gdl ${review ? 'review' : ''}`} ref={box}>{rows.map((row, index) => row.kind === 'hunk'
+      ? <div key={index} className="gdl-row hunk"><span className="no" /><span className="no" /><span className="sign" /><span className="code">{row.text || '···'}</span></div>
+      : <div key={index} className={`gdl-row ${row.kind} ${index >= lo && index <= hi ? 'picked' : ''}`} onMouseDown={(event) => down(index, event)} onMouseEnter={() => { if (drag.current !== null) setRange([drag.current, index]) }}><span className="no">{row.oldNo ?? ''}</span><span className="no">{row.newNo ?? ''}</span><span className="sign">{row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ''}</span><span className="code"><Code row={row} /></span></div>)}
+      {review && range && chosen.length > 0 && !composing && <button type="button" className="gdl-chatbtn tip" data-tip={`Conversar sobre ${chosen.length} linha${chosen.length === 1 ? '' : 's'}`} aria-label="Conversar sobre as linhas selecionadas" style={{ top }} onMouseDown={(event) => event.stopPropagation()} onClick={() => setComposing(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg></button>}
+    </div>
+    {review && range && chosen.length > 0 && composing && <div className="gdl-compose" role="group" aria-label="Pedir à IA sobre as linhas selecionadas">
+      <div className="gdl-askhead"><span>{chosen.length} linha{chosen.length === 1 ? '' : 's'} selecionada{chosen.length === 1 ? '' : 's'}</span><button type="button" className="ghost" onClick={clear}>Cancelar</button></div>
+      <div className="cbox"><textarea ref={field} value={comment} rows={1} placeholder="O que fazer nessas linhas? Ex.: isso está errado, não trata o caso vazio" aria-label="Mensagem sobre as linhas" onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } else if (event.key === 'Escape') { event.stopPropagation(); clear() } }} />
+        <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" disabled={!comment.trim()} onClick={() => void send()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg></button></div></div>}
+  </div>
+}

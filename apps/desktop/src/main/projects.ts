@@ -1,3 +1,4 @@
+import { complexitySummary } from './history'
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { readdir, stat } from 'node:fs/promises'
@@ -151,14 +152,19 @@ export class ProjectRepository {
   constructor(private readonly database: AppDatabase, private readonly git: Pick<GitService, 'inspect' | 'validate'>) {}
 
   list(): Project[] {
-    const rows = this.database.db.prepare(`SELECT id, name, local_path AS localPath, base_branch AS baseBranch,
-      remote_provider AS remoteProvider, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY updated_at DESC`).all() as Omit<Project, 'allowedProfileIds' | 'sources' | 'activity'>[]
+    const rows = this.database.db.prepare(`SELECT id, name, icon, local_path AS localPath, base_branch AS baseBranch,
+      remote_provider AS remoteProvider, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY sort_order IS NULL, sort_order, updated_at DESC`).all() as Omit<Project, 'allowedProfileIds' | 'sources' | 'activity'>[]
     const allowed = this.database.db.prepare('SELECT profile_id AS profileId FROM project_agent_profiles WHERE project_id = ? AND allowed = 1')
     const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS localPath,
       is_git_repository AS isGitRepository, current_branch AS currentBranch, sort_order AS sortOrder FROM project_sources WHERE project_id = ? ORDER BY sort_order`)
-    const cards = this.database.db.prepare('SELECT id FROM cards WHERE project_id = ? AND archived_at IS NULL')
+    // Barra lateral: chats com agente trabalhando (qualquer etapa, inclusive chat livre e Constituição) e cards cuja última execução
+    // (planejamento, implementação ou teste) terminou depois da última vez que o usuário abriu o card.
+    const running = this.database.db.prepare(`SELECT COUNT(DISTINCT r.chat_id) AS n FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ? AND r.status IN ('queued', 'running')`)
+    const finished = this.database.db.prepare(`SELECT COUNT(*) AS n FROM cards k WHERE k.project_id = ? AND k.archived_at IS NULL AND EXISTS (
+      SELECT 1 FROM runs r WHERE r.id = (SELECT id FROM runs WHERE card_id = k.id ORDER BY started_at DESC, rowid DESC LIMIT 1)
+      AND r.status = 'completed' AND r.ended_at > COALESCE(k.viewed_at, ''))`)
     return rows.map((row) => ({ ...row,
-      activity: (cards.all(row.id) as { id: string }[]).reduce((total, card) => { const state = cardRunState(this.database.db, card.id).state; return { running: total.running + (state === 'running' ? 1 : 0), finished: total.finished + (state === 'finished' ? 1 : 0) } }, { running: 0, finished: 0 }),
+      activity: { running: (running.get(row.id) as { n: number }).n, finished: (finished.get(row.id) as { n: number }).n },
       allowedProfileIds: (allowed.all(row.id) as { profileId: string }[]).map((item) => item.profileId),
       sources: (sources.all(row.id) as Array<Omit<ProjectSource, 'isGitRepository'> & { isGitRepository: number }>).map((item) => ({ ...item, isGitRepository: Boolean(item.isGitRepository) }))
     }))
@@ -170,7 +176,7 @@ export class ProjectRepository {
     return project
   }
 
-  async create(input: { name?: string; sourcePaths?: string[]; profileIds?: string[]; localPath?: string; baseBranch?: string }): Promise<Project> {
+  async create(input: { name?: string; sourcePaths?: string[]; profileIds?: string[]; localPath?: string; baseBranch?: string; icon?: string | null }): Promise<Project> {
     const paths = input.sourcePaths ?? (input.localPath ? [input.localPath] : [])
     if (!paths.length) throw new Error('Adicione pelo menos uma pasta de origem')
     const inspections = await Promise.all(paths.map((path) => this.git.inspect(path)))
@@ -185,6 +191,9 @@ export class ProjectRepository {
     const create = this.database.db.transaction(() => {
       this.database.db.prepare(`INSERT INTO projects(id, name, local_path, base_branch, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)`).run(id, name, first.localPath, baseBranch, now, now)
+      if (input.icon) this.database.db.prepare('UPDATE projects SET icon = ? WHERE id = ?').run(input.icon, id)
+      // Projeto novo entra no topo da barra lateral.
+      this.database.db.prepare('UPDATE projects SET sort_order = (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM projects WHERE id <> ?) WHERE id = ?').run(id, id)
       const insertSource = this.database.db.prepare(`INSERT INTO project_sources(id, project_id, name, local_path, is_git_repository, current_branch, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?)`)
       unique.forEach((source, index) => insertSource.run(randomUUID(), id, source.name, source.localPath, source.isGitRepository ? 1 : 0, source.currentBranch, index))
@@ -198,11 +207,37 @@ export class ProjectRepository {
     return this.get(id)
   }
 
-  async update(input: { projectId: string; name: string }): Promise<Project> {
-    const result = this.database.db.prepare('UPDATE projects SET name = ?, updated_at = ? WHERE id = ?')
-      .run(input.name, new Date().toISOString(), input.projectId)
+  /** `icon`: `undefined` mantém o atual; `null` remove. */
+  async update(input: { projectId: string; name: string; icon?: string | null }): Promise<Project> {
+    const result = input.icon === undefined
+      ? this.database.db.prepare('UPDATE projects SET name = ?, updated_at = ? WHERE id = ?').run(input.name, new Date().toISOString(), input.projectId)
+      : this.database.db.prepare('UPDATE projects SET name = ?, icon = ?, updated_at = ? WHERE id = ?').run(input.name, input.icon, new Date().toISOString(), input.projectId)
     if (!result.changes) throw new Error('Projeto não encontrado')
     return this.get(input.projectId)
+  }
+
+  /** Nova ordem da barra lateral (os ids na ordem em que aparecem). Ids que não vierem ficam depois, na ordem que já tinham. */
+  reorder(projectIds: string[]): Project[] {
+    const set = this.database.db.prepare('UPDATE projects SET sort_order = ? WHERE id = ?')
+    this.database.db.transaction(() => {
+      const rest = this.list().map((project) => project.id).filter((id) => !projectIds.includes(id))
+      ;[...projectIds, ...rest].forEach((id, index) => set.run(index, id))
+    })()
+    return this.list()
+  }
+
+  /** Remove o projeto do AgentBoard (cards, chats, documentos e histórico). As pastas e os repositórios no disco não são tocados. */
+  delete(projectId: string): boolean {
+    this.get(projectId)
+    const busy = this.database.db.prepare(`SELECT 1 FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ? AND r.status IN ('queued', 'running') LIMIT 1`).get(projectId)
+    if (busy) throw new Error('Há um agente trabalhando neste projeto. Pare a execução antes de excluir.')
+    // `runs.chat_id` e `test_runs.run_id` não apagam em cascata: sai o histórico de execuções dos chats do projeto antes do resto.
+    const runs = `SELECT r.id FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ?`
+    return this.database.db.transaction(() => {
+      this.database.db.prepare(`DELETE FROM test_runs WHERE run_id IN (${runs})`).run(projectId)
+      this.database.db.prepare(`DELETE FROM runs WHERE id IN (${runs})`).run(projectId)
+      return this.database.db.prepare('DELETE FROM projects WHERE id = ?').run(projectId).changes > 0
+    })()
   }
 
   setProfiles(projectId: string, profileIds: string[]): Project {
@@ -244,18 +279,37 @@ export class BoardRepository {
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
       .map((item) => ({ ...item, checked: Boolean(item.checked) }))
-    const tasks = countTasks(this.documents.read(cardId, 'tasks')), run = cardRunState(this.database.db, cardId), hasPlan = Boolean(this.database.db.prepare('SELECT plan_ready_at FROM cards WHERE id = ?').pluck().get(cardId))
+    const tasks = countTasks(this.documents.read(cardId, 'tasks')), run = cardRunState(this.database.db, cardId), hasPlan = Boolean(this.database.db.prepare('SELECT plan_ready_at FROM cards WHERE id = ?').pluck().get(cardId)) || (row.type === 'minor' && Boolean(row.description.trim())) // tarefa pequena não tem plano: basta dizer o que fazer
     // Planejamento aberto: começou a planejar (card sem título ou com chat de planejamento) e ainda não saiu nada dele.
     const hasPlanningChat = Boolean(this.database.db.prepare("SELECT 1 FROM chats WHERE card_id = ? AND purpose = 'planning' LIMIT 1").get(cardId))
     const planningOpen = run.state === 'idle' && !hasPlan && tasks.total === 0 && !row.description.trim() && !this.documents.read(cardId, 'especificacao').trim() && (!row.title.trim() || hasPlanningChat)
     // Branch e worktree em que o card trabalha (a mais recente ativa), para mostrar no card.
     const workspace = (this.database.db.prepare("SELECT branch, base_ref AS baseRef, path FROM worktrees WHERE card_id = ? AND cleanup_state = 'active' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(cardId) as { branch: string; baseRef: string; path: string } | undefined) ?? null
-    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace, pending: this.pendingCounts(cardId), ...this.execSettings(cardId) }
+    // Todos os agentes que trabalharam no card (planejamento, implementação e teste), na ordem em que entraram.
+    const agentIds = this.database.db.prepare('SELECT profile_id FROM chats WHERE card_id = ? GROUP BY profile_id ORDER BY MIN(created_at)').pluck().all(cardId) as string[]
+    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace, pending: this.pendingCounts(cardId), ...this.execSettings(cardId), agentIds, complexity: complexitySummary(this.database.db, cardId), repoIds: this.repoIds(cardId) }
   }
 
-  private pendingCounts(cardId: string): { changes: number; questions: number } {
+  /** Repositórios em que o card trabalha (nulo = todos os do projeto). */
+  repoIds(cardId: string): string[] | null {
+    const raw = this.database.db.prepare('SELECT repo_ids FROM cards WHERE id = ?').pluck().get(cardId) as string | null | undefined
+    return raw ? JSON.parse(raw) as string[] : null
+  }
+
+  /** Escolhe os repositórios do card; só aceita repositórios Git do próprio projeto. Lista vazia ou nula volta a valer todos. */
+  setRepos(cardId: string, sourceIds: string[] | null): Card {
+    const card = this.card(cardId)
+    const valid = new Set(this.database.db.prepare('SELECT id FROM project_sources WHERE project_id = ? AND is_git_repository = 1').pluck().all(card.projectId) as string[])
+    const unknown = (sourceIds ?? []).filter((id) => !valid.has(id))
+    if (unknown.length) throw new Error('Repositório não pertence a este projeto ou não é Git')
+    const value = sourceIds?.length ? JSON.stringify([...new Set(sourceIds)]) : null
+    this.database.db.prepare('UPDATE cards SET repo_ids = ?, updated_at = ? WHERE id = ?').run(value, new Date().toISOString(), cardId)
+    return this.card(cardId)
+  }
+
+  private pendingCounts(cardId: string): { changes: number; questions: number; commits: number; toSend: number } {
     const count = (sql: string): number => (this.database.db.prepare(sql).get(cardId) as { value: number }).value
-    return { changes: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status = 'pending'"), questions: count("SELECT COUNT(*) AS value FROM card_questions WHERE card_id = ? AND status = 'user'") }
+    return { changes: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status = 'pending'"), questions: count("SELECT COUNT(*) AS value FROM card_questions WHERE card_id = ? AND status = 'user'"), commits: count("SELECT COUNT(*) AS value FROM git_commit_requests WHERE card_id = ? AND status = 'pending'"), toSend: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status IN ('accepted', 'applied') AND sent_at IS NULL") }
   }
 
   private execSettings(cardId: string): { execProfileId: string | null; execModel: string | null } {
@@ -290,6 +344,12 @@ export class BoardRepository {
 
   /** O planejador só declara o plano concluído com Especificação, Plano e Tasks escritos; devolve o que falta. */
   markPlanReady(cardId: string): string[] {
+    // Tarefa pequena: sem Especificação, Plano e Tasks; basta a descrição do que fazer.
+    if (this.card(cardId).type === 'minor') {
+      if (!this.documents.read(cardId, 'resumo').trim()) return ['descricao']
+      this.database.db.prepare('UPDATE cards SET plan_ready_at = COALESCE(plan_ready_at, ?) WHERE id = ?').run(new Date().toISOString(), cardId)
+      return []
+    }
     const missing = (['especificacao', 'plano', 'tasks'] as const).filter((kind) => !this.documents.read(cardId, kind).trim())
     if (!missing.length && countTasks(this.documents.read(cardId, 'tasks')).total === 0) missing.push('tasks')
     if (!missing.length) this.database.db.prepare("UPDATE cards SET plan_ready_at = COALESCE(plan_ready_at, ?) WHERE id = ?").run(new Date().toISOString(), cardId)
@@ -368,5 +428,9 @@ export class BoardRepository {
     if (test?.status !== 'passed') throw new Error('Done exige um teste aprovado')
     const review = this.database.db.prepare('SELECT state FROM reviews WHERE card_id = ? ORDER BY updated_at DESC LIMIT 1').get(cardId) as { state: string } | undefined
     if (!review || !['approved', 'merged'].includes(review.state)) throw new Error('Done exige revisão aprovada ou merge confirmado')
+    // Entrega em vários repositórios não é atômica: um repositório que falhou impede declarar o card entregue.
+    const failed = this.database.db.prepare(`SELECT m.repo_path FROM worktree_members m JOIN worktrees w ON w.id = m.worktree_id
+      WHERE w.card_id = ? AND m.status = 'failed' AND w.id = (SELECT id FROM worktrees x WHERE x.card_id = w.card_id ORDER BY x.created_at DESC LIMIT 1)`).pluck().all(cardId) as string[]
+    if (failed.length) throw new Error(`Done exige todos os repositórios do card prontos; falhou: ${failed.map((path) => basename(path)).join(', ')}`)
   }
 }

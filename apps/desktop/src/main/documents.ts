@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { CardDocument, CardDocumentKind, CardDocuments, DocumentVersion } from '@agentboard/contracts'
 import { cardDocumentKinds } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
-import { setTaskChecked, validateTasks } from './tasks'
+import { setTaskChecked, validateTasks, verificationOnlyTasks } from './tasks'
 
 type Actor = 'user' | 'agent' | 'system'
 
@@ -25,6 +25,11 @@ export class DocumentRepository {
   write(cardId: string, kind: CardDocumentKind, contentMd: string, actor: Actor = 'user'): CardDocument {
     this.assertCard(cardId)
     if (kind === 'tasks') { const problem = validateTasks(contentMd); if (problem) throw new Error(problem) }
+    // Só o agente é barrado (o usuário escreve o que quiser): verificação vai para o Plano de testes, vale para qualquer método (Spec Kit, OpenSpec...).
+    if (kind === 'tasks' && actor === 'agent') {
+      const checks = verificationOnlyTasks(contentMd)
+      if (checks.length) throw new Error(`${checks.join(', ')} ${checks.length > 1 ? 'são' : 'é'} só verificação (rodar lint/type-check/testes ou confirmar que algo continua funcionando). Isso não é task de desenvolvimento: tire do Tasks e ponha na seção "Plano de testes" do Plano (o testador executa). Os testes automatizados de cada task ficam como critério dentro dela, e rodar lint, type-check e os testes da área é a regra de pronto do desenvolvedor.`)
+    }
     const now = new Date().toISOString()
     const save = this.database.db.transaction(() => {
       const current = this.read(cardId, kind)

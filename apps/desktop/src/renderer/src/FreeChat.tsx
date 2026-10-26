@@ -1,24 +1,69 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentProfile, Chat, ChatMessage, Project } from '@agentboard/contracts'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { permissionModes, type AgentProfile, type Chat, type ChatMessage, type Effort, type PermissionMode, type Project } from '@agentboard/contracts'
+import { PopMenu } from './PopMenu'
+import { ChatSearch } from './ChatSearch'
 import { useDockSize } from './CardChat'
-import { CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
+import { CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { Select } from './Select'
 import { AgentIcon } from './AgentIcon'
+import { ModelMenu, useAgentConfig } from './ModelMenu'
+import { useFitInView } from './useFitInView'
 import { ChatMessageList } from './ChatMessageView'
-import { Markdown } from './markdown'
+import { FileOpenContext } from './markdown'
+import { AgentMessage, QuestionAnswerContext } from './AgentMessage'
+import { FileViewer, ViewGrip, useFileViewer } from './FileViewer'
+import { UsageRings } from './UsageRings'
+import { QueuedPreview, useQueuedMessage } from './QueuedMessage'
+import { AttachButton, AttachmentChips, useAttachments, useContextText } from './Attachments'
 import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { startVoiceInstall } from './voiceStore'
 import { useDictation } from './useDictation'
+import { useStickToBottom } from './useStickToBottom'
+
+type Saved = { profileId: string; model: string | null; effort: Effort | null; mode: PermissionMode }
+const savedKey = (projectId: string): string => `agentboard.freeChatAgent.${projectId}`
+const readSaved = (projectId: string): Saved | null => { try { return JSON.parse(localStorage.getItem(savedKey(projectId)) ?? 'null') as Saved | null } catch { return null } }
+
+/** Textos de cada chat do projeto: o livre e o da Constituição. */
+const modes = {
+  free: { eyebrow: 'Chat livre', title: 'Conversa livre', chip: 'Sem card · direto no projeto', empty: 'Chat livre: converse sobre o projeto e peça alterações quando quiser. Se virar um planejamento, peça e eu crio o card aqui mesmo.', placeholder: 'Converse ou peça uma alteração…', badge: '✎ Pode alterar arquivos', badgeTip: 'Altera arquivos do projeto quando você pedir, conforme o modo escolhido' },
+  constitution: { eyebrow: 'Constituição', title: 'Constituição do projeto', chip: 'Do projeto · não altera arquivos', empty: 'Chat da Constituição: os princípios que todo card do projeto respeita. Peça para criar, revisar ou mudar um princípio; eu leio o projeto, proponho e só gravo com o seu acordo.', placeholder: 'Ex.: crie a Constituição a partir do projeto…', badge: '§ Constituição', badgeTip: 'Só escreve a Constituição; não altera arquivos nem cards' }
+} as const
 
 /**
  * Chat livre: conversa solta com um agente, sem card e sem alterar arquivos. Se a conversa virar um planejamento, o agente cria o
  * card (agentboard_criar_card) e este mesmo chat passa a ser o chat de planejamento dele; aí `onConverted` abre o card.
+ * Com `mode="constitution"` é o chat da Constituição do projeto; `prompt` já envia o primeiro pedido ao abrir.
  */
-export function FreeChat({ project, profiles, chat: start, close, onConverted, changed }: { project: Project; profiles: AgentProfile[]; chat?: Chat; close(): void; onConverted(cardId: string): void; changed(): void }): React.JSX.Element {
-  const { expanded, setExpanded, width, dragging, startResize, resetWidth } = useDockSize()
+export function FreeChat({ project, profiles, chat: start, close, onConverted, changed, mode = 'free', prompt: firstPrompt }: { project: Project; profiles: AgentProfile[]; chat?: Chat; close(): void; onConverted(cardId: string): void; changed(): void; mode?: 'free' | 'constitution'; prompt?: string }): React.JSX.Element {
+  const text = modes[mode]
+  const { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth } = useDockSize()
   const [chat, setChat] = useState<Chat | undefined>(start), [messages, setMessages] = useState<ChatMessage[]>([]), [input, setInput] = useState(''), [live, setLive] = useState(''), [error, setError] = useState('')
-  const [profileId, setProfileId] = useState(start?.profileId ?? profiles[0]?.id ?? ''), [busy, setBusy] = useState(Boolean(start?.busy))
+  const saved = useMemo(() => (mode === 'free' ? readSaved(project.id) : null), [project.id, mode])
+  const [profileId, setProfileId] = useState(start?.profileId ?? (saved && profiles.some((item) => item.id === saved.profileId) ? saved.profileId : undefined) ?? profiles[0]?.id ?? ''), [busy, setBusy] = useState(Boolean(start?.busy))
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), converted = useRef<string | undefined>(undefined)
+  const agentState = useAgentConfig('', 'execution', profiles, profileId || undefined), agentConfig = mode === 'free' ? agentState.config : undefined
+  const restored = useRef(false)
+  // Volta a configuração escolhida da última vez (modelo, esforço e modo) assim que as opções do agente chegam.
+  useEffect(() => {
+    if (mode !== 'free' || restored.current || !agentState.config || !agentState.options) return
+    restored.current = true
+    if (saved && saved.profileId === agentState.config.profileId) void agentState.update({ model: saved.model, effort: saved.effort, mode: saved.mode })
+  }, [agentState.config, agentState.options])
+  useEffect(() => { if (mode === 'free' && restored.current && agentState.config) { try { localStorage.setItem(savedKey(project.id), JSON.stringify({ profileId: agentState.config.profileId, model: agentState.config.model, effort: agentState.config.effort, mode: agentState.config.mode })) } catch { /* só vale nesta sessão */ } } }, [agentState.config])
+  const readOnly = mode === 'constitution' || agentConfig?.mode === 'plan'
+  const [modeMenu, setModeMenu] = useState(false), modeBox = useRef<HTMLSpanElement>(null), modeMenuBox = useRef<HTMLDivElement>(null)
+  const modeList = permissionModes[profiles.find((item) => item.id === agentConfig?.profileId)?.provider ?? 'claude'], currentMode = modeList.find((item) => item.id === agentConfig?.mode)
+  useFitInView(modeMenuBox, modeMenu)
+  useEffect(() => {
+    if (!modeMenu) return
+    const away = (event: PointerEvent): void => { if (!modeBox.current?.contains(event.target as Node)) setModeMenu(false) }
+    const esc = (event: KeyboardEvent): void => { if (event.key === 'Escape') setModeMenu(false) }
+    document.addEventListener('pointerdown', away); document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc) }
+  }, [modeMenu])
+  const attach = useAttachments({ projectId: project.id, cardId: null })
+  useContextText({ projectId: project.id, cardId: null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []))
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
   const load = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
@@ -35,42 +80,66 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
     }
   }), [load, changed, onConverted])
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }) }, [messages, live])
-  const send = async (): Promise<void> => {
-    const prompt = input.trim(); if (!prompt || busy) return
+  useStickToBottom(log)
+  const deliver = async (prompt: string): Promise<void> => {
+    const files = attach.take()
     try {
-      setError(''); setInput('')
+      setError('')
       let current = chat
-      if (!current) { if (!profileId) throw new Error('Escolha um agente'); current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: null, purpose: 'free', profileId }); setChat(current) }
-      const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning: true })
+      if (!current) { if (!profileId) throw new Error('Escolha um agente'); current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: null, purpose: mode, profileId }); setChat(current) }
+      const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning: readOnly, attachments: files.length ? files : undefined, choice: agentConfig ? { model: agentConfig.model, effort: agentConfig.effort, mode: agentConfig.mode } : undefined })
       runId.current = started.id; setBusy(true); setLive(''); await load(current.id); changed()
-    } catch (reason) { setError(String(reason).replace(/^Error: /, '')); setInput(prompt) }
+    } catch (reason) { setError(String(reason).replace(/^Error: /, '')); setInput(prompt); attach.add(files) }
   }
-  const stop = async (): Promise<void> => { if (runId.current) await window.agentboard.invoke('agents:cancel', { runId: runId.current }).catch((reason: unknown) => setError(String(reason))) }
+  const cancel = async (): Promise<void> => { if (runId.current) await window.agentboard.invoke('agents:cancel', { runId: runId.current }).catch((reason: unknown) => setError(String(reason))) }
+  const later = useQueuedMessage(busy, deliver)
+  // Pedido que veio de fora (ex.: aplicar uma mudança sugerida na Constituição): envia uma vez ao abrir.
+  const sentFirst = useRef(false)
+  useEffect(() => { if (firstPrompt && !sentFirst.current && profileId) { sentFirst.current = true; if (busy) later.queue(firstPrompt); else void deliver(firstPrompt) } }, [firstPrompt, profileId])
+  const send = async (): Promise<void> => {
+    const prompt = input.trim() || (attach.files.length ? 'Veja os arquivos anexados.' : ''); if (!prompt) return
+    setInput('')
+    if (busy) later.queue(prompt); else await deliver(prompt)
+  }
+  const stop = async (): Promise<void> => { later.markStopped(); await cancel() }
+  // Respostas das perguntas do agente voltam como mensagem normal (na fila, se ele ainda estiver trabalhando).
+  const answerQuestions = (text: string): void => { if (busy) later.queue(text); else void deliver(text) }
+  const viewer = useFileViewer(chat?.id, width, setWidth), viewing = !expanded && viewer.requested !== null
+  const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
   const typed = useTypewriter(live), busySince = useBusySince(busy)
   const agent = profiles.find((item) => item.id === profileId)
-  return <section className={`dock open ${expanded ? 'full' : ''} ${dragging ? 'dragging' : ''}`} aria-label="Chat livre" style={expanded ? undefined : { width }}>
-    {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label="Ajustar a largura do chat" onPointerDown={startResize} onDoubleClick={resetWidth} />}
+  return <section className={`dock open ${expanded ? 'full' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label={text.eyebrow} style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
+    {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label={viewing ? 'Ajustar a largura do arquivo' : 'Ajustar a largura do chat'} onPointerDown={viewing ? viewer.startResize : startResize} onDoubleClick={viewing ? undefined : resetWidth} />}
+    {viewing && <><FileViewer viewer={viewer} style={{ width: viewer.width }} /><ViewGrip viewer={viewer} /></>}
+    <FileOpenContext.Provider value={openFile}><QuestionAnswerContext.Provider value={answerQuestions}>
     <div className="dock-in" style={expanded ? undefined : { width }}>
-      <div className="dock-head"><div className="top"><div><div className="headrow"><div className="eyebrow">Chat livre</div></div><h2>{chat?.title || 'Conversa livre'}</h2><div className="ctxline"><span className="ctxchip">Sem card · sem execução</span></div></div>
-        <div className="dock-tools"><button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
+      <div className="dock-head"><div className="top"><div><div className="headrow"><div className="eyebrow">{text.eyebrow}</div></div><h2>{mode === 'constitution' ? text.title : chat?.title || text.title}</h2><div className="ctxline"><span className="ctxchip">{text.chip}</span></div></div>
+        <div className="dock-tools"><ChatSearch messages={messages} log={log} />{chat?.id && <PopMenu target={{ kind: 'chat', projectId: project.id, chatId: chat.id }} />}<button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div>
       <div className="chatlog" ref={log}>
-        {!messages.length && !live && <div className="msg sys">Chat livre: conversa solta, não altera arquivos nem cards. Se virar um planejamento, peça e eu crio o card aqui mesmo.</div>}
+        {!messages.length && !live && <div className="msg sys">{text.empty}</div>}
         <ChatMessageList messages={messages} busy={busy} />
-        {live && <div className="msg agent"><div className="md chatmd"><Markdown source={typed} /><span className="caret" /></div></div>}
+        {live && <div className="msg agent"><div className="md chatmd"><AgentMessage source={typed} live /><span className="caret" /></div></div>}
         {busy && <ThinkingIndicator purpose="free" messages={messages} since={busySince} />}
       </div>
       <div className="composer">
         {(error || dictation.error) && <p className="error">{error || dictation.error}</p>}
-        <div className="cbox">
-          <textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : 'Converse sobre qualquer coisa…'} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
+        {later.queued && <QueuedPreview text={later.queued} busy={busy} sendNow={() => later.sendNow(cancel)} edit={() => setInput((value) => `${later.take()}${value ? `
+${value}` : ''}`)} discard={later.discard} />}
+        <div className={`cbox ${attach.dragging ? 'dropping' : ''}`} {...attach.dropProps}>
+          {attach.files.length > 0 && <div className="cbox-top"><AttachmentChips files={attach.files} remove={attach.remove} /></div>}
+          <AttachButton onClick={() => void attach.choose()} />
+          <textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : text.placeholder} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
-          {busy ? <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button> : <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" hidden={!input.trim()} onClick={() => void send()}><SendIcon /></button>}
+          {busy && <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button>}<button type="button" className="sendbtn tip" data-tip={busy ? 'Colocar na fila (Enter)' : 'Enviar (Enter)'} aria-label={busy ? 'Colocar na fila' : 'Enviar'} hidden={!input.trim()} onClick={() => void send()}><SendIcon /></button>
           <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? 'Parar de ouvir' : dictation.transcribing ? 'Transcrevendo…' : voiceReady ? 'Ditar por voz' : 'Instalar o ditado por voz'} aria-label="Ditar por voz" aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : void startVoiceInstall())}>{dictation.transcribing ? <span className="spin sm" /> : <MicIcon />}</button>
         </div>
-        <div className="cmeta"><span className="mode tip" data-tip="Conversa solta: não altera arquivos nem cards">✦ Só conversar</span>
-          <div className="pick">{chat ? (agent && <span className="agentchip"><AgentIcon profile={agent} size="sm" />{agent.label}</span>) : <Select label="Agente" up options={profiles.map((item) => ({ value: item.id, label: item.label, icon: <AgentIcon profile={item} tip={false} />, sub: item.provider === 'codex' ? 'Codex' : 'Claude' }))} value={profileId} onChange={setProfileId} />}</div>
+        <div className="cmeta">{mode === 'free' && agentConfig ? <span className="modewrap" ref={modeBox}><button type="button" className={`modechip ${modeMenu ? 'on' : ''}`} aria-haspopup="menu" aria-expanded={modeMenu} title={readOnly ? 'Conversa em modo Plano: só lê o projeto, não altera arquivos' : 'Altera arquivos do projeto quando você pedir, conforme o modo'} onClick={() => setModeMenu(!modeMenu)}>{currentMode?.label ?? 'Modo'}</button>
+            {modeMenu && <div className="modemenu" role="menu" ref={modeMenuBox}><div className="mm-title">Modo</div>{modeList.map((item, index) => <button type="button" role="menuitem" key={item.id} disabled={item.needsApprovalUi} title={item.needsApprovalUi ? 'Precisa da tela de aprovação (em breve)' : undefined} className="modeopt" onClick={() => { setModeMenu(false); void agentState.update({ mode: item.id }) }}><span className="mo-t"><b>{item.label}</b>{item.recommended && <em>Recomendado</em>}<small>{item.description}</small></span><span className="mo-r">{agentConfig.mode === item.id ? <CheckIcon /> : index + 1}</span></button>)}</div>}</span>
+          : <span className="mode tip" data-tip={text.badgeTip}>{text.badge}</span>}
+          <div className="pick"><UsageRings profileId={chat?.profileId ?? profileId} />{chat ? (agent && <span className="agentchip"><AgentIcon profile={agent} size="sm" />{agent.label}</span>) : <Select label="Agente" up options={profiles.map((item) => ({ value: item.id, label: item.label, icon: <AgentIcon profile={item} tip={false} />, sub: item.provider === 'codex' ? 'Codex' : 'Claude' }))} value={profileId} onChange={setProfileId} />}{agentConfig && <><ModelMenu profiles={profiles} purpose="execution" state={agentState} noAgent /></>}</div>
         </div>
       </div>
     </div>
+    </QuestionAnswerContext.Provider></FileOpenContext.Provider>
   </section>
 }

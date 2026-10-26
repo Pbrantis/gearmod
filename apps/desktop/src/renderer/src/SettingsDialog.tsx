@@ -3,9 +3,11 @@ import { agentColorPalette, defaultAgentColor, type AgentProbe, type AgentProfil
 import { AgentIcon, ProviderLogo } from './AgentIcon'
 import { NoticeDialog, plainError } from './NoticeDialog'
 import { SkillsPanel } from './SkillsPanel'
+import { messageSpacings, readMessageSpacing, saveMessageSpacing, type MessageSpacing } from './chatPrefs'
 import { dismissVoiceInstall, notifyVoiceChanged } from './voiceStore'
+import { Checkbox } from './Checkbox'
 
-const themes: ReadonlyArray<{ value: AppTheme; label: string; swatches: [string, string, string] }> = [
+export const themes: ReadonlyArray<{ value: AppTheme; label: string; swatches: [string, string, string] }> = [
   { value: 'green', label: 'Verde escuro', swatches: ['#8db99a', '#2f5a40', '#1b2b21'] },
   { value: 'purple', label: 'Roxo escuro', swatches: ['#a99bd9', '#4a3f6e', '#211d30'] },
   { value: 'blue', label: 'Azul escuro', swatches: ['#8fb3d9', '#345273', '#1a2430'] },
@@ -62,7 +64,7 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
       {(profile || installed) && !pending && <>
         <label className="f">Nome<input className="in" value={label} placeholder={provider === 'claude' ? 'Ex.: Claude Pessoal' : 'Ex.: Codex Trabalho'} onChange={(e) => setLabel(e.target.value)} /></label>
         <label className="f">Uso<input className="in" value={scope} onChange={(e) => setScope(e.target.value)} /></label>
-        {!profile && <label className="ck-line"><input type="checkbox" checked={existing} onChange={(e) => setExisting(e.target.checked)} /><span className="t">Usar sessão atual<small>Desmarque para conectar outra conta em uma sessão separada.</small></span></label>}
+        {!profile && <label className="ck-line"><Checkbox checked={existing} onChange={setExisting} /><span className="t">Usar sessão atual<small>Desmarque para conectar outra conta em uma sessão separada.</small></span></label>}
         <div className="f"><span>Personalidade</span><div className="swatches">{agentColorPalette.map((value) => <button type="button" key={value} className={`sw ${color.toLowerCase() === value.toLowerCase() ? 'sel' : ''}`} style={{ '--c': value } as React.CSSProperties} aria-label={`Cor ${value}`} aria-pressed={color.toLowerCase() === value.toLowerCase()} onClick={() => setColor(value)} />)}</div><div className="aeprev"><AgentIcon profile={preview} size="lg" tip={false} /><span>{preview.label}</span></div></div>
       </>}
       {pending && <div className="convbox"><p>{pending.label}: conclua o login para disponibilizar o agente.</p><div className="actions" style={{ margin: 0 }}><button type="button" disabled={busy} onClick={() => void run(async () => { await window.agentboard.invoke('profiles:login', { profileId: pending.id }); setMessage('Conclua o login na janela aberta. Depois clique em Verificar conta.') })}>Entrar</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(pending))}>Verificar conta</button></div></div>}
@@ -96,26 +98,30 @@ function GroqKeyField(): React.JSX.Element {
 const item = (provider: 'codex' | 'claude'): string => (provider === 'codex' ? 'Codex' : 'Claude')
 
 export function SettingsDialog({ profiles, settings, close, changed, settingsChanged }: { profiles: AgentProfile[]; settings: AppSettings; close(): void; changed(): Promise<void>; settingsChanged(settings: AppSettings): void }): React.JSX.Element {
-  const [tab, setTab] = useState<'agents' | 'skills' | 'look'>('agents'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
+  const [tab, setTab] = useState<'agents' | 'skills' | 'general' | 'look'>('agents'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
   useEffect(() => setItems(profiles), [profiles])
   useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !editing) close() }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [close, editing])
   useEffect(() => { void window.agentboard.invoke('profiles:probe-all', undefined).then((all) => setStatuses(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }, [profiles])
   const save = async (patch: Partial<AppSettings>): Promise<void> => { try { setError(''); settingsChanged(await window.agentboard.invoke('settings:update', patch)) } catch (reason) { setError(String(reason)) } }
   const refresh = async (): Promise<void> => { await changed() }
   return <div className="overlay"><div className="modal" style={{ width: 'min(680px,100%)' }}>
-    <header><div><div className="eyebrow">Configurações</div><h2>Agentes e skills</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
-    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['agents', 'Agentes'], ['skills', 'Skills'], ['look', 'Aparência']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div>
+    <header><div><div className="eyebrow">Configurações</div><h2>AgentBoard</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
+    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['agents', 'Agentes'], ['skills', 'Skills'], ['general', 'Geral'], ['look', 'Aparência']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div>
     {tab === 'agents' && <><p style={{ marginBottom: 12 }}>Cadastre aqui. Dentro de cada projeto, escolha quais podem trabalhar nele.</p>
-      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">Nenhum agente cadastrado.</div>}{items.map((profile) => <div className="ck-line" key={profile.id}><AgentIcon profile={profile} tip={false} /><span className="t">{profile.label}<small>{item(profile.provider)} · {profile.scope} · {statuses[profile.id] ? (statuses[profile.id]!.authenticated ? 'conectado' : statuses[profile.id]!.installed ? 'precisa de login' : 'não instalado') : 'verificando…'}</small>{statuses[profile.id]?.account && <small className="acct" title="Conta em que este agente está logado">{statuses[profile.id]!.account}</small>}</span><button className="mini secondary" onClick={() => setEditing(profile)}>Editar</button></div>)}</div>
+      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">Nenhum agente cadastrado.</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><AgentIcon profile={profile} tip={false} /><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" title="Conta em que este agente está logado">{probe.account}</small>}</span><span className="agtype" title="Tipo de uso da conta">{profile.scope}</span><span className={`agstatus ${state}`} title={!probe ? 'Verificando a conexão' : probe.authenticated ? 'Conectado' : probe.installed ? 'Instalado, mas sem login' : 'Programa não instalado'}><i aria-hidden="true" />{!probe ? 'Verificando…' : probe.authenticated ? 'Conectado' : 'Desconectado'}</span><button className="mini secondary" onClick={() => setEditing(profile)}>Editar</button></div> })}</div>
       <button className="bigadd" onClick={() => setEditing('new')}>＋ Adicionar agente</button></>}
     {tab === 'skills' && <SkillsPanel scope="global" profiles={items} />}
     {tab === 'look' && <><p style={{ fontSize: 12, marginBottom: 12 }}>Escolha a cor de destaque do sistema. Só muda a tonalidade; o tema continua escuro.</p>
-      <div className="themes">{themes.map((theme) => <button type="button" key={theme.value} className={`themeopt ${settings.tema === theme.value ? 'on' : ''}`} style={{ '--c': theme.swatches[0] } as React.CSSProperties} aria-pressed={settings.tema === theme.value} onClick={() => void save({ tema: theme.value })}><span className="sw3">{theme.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>{theme.label}</button>)}</div>
-      <div className="stack" style={{ marginTop: 16 }}>
+      <div className="themes">{themes.map((theme) => <button type="button" key={theme.value} className={`themeopt ${settings.tema === theme.value ? 'on' : ''}`} style={{ '--c': theme.swatches[0] } as React.CSSProperties} aria-pressed={settings.tema === theme.value} onClick={() => void save({ tema: theme.value })}><span className="sw3">{theme.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>{theme.label}</button>)}</div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}
+    {tab === 'general' && <><div className="stack">
         <label className="f">Idioma dos agentes<select className="in" value={settings.idioma} onChange={(e) => void save({ idioma: e.target.value as AppLanguage })}>{languages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}</select></label>
         <p className="hint">Tudo o que o agente escreve segue este idioma. A interface continua em português por enquanto.</p>
+        <label className="f">Espaço entre as mensagens do chat<select className="in" defaultValue={readMessageSpacing()} onChange={(e) => saveMessageSpacing(e.target.value as MessageSpacing)}>{messageSpacings.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        <p className="hint">Quanto de respiro fica entre a sua mensagem e a do agente. Vale na hora, em todos os chats.</p>
         <label className="autosave" style={{ marginRight: 0 }}><input type="checkbox" role="switch" checked={settings.notificacoes} onChange={(e) => void save({ notificacoes: e.target.checked })} /><span className="sw" aria-hidden="true" />Notificações do sistema</label>
         <p className="hint">Avisa quando um card termina, o plano fica pronto ou algo precisa de você, com o AgentBoard em segundo plano. Tocar na notificação abre o chat do card.</p>
+        <label className="autosave" style={{ marginRight: 0 }}><input type="checkbox" role="switch" checked={settings.retomarSozinho} onChange={(e) => void save({ retomarSozinho: e.target.checked })} /><span className="sw" aria-hidden="true" />Retomar sozinho quando o limite de uso voltar</label>
+        <p className="hint">Se o limite da sessão (ou da semana) acabar no meio de uma execução, o AgentBoard agenda a retomada para quando ele voltar (um minuto depois), confere se voltou mesmo e continua de onde parou. O chat avisa o horário.</p>
         <label className="f">Ditado por voz<select className="in" value={settings.voz} onChange={(e) => void save({ voz: e.target.value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })}>{voices.map((voice) => <option key={voice.value} value={voice.value}>{voice.label}</option>)}</select></label>
         {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do AgentBoard.</p>}
       </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}

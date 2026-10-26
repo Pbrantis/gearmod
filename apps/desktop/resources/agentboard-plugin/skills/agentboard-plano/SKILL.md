@@ -15,7 +15,7 @@ Escreva no idioma informado em `idioma`. Use `templates/<idioma>.md`; se não ho
 
 1. **Resumo.** O requisito principal e a abordagem técnica em 2 ou 3 frases.
 2. **Contexto técnico.** Só o que importa para este card, tirado do repositório: linguagem e versão, dependências principais, armazenamento, testes, plataforma, restrições. O que não souber, marque `[PRECISA ESCLARECER]` e resolva no chat.
-3. **Verificação de princípios.** Leia os princípios do projeto (`AGENTS.md`, `CLAUDE.md`, decisões em `docs/`). Liste os que se aplicam e diga se o plano respeita cada um (✅) ou não (⚠️). Um ⚠️ exige a seção Complexidade.
+3. **Verificação de princípios.** Leia os princípios do projeto: primeiro a Constituição (texto completo com `agentboard_ler_constituicao`, se o contexto trouxer só o índice), depois `AGENTS.md`, `CLAUDE.md` e decisões em `docs/`. Liste os que se aplicam e diga se o plano respeita cada um (✅) ou não (⚠️). Um ⚠️ exige a seção Complexidade.
 4. **Decisões.** Cada uma no formato **Decisão** / **Motivo** / **Alternativas descartadas**.
 5. **Modelo de dados.** Só se o card muda dados: tabelas, campos, migração e o que acontece com dados existentes.
 6. **Contratos.** Só se o card muda uma interface (IPC, API, eventos, formato de arquivo): nome, entrada, saída e validação.
@@ -36,4 +36,11 @@ Envie com `tipo` = `plano` (ferramenta `agentboard_escrever_documento` ou marcad
 
 ## Plano de testes
 
-Inclua no Plano uma seção `## Plano de testes` com o que testar, como (comando ou passo) e o resultado esperado, por história. O testador e o desenvolvedor usam essa seção; o que faltar nela vira dúvida ou proposta de mudança.
+Inclua no Plano uma seção `## Plano de testes`. É o roteiro do testador e o lugar de tudo que é verificação (nada disso vira task):
+
+- **Por história:** o que testar, como (comando ou passos na tela) e o resultado esperado.
+- **Testes automatizados esperados:** quais testes o desenvolvedor escreve junto com as tasks (arquivo e o que cobrem), para o testador conferir se existem e se fazem sentido.
+- **Regressões:** o que já existe e não pode quebrar (ex.: "o botão de primeiro acesso continua funcionando").
+- **Comandos do projeto:** lint, type-check e suíte de testes que o testador roda inteiros.
+
+O testador e o desenvolvedor usam essa seção; o que faltar nela vira dúvida ou proposta de mudança.

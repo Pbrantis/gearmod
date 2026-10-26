@@ -4,6 +4,8 @@ import React from 'react'
 const make = (children: React.ReactNode, line = true) => function Icon(): React.JSX.Element { return <svg viewBox="0 0 24 24" aria-hidden="true" className={line ? 'ln' : undefined}>{children}</svg> }
 
 export const BranchIcon = make(<><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="8" r="2" /><path d="M6 7v10" /><path d="M18 10c0 4-6 3-12 7" /></>)
+export const TreeIcon = make(<><path d="M12 21v-6" /><path d="M12 15c-3.5 0-6-2.4-6-5.2 0-1.2.5-2.3 1.3-3.1C7.3 4.6 9.3 3 12 3s4.7 1.6 4.7 3.7c.8.8 1.3 1.9 1.3 3.1 0 2.8-2.5 5.2-6 5.2z" /><path d="M9 21h6" /></>)
+export const TokenIcon = make(<><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" /><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" /></>)
 export const BoardIcon = make(<><rect x="3" y="3" width="5" height="18" rx="1.5" /><rect x="10" y="3" width="5" height="11" rx="1.5" /><rect x="17" y="3" width="4" height="14" rx="1.5" /></>)
 export const ChatIcon = make(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />)
 export const SparkIcon = make(<><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" /><path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" /></>)
@@ -24,4 +26,5 @@ export const SplitIcon = make(<><rect width="18" height="18" x="3" y="3" rx="2" 
 export const ChevronLeftIcon = make(<path d="M15 6l-6 6 6 6" />)
 export const CheckIcon = (): React.JSX.Element => <svg className="chk" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 export const DiffIcon = make(<><rect x="4" y="3" width="16" height="18" rx="2.5" /><path d="M12 7v6M9 10h6M9 17h6" /></>)
-export const RefreshIcon = make(<><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8" /><path d="M4 4v4h4" /><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16" /><path d="M20 20v-4h-4" /></>)
+export const PlusIcon = make(<path d="M12 5v14M5 12h14" />)
+export const RefreshIcon = make(<><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></>)

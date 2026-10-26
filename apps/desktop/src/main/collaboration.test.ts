@@ -55,7 +55,7 @@ describe('dúvidas entre as etapas', () => {
     collab.escalateToUser(card.id, 1, 'O usuário autoriza apagar os dados de teste?')
     collab.afterRun({ cardId: card.id, chatId: planning.id, purpose: 'planning', status: 'completed' })
     expect(started).toHaveLength(1)
-    expect(collab.counts(card.id)).toEqual({ changes: 0, questions: 1 })
+    expect(collab.counts(card.id)).toEqual({ changes: 0, questions: 1, toSend: 0 })
     const [item] = collab.list(card.id).questions
     collab.answerByUser(item!.id, 'Pode, só no banco de teste.')
     expect(started).toHaveLength(2); expect(started[1]).toMatchObject({ chatId: tester.id, planning: false }); expect(started[1]!.prompt).toContain('Resposta (usuário): Pode, só no banco de teste.')

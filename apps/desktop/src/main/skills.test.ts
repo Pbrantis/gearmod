@@ -7,8 +7,9 @@ import { AppDatabase } from './database'
 import { ProfileRepository, ProjectRepository } from './projects'
 import { convertSkillMd, parseSkillMd, SkillService } from './skills'
 
-const roots: string[] = []
-afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
+const roots: string[] = [], databases: AppDatabase[] = []
+// No Windows o SQLite aberto trava o arquivo: fecha os bancos antes de apagar a pasta temporária.
+afterEach(async () => { for (const database of databases.splice(0)) { try { database.close() } catch { /* já fechado */ } } await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 const skillMd = (name: string, description: string, body = 'Siga o CLAUDE.md do projeto e a pasta .claude/skills.') => `---\nname: ${name}\ndescription: ${description}\nallowed-tools: Bash\n---\n\n${body}\n`
 
@@ -16,7 +17,7 @@ async function setup(reviewer?: ConstructorParameters<typeof SkillService>[2]) {
   const root = await mkdtemp(join(tmpdir(), 'agentboard-skills-')); roots.push(root)
   const home = join(root, 'home'), repo = join(root, 'repo')
   await mkdir(home, { recursive: true }); await mkdir(repo, { recursive: true })
-  const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+  const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
   const profiles = new ProfileRepository(database, home)
   const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x', useExistingSession: true })
   const projects = new ProjectRepository(database, git)

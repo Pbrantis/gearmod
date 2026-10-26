@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { ProjectAvatar } from './ProjectIcon'
 import { dismissVoiceInstall, useVoiceInstall } from './voiceStore'
 import type { AgentProfile, AgentUsage, Project } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
-import { ChevronLeftIcon } from './icons'
+import { ChevronLeftIcon, PlusIcon } from './icons'
 
 const level = (percent: number): string => (percent >= 90 ? 'hi' : percent >= 70 ? 'mid' : 'ok')
 function left(iso: string | null): string {
@@ -54,30 +55,72 @@ function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Eleme
   </div>
 }
 
-function UsageModal({ profiles, usage, current, close }: { profiles: AgentProfile[]; usage: AgentUsage[]; current: string; close(): void }): React.JSX.Element {
+function UsageModal({ profiles: all, usage, current, close, only }: { profiles: AgentProfile[]; usage: AgentUsage[]; current: string; close(): void; only?: boolean }): React.JSX.Element {
+  const profiles = only ? all.filter((profile) => profile.id === current) : all
   useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') close() }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [close])
-  return <div className="overlay top"><div className="modal" style={{ width: 'min(760px,100%)' }}><header><div><div className="eyebrow">Uso do plano</div><h2>Sessões e semana</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
+  return <div className="overlay top"><div className="modal usage" style={{ width: 'min(420px,100%)' }}><header><div><div className="eyebrow">Uso do plano</div><h2>Sessões e semana</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
     <div className="ugrid">{profiles.map((profile) => { const item = usage.find((entry) => entry.profileId === profile.id); return <section className={`ucard ${profile.id === current ? 'here' : ''}`} key={profile.id}>
       <div className="uhead"><AgentIcon profile={profile} size="lg" tip={false} /><span><b>{profile.label}</b><small>{profile.provider === 'codex' ? 'Codex' : 'Claude'}</small></span></div>
-      {item?.windows.length ? item.windows.map((window) => <div className="ublk" key={window.id}><div className="uh"><span>{window.label}</span><b>{window.usedPercent}%</b></div><Bar percent={window.usedPercent} />{window.resetsAt && <small>Reseta em<span>{left(window.resetsAt)} · {at(window.resetsAt)}</span></small>}</div>) : <div className="ublk"><small>{profile.provider === 'claude' ? 'O Claude informa o uso a cada execução; rode algo para ver aqui.' : 'Sem sessões do Codex com limites ainda.'}</small></div>}
-      {item && <small className="foot">{item.source}</small>}
+      {item?.windows.length ? item.windows.map((window) => <div className="ublk" key={window.id}><div className="uh"><span>{window.label}</span>{window.resetsAt && <small>Reseta em {left(window.resetsAt)} · {at(window.resetsAt)}</small>}<b>{window.usedPercent}%</b></div><Bar percent={window.usedPercent} /></div>) : <div className="ublk"><small>{profile.provider === 'claude' ? 'O Claude informa o uso a cada execução; rode algo para ver aqui.' : 'Sem sessões do Codex com limites ainda.'}</small></div>}
+      
     </section> })}</div>
     <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div></div></div>
 }
 
-export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onNewChat, onToggle }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onNewChat(projectId: string): void; onToggle(): void }): React.JSX.Element {
+/** O mesmo painel de uso das configurações, aberto de fora do rodapé (anéis do composer): carrega agentes e uso sozinho. */
+export function UsageDialog({ current, close }: { current?: string; close(): void }): React.JSX.Element | null {
+  const [profiles, setProfiles] = useState<AgentProfile[]>([]), [usage, setUsage] = useState<AgentUsage[]>([])
+  useEffect(() => {
+    let alive = true
+    void window.agentboard.invoke('profiles:list', undefined).then((list) => { if (alive) setProfiles(list) }).catch(() => undefined)
+    void window.agentboard.invoke('usage:list', undefined).then((list) => { if (alive) setUsage(list) }).catch(() => undefined)
+    void window.agentboard.invoke('usage:refresh', undefined).then((fresh) => { if (alive) setUsage(fresh) }).catch(() => undefined)
+    return () => { alive = false }
+  }, [])
+  return <UsageModal profiles={profiles} usage={usage} current={current ?? ''} close={close} only={Boolean(current)} />
+}
+
+export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
+  // Arrastar: enquanto arrasta, a lista mostra o projeto já na posição nova; ao soltar, grava a ordem.
+  const [drag, setDrag] = useState<{ id: string; over: number }>(), [menu, setMenu] = useState<{ project: Project; x: number; y: number }>()
+  const ordered = drag ? (() => { const rest = projects.filter((item) => item.id !== drag.id), moving = projects.find((item) => item.id === drag.id)!; rest.splice(drag.over, 0, moving); return rest })() : projects
+  const drop = (): void => { if (drag && ordered.some((item, index) => item.id !== projects[index]?.id)) onReorder(ordered.map((item) => item.id)); setDrag(undefined) }
+  useEffect(() => {
+    if (!menu) return
+    const close = (): void => setMenu(undefined), key = (event: KeyboardEvent): void => { if (event.key === 'Escape') close() }
+    window.addEventListener('click', close); window.addEventListener('blur', close); document.addEventListener('keydown', key)
+    return () => { window.removeEventListener('click', close); window.removeEventListener('blur', close); document.removeEventListener('keydown', key) }
+  }, [menu])
   return <>
     <button type="button" className="side-toggle tip" data-tip={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} aria-label={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} onClick={onToggle}><ChevronLeftIcon /></button>
     <aside>
-      <div className="brand"><b>AB</b> AgentBoard</div>
       <button className="secondary newproj" onClick={onNew}>＋ Novo projeto</button>
-      <nav className="projs">{projects.map((project) => {
+      <nav className="projs" onDragOver={(e) => { if (drag) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); drop() }}>{ordered.map((project, index) => {
         const { running, finished } = project.activity, git = project.sources.filter((source) => source.isGitRepository).length
         const sub = running ? <small className="srun">{running} executando</small> : finished ? <small className="sfin">Terminou · clique para ver</small> : <small>{git ? `${git} ${git === 1 ? 'repositório' : 'repositórios'}` : 'Pasta sem Git'}</small>
-        return <div className="projrow" key={project.id}><button type="button" className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''}`} onClick={() => onSelect(project.id)}><i>{project.name[0]?.toUpperCase()}</i><span>{project.name}{sub}</span>{running > 0 && <span className="spin sm" title="Executando" />}{finished > 0 && <b className="pdot" title="Terminou" />}</button><button type="button" className="projnew tip" data-tip="Novo chat livre neste projeto" aria-label={`Novo chat livre em ${project.name}`} onClick={() => onNewChat(project.id)}>＋</button></div>
+        return <div className={`projrow ${drag?.id === project.id ? 'dragging' : ''}`} key={project.id} draggable
+          onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setMenu(undefined); setDrag({ id: project.id, over: index }) }}
+          onDragOver={(e) => {
+            if (!drag) return
+            e.preventDefault()
+            if (drag.id === project.id) return
+            // Posição na lista sem o projeto arrastado; metade de baixo da linha = entra depois dela.
+            const box = e.currentTarget.getBoundingClientRect(), after = e.clientY > box.top + box.height / 2
+            const over = (index > drag.over ? index - 1 : index) + (after ? 1 : 0)
+            if (over !== drag.over) setDrag({ ...drag, over })
+          }}
+          onDragEnd={() => setDrag(undefined)}
+          onContextMenu={(e) => { e.preventDefault(); setMenu({ project, x: e.clientX, y: e.clientY }) }}>
+          <button type="button" className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''} ${running ? 'busy' : ''}`} onClick={() => onSelect(project.id)}><ProjectAvatar name={project.name} icon={project.icon} /><span>{project.name}{sub}</span>{running > 0 && <span className="spin sm" title="Executando" />}{finished > 0 && <b className="pdot" title="Terminou" />}</button>
+          <button type="button" className="projnew tip" data-tip="Novo chat livre neste projeto" aria-label={`Novo chat livre em ${project.name}`} onClick={() => onNewChat(project.id)}><PlusIcon /></button></div>
       })}</nav>
       <VoiceInstallCard />
-      <div className="side-foot"><UsedAgents profiles={profiles} /><button className="iconbtn" title="Configurar agentes" aria-label="Configurar agentes" onClick={onSettings}>⚙</button></div>
+      <div className="side-foot"><button className="iconbtn" title="Configurações" aria-label="Configurações" onClick={onSettings}>⚙</button><UsedAgents profiles={profiles} /></div>
     </aside>
+    {menu && <div className="projmenu" role="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+      <div className="ctxtitle">{menu.project.name}</div>
+      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onNewChat(menu.project.id) }}>Novo chat livre</button>
+      <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(undefined); onDelete(menu.project) }}>Excluir projeto</button>
+    </div>}
   </>
 }
