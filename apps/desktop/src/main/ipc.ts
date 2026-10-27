@@ -21,9 +21,15 @@ import type { VoiceService } from './voice'
 import type { UsageService } from './usage'
 import type { CollaborationService } from './collaboration'
 import type { GitManager } from './git-manager'
-import { allowedPath, listProjectDirectory, readProjectFile, searchProjectFiles, writeProjectFile } from './file-viewer'
+import { fileVersions } from './file-versions'
+import { grepProject } from './workspace-grep'
+import { nativeGit } from './worktrees'
+import { allowedPath, createProjectItem, listProjectDirectory, readProjectFile, renameProjectItem, saveMarkdownImage, searchProjectFiles, trashablePath, writeProjectFile } from './file-viewer'
 import type { CardHistoryService } from './history'
 import type { PlaywrightCliService } from './playwright-cli'
+import type { FileWatchService } from './file-watch'
+import type { SpecToolsService } from './spec-tools'
+import type { ToolUpdateService } from './tool-updates'
 import { applyWorkflowType } from './mcp-bridge'
 import type { DecisionKind, DimensionScores, Effort, PermissionMode, WorkflowConfig, WorkflowKind } from '@agentboard/contracts'
 
@@ -66,6 +72,9 @@ interface Services {
   gitManager: GitManager
   history: CardHistoryService
   playwright: PlaywrightCliService
+  fileWatch: FileWatchService
+  specTools: SpecToolsService
+  toolUpdates: ToolUpdateService
   openPath(path: string): Promise<void>
   terminals: TerminalService
   openWindow(target: PopoutTarget, placement: WindowPlacement, point?: { x: number; y: number }): void
@@ -74,6 +83,7 @@ interface Services {
   attachFile?(input: { projectId: string; cardId: string | null; path: string }): void
   commentFile?(input: { projectId: string; cardId: string | null; text: string }): void
   openFileExternal?(path: string, target: 'explorer' | 'default' | 'vscode'): Promise<void>
+  trashItem?(path: string): Promise<void>
   openExternal(url: string): Promise<void>
   chooseSkillSource(): Promise<string | null>
   appVersion: string
@@ -109,8 +119,15 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       }))
     },
     'workspace:list': (input: { projectId: string; cardId: string | null; path: string }) => listProjectDirectory(workspaceRoots(input), input.path),
-    'workspace:search': (input: { projectId: string; cardId: string | null; query: string }) => searchProjectFiles(workspaceRoots(input), input.query),
+    'workspace:watch': async (input: { projectId: string; cardId: string | null; watchId: string; paths: string[] }) => { const roots = workspaceRoots(input), allowed = await Promise.all(input.paths.map((path) => allowedPath(roots, path).catch(() => null))); services.fileWatch.watch(input.watchId, allowed.filter((path): path is string => path !== null)); return {} },
+    'workspace:create': (input: { projectId: string; cardId: string | null; parent: string; name: string; kind: 'file' | 'folder' }) => createProjectItem(workspaceRoots(input), input.parent, input.name, input.kind),
+    'workspace:rename': (input: { projectId: string; cardId: string | null; path: string; name: string }) => renameProjectItem(workspaceRoots(input), input.path, input.name),
+    'workspace:trash': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await trashablePath(workspaceRoots(input), input.path); if (!services.trashItem) throw new Error('Lixeira indisponível'); await services.trashItem(path); return {} },
+    'workspace:grep': (input: { projectId: string; cardId: string | null; query: string; caseSensitive: boolean; wholeWord: boolean; regex: boolean; include?: string | undefined }) => grepProject(workspaceRoots(input), input),
+    'workspace:save-image': (input: { projectId: string; cardId: string | null; markdownPath: string; data: string; mime: string }) => saveMarkdownImage(workspaceRoots(input), input.markdownPath, input.data, input.mime),
+    'workspace:search': (input: { projectId: string; cardId: string | null; query: string; fuzzy?: boolean | undefined }) => searchProjectFiles(workspaceRoots(input), input.query, input.fuzzy),
     'workspace:read': (input: { projectId: string; cardId: string | null; path: string }) => readProjectFile(workspaceRoots(input), input.path, true),
+    'workspace:versions': (input: { projectId: string; cardId: string | null; path: string }) => fileVersions(workspaceRoots(input), input.path, { git: nativeGit, baseFor: (top) => input.cardId ? services.worktrees.baseFor(input.cardId, top) : Promise.resolve(null) }),
     'workspace:write': (input: { projectId: string; cardId: string | null; path: string; content: string; expected: string }) => writeProjectFile(workspaceRoots(input), input.path, input.content, input.expected),
     'windows:return-file': (input: { projectId: string; cardId: string | null; path: string }) => { workspaceRoots(input); services.returnFile?.(input); return {} },
     'app:info': () => ({ appVersion: services.appVersion, schemaVersion: services.database.schemaVersion(), dataDir: services.dataDir }),
@@ -135,6 +152,9 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'profiles:probe': (input: { profileId: string }) => services.agentProbes.probe(input.profileId),
     'profiles:probe-all': () => services.agentProbes.probeAll(),
     'profiles:detect-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.detectProvider(input.provider),
+    'profiles:update-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.updateProvider(input.provider),
+    'tools:status': (input: { projectId: string }) => services.specTools.status(input.projectId),
+    'tools:latest': (input: { force: boolean }) => services.toolUpdates.latest(input.force),
     'profiles:install-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.installProvider(input.provider),
     'profiles:install': (input: { profileId: string }) => services.agentProbes.install(input.profileId),
     'profiles:login': (input: { profileId: string }) => services.agentProbes.login(input.profileId),
@@ -300,10 +320,13 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'git:branch-action': (input: { sourceId: string; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }) => services.gitManager.branchAction(input.sourceId, input)
     , 'git:commit-action': (input: { sourceId: string; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }) => services.gitManager.commitAction(input.sourceId, input)
     , 'git:stash-action': (input: { sourceId: string; action: 'apply' | 'pop' | 'drop'; ref: string }) => services.gitManager.stashAction(input.sourceId, input)
-    , 'git:conflicts': (input: { sourceId: string }) => services.gitManager.conflicts(input.sourceId)
-    , 'git:conflict-file': (input: { sourceId: string; path: string }) => services.gitManager.conflictFile(input.sourceId, input.path)
-    , 'git:conflict-resolve': (input: { sourceId: string; path: string; side: 'ours' | 'theirs' | 'marked' }) => services.gitManager.resolveConflict(input.sourceId, input.path, input.side)
-    , 'git:conflict-finish': (input: { sourceId: string; action: 'continue' | 'abort' }) => services.gitManager.finishConflicts(input.sourceId, input.action)
+    , 'git:conflicts': (input: { sourceId: string; cardId?: string | null | undefined }) => services.gitManager.conflicts(input.sourceId, input.cardId)
+    , 'git:conflicts-all': (input: { projectId: string }) => services.gitManager.conflictsAll(input.projectId)
+    , 'git:file-versions': (input: { sourceId: string; cardId: string | null; path: string; mode: 'unstaged' | 'staged' | 'commit'; hash?: string | undefined }) => services.gitManager.fileVersions(input.sourceId, input.cardId, input.path, input.mode, input.hash)
+    , 'git:conflict-file': (input: { sourceId: string; cardId?: string | null | undefined; path: string }) => services.gitManager.conflictFile(input.sourceId, input.path, input.cardId)
+    , 'git:conflict-save': (input: { sourceId: string; cardId?: string | null | undefined; path: string; content: string }) => services.gitManager.saveConflict(input.sourceId, input.path, input.content, input.cardId)
+    , 'git:conflict-resolve': (input: { sourceId: string; cardId?: string | null | undefined; path: string; side: 'ours' | 'theirs' | 'marked' }) => services.gitManager.resolveConflict(input.sourceId, input.path, input.side, input.cardId)
+    , 'git:conflict-finish': (input: { sourceId: string; cardId?: string | null | undefined; action: 'continue' | 'abort' }) => services.gitManager.finishConflicts(input.sourceId, input.action, input.cardId)
     , 'git:card': (input: { cardId: string }) => services.gitManager.card(input.cardId)
     , 'git:base-options': (input: { sourceId: string }) => services.gitManager.baseOptions(input.sourceId)
     , 'git:set-base': (input: { cardId: string; sourceId: string; baseRef: string }) => services.gitManager.setBase(input.cardId, input.sourceId, input.baseRef)

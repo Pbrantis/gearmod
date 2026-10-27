@@ -60,6 +60,14 @@ export class AgentProbeService {
     return { started: true }
   }
 
+  /** Atualiza a CLI do agente num terminal aberto para o usuário acompanhar: `claude update` (serve para instalação nativa e npm) ou o npm do Codex. */
+  updateProvider(provider: 'codex' | 'claude'): { started: true } {
+    const command = provider === 'claude' ? ['claude', 'update'] : ['npm', 'install', '-g', '@openai/codex@latest']
+    if (process.platform === 'win32') spawn('cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe', '/k', ...command], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    else spawn(command[0]!, command.slice(1), { detached: true, stdio: 'ignore' }).unref()
+    return { started: true }
+  }
+
   install(profileId: string): { started: true } {
     const profile = this.profiles.get(profileId)
     return this.installProvider(profile.provider)

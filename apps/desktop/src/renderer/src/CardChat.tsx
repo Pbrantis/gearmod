@@ -10,7 +10,8 @@ import { worktreeName } from './workspace'
 import { ChatMessageList } from './ChatMessageView'
 import { FileOpenContext } from './markdown'
 import { AgentMessage, QuestionAnswerContext } from './AgentMessage'
-import { FileViewer, ViewGrip, useFileViewer } from './FileViewer'
+import { ViewGrip, useFileViewer } from './FileViewer'
+import { FocusedFile } from './editor/FocusedFile'
 import { UsageRings } from './UsageRings'
 import { QueuedPreview, useQueuedMessage } from './QueuedMessage'
 import { AttachButton, AttachmentChips, useAttachments, useContextText } from './Attachments'
@@ -133,7 +134,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const [quickHidden, setQuickHiddenState] = useState(() => { try { return localStorage.getItem('agentboard.quickView.hidden') === '1' } catch { return false } })
   const setQuickHidden = (value: boolean): void => { setQuickHiddenState(value); try { localStorage.setItem('agentboard.quickView.hidden', value ? '1' : '0') } catch { /* só conveniência */ } }
   useEffect(() => { if (!card.id) return; terminal.setContext({ projectId: project.id, cardId: card.id }); return () => terminal.setContext({ projectId: project.id, cardId: null }) }, [card.id, project.id])
-  const viewer = useFileViewer(chat?.id, width, setWidth)
+  const viewer = useFileViewer(width, setWidth)
   const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
   const [switchTo, setSwitchTo] = useState<AgentProfile>(), [chats, setChats] = useState<Chat[]>([])
   const agentState = useAgentConfig(card.id, mode, usable, chat?.profileId)
@@ -249,7 +250,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const viewing = !expanded && (viewer.requested !== null || diffOpen)
   return <section className={`dock open ${expanded ? 'full' : ''} ${expanded && quickHidden ? 'noactivity' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label="Chat do card" style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
     {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label={viewing ? 'Ajustar a largura do arquivo' : 'Ajustar a largura do chat'} onPointerDown={viewing ? viewer.startResize : startResize} onDoubleClick={viewing ? undefined : resetWidth} />}
-    {viewing && <>{diffOpen && diff ? <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} style={{ width: viewer.width }} /> : <FileViewer viewer={viewer} style={{ width: viewer.width }} />}<ViewGrip viewer={viewer} /></>}
+    {viewing && <>{diffOpen && diff ? <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} style={{ width: viewer.width }} /> : viewer.request && <FocusedFile projectId={project.id} cardId={card.id || null} chatId={chat?.id} request={viewer.request} close={viewer.close} setDirty={viewer.setDirty} style={{ width: viewer.width }} />}<ViewGrip viewer={viewer} /></>}
     <FileOpenContext.Provider value={openFile}><QuestionAnswerContext.Provider value={answerQuestions}>
     <div className="dock-in" style={expanded ? undefined : { width }}>
       <div className="dock-head" draggable={Boolean(card.id) && !pop} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) setExpanded(!expanded) }} onDragStart={(event) => { if ((event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) { event.preventDefault(); return }; event.preventDefault(); void detachChat({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><div className="top"><div><div className="headrow">          <div className="tabs stepTabs" role="tablist" aria-label="Chats do card">{(['planning', 'execution', 'test'] as const).filter((step) => step === mode || chats.some((item) => item.purpose === step)).map((step) => { const working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{stepLabel[step]}{working ? <span className="spin sm" /> : null}</button> })}</div></div>
@@ -297,7 +298,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     {switchTo && <ConfirmDialog eyebrow="Trocar agente" title={`Reiniciar o chat com ${switchTo.label}?`} text="Este chat já começou com outro agente. Trocar apaga as mensagens e as execuções deste chat e ele recomeça do zero com o novo agente. Os documentos do card ficam como estão." ok="Trocar e reiniciar" danger cancel={() => setSwitchTo(undefined)} confirm={() => void resetAndSwitch(switchTo)} />}
     {/* Só com o chat em tela cheia: coluna à esquerda com o progresso (Tasks ou checklist do teste) e as Alterações. Dividindo a tela com o quadro, não aparece. */}
     {expanded && diffOpen && diff && <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} />}
-    {expanded && !diffOpen && !planning && card.id && <div className="dockside"><ProgressCard key={`${card.id}-${mode}`} cardId={card.id} purpose={mode === 'test' ? 'test' : 'execution'} />{card.workspace && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} />}</div>}
+    {expanded && !diffOpen && !planning && card.id && <div className="dockside"><ProgressCard key={`${card.id}-${mode}`} cardId={card.id} purpose={mode === 'test' ? 'test' : 'execution'} />{card.workspace && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} openFile={openFile} />}</div>}
     {expanded && !diffOpen && !quickHidden && <Activity board={board} cardId={card.id} profiles={profiles} openEdit={openEdit} hide={() => setQuickHidden(true)} />}
     {expanded && !diffOpen && quickHidden && <button type="button" className="qv-show tip" data-tip="Mostrar visão rápida" aria-label="Mostrar visão rápida" onClick={() => setQuickHidden(false)}>Visão rápida</button>}
   </section>

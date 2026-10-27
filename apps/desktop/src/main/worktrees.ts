@@ -143,7 +143,7 @@ export class WorktreeService {
     const snapshots = await Promise.all(targets.map(async (member) => {
       // O que o card mudou é contado a partir do ponto em que a branch saiu da base (merge-base), não da ponta atual da base:
       // senão tudo o que a base ganhou depois (ou tem a mais) apareceria como se o card tivesse apagado.
-      const since = await this.git.run(['-C', member.path, 'merge-base', member.baseRef, 'HEAD']).then((result) => result.stdout.trim() || member.baseRef, () => member.baseRef)
+      const since = await this.mergeBase(member)
       const [status, diff] = await Promise.all([
         this.git.run(['-C', member.path, 'status', '--short', '--branch']),
         this.git.run(['-C', member.path, 'diff', '--no-ext-diff', '--binary', since, '--'])
@@ -153,6 +153,19 @@ export class WorktreeService {
       return { heading: `\n### AgentBoard root: ${member.path}\n`, status: status.stdout, diff: diff.stdout }
     }))
     return { worktreeId: worktree.id, status: snapshots.map((item) => `${item.heading}${item.status}`).join(''), diff: snapshots.map((item) => `${item.heading}${item.diff}`).join(''), exists: true }
+  }
+
+  /** Ponto de saída do card no repositório (merge-base com a base; sem ele, a própria base): o "antes" de tudo o que o card mudou. */
+  private mergeBase(member: { path: string; baseRef: string }): Promise<string> {
+    return this.git.run(['-C', member.path, 'merge-base', member.baseRef, 'HEAD']).then((result) => result.stdout.trim() || member.baseRef, () => member.baseRef)
+  }
+
+  /** Referência "antes" de um repositório da worktree do card (pasta `repoPath` da worktree); `null` se a pasta não é de nenhum membro. */
+  async baseFor(cardId: string, repoPath: string): Promise<{ ref: string; label: string } | null> {
+    const worktree = this.get(cardId)
+    if (!worktree) return null
+    const member = this.members(worktree.id).find((item) => item.status === 'active' && same(item.path, repoPath))
+    return member ? { ref: await this.mergeBase(member), label: `${member.baseRef} (ponto de saída do card)` } : null
   }
 
   /** Solta a branch de worktrees antigas do AgentBoard que ficaram quebradas (pasta apagada ou criação interrompida). */

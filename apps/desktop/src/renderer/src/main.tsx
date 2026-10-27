@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { loadLatest } from './toolUpdates'
 import ReactDOM from 'react-dom/client'
 import type { AgentProfile, AppSettings, Project, ProjectBoard } from '@agentboard/contracts'
 import './prototype.css'
@@ -83,6 +84,8 @@ function App(): React.JSX.Element {
     window.addEventListener('agentboard:open-file', open); window.addEventListener('agentboard:open-changes', changes)
     return () => { window.removeEventListener('agentboard:open-file', open); window.removeEventListener('agentboard:open-changes', changes) }
   }, [])
+  // Uma vez ao abrir o app, sem pressa: confere as últimas versões das ferramentas em segundo plano (o cache vale 24 h).
+  useEffect(() => { const timer = window.setTimeout(() => { void loadLatest().catch(() => undefined) }, 30_000); return () => window.clearTimeout(timer) }, [])
   useEffect(() => { void window.agentboard.invoke('settings:get', undefined).then(setSettings).catch((e: unknown) => setError(String(e))) }, [])
   const [themeTick, setThemeTick] = useState(0)
   useEffect(() => { const again = (): void => setThemeTick((value) => value + 1); window.addEventListener(projectThemeEvent, again); return () => window.removeEventListener(projectThemeEvent, again) }, [])

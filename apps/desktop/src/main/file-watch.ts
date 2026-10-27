@@ -1,0 +1,39 @@
+import { watch, existsSync, type FSWatcher } from 'node:fs'
+
+type Emit = (eventType: string, payload: Record<string, unknown>) => void
+interface Watched { watcher: FSWatcher | null; timer: NodeJS.Timeout | null }
+
+/**
+ * Vigia arquivos abertos nas telas para avisar quando o agente (ou outro programa) os altera no disco. Um `fs.watch` por arquivo,
+ * não por pasta; cada tela tem o seu `watchId` e a lista nova substitui a anterior. Quem grava trocando o arquivo (`rename`) é seguido:
+ * o watcher é refeito se o arquivo continua lá, ou avisa `deleted` se sumiu.
+ */
+export class FileWatchService {
+  private readonly groups = new Map<string, Map<string, Watched>>()
+  constructor(private readonly emit: Emit, private readonly delay = 200) {}
+
+  watch(watchId: string, paths: string[]): void {
+    const wanted = new Set(paths), group = this.groups.get(watchId) ?? new Map<string, Watched>()
+    for (const [path, item] of group) if (!wanted.has(path)) { this.stop(item); group.delete(path) }
+    for (const path of wanted) if (!group.has(path)) { const item: Watched = { watcher: null, timer: null }; group.set(path, item); this.start(path, item) }
+    if (group.size) this.groups.set(watchId, group); else this.groups.delete(watchId)
+  }
+
+  dispose(): void { for (const group of this.groups.values()) for (const item of group.values()) this.stop(item); this.groups.clear() }
+
+  private start(path: string, item: Watched): void {
+    try { item.watcher = watch(path, { persistent: false }, (type) => this.changed(path, item, type)); item.watcher.on('error', () => this.changed(path, item, 'rename')) } catch { item.watcher = null }
+  }
+
+  private stop(item: Watched): void { if (item.timer) clearTimeout(item.timer); item.timer = null; item.watcher?.close(); item.watcher = null }
+
+  private changed(path: string, item: Watched, type: string): void {
+    if (item.timer) clearTimeout(item.timer)
+    item.timer = setTimeout(() => {
+      item.timer = null
+      if (type === 'rename') { item.watcher?.close(); item.watcher = null; if (existsSync(path)) this.start(path, item) }
+      const deleted = !existsSync(path)
+      this.emit('agentboard/file-changed', deleted ? { path, deleted: true } : { path })
+    }, this.delay)
+  }
+}

@@ -1,0 +1,34 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { plainError } from '../NoticeDialog'
+import { DiffEditor } from './DiffEditor'
+import { usePreferences } from './preferences'
+
+type Versions = { before: string | null; after: string | null; binary: boolean; truncated: boolean }
+
+/**
+ * Diff de um arquivo do Git (não preparado, preparado ou de um commit) no `DiffEditor`, só leitura. `auto` mostra o não preparado e, se não houver,
+ * o preparado. Binário ou grande demais cai para o diff em texto de `git:diff`/`git:commit-diff`.
+ */
+export function GitDiffEditor({ sourceId, cardId, path, hash, mode = 'auto', review, reloadKey = 0 }: {
+  sourceId: string; cardId: string | null; path: string; hash?: string | undefined; mode?: 'auto' | 'unstaged' | 'staged'; review?: { path: string; send(prompt: string): boolean | Promise<boolean> } | undefined; reloadKey?: number
+}): React.JSX.Element {
+  const [preferences, change] = usePreferences(), [data, setData] = useState<{ versions: Versions; text: string }>(), [error, setError] = useState('')
+  const options = useMemo(() => ({ wrap: preferences.wrap, tabSize: preferences.tabSize, indentWithTab: preferences.indent, whitespace: preferences.whitespace, guides: preferences.guides, scrollPastEnd: preferences.beyond }), [preferences.wrap, preferences.tabSize, preferences.indent, preferences.whitespace, preferences.guides, preferences.beyond])
+  useEffect(() => {
+    let alive = true; setData(undefined); setError('')
+    const fetchVersions = (kind: 'unstaged' | 'staged' | 'commit'): Promise<Versions> => window.agentboard.invoke('git:file-versions', { sourceId, cardId, path, mode: kind, ...(hash ? { hash } : {}) })
+    const fallback = (versions: Versions, staged: boolean): Promise<string> => versions.binary || versions.truncated ? (hash ? window.agentboard.invoke('git:commit-diff', { sourceId, hash, path }) : window.agentboard.invoke('git:diff', { sourceId, cardId, path, staged })) : Promise.resolve('')
+    void (async () => {
+      if (hash) { const versions = await fetchVersions('commit'); return { versions, text: await fallback(versions, false) } }
+      let versions = await fetchVersions(mode === 'staged' ? 'staged' : 'unstaged'), staged = mode === 'staged'
+      if (mode === 'auto' && !versions.binary && !versions.truncated && versions.before === versions.after) { versions = await fetchVersions('staged'); staged = true }
+      return { versions, text: await fallback(versions, staged) }
+    })().then((result) => { if (alive) setData(result) }).catch((reason: unknown) => { if (alive) setError(plainError(reason)) })
+    return () => { alive = false }
+  }, [sourceId, cardId, path, hash, mode, reloadKey])
+  if (error) return <p className="fv-note err">{error}</p>
+  if (!data) return <p className="fv-note"><span className="spin sm" /> Abrindo…</p>
+  const { versions } = data
+  if (!versions.binary && !versions.truncated && versions.before === versions.after) return <p className="fv-note">Sem diferenças para mostrar.</p>
+  return <div className="wf-diffview"><DiffEditor key={`${sourceId}:${path}:${hash ?? mode}:${reloadKey}`} before={versions.before} after={versions.after} path={path} layout={preferences.diffLayout} editable={false} options={options} onToggleLayout={() => change({ diffLayout: preferences.diffLayout === 'split' ? 'unified' : 'split' })} fallbackDiff={data.text} {...(versions.binary ? { unavailable: 'binary' as const } : versions.truncated ? { unavailable: 'truncated' as const } : {})} {...(review ? { review } : {})} /></div>
+}

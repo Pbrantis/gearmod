@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react'
 import type { ConstitutionProposal, ConstitutionState } from '@agentboard/contracts'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Markdown } from './markdown'
+import { CodeEditor } from './editor/CodeEditor'
+
+const proseOptions = { wrap: true, tabSize: 2, indentWithTab: false, whitespace: false, guides: false, scrollPastEnd: false }
 import { plainError } from './NoticeDialog'
 
 const code = (proposal: ConstitutionProposal): string => `C${String(proposal.number).padStart(3, '0')}`
@@ -33,7 +36,7 @@ export function ConstitutionPanel({ projectId, openChat }: { projectId: string; 
 
   return <div className="stack cons">
     {editing !== null && !viewing ? <>
-      <textarea className="in cons-edit" value={editing} spellCheck={false} aria-label="Texto da Constituição" onChange={(e) => setEditing(e.target.value)} />
+      <CodeEditor variant="prose" className="in cons-edit" path="constituicao.md" value={editing} options={proseOptions} ariaLabel="Texto da Constituição" onChange={setEditing} />
       <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button><button type="button" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:save', { projectId, contentMd: editing }))}>Salvar versão</button></div>
     </> : empty ? <div className="cons-empty">
       <b>Este projeto ainda não tem Constituição</b>
@@ -59,7 +62,7 @@ export function ConstitutionPanel({ projectId, openChat }: { projectId: string; 
     </div>}
     {viewing && <div className="overlay full" onMouseDown={(e) => { if (e.target === e.currentTarget && editing === null) closeView() }}><div className="modal wide cons-dialog" role="dialog" aria-label="Constituição">
       <header><div><div className="eyebrow">Constituição · Versão {constitution.version}</div><h2>{heading}</h2></div><div className="hdr-actions">{editing === null && <><button type="button" className="mini secondary" onClick={() => setEditing(constitution.contentMd)}>Editar</button><button type="button" className="mini" onClick={() => { closeView(); openChat() }}>Conversar com o agente</button></>}<button type="button" className="x" onClick={closeView} aria-label="Fechar">×</button></div></header>
-      {editing !== null ? <><textarea className="in cons-edit cons-dialog-edit" value={editing} spellCheck={false} aria-label="Texto da Constituição" onChange={(e) => setEditing(e.target.value)} />
+      {editing !== null ? <><CodeEditor variant="prose" className="in cons-edit cons-dialog-edit" path="constituicao.md" value={editing} options={proseOptions} ariaLabel="Texto da Constituição" onChange={setEditing} />
         <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button><button type="button" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:save', { projectId, contentMd: editing }))}>Salvar versão</button></div></>
         : <div className="cons-view md cons-dialog-view"><Markdown source={constitution.contentMd} /></div>}
       {error && <p className="error">{error}</p>}

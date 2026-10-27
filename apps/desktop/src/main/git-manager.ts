@@ -534,17 +534,45 @@ export class GitManager {
     return { operation, files }
   }
 
-  async conflicts(sourceId: string): Promise<{ operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null; files: string[] }> { return this.conflictState(this.source(sourceId).path) }
+  /** Pasta onde o conflito vive: o repositório do projeto ou, com `cardId`, a worktree do card nesse repositório. */
+  private async conflictDir(sourceId: string, cardId?: string | null): Promise<string> { return (await this.target(this.source(sourceId), cardId ?? null)).dir }
+
+  async conflicts(sourceId: string, cardId?: string | null): Promise<{ operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null; files: string[] }> { return this.conflictState(await this.conflictDir(sourceId, cardId)) }
+
+  /** Repositórios (e worktrees de card) do projeto com merge/rebase/cherry-pick/revert em andamento, para marcar a lista da página Git. */
+  async conflictsAll(projectId: string): Promise<Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert'; files: string[] }>> {
+    const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS path FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order`).all(projectId) as Source[]
+    const found: Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert'; files: string[] }> = []
+    for (const source of sources) {
+      const state = await this.conflictState(source.path)
+      if (state.operation) found.push({ sourceId: source.id, cardId: null, repo: source.name, cardTitle: null, operation: state.operation, files: state.files })
+    }
+    for (const member of this.members(projectId)) {
+      const source = sources.find((item) => same(item.path, member.repoPath))
+      if (!source || member.status !== 'active' || !await isDir(member.path)) continue
+      const state = await this.conflictState(member.path)
+      if (state.operation) found.push({ sourceId: source.id, cardId: member.cardId, repo: source.name, cardTitle: member.title, operation: state.operation, files: state.files })
+    }
+    return found
+  }
 
   /** Conteúdo do arquivo em conflito, com os marcadores do Git. */
-  async conflictFile(sourceId: string, path: string): Promise<string> {
-    const dir = this.source(sourceId).path
+  async conflictFile(sourceId: string, path: string, cardId?: string | null): Promise<string> {
+    const dir = await this.conflictDir(sourceId, cardId)
     if (!(await this.conflictState(dir)).files.includes(path)) throw new Error('Este arquivo não está em conflito.')
     return (await readFile(join(dir, path), 'utf8').catch(() => '')).slice(0, 400_000)
   }
 
-  async resolveConflict(sourceId: string, path: string, side: 'ours' | 'theirs' | 'marked'): Promise<{ left: number }> {
-    const dir = this.source(sourceId).path, state = await this.conflictState(dir)
+  /** Grava o texto editado de um arquivo que ainda está em conflito (sem `git add`) e diz quantos continuam em conflito. */
+  async saveConflict(sourceId: string, path: string, content: string, cardId?: string | null): Promise<{ left: number }> {
+    const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
+    if (!state.files.includes(path)) throw new Error('Este arquivo não está em conflito.')
+    await writeFile(join(dir, path), content, 'utf8')
+    return { left: state.files.length }
+  }
+
+  async resolveConflict(sourceId: string, path: string, side: 'ours' | 'theirs' | 'marked', cardId?: string | null): Promise<{ left: number }> {
+    const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
     if (!state.files.includes(path)) throw new Error('Este arquivo não está em conflito.')
     if (side === 'marked') {
       if (/^(<{7}|>{7}) /m.test(await readFile(join(dir, path), 'utf8').catch(() => ''))) throw new Error('O arquivo ainda tem marcadores de conflito. Edite e salve antes de marcar como resolvido.')
@@ -554,13 +582,32 @@ export class GitManager {
     return { left: (await this.conflictState(dir)).files.length }
   }
 
-  async finishConflicts(sourceId: string, action: 'continue' | 'abort'): Promise<{ output: string }> {
-    const dir = this.source(sourceId).path, state = await this.conflictState(dir)
+  async finishConflicts(sourceId: string, action: 'continue' | 'abort', cardId?: string | null): Promise<{ output: string }> {
+    const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
     if (!state.operation) throw new Error('Não há merge, rebase, cherry-pick ou revert em andamento.')
     if (action === 'abort') { await this.run(dir, [state.operation, '--abort']); return { output: 'Operação cancelada; a pasta voltou ao que era.' } }
     if (state.files.length) throw new Error(`Ainda há ${state.files.length} arquivo${state.files.length === 1 ? '' : 's'} em conflito.`)
     const out = await this.run(dir, ['-c', 'core.editor=true', state.operation === 'merge' ? 'commit' : state.operation, ...(state.operation === 'merge' ? ['--no-edit'] : ['--continue'])])
     return { output: out.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Conflitos resolvidos.' }
+  }
+
+  /**
+   * As duas versões de um arquivo para o `DiffEditor` da página Git: `unstaged` = índice × disco, `staged` = HEAD × índice e `commit` = pai × commit
+   * (seguindo renomeações). `null` num lado = arquivo novo ou apagado; binário ou acima de 1 MB não manda conteúdo.
+   */
+  async fileVersions(sourceId: string, cardId: string | null, path: string, mode: 'unstaged' | 'staged' | 'commit', hash?: string): Promise<{ before: string | null; after: string | null; binary: boolean; truncated: boolean }> {
+    const target = await this.target(this.source(sourceId), cardId)
+    const show = (spec: string): Promise<string | null> => this.tryRun(target.dir, ['show', spec])
+    let before: string | null, after: string | null
+    if (mode === 'unstaged') { before = await show(`:${path}`); after = await readFile(await this.inside(sourceId, cardId, path), 'utf8').catch(() => null) }
+    else if (mode === 'staged') { before = await show(`HEAD:${path}`); after = await show(`:${path}`) }
+    else {
+      if (!hash || !/^[0-9a-f]{7,64}$/.test(hash)) throw new Error('Commit inválido')
+      const renames = (await this.tryRun(target.dir, ['show', '--name-status', '-M', '--format=', hash])) ?? '', moved = renames.split(/\r?\n/).map((line) => line.split('\t')).find((cols) => cols[0]?.startsWith('R') && cols[2] === path)
+      before = await show(`${hash}^:${moved?.[1] ?? path}`); after = await show(`${hash}:${path}`)
+    }
+    const binary = (before ?? '').includes('\0') || (after ?? '').includes('\0'), truncated = !binary && (Buffer.byteLength(before ?? '') > 1_000_000 || Buffer.byteLength(after ?? '') > 1_000_000)
+    return binary || truncated ? { before: null, after: null, binary, truncated } : { before, after, binary: false, truncated: false }
   }
 
   async stashAction(sourceId: string, input: { action: 'apply' | 'pop' | 'drop'; ref: string }): Promise<{ output: string }> {

@@ -191,6 +191,29 @@ export const playwrightStatusSchema = z.object({
   browserReady: z.boolean(), log: z.string(), error: z.string().nullable()
 })
 export type PlaywrightStatus = z.output<typeof playwrightStatusSchema>
+export const toolsStatusSchema = z.object({
+  node: z.string().nullable(), uv: z.string().nullable(), python: z.string().nullable(),
+  specify: z.object({ installed: z.boolean(), version: z.string().nullable() }), openspec: z.object({ installed: z.boolean(), version: z.string().nullable() }),
+  repos: z.array(z.object({ sourceId: uuid, name: z.string(), path: z.string(), specKit: z.boolean(), specKitIntegrations: z.array(z.string()), openSpec: z.boolean() })),
+  log: z.string(), error: z.string().nullable()
+})
+export type ToolsStatus = z.output<typeof toolsStatusSchema>
+export const toolKeys = ['claude', 'codex', 'specify', 'openspec', 'playwright'] as const
+export const toolVersionsSchema = z.object({ checkedAt: z.string().nullable(), versions: z.object({ claude: z.string().nullable(), codex: z.string().nullable(), specify: z.string().nullable(), openspec: z.string().nullable(), playwright: z.string().nullable() }), error: z.string().nullable() })
+export type ToolVersions = z.output<typeof toolVersionsSchema>
+
+/** Primeira versão `x.y.z[-pré]` de um texto como `v1.2.3`, `2.0.14 (Claude Code)` ou `codex-cli 0.50.0`. */
+const parseVersion = (text: string | null): { core: [number, number, number]; pre: string | null } | null => {
+  const found = text ? /(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(text) : null
+  return found ? { core: [Number(found[1]), Number(found[2]), Number(found[3])], pre: found[4] ?? null } : null
+}
+/** A versão instalada é mais antiga que a última publicada? Pré-lançamento mais novo que a estável não é "desatualizado". Texto que não é versão = não avisa. */
+export function isOutdated(installed: string | null, latest: string | null): boolean {
+  const have = parseVersion(installed), want = parseVersion(latest)
+  if (!have || !want) return false
+  for (let index = 0; index < 3; index++) { if (have.core[index]! !== want.core[index]!) return have.core[index]! < want.core[index]! }
+  return have.pre !== null && want.pre === null
+}
 const workflowState = z.object({ config: workflowConfigSchema, detected: z.array(sddDetectionSchema), defaultArtifactsDir: z.string() })
 const projectIdInput = z.object({ projectId: uuid }).strict()
 const cardIdInput = z.object({ cardId: uuid }).strict()
@@ -261,6 +284,9 @@ export const ipcContracts = {
   , 'profiles:probe': { input: z.object({ profileId: uuid }).strict(), output: agentProbeSchema }
   , 'profiles:probe-all': { input: z.undefined(), output: z.array(agentProbeSchema) }
   , 'profiles:detect-provider': { input: z.object({ provider: z.enum(['codex', 'claude']) }).strict(), output: z.object({ installed: z.boolean(), version: z.string().nullable(), error: z.string().nullable() }) }
+  , 'profiles:update-provider': { input: z.object({ provider: z.enum(['codex', 'claude']) }).strict(), output: z.object({ started: z.literal(true) }) }
+  , 'tools:status': { input: projectIdInput, output: toolsStatusSchema }
+  , 'tools:latest': { input: z.object({ force: z.boolean() }).strict(), output: toolVersionsSchema }
   , 'profiles:install-provider': { input: z.object({ provider: z.enum(['codex', 'claude']) }).strict(), output: z.object({ started: z.literal(true) }) }
   , 'profiles:install': { input: z.object({ profileId: uuid }).strict(), output: z.object({ started: z.literal(true) }) }
   , 'profiles:login': { input: z.object({ profileId: uuid }).strict(), output: z.object({ started: z.literal(true) }) }
@@ -322,9 +348,16 @@ export const ipcContracts = {
   , 'workspace:terminal': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({ id: uuid, cwd: z.string(), shell: z.string() }) }
   , 'workspace:image': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.string() }
   , 'workspace:list': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.array(z.object({ path: z.string(), name: z.string(), directory: z.boolean() })) }
-  , 'workspace:search': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), query: z.string().min(1).max(200) }).strict(), output: z.object({ paths: z.array(z.string()), limited: z.boolean() }) }
+  , 'workspace:search': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), query: z.string().min(1).max(200), fuzzy: z.boolean().optional() }).strict(), output: z.object({ paths: z.array(z.string()), limited: z.boolean() }) }
   , 'workspace:read': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({ path: z.string(), relative: z.string(), content: z.string(), truncated: z.boolean(), size: z.number(), binary: z.boolean() }) }
   , 'workspace:write': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096), content: z.string().max(1_000_000), expected: z.string().max(1_000_000) }).strict(), output: z.object({ path: z.string(), relative: z.string(), content: z.string(), truncated: z.boolean(), size: z.number(), binary: z.boolean() }) }
+  , 'workspace:watch': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), watchId: z.string().min(1).max(100), paths: z.array(z.string().min(1).max(4096)).max(200) }).strict(), output: z.object({}).strict() }
+  , 'workspace:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), parent: z.string().min(1).max(4096), name: z.string().min(1).max(1024), kind: z.enum(['file', 'folder']) }).strict(), output: z.object({ path: z.string() }) }
+  , 'workspace:rename': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096), name: z.string().min(1).max(255) }).strict(), output: z.object({ path: z.string() }) }
+  , 'workspace:trash': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({}).strict() }
+  , 'workspace:grep': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), query: z.string().min(1).max(500), caseSensitive: z.boolean(), wholeWord: z.boolean(), regex: z.boolean(), include: z.string().max(500).optional() }).strict(), output: z.object({ results: z.array(z.object({ path: z.string(), root: z.string(), line: z.number(), column: z.number(), preview: z.string(), matchStart: z.number(), matchEnd: z.number() })), limited: z.boolean() }) }
+  , 'workspace:save-image': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), markdownPath: z.string().min(1).max(4096), data: z.string().min(1).max(14_000_000), mime: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']) }).strict(), output: z.object({ path: z.string(), relative: z.string() }) }
+  , 'workspace:versions': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({ path: z.string(), relative: z.string(), root: z.string(), before: z.string().nullable(), after: z.string().nullable(), baseLabel: z.string(), binary: z.boolean(), truncated: z.boolean() }) }
   , 'collab:list': { input: cardIdInput, output: collaborationSchema }
   , 'collab:send-change': { input: z.object({ changeId: uuid }).strict(), output: collaborationSchema }
   , 'collab:decide-change': { input: z.object({ changeId: uuid, decision: z.enum(['accept', 'reject', 'suggest']), note: z.string().trim().max(4000).optional() }).strict(), output: collaborationSchema }
@@ -395,10 +428,13 @@ export const ipcContracts = {
   , 'git:branch-action': { input: z.object({ sourceId: uuid, action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete', 'delete-remote']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:commit-action': { input: z.object({ sourceId: uuid, action: z.enum(['checkout', 'cherry-pick', 'revert', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:stash-action': { input: z.object({ sourceId: uuid, action: z.enum(['apply', 'pop', 'drop']), ref: z.string().regex(/^stash@\{\d+\}$/) }).strict(), output: z.object({ output: z.string() }) }
-  , 'git:conflicts': { input: z.object({ sourceId: uuid }).strict(), output: z.object({ operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']).nullable(), files: z.array(z.string()) }) }
-  , 'git:conflict-file': { input: z.object({ sourceId: uuid, path: z.string().min(1).max(1000) }).strict(), output: z.string() }
-  , 'git:conflict-resolve': { input: z.object({ sourceId: uuid, path: z.string().min(1).max(1000), side: z.enum(['ours', 'theirs', 'marked']) }).strict(), output: z.object({ left: z.number().int() }) }
-  , 'git:conflict-finish': { input: z.object({ sourceId: uuid, action: z.enum(['continue', 'abort']) }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:conflicts': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional() }).strict(), output: z.object({ operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']).nullable(), files: z.array(z.string()) }) }
+  , 'git:conflict-file': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000) }).strict(), output: z.string() }
+  , 'git:conflict-save': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000), content: z.string().max(2_000_000) }).strict(), output: z.object({ left: z.number().int() }) }
+  , 'git:conflicts-all': { input: z.object({ projectId: uuid }).strict(), output: z.array(z.object({ sourceId: uuid, cardId: uuid.nullable(), repo: z.string(), cardTitle: z.string().nullable(), operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']), files: z.array(z.string()) })) }
+  , 'git:file-versions': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096), mode: z.enum(['unstaged', 'staged', 'commit']), hash: z.string().regex(/^[0-9a-f]{7,64}$/).optional() }).strict(), output: z.object({ before: z.string().nullable(), after: z.string().nullable(), binary: z.boolean(), truncated: z.boolean() }) }
+  , 'git:conflict-resolve': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000), side: z.enum(['ours', 'theirs', 'marked']) }).strict(), output: z.object({ left: z.number().int() }) }
+  , 'git:conflict-finish': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['continue', 'abort']) }).strict(), output: z.object({ output: z.string() }) }
   , 'app:open-link': { input: z.object({ url: z.string().min(1).max(2048) }).strict(), output: z.object({ opened: z.literal(true) }) }
   , 'git:sync': { input: z.object({ ...gitTarget, action: z.enum(['fetch', 'pull', 'push', 'stash', 'pop']), pull: z.enum(['ff', 'ff-only', 'rebase']).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:card': { input: cardIdInput, output: gitCardSchema }

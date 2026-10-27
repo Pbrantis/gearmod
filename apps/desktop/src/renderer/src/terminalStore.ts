@@ -34,7 +34,13 @@ export const terminal = {
       set({ tabs: [...state.tabs.filter((item) => item.id !== id), tab], active: id, open: true, error: '' })
     } catch (reason) { set({ error: String(reason), open: true }) }
   },
-  async openPath(context: { projectId: string; cardId: string | null; path: string }): Promise<void> { try { const { id } = await window.agentboard.invoke('workspace:terminal', context); await terminal.attach(id) } catch (reason) { set({ error: String(reason), open: true }) } },
+  async openPath(context: { projectId: string; cardId: string | null; path: string }): Promise<string | null> { try { const { id } = await window.agentboard.invoke('workspace:terminal', context); await terminal.attach(id); return id } catch (reason) { set({ error: String(reason).replace(/^Error: /, ''), open: true }); return null } },
+  /** Abre uma aba nova do terminal na pasta e digita só o primeiro comando; quem responde às perguntas da CLI é o usuário, ali. */
+  async runIn(context: { projectId: string; cardId: string | null; path: string }, command: string): Promise<boolean> {
+    const id = await terminal.openPath(context)
+    if (!id) return false
+    set({ open: true, active: id }); await terminal.send(id, command); return true
+  },
   async newTab(): Promise<string | null> {
     // Sem projeto aberto (contexto vazio), o terminal abre na pasta do usuário, como um terminal comum.
     const context = state.context ?? { projectId: null, cardId: null }

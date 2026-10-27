@@ -1,4 +1,7 @@
 import React, { useEffect, useState } from 'react'
+import type { Extension } from '@codemirror/state'
+import { placeholder } from '@codemirror/view'
+import { CodeEditor } from './editor/CodeEditor'
 import { cardDocumentKinds, permissionModes, defaultPermissionMode, type AgentProfile, type CardChecklist, type AgentPurpose, type Card, type Chat, type CardDocumentKind, type CardDocuments, type DocumentVersion, type GitCard, type ProjectSource } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -16,6 +19,10 @@ import { Select } from './Select'
 export interface Draft { id?: string; columnId: string; sourceId?: string | null; title: string; type: Card['type']; priority: Card['priority'] }
 export const blankDraft = (columnId: string): Draft => ({ columnId, title: '', type: 'task', priority: 'medium' })
 
+/** Opções do editor de texto corrido dos documentos: quebra de linha, Tab segue o foco (como o campo de texto de antes). */
+const proseOptions = { wrap: true, tabSize: 2, indentWithTab: false, whitespace: false, guides: false, scrollPastEnd: false }
+const placeholderCache = new Map<string, Extension[]>()
+const placeholderFor = (kind: string): Extension[] => { let found = placeholderCache.get(kind); if (!found) { found = [placeholder((placeholders as Record<string, string>)[kind] ?? '')]; placeholderCache.set(kind, found) } return found }
 const labels: Record<CardDocumentKind, string> = { resumo: 'Resumo', especificacao: 'Especificação', plano: 'Plano', tasks: 'Tasks', duvidas: 'Dúvidas', mudancas: 'Mudanças' }
 const systemKinds: readonly CardDocumentKind[] = ['duvidas', 'mudancas']
 const placeholders: Record<CardDocumentKind, string> = {
@@ -172,7 +179,7 @@ export function CardEditor({ projectId, sources, profiles, draft: start, close, 
               {([['write', 'Escrever', <PencilIcon key="w" />], ['split', 'Dividido', <SplitIcon key="s" />], ['prev', 'Prévia', <EyeIcon key="p" />]] as const).map(([value, label, icon]) => <button type="button" key={value} className={`ibtn tip ${mode === value ? 'on' : ''}`} data-tip={label} aria-label={label} aria-pressed={mode === value} onClick={() => setMode(value)}>{icon}</button>)}</div></div>
           {/* Card existente abre em Prévia (melhor de ler); dois cliques no texto passam para Escrever. */}
           {versions ? <DocHistory title={labels[kind]} versions={versions} restore={(v) => { setTexts({ ...texts, [kind]: v.contentMd }); setVersions(undefined) }} /> : mode === 'prev' ? <div className="md descarea" title={systemKinds.includes(kind) ? undefined : 'Dois cliques para editar'} onDoubleClick={() => { if (!systemKinds.includes(kind)) setMode('write') }}>{text.trim() ? <Markdown source={text} onToggle={kind === 'tasks' || kind === 'plano' ? toggle : undefined} /> : <p className="hint">{loaded ? `${labels[kind]} ainda está vazio.${systemKinds.includes(kind) ? '' : ' Clique em Escrever (ou dois cliques aqui) para editar.'}` : 'Carregando…'}</p>}</div>
-            : <div className={`descwrap ${mode === 'split' ? 'split' : ''}`}><textarea className="in descarea" aria-label={`Documento ${labels[kind]}`} style={{ fontFamily: 'var(--mono)', fontSize: 13 }} value={text} disabled={!loaded || systemKinds.includes(kind)} placeholder={placeholders[kind]} onChange={(e) => setTexts({ ...texts, [kind]: e.target.value })} />{mode === 'split' && <div className="md descarea"><Markdown source={text} onToggle={kind === 'tasks' || kind === 'plano' ? toggle : undefined} /></div>}</div>}
+            : <div className={`descwrap ${mode === 'split' ? 'split' : ''}`}><CodeEditor key={kind} variant="prose" className="in descarea" path="documento.md" ariaLabel={`Documento ${labels[kind]}`} value={text} readOnly={!loaded || systemKinds.includes(kind)} extensions={placeholderFor(kind)} options={proseOptions} onChange={(value) => setTexts((all) => ({ ...all, [kind]: value }))} />{mode === 'split' && <div className="md descarea"><Markdown source={text} onToggle={kind === 'tasks' || kind === 'plano' ? toggle : undefined} /></div>}</div>}
 </>}
         </div>
         {!small && <div className="stack pane-docs">

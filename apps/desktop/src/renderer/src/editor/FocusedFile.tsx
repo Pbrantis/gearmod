@@ -1,0 +1,61 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import type { IpcOutput } from '@agentboard/contracts'
+import { ConfirmDialog } from '../ConfirmDialog'
+import { CloseIcon } from '../icons'
+import { findChange, parseChanges, tabLabels, type FileChange } from '../changes'
+import { nameOf, slashed } from './documents'
+import { FilePane } from './FilePane'
+import { splitLineSuffix } from './position'
+import { usePreferences } from './preferences'
+import { useFileDocuments } from './useFileDocuments'
+import { QuickOpen } from './QuickOpen'
+import { pushRecent, readRecents } from './quickOpen'
+
+/** Caminho como o agente costuma escrever: aceita `file:///`, `?consulta`, `:linha` e `#L42`. */
+const requestedTarget = (path: string): { path: string; line?: number; column?: number } => splitLineSuffix(path.trim().replace(/^file:\/+/i, '').replace(/\?[^#]*/, ''))
+
+/**
+ * Painel de arquivo ao lado do chat: o mesmo `FilePane` do modo Arquivos, mas de um arquivo por vez, sem árvore nem abas.
+ * Abre no diff quando o arquivo foi alterado pelo card e só deixa digitar depois de "Editar".
+ */
+export function FocusedFile({ projectId, cardId, chatId, request, close, setDirty, style }: {
+  projectId: string; cardId: string | null; chatId?: string | undefined; request: { path: string; at: number }; close(): void; setDirty(value: boolean): void; style?: React.CSSProperties
+}): React.JSX.Element {
+  const context = useMemo(() => ({ projectId, cardId }), [projectId, cardId])
+  const [picked, setPicked] = useState<{ path: string; at: number }>(), [quick, setQuick] = useState(false)
+  const effective = picked && picked.at > request.at ? picked : request
+  const [preferences, changePreferences] = usePreferences(), [roots, setRoots] = useState<IpcOutput<'workspace:roots'>>([]), [jump, setJump] = useState<{ line: number; column: number }>(), [leaving, setLeaving] = useState(false)
+  const changes = useRef<FileChange[]>([])
+  const { setDocuments, setActive, current, loading, error, setError, update, save, open, reload } = useFileDocuments({ projectId, cardId, autosave: preferences.autosave, diffFirst: (path) => Boolean(findChange(changes.current, path)?.diff), readOnlyChatId: chatId })
+  useEffect(() => { void window.agentboard.invoke('workspace:roots', context).then(setRoots).catch(() => undefined) }, [context])
+  useEffect(() => {
+    let alive = true
+    const target = requestedTarget(effective.path)
+    void (async () => {
+      // O diff só abre sozinho se o arquivo está nas alterações do card; a lista vem do snapshot da worktree.
+      if (cardId) changes.current = await window.agentboard.invoke('worktrees:snapshot', { cardId }).then((snapshot) => snapshot.exists ? parseChanges(snapshot) : [], () => [])
+      const opened = await open(target.path)
+      if (!alive || !opened) return
+      setDocuments((all) => all.filter((item) => item.path === opened)); setActive(opened)
+      setJump(target.line ? { line: target.line, column: target.column ?? 1 } : undefined)
+    })()
+    return () => { alive = false }
+  }, [effective.at, effective.path, cardId])
+  const dirty = Boolean(current && current.content !== current.saved)
+  useEffect(() => { setDirty(dirty); return () => setDirty(false) }, [dirty])
+  const repoName = current ? tabLabels([current.path], roots)[current.path]?.repo ?? undefined : undefined
+  const currentRoot = current ? [...roots].sort((a, b) => b.path.length - a.path.length).find((root) => slashed(current.path).startsWith(`${slashed(root.path).replace(/\/$/, '')}/`)) : undefined
+  const leave = (): void => { if (dirty) setLeaving(true); else close() }
+  const target = requestedTarget(effective.path)
+  useEffect(() => { if (current) pushRecent(projectId, current.path) }, [current?.path])
+  const keyDown = (event: React.KeyboardEvent): void => { if (event.ctrlKey && !event.shiftKey && !event.altKey && (event.key.toLowerCase() === 'p' || event.key.toLowerCase() === 'e')) { event.preventDefault(); event.stopPropagation(); setQuick(true) } }
+  return <aside className="fview" style={style} aria-label="Arquivo aberto ao lado do chat" onKeyDown={keyDown}>
+    {quick && <QuickOpen context={context} roots={roots} recents={readRecents(projectId)} open={(path, line, column) => setPicked({ path: line ? `${path}:${line}${column ? `:${column}` : ''}` : path, at: Date.now() })} close={() => setQuick(false)} />}
+    {current
+      ? <FilePane doc={current} mode="focused" context={context} preferences={preferences} changePreferences={changePreferences} change={findChange(changes.current, current.path)} root={currentRoot} commentCardId={cardId} commentTarget={cardId ? 'Card aberto' : 'Chat'} update={update} save={save} reload={(path) => void reload(path)} afterComment={() => undefined} error={error} loading={loading} setError={setError} jump={jump} onJumped={() => setJump(undefined)} repoName={repoName} roots={roots}
+        headerEnd={<><button type="button" className="wf-iconchip tip" data-tip="Abrir no modo Arquivos" aria-label="Abrir no modo Arquivos" onClick={() => window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId, cardId, path: current.path } }))}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3H3v14h14v-5M11 3h6v6m0-6-8 8" /></svg></button><button type="button" className="x" aria-label="Fechar arquivo" onClick={leave}><CloseIcon /></button></>} />
+      : <><div className="fv-head"><div className="fv-path" title={target.path}><span className="fv-name">{nameOf(target.path)}</span></div><button type="button" className="x" aria-label="Fechar arquivo" onClick={close}><CloseIcon /></button></div>
+        <div className="fv-body">{loading && <p className="fv-note"><span className="spin sm" /> Abrindo…</p>}{error && <p className="fv-note err">{error}</p>}</div></>}
+    {leaving && current && <ConfirmDialog eyebrow="Arquivo" title="Descartar alterações?" text={`Há alterações sem salvar em ${nameOf(current.path)}. Se fechar agora, elas serão perdidas.`} ok="Descartar e fechar" danger cancel={() => setLeaving(false)} confirm={() => { setLeaving(false); close() }} />}
+  </aside>
+}

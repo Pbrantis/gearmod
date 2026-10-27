@@ -3,7 +3,10 @@ import type { AgentProfile, GitCard, GitCardRepo, GitCommitFile, GitRequest } fr
 import { AgentIcon } from './AgentIcon'
 import { gitIcons, GitCheck, FileRow } from './GitPage'
 import { laneColor, ruleLabel, ruleNote, shortAgo } from './gitView'
-import { DiffLines } from './gitDiff'
+import { GitDiffEditor } from './editor/GitDiffEditor'
+import { CodeEditor } from './editor/CodeEditor'
+import { Prec, type Extension } from '@codemirror/state'
+import { keymap } from '@codemirror/view'
 import { openInEditor } from './openInEditor'
 import { plainError } from './NoticeDialog'
 import { Delivery } from './Delivery'
@@ -54,22 +57,15 @@ function BaseSelect({ repo, cardId, base, reload }: { repo: GitCardRepo; cardId:
   return <span className="basepick" onMouseEnter={load} onFocus={load}><Select label={`Origem de ${repo.name}`} className="ghostsel" value={base} options={list.map((name) => ({ value: name, label: name }))} onChange={(value) => void change(value)} />{error && <small className="cx-warn">{error}</small>}</span>
 }
 
+const editOptions = { wrap: true, tabSize: 2, indentWithTab: true, whitespace: false, guides: false, scrollPastEnd: false }
 export type DiffTarget = { sourceId: string; path: string; hash?: string }
 
 /** Painel do arquivo alterado, à esquerda do chat: o diff (do commit ou ainda sem commit) com seleção de linhas para a IA. */
 export function DiffPane({ cardId, target, close, ask, style }: { cardId: string; target: DiffTarget; close(): void; ask(prompt: string): boolean | Promise<boolean>; style?: React.CSSProperties }): React.JSX.Element {
-  const { sourceId, path, hash } = target, [text, setText] = useState<string>(), [error, setError] = useState(''), [version, setVersion] = useState(0)
+  const { sourceId, path, hash } = target, [error, setError] = useState(''), [version, setVersion] = useState(0)
   const [draft, setDraft] = useState<string>(), [original, setOriginal] = useState(''), [saving, setSaving] = useState(false), [loadingFile, setLoadingFile] = useState(false)
   useEffect(() => { setDraft(undefined) }, [sourceId, path, hash])
-  useEffect(() => {
-    setText(undefined); setError('')
-    const load = async (): Promise<string> => {
-      if (hash) return window.agentboard.invoke('git:commit-diff', { sourceId, hash, path })
-      const first = await window.agentboard.invoke('git:diff', { sourceId, cardId, path, staged: false })
-      return first.trim() ? first : window.agentboard.invoke('git:diff', { sourceId, cardId, path, staged: true })
-    }
-    void load().then(setText).catch((reason: unknown) => setError(plainError(reason)))
-  }, [sourceId, cardId, path, hash, version])
+  useEffect(() => { setError('') }, [sourceId, cardId, path, hash, version])
   const edit = (): void => {
     setLoadingFile(true); setError('')
     void window.agentboard.invoke('git:file-read', { sourceId, cardId, path }).then((out) => { setOriginal(out.content); setDraft(out.content) }).catch((reason: unknown) => setError(plainError(reason))).finally(() => setLoadingFile(false))
@@ -80,6 +76,8 @@ export function DiffPane({ cardId, target, close, ask, style }: { cardId: string
     void window.agentboard.invoke('git:file-write', { sourceId, cardId, path, content: draft }).then(() => { setDraft(undefined); setVersion((value) => value + 1) }).catch((reason: unknown) => setError(plainError(reason))).finally(() => setSaving(false))
   }
   const editing = draft !== undefined, dirty = editing && draft !== original
+  const saveRef = useRef(save); saveRef.current = () => { if (dirty) save() }
+  const saveKeys = useMemo<Extension[]>(() => [Prec.highest(keymap.of([{ key: 'Mod-s', preventDefault: true, run: () => { saveRef.current(); return true } }]))], [])
   const leave = (): void => { if (dirty && !window.confirm('Descartar as edições deste arquivo?')) return; setDraft(undefined) }
   return <aside className="fview gdiffpane" style={style} aria-label={`Alterações de ${path}`}>
     <div className="fv-head"><div className="fv-path" title={path}>{path}</div>{hash && <small className="fv-size">commit {hash.slice(0, 7)}</small>}
@@ -88,8 +86,8 @@ export function DiffPane({ cardId, target, close, ask, style }: { cardId: string
         : <button type="button" className="fv-toggle" disabled={loadingFile} onClick={edit}>Editar arquivo</button>)}
       <button type="button" className="x" aria-label="Fechar" onClick={() => { if (editing) leave(); if (!dirty) close() }}>×</button></div>
     <div className="fv-body">{error && <p className="fv-note err">{error}</p>}
-      {editing ? <textarea className="fv-editor" value={draft} spellCheck={false} aria-label={`Editar ${path}`} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (dirty) save() } }} />
-        : error ? null : text === undefined ? <p className="fv-note"><span className="spin sm" /> Abrindo…</p> : !text.trim() ? <p className="fv-note">Sem diferenças para mostrar.</p> : <DiffLines text={text} review={{ path, send: ask }} />}</div>
+      {editing ? <div className="fv-editorbox"><CodeEditor value={draft} path={path} options={editOptions} extensions={saveKeys} ariaLabel={`Editar ${path}`} onChange={setDraft} /></div>
+        : <GitDiffEditor sourceId={sourceId} cardId={cardId} path={path} hash={hash} review={{ path, send: ask }} reloadKey={version} />}</div>
   </aside>
 }
 

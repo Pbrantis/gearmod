@@ -6,6 +6,9 @@ import { homedir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { oppositePlacement, placementBounds, popoutQuery, type PopoutTarget, type WindowPlacement } from './windows'
 import { TerminalService } from './terminals'
+import { FileWatchService } from './file-watch'
+import { SpecToolsService } from './spec-tools'
+import { ToolUpdateService } from './tool-updates'
 import { BackupService } from './backup'
 import { AppDatabase } from './database'
 import { registerIpc } from './ipc'
@@ -58,6 +61,8 @@ const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath()
 const gitManager = new GitManager(database)
 const history = new CardHistoryService(database, dataDir)
 const playwright = new PlaywrightCliService(database, history)
+const specTools = new SpecToolsService(database)
+const toolUpdates = new ToolUpdateService(join(app.getPath('userData'), 'tool-versions.json'))
 const agentContext = new AgentContextService(board, settings, existsSync(pluginDir) ? pluginDir : null, constitution, (cardId) => gitManager.agentRule(cardId), history, (cardId) => {
   // Multirrepositório: o agente vê os repositórios do card e a pasta de cada um na worktree; o testador, o Playwright CLI quando ligado.
   const card = board.card(cardId), sources = projects.get(card.projectId).sources.filter((source) => source.isGitRepository)
@@ -113,6 +118,7 @@ const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppS
 })
 const pushEvent = (eventType: string, payload: Record<string, unknown>): void => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType, payload }))
 const terminals = new TerminalService(pushEvent)
+const fileWatch = new FileWatchService(pushEvent)
 const autoResume = new AutoResumeService({
   repository: new AutoResumeRepository(database),
   enabled: () => settings.get().retomarSozinho,
@@ -238,7 +244,9 @@ const fileActions = {
     if (target === 'explorer') { shell.showItemInFolder(path); return }
     if (target === 'vscode') { await shell.openExternal(pathToFileURL(path).href.replace(/^file:\/\//, 'vscode://file')); return }
     const error = await shell.openPath(path); if (error) throw new Error(error)
-  }
+  },
+  /** Excluir é sempre para a Lixeira do sistema, nunca definitivo. */
+  async trashItem(path: string): Promise<void> { await shell.trashItem(path) }
 }
 
 async function chooseDirectory(): Promise<string | null> {
@@ -312,7 +320,7 @@ app.whenReady().then(async () => {
   app.setAppUserModelId('com.agentboard.desktop')  // necessário para as notificações do Windows
   await openDatabase()
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, terminals, returnFile, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, fileWatch, terminals, returnFile, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
   Menu.setApplicationMenu(null)  // sem File/Edit/View/Window/Help: a faixa de cima é do app
   createTray()
   await createWindow()
@@ -325,4 +333,4 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 // Qualquer saída (bandeja, desligar o Windows, atualização) libera o fechamento da janela.
-app.on('before-quit', () => { quitting = true; autoResume.stop(); terminals.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); database.close() })
+app.on('before-quit', () => { quitting = true; autoResume.stop(); terminals.dispose(); fileWatch.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); database.close() })

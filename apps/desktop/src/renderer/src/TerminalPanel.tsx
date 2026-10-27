@@ -1,27 +1,80 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { SearchAddon } from '@xterm/addon-search'
+import { WebLinksAddon } from '@xterm/addon-web-links'
+import { WebglAddon } from '@xterm/addon-webgl'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
 import { terminal, useTerminal, type TerminalTab } from './terminalStore'
 import { WindowLayoutMenu, type LayoutPosition } from './WindowLayoutMenu'
 import { CloseIcon, ExpandIcon, CollapseIcon } from './icons'
 import { pop } from './popout'
+import { FileFind, type FindOptions } from './FileFind'
+import { terminalTheme } from './terminalTheme'
+
+/** Caminho com `:linha[:coluna]` na saída (erros do TypeScript, stack traces): vira link com Ctrl+clique. */
+const fileLine = /(?:[A-Za-z]:[\\/])?[\w@.~/\\-]+\.[A-Za-z0-9]{1,8}:\d+(?::\d+)?/g
+const absolute = (path: string): boolean => /^[A-Za-z]:[\\/]|^\//.test(path)
 
 function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React.JSX.Element {
-  const box = useRef<HTMLDivElement>(null), screen = useRef<Terminal | null>(null), consumed = useRef(''), fit = useRef<FitAddon | null>(null)
+  const box = useRef<HTMLDivElement>(null), screen = useRef<Terminal | null>(null), consumed = useRef(''), fit = useRef<FitAddon | null>(null), search = useRef<SearchAddon | null>(null), field = useRef<HTMLInputElement>(null)
+  const [finding, setFinding] = useState(false), [focusTick, setFocusTick] = useState(0), [needle, setNeedle] = useState(''), [options, setOptions] = useState<FindOptions>({ caseSensitive: false, wholeWord: false, regex: false }), [results, setResults] = useState({ index: -1, count: 0 }), [background, setBackground] = useState(() => terminalTheme().theme.background)
+  const state = useRef({ needle, options }); state.current = { needle, options }
+  const run = (forward: boolean, incremental = false): void => {
+    const addon = search.current, current = state.current
+    if (!addon || !current.needle) { addon?.clearDecorations(); setResults({ index: -1, count: 0 }); return }
+    const colors = terminalTheme().search
+    const config = { ...current.options, incremental, decorations: { matchBackground: colors.match, activeMatchBackground: colors.active, matchOverviewRuler: colors.match, activeMatchColorOverviewRuler: colors.active } }
+    try { if (forward) addon.findNext(current.needle, config); else addon.findPrevious(current.needle, config) } catch { setResults({ index: -1, count: 0 }) }
+  }
+  useEffect(() => { if (finding) { field.current?.focus(); field.current?.select() } }, [focusTick])
+  useEffect(() => { if (finding) run(true, true); else { search.current?.clearDecorations(); setResults({ index: -1, count: 0 }) } }, [finding, needle, options])
   useEffect(() => {
     if (!box.current) return
-    const xterm = new Terminal({ cursorBlink: true, fontFamily: 'Consolas, monospace', fontSize: 13, scrollback: 10000, theme: { background: '#101211', foreground: '#dce3df', cursor: '#8fb8d6', selectionBackground: '#34527399' } }), addon = new FitAddon()
-    xterm.loadAddon(addon); xterm.open(box.current); screen.current = xterm; fit.current = addon; consumed.current = ''
-    xterm.attachCustomKeyEventHandler((event) => !(event.ctrlKey && (event.shiftKey && event.code === 'KeyF' || event.code === 'Backquote' || event.key === '^')))
+    const container = box.current, colors = terminalTheme()
+    const xterm = new Terminal({ cursorBlink: true, fontFamily: 'Consolas, monospace', fontSize: 13, scrollback: 10000, allowProposedApi: true, theme: colors.theme }), addon = new FitAddon(), finder = new SearchAddon()
+    xterm.loadAddon(addon); xterm.loadAddon(finder)
+    xterm.loadAddon(new WebLinksAddon((event, uri) => { if (event.ctrlKey || event.metaKey) void window.agentboard.invoke('app:open-link', { url: uri }).catch(() => undefined) }, { hover: () => { container.title = 'Ctrl+clique para abrir' }, leave: () => { container.title = '' } }))
+    xterm.loadAddon(new Unicode11Addon()); xterm.open(container)
+    xterm.unicode.activeVersion = '11'
+    // Aceleração por placa de vídeo: se faltar suporte ou o contexto se perder, segue no renderizador padrão, sem aviso.
+    try { const gl = new WebglAddon(); gl.onContextLoss(() => { try { gl.dispose() } catch { /* já descartado */ } }); xterm.loadAddon(gl) } catch { /* renderizador padrão */ }
+    screen.current = xterm; fit.current = addon; search.current = finder; consumed.current = ''
+    const results$ = finder.onDidChangeResults((event) => setResults({ index: event.resultIndex, count: event.resultCount }))
+    const files = xterm.registerLinkProvider({ provideLinks: (line, callback) => {
+      const context = terminal.snapshot().context, text = xterm.buffer.active.getLine(line - 1)?.translateToString(true) ?? ''
+      if (!context || !text) { callback(undefined); return }
+      callback([...text.matchAll(fileLine)].map((found) => ({ text: found[0], range: { start: { x: found.index + 1, y: line }, end: { x: found.index + found[0].length, y: line } }, activate: (event: MouseEvent, value: string) => { if (!(event.ctrlKey || event.metaKey)) return; const path = absolute(value) ? value : `${tab.cwd.replace(/[\\/]+$/, '')}/${value}`; window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path } })) } })))
+    } })
+    xterm.attachCustomKeyEventHandler((event) => {
+      if (event.ctrlKey && (event.shiftKey && event.code === 'KeyF' || event.code === 'Backquote' || event.key === '^')) return false
+      if (event.type !== 'keydown') return true
+      if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyF') { event.preventDefault(); setFinding(true); setFocusTick((value) => value + 1); return false }
+      // Ctrl+C copia quando há seleção; sem seleção segue como interrupção (^C) para o programa.
+      if (event.ctrlKey && event.code === 'KeyC' && (event.shiftKey || xterm.hasSelection())) { if (xterm.hasSelection()) { void navigator.clipboard.writeText(xterm.getSelection()).catch(() => undefined); xterm.clearSelection() } return false }
+      return true
+    })
     const input = xterm.onData((data) => { void window.agentboard.invoke('terminal:write', { id: tab.id, data }).catch(() => undefined) })
     const resize = (): void => { if (!box.current?.clientWidth || !box.current?.clientHeight) return; addon.fit(); void window.agentboard.invoke('terminal:resize', { id: tab.id, cols: Math.max(2, xterm.cols), rows: Math.max(2, xterm.rows) }).catch(() => undefined) }
-    const observer = new ResizeObserver(resize); observer.observe(box.current); resize()
-    return () => { observer.disconnect(); input.dispose(); xterm.dispose(); screen.current = null; fit.current = null }
+    const observer = new ResizeObserver(resize); observer.observe(container); resize()
+    // Tema claro/escuro (ou outro tema do app): o atributo do documento muda e o terminal repinta.
+    const repaint = (): void => { const next = terminalTheme(); xterm.options.theme = next.theme; setBackground(next.theme.background) }
+    const themes = new MutationObserver(repaint); themes.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style', 'class'] }); repaint()
+    return () => { themes.disconnect(); observer.disconnect(); input.dispose(); results$.dispose(); files.dispose(); xterm.dispose(); screen.current = null; fit.current = null; search.current = null }
   }, [tab.id])
   useEffect(() => { if (!screen.current) return; if (tab.text.startsWith(consumed.current)) screen.current.write(tab.text.slice(consumed.current.length)); else { screen.current.reset(); screen.current.write(tab.text) } consumed.current = tab.text }, [tab.text])
   useEffect(() => { if (visible) window.setTimeout(() => { fit.current?.fit(); screen.current?.focus() }, 0) }, [visible])
-  return <div ref={box} className="term-emulator" style={{ display: visible ? undefined : 'none' }} aria-label={`${tab.shell} interativo`} />
+  const paste = (event: React.MouseEvent): void => {
+    // Como o terminal do Windows: clique direito copia a seleção ou, sem seleção, cola.
+    event.preventDefault()
+    const xterm = screen.current; if (!xterm) return
+    if (xterm.hasSelection()) { void navigator.clipboard.writeText(xterm.getSelection()).catch(() => undefined); xterm.clearSelection() } else void navigator.clipboard.readText().then((text) => { if (text) xterm.paste(text) }).catch(() => undefined)
+  }
+  return <div className="term-screen" style={{ display: visible ? undefined : 'none' }}>
+    {finding && <div className="term-find" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setFinding(false); screen.current?.focus() } }}><FileFind input={field} query={needle} setQuery={setNeedle} options={options} setOptions={setOptions} count={results.count} index={results.index} error="" previous={() => run(false)} next={() => run(true)} close={() => { setFinding(false); screen.current?.focus() }} /></div>}
+    <div ref={box} className="term-emulator" style={{ background }} onContextMenu={paste} aria-label={`${tab.shell} interativo`} />
+  </div>
 }
 
 export function TerminalPanel({ standalone = false }: { standalone?: boolean } = {}): React.JSX.Element | null {

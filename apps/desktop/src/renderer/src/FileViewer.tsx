@@ -1,9 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { CloseIcon } from './icons'
-import { Markdown } from './markdown'
-import { plainError } from './NoticeDialog'
-
-interface Opened { path: string; relative: string; content: string; truncated: boolean; size: number; binary: boolean }
+import React, { useCallback, useRef, useState } from 'react'
 
 const viewerMin = 320
 const stored = (): number => { try { return Number(localStorage.getItem('agentboard.viewerWidth')) || 520 } catch { return 520 } }
@@ -11,23 +6,22 @@ const viewerState = { width: stored() }
 const clampViewer = (value: number, chatWidth: number): number => Math.max(viewerMin, Math.min(window.innerWidth - chatWidth - 260, value))
 
 /**
- * Visualizador de arquivo ao lado do chat: abre o que o agente citou (caminho ou link) sem sair da conversa. O divisor do meio
- * redistribui o espaço entre o chat e o arquivo; `chatWidth` é a largura atual do chat, que o divisor também ajusta.
+ * Painel de arquivo ao lado do chat: abre o que o agente citou (caminho ou link) sem sair da conversa. Aqui fica só o pedido de abertura
+ * e a largura; o arquivo em si é o `FocusedFile`. O divisor do meio redistribui o espaço entre o chat e o arquivo; `chatWidth` é a
+ * largura atual do chat, que o divisor também ajusta.
  */
-export function useFileViewer(chatId: string | undefined, chatWidth: number, setChatWidth: (value: number) => void): {
-  file: Opened | null; error: string; loading: boolean; requested: string | null; open(path: string): void; close(): void
+export function useFileViewer(chatWidth: number, setChatWidth: (value: number) => void): {
+  request: { path: string; at: number } | null; requested: string | null; open(path: string): void; close(): void; setDirty(value: boolean): void
   width: number; dragging: boolean; startResize(event: React.PointerEvent<HTMLDivElement>): void; startSplit(event: React.PointerEvent<HTMLDivElement>): void; expand(): void; restore(): void
 } {
-  const [requested, setRequested] = useState<string | null>(null), [file, setFile] = useState<Opened | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false)
+  const [request, setRequest] = useState<{ path: string; at: number } | null>(null), dirty = useRef(false)
   const [width, setWidthState] = useState(() => viewerState.width), [dragging, setDragging] = useState(false)
-  useEffect(() => {
-    if (!requested || !chatId) return
-    let alive = true; setLoading(true); setError('')
-    window.agentboard.invoke('files:read', { chatId, path: requested }).then((opened) => { if (alive) setFile(opened) }).catch((reason: unknown) => { if (alive) { setFile(null); setError(plainError(reason)) } }).finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [requested, chatId])
-  const open = useCallback((path: string) => { if (chatId) setRequested(path) }, [chatId])
-  const close = useCallback(() => { setRequested(null); setFile(null); setError('') }, [])
+  const open = useCallback((path: string) => {
+    if (dirty.current && !window.confirm('Descartar as alterações do arquivo aberto?')) return
+    setRequest({ path, at: Date.now() })
+  }, [])
+  const close = useCallback(() => setRequest(null), [])
+  const setDirty = useCallback((value: boolean) => { dirty.current = value }, [])
   const drag = (apply: (x: number) => void, finish?: () => void) => (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault(); setDragging(true)
     const move = (e: PointerEvent): void => apply(e.clientX)
@@ -44,34 +38,7 @@ export function useFileViewer(chatId: string | undefined, chatWidth: number, set
   const place = (value: number): void => { const next = clampViewer(value, chatWidth); viewerState.width = next; setWidthState(next); remember() }
   const expand = (): void => { setChatWidth(440); place(window.innerWidth - 440 - 260) }
   const restore = (): void => place(520)
-  return { file, error, loading, requested, open, close, width, dragging, startResize, startSplit, expand, restore }
-}
-
-const sizeLabel = (bytes: number): string => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`)
-
-export function FileViewer({ viewer, style }: { viewer: ReturnType<typeof useFileViewer>; style?: React.CSSProperties }): React.JSX.Element {
-  const { file, error, loading, requested, close } = viewer
-  const [raw, setRaw] = useState(false)
-  useEffect(() => setRaw(false), [requested])
-  const name = file?.relative ?? requested ?? '', isMd = /\.(md|mdx|markdown)$/i.test(name)
-  const lines = file ? file.content.split('\n') : []
-  return <aside className="fview" style={style} aria-label="Visualizador de arquivo">
-    <div className="fv-head">
-      <div className="fv-path" title={file?.path ?? requested ?? ''}>{name.split('/').map((part, index, all) => <React.Fragment key={index}>{index > 0 && <span className="fv-sep">›</span>}<span className={index === all.length - 1 ? 'fv-name' : ''}>{part}</span></React.Fragment>)}</div>
-      {file && <small className="fv-size">{sizeLabel(file.size)}</small>}
-      {isMd && file && !file.binary && <button type="button" className="fv-toggle" aria-pressed={raw} onClick={() => setRaw(!raw)}>{raw ? 'Ver renderizado' : 'Ver código'}</button>}
-      <button type="button" className="x" aria-label="Fechar visualizador" onClick={close}><CloseIcon /></button>
-    </div>
-    <div className="fv-body">
-      {loading && !file && <p className="fv-note"><span className="spin sm" /> Abrindo…</p>}
-      {error && <p className="fv-note err">{error}</p>}
-      {file?.binary && <p className="fv-note">Arquivo binário, sem visualização.</p>}
-      {file && !file.binary && (isMd && !raw
-        ? <div className="md fv-md"><Markdown source={file.content} /></div>
-        : <div className="fv-code"><pre className="fv-ln" aria-hidden="true">{lines.map((_, index) => index + 1).join('\n')}</pre><pre className="fv-src"><code>{file.content}</code></pre></div>)}
-      {file?.truncated && <p className="fv-note">Arquivo grande: mostrando só o começo (1 MB).</p>}
-    </div>
-  </aside>
+  return { request, requested: request?.path ?? null, open, close, setDirty, width, dragging, startResize, startSplit, expand, restore }
 }
 
 /** Divisor entre o chat e o painel ao lado (arquivo ou diff): alça larga para arrastar e botões de expandir/restaurar. */

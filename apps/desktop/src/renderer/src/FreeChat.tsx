@@ -12,7 +12,8 @@ import { useFitInView } from './useFitInView'
 import { ChatMessageList } from './ChatMessageView'
 import { FileOpenContext } from './markdown'
 import { AgentMessage, QuestionAnswerContext } from './AgentMessage'
-import { FileViewer, ViewGrip, useFileViewer } from './FileViewer'
+import { ViewGrip, useFileViewer } from './FileViewer'
+import { FocusedFile } from './editor/FocusedFile'
 import { UsageRings } from './UsageRings'
 import { QueuedPreview, useQueuedMessage } from './QueuedMessage'
 import { AttachButton, AttachmentChips, useAttachments, useContextText } from './Attachments'
@@ -117,13 +118,13 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   }
   // Respostas das perguntas do agente voltam como mensagem normal (na fila, se ele ainda estiver trabalhando).
   const answerQuestions = (text: string): void => { if (busy) later.queue(text); else void deliver(text) }
-  const viewer = useFileViewer(chat?.id, width, setWidth), viewing = !expanded && viewer.requested !== null
+  const viewer = useFileViewer(width, setWidth), viewing = !expanded && viewer.requested !== null
   const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
   const typed = useTypewriter(live), busySince = useBusySince(busy)
   const agent = profiles.find((item) => item.id === profileId)
   return <section className={`dock open ${expanded ? 'full' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label={text.eyebrow} style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
     {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label={viewing ? 'Ajustar a largura do arquivo' : 'Ajustar a largura do chat'} onPointerDown={viewing ? viewer.startResize : startResize} onDoubleClick={viewing ? undefined : resetWidth} />}
-    {viewing && <><FileViewer viewer={viewer} style={{ width: viewer.width }} /><ViewGrip viewer={viewer} /></>}
+    {viewing && viewer.request && <><FocusedFile projectId={project.id} cardId={null} chatId={chat?.id} request={viewer.request} close={viewer.close} setDirty={viewer.setDirty} style={{ width: viewer.width }} /><ViewGrip viewer={viewer} /></>}
     <FileOpenContext.Provider value={openFile}><QuestionAnswerContext.Provider value={answerQuestions}>
     <div className="dock-in" style={expanded ? undefined : { width }}>
       <div className="dock-head" draggable={Boolean(chat?.id) && !pop} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest('button,input,textarea,.dock-tools')) setExpanded(!expanded) }} onDragStart={(event) => { if ((event.target as HTMLElement).closest('button,input,textarea,.dock-tools')) { event.preventDefault(); return }; event.preventDefault(); void detachChat({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><div className="top"><div><div className="headrow"><div className="eyebrow">{text.eyebrow}</div></div><h2>{mode === 'constitution' ? text.title : chat?.title || text.title}</h2><div className="ctxline"><span className="ctxchip">{text.chip}</span></div></div>

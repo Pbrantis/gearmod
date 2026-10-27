@@ -1,10 +1,12 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { terminal, useTerminal } from './terminalStore'
+import { resolveRelative } from './editor/markdownPaths'
+import { highlightCode, type Piece } from './editor/highlightCode'
 
 /** Renderizador Markdown mínimo e seguro (sem HTML cru). Devolve só os blocos: quem chama põe dentro de um `.md`. Checklists no formato do protótipo (`ul.tasks > li.tk`). */
 interface Item { indent: number; ordered: boolean; checked: boolean | null; text: string; line: number; children: Item[] }
 
-const inlinePattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|\[[^\]]+\]\([^)]*\))/g
+const inlinePattern = /(!\[[^\]]*\]\([^)]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|\[[^\]]+\]\([^)]*\))/g
 
 /** Quem estiver acima (o chat) recebe o clique em um arquivo citado e abre o visualizador; sem ele, a citação fica como texto. */
 export const FileOpenContext = React.createContext<((path: string) => void) | null>(null)
@@ -14,16 +16,40 @@ const withoutLine = (target: string): string => target.replace(/#L?\d+(-L?\d+)?$
 const shellLangs = /^(bash|sh|shell|zsh|powershell|pwsh|ps1|ps|cmd|bat|console|terminal)$/i
 
 /** Bloco de código do chat; os de shell (ou sem linguagem) ganham ▶ para rodar no terminal do app, e todos ganham copiar. */
-function CodeBlock({ code, lang }: { code: string; lang: string }): React.JSX.Element {
-  const { context } = useTerminal(), [copied, setCopied] = useState(false)
-  const runnable = Boolean(context) && (!lang || shellLangs.test(lang)) && code.trim().length > 0 && code.length < 4000
+function CodeBlock({ code, lang, runnable: allowRun = true }: { code: string; lang: string; runnable?: boolean }): React.JSX.Element {
+  const { context } = useTerminal(), [copied, setCopied] = useState(false), [pieces, setPieces] = useState<Piece[]>([]), [seen, setSeen] = useState(false), box = useRef<HTMLDivElement>(null)
+  // Só colore o que chega perto da tela: uma conversa longa tem dezenas de blocos e a rolagem não pode travar.
+  useEffect(() => { const element = box.current; if (!element || seen) return; if (typeof IntersectionObserver === 'undefined') { setSeen(true); return } const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { setSeen(true); observer.disconnect() } }, { rootMargin: '300px' }); observer.observe(element); return () => observer.disconnect() }, [seen])
+  useEffect(() => { if (!seen) return; let alive = true; void highlightCode(code, lang).then((result) => { if (alive) setPieces(result) }).catch(() => undefined); return () => { alive = false } }, [seen, code, lang])
+  const runnable = allowRun && Boolean(context) && (!lang || shellLangs.test(lang)) && code.trim().length > 0 && code.length < 4000
   const command = code.split('\n').map((line) => line.replace(/^\s*(\$|PS [^>]*>|>)\s+/, '')).join('\n')
   const copy = (): void => { void navigator.clipboard.writeText(code).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1400) }).catch(() => undefined) }
-  return <div className="codeblock"><pre><code>{code}</code></pre>
+  return <div className="codeblock" ref={box}><pre><code>{pieces.length ? pieces.map((piece, index) => piece.cls ? <span key={index} className={piece.cls}>{piece.text}</span> : piece.text) : code}</code></pre>
     <div className="cb-tools">
       {runnable && <button type="button" className="cb-btn tip" data-tip="Executar no terminal" aria-label="Executar no terminal" onClick={() => void terminal.run(command)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z" /></svg></button>}
       <button type="button" className="cb-btn tip" data-tip={copied ? 'Copiado' : 'Copiar'} aria-label="Copiar" onClick={copy}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="9" rx="2" /><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" /></svg></button>
     </div></div>
+}
+
+/** De qual arquivo o Markdown veio: com isso as imagens de caminho relativo são carregadas do projeto (`workspace:image`). */
+export interface MarkdownBaseInfo { projectId: string; cardId: string | null; path: string }
+const MarkdownBase = React.createContext<MarkdownBaseInfo | null>(null)
+const imageCache = new Map<string, Promise<string>>()
+
+function MdImage({ alt, src }: { alt: string; src: string }): React.JSX.Element {
+  const base = React.useContext(MarkdownBase), [url, setUrl] = useState(/^https:\/\//i.test(src) ? src : ''), [failed, setFailed] = useState(false)
+  useEffect(() => {
+    if (/^https:\/\//i.test(src)) { setUrl(src); return }
+    if (!base || /^[a-z][a-z0-9+.-]*:/i.test(src.replace(/^[A-Za-z]:[\\/]/, ''))) { setUrl(''); return }
+    const path = resolveRelative(base.path, src), key = `${base.projectId}|${base.cardId}|${path}`
+    let alive = true
+    const request = imageCache.get(key) ?? window.agentboard.invoke('workspace:image', { projectId: base.projectId, cardId: base.cardId, path })
+    imageCache.set(key, request)
+    void request.then((data) => { if (alive) setUrl(data) }).catch(() => { imageCache.delete(key); if (alive) setFailed(true) })
+    return () => { alive = false }
+  }, [src, base?.path, base?.projectId, base?.cardId])
+  if (url && !failed) return <img className="mdimg" src={url} alt={alt} loading="lazy" onError={() => setFailed(true)} />
+  return <span className="mdLink" title={src}>{alt || src}</span>
 }
 
 function isFileLink(target: string): boolean {
@@ -49,6 +75,8 @@ function inline(text: string, key: string): React.ReactNode[] {
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) return <FileRef key={k} target={part.slice(1, -1)} code>{part.slice(1, -1)}</FileRef>
     if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) return <strong key={k}>{inline(part.slice(2, -2), k)}</strong>
     if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) return part.length > 2 ? <em key={k}>{inline(part.slice(1, -1), k)}</em> : part
+    const image = /^!\[([^\]]*)\]\(([^)]*)\)$/.exec(part)
+    if (image) return <MdImage key={k} alt={image[1]!} src={image[2]!.trim().replace(/\s+"[^"]*"$/, '')} />
     const link = /^\[([^\]]+)\]\(([^)]*)\)$/.exec(part)
     if (link) return <FileRef key={k} target={link[2]!}>{inline(link[1]!, k)}</FileRef>
     return part
@@ -83,7 +111,8 @@ function buildTree(lines: Array<{ match: RegExpExecArray; line: number }>): Item
   return root
 }
 
-export function Markdown({ source, onToggle }: { source: string; onToggle?(line: number, checked: boolean): void }): React.JSX.Element {
+export function Markdown({ source, onToggle, base, runnable = true }: { source: string; onToggle?(line: number, checked: boolean): void; base?: MarkdownBaseInfo; runnable?: boolean }): React.JSX.Element {
+  const inherited = React.useContext(MarkdownBase)
   // Aceita quebras do Windows (CRLF): o `\r` no fim da linha impedia de reconhecer títulos e listas.
   const lines = source.split(/\r?\n/), blocks: React.ReactNode[] = []
   let i = 0
@@ -98,12 +127,12 @@ export function Markdown({ source, onToggle }: { source: string; onToggle?(line:
       while (i < lines.length && !new RegExp(`^\`{${size},}\\s*$`).test(lines[i]!)) { body.push(lines[i]!); i += 1 }
       i += 1
       // Arquivo Markdown colado no chat: mostra renderizado, não como código.
-      if (/^(md|markdown)$/i.test(fence[2]!)) blocks.push(<div key={`b${start}`} className="mdfile"><Markdown source={body.join('\n')} /></div>)
-      else blocks.push(<CodeBlock key={`b${start}`} code={body.join('\n')} lang={fence[2]!} />)
+      if (/^(md|markdown)$/i.test(fence[2]!)) blocks.push(<div key={`b${start}`} className="mdfile"><Markdown source={body.join('\n')} runnable={runnable} /></div>)
+      else blocks.push(<CodeBlock key={`b${start}`} code={body.join('\n')} lang={fence[2]!} runnable={runnable} />)
       continue
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line)
-    if (heading) { const Tag = `h${Math.min(3, heading[1]!.length)}` as 'h1'; blocks.push(<Tag key={`b${i}`}>{inline(heading[2]!, `b${i}`)}</Tag>); i += 1; continue }
+    if (heading) { const Tag = `h${Math.min(3, heading[1]!.length)}` as 'h1'; blocks.push(<Tag key={`b${i}`} data-line={i}>{inline(heading[2]!, `b${i}`)}</Tag>); i += 1; continue }
     if (/^---+\s*$/.test(line)) { blocks.push(<hr key={`b${i}`} />); i += 1; continue }
     if (/^>\s?/.test(line)) {
       const start = i; const body: string[] = []
@@ -131,5 +160,5 @@ export function Markdown({ source, onToggle }: { source: string; onToggle?(line:
     while (i < lines.length && lines[i]!.trim() && (i === start || !isSpecial(lines[i]!))) { body.push(lines[i]!.trim()); i += 1 }
     blocks.push(<p key={`b${start}`}>{inline(body.join(' '), `b${start}`)}</p>)
   }
-  return <>{blocks.length ? blocks : <p className="mdEmpty">Nada escrito ainda.</p>}</>
+  return <MarkdownBase.Provider value={base ?? inherited}>{blocks.length ? blocks : <p className="mdEmpty">Nada escrito ainda.</p>}</MarkdownBase.Provider>
 }
