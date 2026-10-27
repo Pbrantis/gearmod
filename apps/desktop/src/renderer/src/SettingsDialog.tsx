@@ -6,18 +6,33 @@ import { SkillsPanel } from './SkillsPanel'
 import { messageSpacings, readMessageSpacing, saveMessageSpacing, type MessageSpacing } from './chatPrefs'
 import { dismissVoiceInstall, notifyVoiceChanged } from './voiceStore'
 import { Checkbox } from './Checkbox'
+import { Select } from './Select'
 
-export const themes: ReadonlyArray<{ value: AppTheme; label: string; swatches: [string, string, string] }> = [
-  { value: 'green', label: 'Verde escuro', swatches: ['#8db99a', '#2f5a40', '#1b2b21'] },
-  { value: 'purple', label: 'Roxo escuro', swatches: ['#a99bd9', '#4a3f6e', '#211d30'] },
-  { value: 'blue', label: 'Azul escuro', swatches: ['#8fb3d9', '#345273', '#1a2430'] },
-  { value: 'orange', label: 'Laranja escuro', swatches: ['#d9a477', '#6b4a33', '#2a2019'] }
+export const themes: ReadonlyArray<{ value: AppTheme; label: string; mode: 'dark' | 'light'; swatches: [string, string, string] }> = [
+  { value: 'green', label: 'Floresta', mode: 'dark', swatches: ['#8db99a', '#2f5a40', '#101713'] },
+  { value: 'purple', label: 'Ametista', mode: 'dark', swatches: ['#a99bd9', '#4a3f6e', '#15121d'] },
+  { value: 'blue', label: 'Oceano', mode: 'dark', swatches: ['#8fb3d9', '#345273', '#101720'] },
+  { value: 'orange', label: 'Âmbar', mode: 'dark', swatches: ['#d9a477', '#6b4a33', '#1c1510'] },
+  { value: 'graphite', label: 'Grafite', mode: 'dark', swatches: ['#b8c0cc', '#4b5563', '#101216'] },
+  { value: 'teal', label: 'Aurora', mode: 'dark', swatches: ['#65c9c2', '#246b68', '#0c1818'] },
+  { value: 'rose', label: 'Rosa noturno', mode: 'dark', swatches: ['#dda0b6', '#704052', '#1d1116'] },
+  { value: 'light-mint', label: 'Menta', mode: 'light', swatches: ['#237a4b', '#a8d8ba', '#f4faf6'] },
+  { value: 'light-sky', label: 'Céu', mode: 'light', swatches: ['#2468a2', '#aacde9', '#f4f8fc'] },
+  { value: 'light-lavender', label: 'Lavanda', mode: 'light', swatches: ['#6848a0', '#cabce4', '#f8f6fc'] },
+  { value: 'light-sand', label: 'Areia', mode: 'light', swatches: ['#95601f', '#dfc49b', '#fbf8f1'] },
+  { value: 'light-rose', label: 'Rosa claro', mode: 'light', swatches: ['#a74468', '#e5b7c8', '#fcf6f8'] },
+  { value: 'light-slate', label: 'Ardósia clara', mode: 'light', swatches: ['#40566f', '#bcc8d5', '#f5f7fa'] }
 ]
 const languages: ReadonlyArray<{ value: AppLanguage; label: string }> = [{ value: 'pt-BR', label: 'Português (Brasil)' }, { value: 'en', label: 'English' }]
 const voices: ReadonlyArray<{ value: VoiceModel; label: string }> = [{ value: 'small', label: 'Small (466 MB, rápido)' }, { value: 'large-v3-turbo', label: 'Large v3 Turbo (1,6 GB, mais preciso)' }, { value: 'groq', label: 'Groq na nuvem (rápido, não usa o computador)' }]
 
+export function applyTheme(theme: AppTheme): void {
+  document.documentElement.dataset.accent = theme
+  document.documentElement.dataset.theme = theme.startsWith('light-') ? 'light' : 'dark'
+}
+
 export function applySettings(settings: AppSettings): void {
-  document.documentElement.dataset.accent = settings.tema
+  applyTheme(settings.tema)
   document.documentElement.lang = settings.idioma
 }
 
@@ -99,6 +114,7 @@ const item = (provider: 'codex' | 'claude'): string => (provider === 'codex' ? '
 
 export function SettingsDialog({ profiles, settings, close, changed, settingsChanged }: { profiles: AgentProfile[]; settings: AppSettings; close(): void; changed(): Promise<void>; settingsChanged(settings: AppSettings): void }): React.JSX.Element {
   const [tab, setTab] = useState<'agents' | 'skills' | 'general' | 'look'>('agents'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
+  const [messageSpacing, setMessageSpacing] = useState<MessageSpacing>(() => readMessageSpacing())
   useEffect(() => setItems(profiles), [profiles])
   useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !editing) close() }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [close, editing])
   useEffect(() => { void window.agentboard.invoke('profiles:probe-all', undefined).then((all) => setStatuses(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }, [profiles])
@@ -111,18 +127,18 @@ export function SettingsDialog({ profiles, settings, close, changed, settingsCha
       <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">Nenhum agente cadastrado.</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><AgentIcon profile={profile} tip={false} /><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" title="Conta em que este agente está logado">{probe.account}</small>}</span><span className="agtype" title="Tipo de uso da conta">{profile.scope}</span><span className={`agstatus ${state}`} title={!probe ? 'Verificando a conexão' : probe.authenticated ? 'Conectado' : probe.installed ? 'Instalado, mas sem login' : 'Programa não instalado'}><i aria-hidden="true" />{!probe ? 'Verificando…' : probe.authenticated ? 'Conectado' : 'Desconectado'}</span><button className="mini secondary" onClick={() => setEditing(profile)}>Editar</button></div> })}</div>
       <button className="bigadd" onClick={() => setEditing('new')}>＋ Adicionar agente</button></>}
     {tab === 'skills' && <SkillsPanel scope="global" profiles={items} />}
-    {tab === 'look' && <><p style={{ fontSize: 12, marginBottom: 12 }}>Escolha a cor de destaque do sistema. Só muda a tonalidade; o tema continua escuro.</p>
-      <div className="themes">{themes.map((theme) => <button type="button" key={theme.value} className={`themeopt ${settings.tema === theme.value ? 'on' : ''}`} style={{ '--c': theme.swatches[0] } as React.CSSProperties} aria-pressed={settings.tema === theme.value} onClick={() => void save({ tema: theme.value })}><span className="sw3">{theme.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>{theme.label}</button>)}</div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}
+    {tab === 'look' && <><p style={{ fontSize: 12, marginBottom: 12 }}>Escolha uma aparência completa para o sistema. O tema também pode ser definido separadamente em cada projeto.</p>
+      {(['dark', 'light'] as const).map((mode) => <section className="themegroup" key={mode}><h3>{mode === 'dark' ? 'Temas escuros' : 'Temas claros'}</h3><div className="themes">{themes.filter((theme) => theme.mode === mode).map((theme) => <button type="button" key={theme.value} className={`themeopt ${settings.tema === theme.value ? 'on' : ''}`} style={{ '--c': theme.swatches[0] } as React.CSSProperties} aria-pressed={settings.tema === theme.value} onClick={() => void save({ tema: theme.value })}><span className="sw3">{theme.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>{theme.label}</button>)}</div></section>)}{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}
     {tab === 'general' && <><div className="stack">
-        <label className="f">Idioma dos agentes<select className="in" value={settings.idioma} onChange={(e) => void save({ idioma: e.target.value as AppLanguage })}>{languages.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}</select></label>
+        <div className="f"><span>Idioma dos agentes</span><Select label="Idioma dos agentes" options={[...languages]} value={settings.idioma} onChange={(value) => void save({ idioma: value as AppLanguage })} /></div>
         <p className="hint">Tudo o que o agente escreve segue este idioma. A interface continua em português por enquanto.</p>
-        <label className="f">Espaço entre as mensagens do chat<select className="in" defaultValue={readMessageSpacing()} onChange={(e) => saveMessageSpacing(e.target.value as MessageSpacing)}>{messageSpacings.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        <div className="f"><span>Espaço entre as mensagens do chat</span><Select label="Espaço entre as mensagens do chat" options={messageSpacings} value={messageSpacing} onChange={(value) => { const spacing = value as MessageSpacing; setMessageSpacing(spacing); saveMessageSpacing(spacing) }} /></div>
         <p className="hint">Quanto de respiro fica entre a sua mensagem e a do agente. Vale na hora, em todos os chats.</p>
         <label className="autosave" style={{ marginRight: 0 }}><input type="checkbox" role="switch" checked={settings.notificacoes} onChange={(e) => void save({ notificacoes: e.target.checked })} /><span className="sw" aria-hidden="true" />Notificações do sistema</label>
         <p className="hint">Avisa quando um card termina, o plano fica pronto ou algo precisa de você, com o AgentBoard em segundo plano. Tocar na notificação abre o chat do card.</p>
         <label className="autosave" style={{ marginRight: 0 }}><input type="checkbox" role="switch" checked={settings.retomarSozinho} onChange={(e) => void save({ retomarSozinho: e.target.checked })} /><span className="sw" aria-hidden="true" />Retomar sozinho quando o limite de uso voltar</label>
         <p className="hint">Se o limite da sessão (ou da semana) acabar no meio de uma execução, o AgentBoard agenda a retomada para quando ele voltar (um minuto depois), confere se voltou mesmo e continua de onde parou. O chat avisa o horário.</p>
-        <label className="f">Ditado por voz<select className="in" value={settings.voz} onChange={(e) => void save({ voz: e.target.value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })}>{voices.map((voice) => <option key={voice.value} value={voice.value}>{voice.label}</option>)}</select></label>
+        <div className="f"><span>Ditado por voz</span><Select label="Ditado por voz" options={[...voices]} value={settings.voz} onChange={(value) => void save({ voz: value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })} /></div>
         {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do AgentBoard.</p>}
       </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}
     <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div>

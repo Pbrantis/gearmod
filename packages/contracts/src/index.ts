@@ -38,7 +38,7 @@ export const agentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 /** Cores de personalidade oferecidas ao cadastrar um agente; a cor é independente do tema do sistema. */
 export const agentColorPalette = ['#D97757', '#E5A24B', '#9ccf6f', '#6fc3b2', '#8fb8d6', '#aeb9ff', '#b98fd6', '#e07a9a', '#e8c27a', '#c4d96b', '#5fbf8f', '#4fb8c9', '#6f9bf0', '#8c8cf0', '#d98fd9', '#f08a8a', '#d9a477', '#b5bdb7'] as const
 export const defaultAgentColor = (provider: z.infer<typeof agentProviderSchema>): string => (provider === 'claude' ? agentColorPalette[0] : agentColorPalette[5])
-export const themeSchema = z.enum(['green', 'purple', 'blue', 'orange'])
+export const themeSchema = z.enum(['green', 'purple', 'blue', 'orange', 'graphite', 'teal', 'rose', 'light-mint', 'light-sky', 'light-lavender', 'light-sand', 'light-rose', 'light-slate'])
 export const languageSchema = z.enum(['pt-BR', 'en'])
 /** `groq` transcreve na nuvem (Groq, whisper-large-v3-turbo); os outros rodam o whisper.cpp local. */
 export const voiceModelSchema = z.enum(['small', 'large-v3-turbo', 'groq'])
@@ -155,8 +155,11 @@ export const constitutionSchema = z.object({ projectId: uuid, contentMd: z.strin
 /** Mudança na Constituição sugerida por um agente fora do chat dela: só vale depois que o usuário aplica. */
 export const constitutionProposalSchema = z.object({ id: uuid, projectId: uuid, number: z.number().int().positive(), cardId: uuid.nullable(), title: z.string(), details: z.string(), reason: z.string(), status: z.enum(['pending', 'applied', 'dismissed']), createdAt: isoDate })
 /** Checklist do testador (o que verificar, marcado conforme verifica); vazio até ele montar. */
-/** Quem fez a última mudança de um item do checklist: o usuário (clicando) ou o agente (gravando o checklist). */
-export const checklistMarkSchema = z.object({ by: z.enum(['user', 'agent']), at: isoDate })
+/**
+ * Quem fez a última mudança de um item do checklist (`by`: o usuário clicando ou o agente gravando o checklist) e quando (`at`).
+ * `agent`: quando o agente deu o OK ao item; continua guardado mesmo se o usuário desmarcar e marcar de novo, e só some se o agente desmarcar.
+ */
+export const checklistMarkSchema = z.object({ by: z.enum(['user', 'agent']), at: isoDate, agent: isoDate.optional() })
 export const cardChecklistSchema = z.object({ cardId: uuid, contentMd: z.string(), updatedAt: isoDate.nullable(), marks: z.record(z.string(), checklistMarkSchema) })
 /** Chave de um item do checklist (o texto, sem diferença de espaços e de maiúsculas): liga o item à marca de quem o alterou. */
 export const checklistKey = (text: string): string => text.replace(/\s+/g, ' ').trim().toLowerCase()
@@ -203,7 +206,7 @@ export const createCardInputSchema = z.object({
   acceptanceCriteria: z.array(criterionInputSchema).max(50).default([])
 }).strict()
 export const updateCardInputSchema = createCardInputSchema.omit({ projectId: true, columnId: true }).extend({ cardId: uuid, title: z.string().trim().min(1).max(240) }).strict()
-export const moveCardInputSchema = z.object({ cardId: uuid, columnId: uuid, beforeCardId: uuid.nullable().default(null) }).strict()
+export const moveCardInputSchema = z.object({ cardId: uuid, columnId: uuid, beforeCardId: uuid.nullable().default(null), skipGate: z.boolean().default(false) }).strict()
 
 /** Git: regra de commit do agente (padrão do projeto + exceções por branch; a primeira que bater vence). */
 export const gitRuleSchema = z.enum(['auto', 'ask', 'never'])
@@ -289,6 +292,7 @@ export const ipcContracts = {
   , 'cards:branches': { input: cardIdInput, output: z.object({ branches: z.array(z.string()), current: z.string().nullable(), selected: z.string().nullable(), locked: z.boolean() }) }
   , 'cards:resume': { input: z.object({ cardId: uuid, purpose: z.enum(['execution', 'test']).optional() }).strict(), output: runSchema }
   , 'chats:reset': { input: z.object({ chatId: uuid }).strict(), output: z.object({ reset: z.literal(true) }) }
+  , 'chats:delete': { input: z.object({ chatId: uuid }).strict(), output: z.object({ deleted: z.literal(true) }) }
   , 'usage:refresh': { input: z.undefined(), output: z.array(agentUsageSchema) }
   , 'cards:mark-viewed': { input: cardIdInput, output: cardSchema }
   , 'agents:options': { input: z.object({ profileId: uuid }).strict(), output: agentOptionsSchema }
@@ -311,7 +315,7 @@ export const ipcContracts = {
   , 'cards:checklist': { input: cardIdInput, output: cardChecklistSchema }
   , 'cards:checklist-toggle': { input: z.object({ cardId: uuid, line: z.number().int().min(0).max(100_000), text: z.string().min(1).max(2000), checked: z.boolean() }).strict(), output: cardChecklistSchema }
   , 'files:read': { input: z.object({ chatId: uuid, path: z.string().trim().min(1).max(2048) }).strict(), output: z.object({ path: z.string(), relative: z.string(), content: z.string(), truncated: z.boolean(), size: z.number(), binary: z.boolean() }) }
-  , 'workspace:roots': { input: z.object({ projectId: uuid, cardId: uuid.nullable() }).strict(), output: z.array(z.object({ path: z.string(), name: z.string() })) }
+  , 'workspace:roots': { input: z.object({ projectId: uuid, cardId: uuid.nullable() }).strict(), output: z.array(z.object({ path: z.string(), name: z.string(), branch: z.string().nullable(), worktree: z.boolean(), primary: z.boolean(), cardId: uuid.nullable(), cardTitle: z.string().nullable() })) }
   , 'workspace:external': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096), target: z.enum(['explorer', 'default', 'vscode']) }).strict(), output: z.object({}) }
   , 'workspace:comment': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), text: z.string().min(1).max(100_000) }).strict(), output: z.object({}) }
   , 'workspace:attach': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({}) }
@@ -343,12 +347,12 @@ export const ipcContracts = {
   , 'git:file-read': { input: z.object({ sourceId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(2048) }).strict(), output: z.object({ content: z.string() }) }
   , 'git:file-path': { input: z.object({ sourceId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(2048) }).strict(), output: z.object({ projectId: uuid, path: z.string() }) }
   , 'git:file-write': { input: z.object({ sourceId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(2048), content: z.string().max(2_000_000) }).strict(), output: z.object({}) }
-  , 'terminal:open': { input: z.object({ projectId: uuid, cardId: uuid.nullable() }).strict(), output: z.object({ id: z.string(), cwd: z.string(), shell: z.string() }) }
+  , 'terminal:open': { input: z.object({ projectId: uuid.nullable(), cardId: uuid.nullable() }).strict(), output: z.object({ id: z.string(), cwd: z.string(), shell: z.string() }) }
   , 'terminal:info': { input: z.object({ id: z.string().min(1).max(80) }).strict(), output: z.object({ id: z.string(), cwd: z.string(), shell: z.string(), text: z.string(), seq: z.number(), exited: z.boolean() }) }
   , 'terminal:resize': { input: z.object({ id: z.string().min(1).max(80), cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) }).strict(), output: z.object({}) }
   , 'terminal:write': { input: z.object({ id: z.string().min(1).max(80), data: z.string().max(200_000) }).strict(), output: z.object({}) }
   , 'terminal:kill': { input: z.object({ id: z.string().min(1).max(80) }).strict(), output: z.object({}) }
-  , 'windows:open': { input: z.object({ kind: z.enum(['board', 'git', 'chat', 'file', 'terminal']), projectId: uuid, cardId: uuid.optional(), chatId: uuid.optional(), terminalId: z.string().min(1).max(80).optional(), path: z.string().max(4096).optional(), purpose: agentPurposeSchema.optional(), placement: z.enum(['new', 'left', 'right', 'top', 'bottom', 'fill']) }).strict(), output: z.object({}) }
+  , 'windows:open': { input: z.object({ kind: z.enum(['board', 'chats', 'git', 'chat', 'files', 'file', 'terminal']), projectId: uuid, cardId: uuid.optional(), chatId: uuid.optional(), terminalId: z.string().min(1).max(80).optional(), path: z.string().max(4096).optional(), paths: z.array(z.string().min(1).max(4096)).max(50).optional(), purpose: agentPurposeSchema.optional(), placement: z.enum(['new', 'left', 'right', 'top', 'bottom', 'fill', 'second']), x: z.number().int().min(-100000).max(100000).optional(), y: z.number().int().min(-100000).max(100000).optional() }).strict(), output: z.object({}) }
   , 'windows:return-file': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({}) }
   , 'windows:place': { input: z.object({ placement: z.enum(['new', 'left', 'right', 'top', 'bottom', 'fill']) }).strict(), output: z.object({}) }
   , 'metrics:card': { input: cardIdInput, output: z.array(runMetricSchema) }
@@ -376,6 +380,8 @@ export const ipcContracts = {
   , 'reviews:prepare-local': { input: cardIdInput, output: reviewSchema }
   , 'reviews:approve-local': { input: z.object({ reviewId: uuid }).strict(), output: reviewSchema }
   , 'git:repos': { input: z.object({ projectId: uuid }).strict(), output: z.array(gitRepoSchema) }
+  , 'git:upstream': { input: z.object({ sourceId: uuid, cardId: uuid.nullable() }).strict(), output: z.object({ branch: z.string().nullable(), upstream: z.string().nullable(), remotes: z.array(z.string()) }) }
+  , 'git:set-upstream': { input: z.object({ sourceId: uuid, cardId: uuid.nullable(), remote: z.string().min(1).max(100), branch: z.string().min(1).max(250) }).strict(), output: z.object({ upstream: z.string() }) }
   , 'git:detect': { input: z.object({ projectId: uuid }).strict(), output: z.object({ repos: z.array(gitRepoSchema), changed: z.boolean() }) }
   , 'git:setup-targets': { input: z.object({ projectId: uuid }).strict(), output: z.array(z.object({ sourceId: uuid, name: z.string(), path: z.string() })) }
   , 'git:setup': { input: z.object({ projectId: uuid, sourceId: uuid, mode: z.enum(['init', 'origin']), url: z.string().trim().max(500).optional() }).strict(), output: z.array(gitRepoSchema) }
@@ -386,7 +392,7 @@ export const ipcContracts = {
   , 'git:diff': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096), staged: z.boolean() }).strict(), output: z.string() }
   , 'git:stage': { input: z.object({ ...gitTarget, paths: z.array(z.string().min(1).max(4096)).max(5000), stage: z.boolean() }).strict(), output: gitChangesSchema }
   , 'git:commit': { input: z.object({ ...gitTarget, message: z.string().max(2000), description: z.string().max(20_000).optional(), amend: z.boolean().optional(), paths: z.array(z.string().min(1).max(4096)).max(5000).optional() }).strict(), output: z.object({ hash: z.string() }) }
-  , 'git:branch-action': { input: z.object({ sourceId: uuid, action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:branch-action': { input: z.object({ sourceId: uuid, action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete', 'delete-remote']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:commit-action': { input: z.object({ sourceId: uuid, action: z.enum(['checkout', 'cherry-pick', 'revert', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:stash-action': { input: z.object({ sourceId: uuid, action: z.enum(['apply', 'pop', 'drop']), ref: z.string().regex(/^stash@\{\d+\}$/) }).strict(), output: z.object({ output: z.string() }) }
   , 'git:conflicts': { input: z.object({ sourceId: uuid }).strict(), output: z.object({ operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']).nullable(), files: z.array(z.string()) }) }

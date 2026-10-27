@@ -211,12 +211,16 @@ function placeWindow(window: BrowserWindow, placement: WindowPlacement): void {
 }
 
 /** Abre uma janela só com aquela parte; ao encaixar numa metade, a janela de origem fica com a outra. */
-function openPopout(target: PopoutTarget, placement: WindowPlacement): void {
+function openPopout(target: PopoutTarget, placement: WindowPlacement, point?: { x: number; y: number }): void {
   const origin = BrowserWindow.getFocusedWindow() ?? mainWindow
-  const area = origin ? areaOf(origin) : screen.getPrimaryDisplay().workArea
+  const originDisplay = origin ? screen.getDisplayMatching(origin.getBounds()) : screen.getPrimaryDisplay()
+  const secondary = placement === 'second' ? screen.getAllDisplays().find((display) => display.id !== originDisplay.id) : undefined
+  const area = point ? screen.getDisplayNearestPoint(point).workArea : secondary?.workArea ?? originDisplay.workArea
   const other = oppositePlacement(placement)
   if (origin && other) placeWindow(origin, other)
-  void createWindow({ target, bounds: placementBounds(area, placement) })
+  const base = placement === 'second' ? placementBounds(area, 'fill') : placementBounds(area, placement)
+  const bounds = point && placement === 'new' ? { ...base, x: Math.max(area.x, Math.min(point.x - 72, area.x + area.width - base.width)), y: Math.max(area.y, Math.min(point.y - 28, area.y + area.height - base.height)) } : base
+  void createWindow({ target, bounds })
 }
 
 function returnFile(input: { projectId: string; cardId: string | null; path: string }): void {

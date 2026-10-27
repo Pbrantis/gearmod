@@ -90,22 +90,63 @@ function AgentTeam({ profiles, allowed, setAllowed, probes }: { profiles: AgentP
   </div>
 }
 
-export function ProjectConfigDialog({ project, profiles, close, saved, openConstitutionChat, initialTab }: { project: Project; profiles: AgentProfile[]; close(): void; saved(): void; openConstitutionChat(prompt?: string): void; initialTab?: 'general' | 'git' }): React.JSX.Element {
-  const [tab, setTab] = useState<'general' | 'git' | 'workflow' | 'theme' | 'constitution' | 'skills'>(initialTab ?? 'general'), [name, setName] = useState(project.name), [icon, setIcon] = useState(project.icon), [allowed, setAllowed] = useState(project.allowedProfileIds), [error, setError] = useState(''), [ownTheme, setOwnTheme] = useState<AppTheme | null>(() => projectTheme(project.id)), [probes, setProbes] = useState<Record<string, AgentProbe>>({})
-  useEscape(close)
+export function ProjectConfigDialog({ project, profiles, saved, openConstitutionChat, initialTab }: { project: Project; profiles: AgentProfile[]; saved(): void | Promise<void>; openConstitutionChat(prompt?: string): void; initialTab?: 'general' | 'git' }): React.JSX.Element {
+  const [tab, setTab] = useState<'general' | 'git' | 'workflow' | 'theme' | 'constitution' | 'skills'>(initialTab ?? 'general'), [name, setName] = useState(project.name), [icon, setIcon] = useState(project.icon), [allowed, setAllowed] = useState(project.allowedProfileIds), [editingName, setEditingName] = useState(false), [saveState, setSaveState] = useState<'idle' | 'waiting' | 'saving' | 'saved'>('idle'), [error, setError] = useState(''), [ownTheme, setOwnTheme] = useState<AppTheme | null>(() => projectTheme(project.id)), [probes, setProbes] = useState<Record<string, AgentProbe>>({})
+  const savedIdentity = React.useRef({ name: project.name, icon: project.icon }), identity = React.useRef({ name, icon }), saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null), saveQueue = React.useRef<Promise<void>>(Promise.resolve()), profileQueue = React.useRef<Promise<boolean>>(Promise.resolve(true)), saveVersion = React.useRef(0), profileVersion = React.useRef(0), closing = React.useRef(false)
+  identity.current = { name, icon }
   useEffect(() => { void window.agentboard.invoke('profiles:probe-all', undefined).then((all) => setProbes(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }, [])
-  const submit = async (): Promise<void> => { try { await window.agentboard.invoke('projects:update', { projectId: project.id, name, icon }); await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: allowed }); saved() } catch (reason) { setError(String(reason).replace(/^Error: /, '')) } }
-  const status = (id: string): string => { const probe = probes[id]; return probe ? (probe.installed ? (probe.authenticated ? 'conectado' : 'login necessário') : 'não instalado') : 'verificando…' }
+  const persistIdentity = React.useCallback(async (nextName: string, nextIcon: string | null): Promise<boolean> => {
+    const cleanName = nextName.trim()
+    if (!cleanName) { setError('O projeto precisa ter um nome.'); return false }
+    if (savedIdentity.current.name === cleanName && savedIdentity.current.icon === nextIcon) return true
+    const version = ++saveVersion.current
+    setSaveState('saving'); setError('')
+    const operation = saveQueue.current.catch(() => undefined).then(async () => {
+      if (savedIdentity.current.name === cleanName && savedIdentity.current.icon === nextIcon) return
+      await window.agentboard.invoke('projects:update', { projectId: project.id, name: cleanName, icon: nextIcon })
+      savedIdentity.current = { name: cleanName, icon: nextIcon }
+    })
+    saveQueue.current = operation
+    try { await operation; if (version === saveVersion.current) setSaveState('saved'); return true } catch (reason) { if (version === saveVersion.current) { setSaveState('idle'); setError(String(reason).replace(/^Error: /, '')) } return false }
+  }, [project.id])
+  useEffect(() => {
+    if (!name.trim() || (savedIdentity.current.name === name.trim() && savedIdentity.current.icon === icon)) return
+    setSaveState('waiting')
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; void persistIdentity(name, icon) }, 650)
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); saveTimer.current = null }
+  }, [icon, name, persistIdentity])
+  const finish = React.useCallback(async (): Promise<void> => {
+    if (closing.current) return
+    closing.current = true
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null }
+    const current = identity.current
+    const validName = current.name.trim() ? current.name : savedIdentity.current.name
+    if (!current.name.trim()) setName(validName)
+    if (!await persistIdentity(validName, current.icon)) { closing.current = false; return }
+    await saveQueue.current.catch(() => undefined)
+    if (!await profileQueue.current) { closing.current = false; return }
+    await saved()
+  }, [persistIdentity, saved])
+  useEscape(() => { void finish() })
+  const changeAllowed = (next: string[]): void => {
+    const previous = allowed, version = ++profileVersion.current
+    setAllowed(next); setSaveState('saving'); setError('')
+    const operation = profileQueue.current.catch(() => false).then(async () => { await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: next }); return true })
+    profileQueue.current = operation.catch(() => false)
+    void operation.then(() => { if (version === profileVersion.current) setSaveState('saved') }).catch((reason: unknown) => { if (version === profileVersion.current) { setAllowed(previous); setSaveState('idle'); setError(String(reason).replace(/^Error: /, '')) } })
+  }
+  const stopEditingName = (): void => { if (!name.trim()) setName(savedIdentity.current.name); setEditingName(false) }
+  const saveLabel = saveState === 'waiting' ? 'Salvamento automático pendente' : saveState === 'saving' ? 'Salvando…' : saveState === 'saved' ? 'Salvo automaticamente' : 'As alterações são salvas automaticamente'
   return <div className="overlay"><div className="modal pcfg" style={{ width: 'min(920px,100%)' }}>
-    <header><div className="pcfg-heading"><div className="eyebrow">Configurar projeto</div><div className="pcfg-identity"><ProjectIconPicker compact name={name} icon={icon} onChange={setIcon} /><h2>{name.trim() || project.name}</h2></div></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
+    <header><div className="pcfg-heading"><div className="eyebrow">Configurar projeto</div><div className="pcfg-identity"><ProjectIconPicker compact name={name} icon={icon} onChange={setIcon} /><div className="pcfg-name"><h2>{editingName
+      ? <input className="pcfg-name-input" value={name} autoFocus aria-label="Nome do projeto" onFocus={(event) => event.currentTarget.select()} onChange={(event) => { setName(event.target.value); setError('') }} onBlur={stopEditingName} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.stopPropagation(); setName(savedIdentity.current.name); setEditingName(false) } }} />
+      : <button type="button" className="pcfg-name-edit" onClick={() => setEditingName(true)} title="Editar nome do projeto"><span>{name.trim() || project.name}</span><span className="pcfg-name-pencil" aria-hidden="true">✎</span></button>}</h2><small className={`pcfg-save-state ${saveState}`}>{saveLabel}</small></div></div></div><button className="x" onClick={() => void finish()} aria-label="Fechar">×</button></header>
     <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['general', 'Geral'], ['git', 'Git'], ['workflow', 'Workflow'], ['skills', 'Skills']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div>
     <div className={`pcfg-body ${tab === 'skills' ? 'fill' : ''}`}>{tab === 'general' ? <>
-      <div className="stack"><label className="f">Nome<input className="in" value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <ThemePicker value={ownTheme} onChange={(value) => { setOwnTheme(value); setProjectTheme(project.id, value) }} />
-        <AgentTeam profiles={profiles} allowed={allowed} setAllowed={setAllowed} probes={probes} />
+      <div className="stack"><ThemePicker value={ownTheme} onChange={(value) => { setOwnTheme(value); setProjectTheme(project.id, value) }} />
+        <AgentTeam profiles={profiles} allowed={allowed} setAllowed={changeAllowed} probes={probes} />
         <div className="stack" style={{ gap: 8 }}><span className="sectitle">Constituição</span><ConstitutionPanel projectId={project.id} openChat={openConstitutionChat} /></div></div>
-      {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
-      <div className="actions"><button className="secondary" onClick={close}>Cancelar</button><button onClick={() => void submit()}>Salvar</button></div></>
+      {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>
       : tab === 'git' ? <GitPolicyPanel projectId={project.id} />
       : tab === 'workflow' ? <WorkflowPanel projectId={project.id} />
       : <div className="skwrap"><SkillsPanel scope="project" projectId={project.id} profiles={profiles.filter((profile) => allowed.includes(profile.id))} globalCount={0} /></div>}</div>

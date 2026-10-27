@@ -63,6 +63,10 @@ export function friendlyError(error: unknown): string {
   if (/Not possible to fast-forward|divergent branches/i.test(text)) return 'A branch local e a remota seguiram caminhos diferentes; não dá para atualizar sozinho. Resolva pelo terminal (merge ou rebase).'
   if (/no upstream|has no upstream branch/i.test(text)) return 'Esta branch ainda não foi publicada.'
   if (/not a git repository/i.test(text)) return 'A pasta não é um repositório Git.'
+  const used = /cannot delete branch '([^']+)' (?:used by|checked out at) (?:worktree at )?'([^']+)'/i.exec(text)
+  if (used) return `A branch ${used[1]} está em uso por uma worktree (${used[2]}). Remova ou libere essa worktree antes de apagar a branch.`
+  const unmerged = /The branch '([^']+)' is not fully merged/i.exec(text)
+  if (unmerged) return `A branch ${unmerged[1]} tem commits que ainda não estão em outra branch; por isso não foi apagada, para você não perder trabalho.`
   const detail = text.split(/\r?\n/).map((line) => line.trim()).find((line) => /^(fatal|error):/i.test(line))
   return detail ? detail.replace(/^(fatal|error):\s*/i, '') : text.trim().split(/\r?\n/)[0] || 'O Git não conseguiu concluir a operação.'
 }
@@ -418,8 +422,31 @@ export class GitManager {
     return { output: (await this.run(target.dir, ['push', '-u', 'origin', branch])).trim() || `Branch ${branch} publicada.` }
   }
 
+  /** Branch atual (da pasta principal ou da worktree do card), a remota que ela acompanha (null se nenhuma) e os remotos do repositório. */
+  async upstream(sourceId: string, cardId: string | null): Promise<{ branch: string | null; upstream: string | null; remotes: string[] }> {
+    const source = this.source(sourceId), target = await this.target(source, cardId)
+    const branch = target.branch ?? ((await this.tryRun(target.dir, ['branch', '--show-current']))?.trim() || null)
+    const upstream = branch ? (await this.tryRun(target.dir, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branch}@{upstream}`]))?.trim() || null : null
+    const remotes = ((await this.tryRun(source.path, ['remote'])) ?? '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+    return { branch, upstream, remotes }
+  }
+
+  /** Liga a branch atual a remoto/branch (para o pull e o push saberem para onde ir). Busca a branch remota antes; se ela não existe, explica. */
+  async setUpstream(input: { sourceId: string; cardId: string | null; remote: string; branch: string }): Promise<{ upstream: string }> {
+    const source = this.source(input.sourceId), target = await this.target(source, input.cardId)
+    const current = target.branch ?? (await this.run(target.dir, ['branch', '--show-current'])).trim()
+    if (!current) throw new Error('A pasta está sem branch (HEAD solto); escolha uma branch antes.')
+    const remote = input.remote.trim(), branch = input.branch.trim()
+    for (const ref of [remote, branch]) if (!ref || ref.startsWith('-') || await this.tryRun(source.path, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(`Nome inválido: ${ref || '(vazio)'}`)
+    if (!((await this.tryRun(source.path, ['remote'])) ?? '').split(/\r?\n/).map((item) => item.trim()).includes(remote)) throw new Error(`O remoto ${remote} não existe neste repositório.`)
+    try { await this.run(target.dir, ['fetch', remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`]) }
+    catch { throw new Error(`A branch ${branch} ainda não existe em ${remote}. Publique a branch com Push primeiro, ou escolha outra.`) }
+    await this.run(target.dir, ['branch', `--set-upstream-to=${remote}/${branch}`, current])
+    return { upstream: `${remote}/${branch}` }
+  }
+
   /** Ações do menu de uma branch na pasta principal do repositório. Merge e rebase com conflito são desfeitos, para não deixar a pasta no meio do caminho. */
-  async branchAction(sourceId: string, input: { action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete'; name: string; newName?: string }): Promise<{ output: string }> {
+  async branchAction(sourceId: string, input: { action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }): Promise<{ output: string }> {
     const dir = this.source(sourceId).path, { action, name } = input
     const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(`Nome de branch inválido: ${ref}`) }
     await valid(name)
@@ -428,8 +455,24 @@ export class GitManager {
     const needRemote = async (): Promise<void> => { if (!(await this.tryRun(dir, ['remote']))?.trim()) throw new Error('Este repositório não tem remoto (origin).') }
     if (action === 'checkout') {
       const remote = await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${name}`]) === null && await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/remotes/${name}`]) !== null
-      await this.run(dir, remote ? ['checkout', '--track', name] : ['checkout', name])
-      return { output: `Agora em ${remote ? name.replace(/^[^/]+\//, '') : name}.` }
+      if (!remote) { await this.run(dir, ['checkout', name]); return { output: `Agora em ${name}.` } }
+      // Branch remota: cria a local acompanhando a remota e muda para ela; se a local já existe, só muda para ela.
+      const local = name.replace(/^[^/]+\//, '')
+      const exists = await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${local}`]) !== null
+      await this.run(dir, exists ? ['checkout', local] : ['checkout', '--track', name])
+      return { output: exists ? `Agora em ${local} (já existia aqui).` : `Branch ${local} criada a partir de ${name}. Agora em ${local}.` }
+    }
+    if (action === 'delete-remote') {
+      // `name` vem como origem/branch (ex.: origin/feature/x). Apaga no servidor; nunca o HEAD nem a branch padrão do remoto.
+      const slash = name.indexOf('/'), remoteName = name.slice(0, slash), branch = name.slice(slash + 1)
+      if (slash <= 0 || !branch) throw new Error('Informe a branch remota no formato origem/branch.')
+      await valid(remoteName); await valid(branch)
+      if (branch === 'HEAD') throw new Error('O HEAD do remoto não pode ser apagado.')
+      if (!(await this.tryRun(dir, ['remote']))?.split(/\r?\n/).includes(remoteName)) throw new Error(`O remoto ${remoteName} não existe neste repositório.`)
+      if (await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/remotes/${name}`]) === null) throw new Error(`A branch remota ${name} não existe.`)
+      if ((await this.tryRun(dir, ['symbolic-ref', '--short', `refs/remotes/${remoteName}/HEAD`]))?.trim() === name) throw new Error(`${branch} é a branch padrão do remoto e não pode ser apagada por aqui.`)
+      await this.run(dir, ['push', remoteName, '--delete', branch])
+      return { output: `Branch ${branch} apagada em ${remoteName}.` }
     }
     if (action === 'pull') {
       await needRemote()

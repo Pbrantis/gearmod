@@ -24,12 +24,12 @@ describe('SettingsRepository', () => {
   it('persists app.tema and app.idioma in settings across a restart', async () => {
     const { root, database } = await open()
     const settings = new SettingsRepository(database)
-    expect(settings.update({ tema: 'purple' })).toEqual({ tema: 'purple', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true })
-    expect(settings.update({ idioma: 'en' })).toEqual({ tema: 'purple', idioma: 'en', voz: 'small', notificacoes: true, retomarSozinho: true })
-    expect(database.db.prepare(`SELECT key, json_value FROM settings ORDER BY key`).all()).toMatchObject([{ key: 'app.idioma', json_value: '"en"' }, { key: 'app.tema', json_value: '"purple"' }])
+    expect(settings.update({ tema: 'light-sky' })).toEqual({ tema: 'light-sky', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true })
+    expect(settings.update({ idioma: 'en' })).toEqual({ tema: 'light-sky', idioma: 'en', voz: 'small', notificacoes: true, retomarSozinho: true })
+    expect(database.db.prepare(`SELECT key, json_value FROM settings ORDER BY key`).all()).toMatchObject([{ key: 'app.idioma', json_value: '"en"' }, { key: 'app.tema', json_value: '"light-sky"' }])
     database.close()
     const reopened = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await reopened.open()
-    expect(new SettingsRepository(reopened).get()).toEqual({ tema: 'purple', idioma: 'en', voz: 'small', notificacoes: true, retomarSozinho: true })
+    expect(new SettingsRepository(reopened).get()).toEqual({ tema: 'light-sky', idioma: 'en', voz: 'small', notificacoes: true, retomarSozinho: true })
     reopened.close()
   })
 

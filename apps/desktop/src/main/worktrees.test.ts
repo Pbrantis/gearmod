@@ -53,12 +53,17 @@ describe('WorktreeService', () => {
     expect(recovered.branch).toBe(branch)
     expect((await exec('git', ['-C', repo, 'worktree', 'list'])).stdout).not.toContain('antiga')
     const done = board.get(project.id).columns.find((item) => item.semanticState === 'done')!
-    expect(() => board.move(first.id, done.id, null)).toThrow('teste aprovado')
+    expect(() => board.move(first.id, done.id, null)).toThrow('Testes automatizados')
     const quality = new QualityService(database, service)
     expect((await quality.runTest(first.id, process.execPath, ['-e', 'process.stdout.write("ok")'])).status).toBe('passed')
-    expect(() => board.move(first.id, done.id, null)).toThrow('revisão aprovada')
+    expect(() => board.move(first.id, done.id, null)).toThrow('Revisar')
     const review = quality.prepareLocalReview(first.id); expect(quality.approveLocal(review.id).state).toBe('approved')
     expect(board.move(first.id, done.id, null).columnId).toBe(done.id)
+    // Pasta removida manualmente: o snapshot não quebra e limpa o membro órfão do banco/Git.
+    const member = database.db.prepare('SELECT path FROM worktree_members WHERE worktree_id = ?').get(one.id) as { path: string }
+    await rm(member.path, { recursive: true, force: true })
+    expect((await service.snapshot(first.id)).exists).toBe(false)
+    expect(database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(one.id)).toBe(0)
     database.close()
   }, 20_000)
 

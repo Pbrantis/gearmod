@@ -48,7 +48,7 @@ export class McpBridge {
   private readonly dir: string
   readonly socketPath: string
 
-  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }> }) {
+  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }> }) {
     const id = randomBytes(6).toString('hex')
     this.dir = join(tmpdir(), `agentboard-${id}`)
     this.socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\agentboard-${id}` : join(this.dir, 'mcp.sock')
@@ -98,6 +98,11 @@ export class McpBridge {
     if (!run) return { ok: false, error: 'Execução desconhecida ou já encerrada.' }
     const { board, context } = this.deps
     try {
+      if (tool === 'agentboard_ler_skill') {
+        if (typeof args.nome !== 'string' || !args.nome.trim()) return { ok: false, error: 'nome deve ser uma skill do catálogo' }
+        const instructions = context.skillInstructions(args.nome.trim())
+        return instructions ? { ok: true, text: instructions } : { ok: false, error: `Skill desconhecida: ${args.nome}` }
+      }
       if (tool === 'agentboard_criar_card') {
         if (run.purpose !== 'free' || run.cardId) return { ok: false, error: 'Esta conversa já tem card.' }
         if (!this.deps.conversations) return { ok: false, error: 'O chat livre não está disponível' }
@@ -113,7 +118,7 @@ export class McpBridge {
         this.deps.conversations.convertToPlanning(run.chatId, card.id)
         run.cardId = card.id; run.purpose = 'planning'
         run.notify({ type: 'converted', cardId: card.id, chatId: run.chatId })
-        return { ok: true, text: `Card "${card.title}" criado no ${column.label}. Este chat agora é o chat de planejamento dele: siga a skill agentboard-planejamento, grave Especificação, Plano e Tasks com agentboard_escrever_documento e chame agentboard_concluir_planejamento quando terminar.` }
+        return { ok: true, text: `Card "${card.title}" criado no ${column.label}. Este chat agora é o chat de planejamento dele: carregue agentboard-planejamento com agentboard_ler_skill, siga a skill, grave Especificação, Plano e Tasks com agentboard_escrever_documento e chame agentboard_concluir_planejamento quando terminar.` }
       }
       if (tool === 'agentboard_ler_constituicao' || tool === 'agentboard_escrever_constituicao' || tool === 'agentboard_propor_constituicao') return this.constitution(run, tool, args)
       if (!run.cardId) return { ok: false, error: 'Esta conversa ainda não tem card. Se o usuário pedir para planejar algo, chame agentboard_criar_card primeiro.' }

@@ -98,11 +98,17 @@ export class AgentContextService {
     return `<agentboard-contexto>\n${JSON.stringify({ idioma: this.language(), tipo: 'chat-livre', regra, perguntasAoUsuario: questionRule }, null, 2)}${projectId ? this.constitutionSection(projectId) : ''}\n</agentboard-contexto>\n\n${prompt}`
   }
 
-  /** Instruções fixas do chat livre; no Codex (sem plugin) levam também as skills de planejamento, usadas depois de criar o card. */
+  /** Instruções fixas do chat livre; no Codex levam só o catálogo, e a skill completa é lida sob demanda pelo MCP. */
   freeInstructions(withSkills: boolean, canEdit = false): string {
-    const base = `Você está em um chat livre do AgentBoard: converse, tire dúvidas e leia o projeto à vontade${canEdit ? '. Quando o usuário pedir, altere os arquivos do projeto diretamente (respeitando o modo de permissão)' : ', sem alterar arquivos'}. Quando o usuário pedir para planejar algo (ou a conversa claramente virar um planejamento de tarefa), responda que consegue, chame agentboard_criar_card com um título curto, tipo, prioridade e um resumo, registre o entendimento e a avaliação de complexidade (skill agentboard-discovery) e em seguida planeje neste mesmo chat com a skill agentboard-planejamento (documentos com agentboard_escrever_documento e, no fim, agentboard_concluir_planejamento). Não crie card sem o usuário pedir.`
-    const skills = withSkills && this.pluginDir ? loadSkillInstructions(this.pluginDir, this.language(), true) : undefined
+    const base = `Você está em um chat livre do AgentBoard: converse, tire dúvidas e leia o projeto à vontade${canEdit ? '. Quando o usuário pedir, altere os arquivos do projeto diretamente (respeitando o modo de permissão)' : ', sem alterar arquivos'}. Não use skill para uma conversa comum ou uma alteração direta nos arquivos. Quando o usuário pedir para planejar algo (ou a conversa claramente virar um planejamento de tarefa), responda que consegue, carregue agentboard-discovery com agentboard_ler_skill, chame agentboard_criar_card com um título curto, tipo, prioridade e um resumo, registre o entendimento e a avaliação de complexidade e em seguida carregue e siga agentboard-planejamento neste mesmo chat (documentos com agentboard_escrever_documento e, no fim, agentboard_concluir_planejamento). Carregue qualquer outra skill do catálogo somente quando a solicitação corresponder à descrição dela. Não crie card sem o usuário pedir.`
+    const skills = withSkills && this.pluginDir ? loadSkillCatalog(this.pluginDir, true) : undefined
     return [base, skills].filter(Boolean).join('\n\n---\n\n')
+  }
+
+  /** Conteúdo integral de uma skill confiável do plugin, devolvido apenas quando o agente a ativa. */
+  skillInstructions(name: string): string | undefined {
+    if (!this.pluginDir) return undefined
+    return loadSkillInstructions(this.pluginDir, this.language(), [name])
   }
 
   /**
@@ -139,8 +145,7 @@ const planningSkills = new Set(['agentboard-discovery', 'agentboard-planejamento
 export function loadSkillInstructions(pluginDir: string, language: AppLanguage, which: boolean | string[]): string | undefined {
   const skillsDir = join(pluginDir, 'skills')
   if (!existsSync(skillsDir)) return undefined
-  const names = readdirSync(skillsDir).filter((name) => name.startsWith('agentboard-')).sort()
-  const wanted = Array.isArray(which) ? names.filter((name) => which.includes(name)) : which ? names.filter((name) => planningSkills.has(name)) : names.filter((name) => name === 'agentboard-resumo')
+  const wanted = wantedSkills(skillsDir, which)
   const parts = wanted.map((name) => {
     const skill = readFileSync(join(skillsDir, name, 'SKILL.md'), 'utf8')
     const templates = join(skillsDir, name, 'templates')
@@ -148,4 +153,22 @@ export function loadSkillInstructions(pluginDir: string, language: AppLanguage, 
     return `## Skill ${name}\n${stripFrontMatter(skill)}${file ? `\n\n### Modelo (${language})\n${readFileSync(file, 'utf8').trim()}` : ''}`
   })
   return parts.length ? `Skills do sistema AgentBoard. Siga-as ao trabalhar no card.\n\n${parts.join('\n\n---\n\n')}` : undefined
+}
+
+/** Metadados mínimos para descoberta progressiva; não injeta o corpo nem os templates das skills. */
+export function loadSkillCatalog(pluginDir: string, which: boolean | string[]): string | undefined {
+  const skillsDir = join(pluginDir, 'skills')
+  if (!existsSync(skillsDir)) return undefined
+  const entries = wantedSkills(skillsDir, which).map((folder) => {
+    const source = readFileSync(join(skillsDir, folder, 'SKILL.md'), 'utf8')
+    const name = source.match(/^name:\s*(.+)$/m)?.[1]?.trim() || folder
+    const description = source.match(/^description:\s*(.+)$/m)?.[1]?.trim() || 'Sem descrição.'
+    return `- ${name}: ${description}`
+  })
+  return entries.length ? `Skills disponíveis no AgentBoard (catálogo para descoberta). O conteúdo completo não está carregado. Quando uma solicitação corresponder a uma descrição, chame agentboard_ler_skill com o nome antes de seguir o procedimento.\n\n${entries.join('\n')}` : undefined
+}
+
+function wantedSkills(skillsDir: string, which: boolean | string[]): string[] {
+  const names = readdirSync(skillsDir).filter((name) => name.startsWith('agentboard-')).sort()
+  return Array.isArray(which) ? names.filter((name) => which.includes(name)) : which ? names.filter((name) => planningSkills.has(name)) : names.filter((name) => name === 'agentboard-resumo')
 }

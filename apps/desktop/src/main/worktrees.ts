@@ -126,7 +126,20 @@ export class WorktreeService {
       return { worktreeId: worktree.id, status: '', diff: '', exists: false }
     }
     const members = this.database.db.prepare(`SELECT repo_path AS repoPath, path, base_ref AS baseRef FROM worktree_members WHERE worktree_id = ? AND status = 'active' ORDER BY path`).all(worktree.id) as Array<{ repoPath: string; path: string; baseRef: string }>
-    const targets = members.length ? members : [{ repoPath: worktree.repoPath, path: worktree.path, baseRef: worktree.baseRef }]
+    const targets: typeof members = []
+    for (const member of members) {
+      const state = await directoryState(member.path)
+      if (state !== 'missing') { targets.push(member); continue }
+      // A pasta foi apagada fora do AgentBoard: remove tanto o vínculo órfão do Git quanto o registro local.
+      // Falhas de permissão não entram aqui e continuam visíveis ao usuário, pois podem ser temporárias.
+      await this.git.run(['-C', member.repoPath, 'worktree', 'prune']).catch(() => undefined)
+      this.database.db.prepare('DELETE FROM worktree_members WHERE worktree_id = ? AND path = ?').run(worktree.id, member.path)
+    }
+    if (members.length && !targets.length) {
+      this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(worktree.id)
+      return { worktreeId: worktree.id, status: '', diff: '', exists: false }
+    }
+    if (!members.length) targets.push({ repoPath: worktree.repoPath, path: worktree.path, baseRef: worktree.baseRef })
     const snapshots = await Promise.all(targets.map(async (member) => {
       // O que o card mudou é contado a partir do ponto em que a branch saiu da base (merge-base), não da ponta atual da base:
       // senão tudo o que a base ganhou depois (ou tem a mais) apareceria como se o card tivesse apagado.
@@ -135,7 +148,9 @@ export class WorktreeService {
         this.git.run(['-C', member.path, 'status', '--short', '--branch']),
         this.git.run(['-C', member.path, 'diff', '--no-ext-diff', '--binary', since, '--'])
       ])
-      return { heading: `\n## ${member.repoPath}\n`, status: status.stdout, diff: diff.stdout }
+      // A raiz real da worktree acompanha cada trecho: a tela de alterações precisa dela para abrir caminhos relativos
+      // corretamente quando o card usa mais de um repositório.
+      return { heading: `\n### AgentBoard root: ${member.path}\n`, status: status.stdout, diff: diff.stdout }
     }))
     return { worktreeId: worktree.id, status: snapshots.map((item) => `${item.heading}${item.status}`).join(''), diff: snapshots.map((item) => `${item.heading}${item.diff}`).join(''), exists: true }
   }
@@ -193,3 +208,9 @@ function friendlyGitError(error: unknown, repo: string): string {
 }
 
 async function exists(path: string): Promise<boolean> { return stat(path).then((value) => value.isDirectory(), () => false) }
+
+/** Distingue pasta removida de acesso temporariamente negado; só o primeiro caso autoriza apagar o registro. */
+async function directoryState(path: string): Promise<'available' | 'missing' | 'unavailable'> {
+  try { return (await stat(path)).isDirectory() ? 'available' : 'missing' }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR' ? 'missing' : 'unavailable' }
+}

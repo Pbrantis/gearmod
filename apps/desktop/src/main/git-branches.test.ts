@@ -1,0 +1,78 @@
+import { execFile } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { promisify } from 'node:util'
+import { afterEach, describe, expect, it } from 'vitest'
+import { AppDatabase } from './database'
+import { friendlyError, GitManager } from './git-manager'
+import { GitService, ProjectRepository } from './projects'
+
+const exec = promisify(execFile), roots: string[] = [], opened: AppDatabase[] = []
+afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
+const git = (dir: string, ...args: string[]): Promise<{ stdout: string }> => exec('git', ['-C', dir, ...args])
+
+/** Repositório com um remoto bare (origin) que já tem a main e a branch feature/x. */
+async function withRemote(): Promise<{ manager: GitManager; repo: string; remote: string; sourceId: string }> {
+  const root = await mkdtemp(join(tmpdir(), 'agentboard-branches-')); roots.push(root)
+  const repo = join(root, 'repo'), remote = join(root, 'remote.git')
+  await exec('git', ['init', '--bare', '-b', 'main', remote]); await exec('git', ['init', '-b', 'main', repo])
+  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'AgentBoard Test')
+  await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'primeiro')
+  await git(repo, 'remote', 'add', 'origin', remote); await git(repo, 'push', '-u', 'origin', 'main')
+  await git(repo, 'checkout', '-b', 'feature/x'); await writeFile(join(repo, 'b.txt'), 'b\n'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'feature'); await git(repo, 'push', 'origin', 'feature/x')
+  await git(repo, 'checkout', 'main'); await git(repo, 'branch', '-D', 'feature/x'); await git(repo, 'remote', 'set-head', 'origin', 'main')
+  const database = new AppDatabase(join(root, 'data', 'db.sqlite'), '0.1.0'); await database.open(); opened.push(database)
+  const project = await new ProjectRepository(database, new GitService()).create({ localPath: repo })
+  const source = database.db.prepare('SELECT id FROM project_sources WHERE project_id = ?').get(project.id) as { id: string }
+  return { manager: new GitManager(database), repo, remote, sourceId: source.id }
+}
+
+describe('branches remotas', { timeout: 20_000 }, () => {
+  it('checkout de uma branch remota cria a local acompanhando a remota e, se a local já existe, só muda para ela', async () => {
+    const { manager, repo, sourceId } = await withRemote()
+    const first = await manager.branchAction(sourceId, { action: 'checkout', name: 'origin/feature/x' })
+    expect(first.output).toContain('criada'); expect((await git(repo, 'branch', '--show-current')).stdout.trim()).toBe('feature/x')
+    expect((await git(repo, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).stdout.trim()).toBe('origin/feature/x')
+    await manager.branchAction(sourceId, { action: 'checkout', name: 'main' })
+    const again = await manager.branchAction(sourceId, { action: 'checkout', name: 'origin/feature/x' })
+    expect(again.output).toContain('já existia'); expect((await git(repo, 'branch', '--show-current')).stdout.trim()).toBe('feature/x')
+  })
+  it('apaga a branch no servidor, mas recusa a padrão do remoto, o HEAD e nomes que não existem', async () => {
+    const { manager, repo, remote, sourceId } = await withRemote()
+    await expect(manager.branchAction(sourceId, { action: 'delete-remote', name: 'origin/main' })).rejects.toThrow(/padrão/)
+    await expect(manager.branchAction(sourceId, { action: 'delete-remote', name: 'origin/HEAD' })).rejects.toThrow()
+    await expect(manager.branchAction(sourceId, { action: 'delete-remote', name: 'origin/nao-existe' })).rejects.toThrow(/não existe/)
+    await expect(manager.branchAction(sourceId, { action: 'delete-remote', name: 'feature/x' })).rejects.toThrow()
+    const done = await manager.branchAction(sourceId, { action: 'delete-remote', name: 'origin/feature/x' })
+    expect(done.output).toContain('apagada')
+    expect((await exec('git', ['-C', remote, 'branch', '--list'])).stdout).not.toContain('feature/x')
+    expect((await git(repo, 'branch', '-r')).stdout).not.toContain('feature/x')
+  })
+})
+
+describe('apagar branch local', () => {
+  it('explica quando a branch está em uso por uma worktree ou ainda não foi mesclada', async () => {
+    const { manager, repo, sourceId } = await withRemote()
+    const wt = join(repo, '..', 'wt'); await git(repo, 'worktree', 'add', '-b', 'agentboard/card', wt)
+    await expect(manager.branchAction(sourceId, { action: 'delete', name: 'agentboard/card' })).rejects.toThrow(/em uso por uma worktree/)
+    await git(repo, 'worktree', 'remove', '--force', wt)
+    await git(repo, 'checkout', '-b', 'solta'); await writeFile(join(repo, 'c.txt'), 'c'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'so aqui'); await git(repo, 'checkout', 'main')
+    await expect(manager.branchAction(sourceId, { action: 'delete', name: 'solta' })).rejects.toThrow(/ainda não estão em outra branch/)
+    expect(friendlyError(new Error("error: cannot delete branch 'x' used by worktree at 'C:/p'"))).toContain('em uso por uma worktree (C:/p)')
+  })
+})
+
+describe('remoto e branch do pull', () => {
+  it('detecta a branch sem remota ligada, liga a uma branch que existe e explica quando ela não existe', async () => {
+    const { manager, repo, sourceId } = await withRemote()
+    await git(repo, 'checkout', '-b', 'novo'); await git(repo, 'push', 'origin', 'novo')
+    expect(await manager.upstream(sourceId, null)).toEqual({ branch: 'novo', upstream: null, remotes: ['origin'] })
+    await expect(manager.setUpstream({ sourceId, cardId: null, remote: 'origin', branch: 'nao-existe' })).rejects.toThrow(/ainda não existe em origin/)
+    await expect(manager.setUpstream({ sourceId, cardId: null, remote: 'outro', branch: 'novo' })).rejects.toThrow(/não existe neste repositório/)
+    await expect(manager.setUpstream({ sourceId, cardId: null, remote: 'origin', branch: '--evil' })).rejects.toThrow(/inválido/)
+    expect(await manager.setUpstream({ sourceId, cardId: null, remote: 'origin', branch: 'novo' })).toEqual({ upstream: 'origin/novo' })
+    expect((await manager.upstream(sourceId, null)).upstream).toBe('origin/novo')
+    expect((await manager.sync(sourceId, null, 'pull', 'rebase')).output).toBeTruthy()
+  })
+})

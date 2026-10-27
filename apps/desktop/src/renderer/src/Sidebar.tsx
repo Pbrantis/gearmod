@@ -80,7 +80,7 @@ export function UsageDialog({ current, close }: { current?: string; close(): voi
   return <UsageModal profiles={profiles} usage={usage} current={current ?? ''} close={close} only={Boolean(current)} />
 }
 
-export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
+export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onProjectSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onProjectSettings(projectId: string): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
   // Arrastar: enquanto arrasta, a lista mostra o projeto já na posição nova; ao soltar, grava a ordem.
   const [drag, setDrag] = useState<{ id: string; over: number }>(), [menu, setMenu] = useState<{ project: Project; x: number; y: number }>()
   const ordered = drag ? (() => { const rest = projects.filter((item) => item.id !== drag.id), moving = projects.find((item) => item.id === drag.id)!; rest.splice(drag.over, 0, moving); return rest })() : projects
@@ -120,6 +120,7 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
     {menu && <div className="projmenu" role="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
       <div className="ctxtitle">{menu.project.name}</div>
       <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onNewChat(menu.project.id) }}>Novo chat livre</button>
+      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onProjectSettings(menu.project.id) }}>Configurar projeto</button>
       <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(undefined); onDelete(menu.project) }}>Excluir projeto</button>
     </div>}
   </>

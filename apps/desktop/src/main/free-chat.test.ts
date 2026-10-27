@@ -24,7 +24,7 @@ describe('free chat', () => {
     const profile = profiles.list()[0]!
     const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev', profileIds: [profile.id] })
     const conversations = new ConversationRepository(database)
-    const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), null), serverScript: 'x', conversations })
+    const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), join(__dirname, '..', '..', 'resources', 'agentboard-plugin')), serverScript: 'x', conversations })
     const call = (token: string, tool: string, args: Record<string, unknown>) => (bridge as unknown as { handle(token: string, tool: string, args: Record<string, unknown>): { ok: boolean; text?: string; error?: string } }).handle(token, tool, args)
 
     expect(() => conversations.createChat({ projectId: project.id, cardId: null, purpose: 'planning', profileId: profile.id })).toThrow('precisa de um card')
@@ -38,6 +38,8 @@ describe('free chat', () => {
 
     const changes: unknown[] = []
     const token = bridge.register(run.id, null, (change) => changes.push(change), { id: chat.id, purpose: 'free' }).env.AGENTBOARD_TOKEN!
+    expect(call(token, 'agentboard_ler_skill', { nome: 'agentboard-discovery' })).toMatchObject({ ok: true, text: expect.stringContaining('# Discovery da demanda') })
+    expect(call(token, 'agentboard_ler_skill', { nome: 'skill-inexistente' })).toMatchObject({ ok: false })
     expect(call(token, 'agentboard_escrever_documento', { tipo: 'plano', markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('agentboard_criar_card') })
     expect(call(token, 'agentboard_criar_card', { titulo: ' ' })).toMatchObject({ ok: false })
 

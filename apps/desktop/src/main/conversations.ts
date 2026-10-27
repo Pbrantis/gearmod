@@ -134,7 +134,7 @@ export class ConversationRepository {
       FROM runs r JOIN chats c ON c.id = r.chat_id WHERE r.card_id = ? GROUP BY c.purpose`).all(cardId) as Array<{ purpose: string; input: number; cached: number; output: number; runs: number }>
     for (const row of rows) if (row.purpose === 'planning' || row.purpose === 'execution' || row.purpose === 'test') usage[row.purpose] = { input: row.input, cached: row.cached, output: row.output, runs: row.runs }
     usage.agents = this.database.db.prepare(`SELECT c.purpose AS purpose, r.profile_id AS profileId, ap.label AS label, ap.provider AS provider, SUM(r.input_tokens) AS input, SUM(r.cached_tokens) AS cached, SUM(r.output_tokens) AS output, COUNT(*) AS runs
-      FROM runs r JOIN chats c ON c.id = r.chat_id JOIN agent_profiles ap ON ap.id = r.profile_id WHERE r.card_id = ? AND c.purpose IN ('planning', 'execution', 'test') GROUP BY c.purpose, r.profile_id ORDER BY MIN(r.started_at)`).all(cardId) as CardUsage['agents']
+      FROM runs r JOIN chats c ON c.id = r.chat_id JOIN agent_profiles ap ON ap.id = r.profile_id WHERE r.card_id = ? AND c.purpose IN ('planning', 'execution', 'test') GROUP BY c.purpose, r.profile_id ORDER BY MIN(r.started_at), MIN(r.rowid)`).all(cardId) as CardUsage['agents']
     return usage
   }
 
@@ -189,6 +189,14 @@ export class ConversationRepository {
       this.database.db.prepare('DELETE FROM runs WHERE chat_id = ?').run(chatId)
       this.database.db.prepare('DELETE FROM chats WHERE id = ?').run(chatId)
     })()
+  }
+
+  /** Apaga um chat do projeto. Chats vinculados a cards são parte do histórico do card e nunca podem ser apagados isoladamente. */
+  deleteChat(chatId: string): void {
+    const chat = this.database.db.prepare('SELECT card_id AS cardId FROM chats WHERE id = ?').get(chatId) as { cardId: string | null } | undefined
+    if (!chat) throw new Error('Chat não encontrado')
+    if (chat.cardId !== null) throw new Error('Chats vinculados a cards não podem ser apagados')
+    this.resetChat(chatId)
   }
 
   reconcileInterrupted(): number {

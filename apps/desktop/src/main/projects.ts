@@ -16,6 +16,18 @@ const defaultColumns = [
 ] as const
 
 export class GitService {
+  /** Branch atualmente aberta exatamente nesta pasta; não confunde uma pasta contêiner com repositórios filhos. */
+  async currentBranch(localPath: string): Promise<string | null> {
+    const path = resolve(localPath)
+    try {
+      const [{ stdout: root }, { stdout: branch }] = await Promise.all([
+        execFileAsync('git', ['-C', path, 'rev-parse', '--show-toplevel']),
+        execFileAsync('git', ['-C', path, 'branch', '--show-current'])
+      ])
+      return resolve(root.trim()).toLowerCase() === path.toLowerCase() ? branch.trim() || null : null
+    } catch { return null }
+  }
+
   async inspect(localPath: string): Promise<{ localPath: string; name: string; repositories: Array<{ localPath: string; name: string; currentBranch: string; branches: string[] }> }> {
     const folder = await stat(localPath).catch(() => undefined)
     if (!folder?.isDirectory()) throw new Error('A pasta do projeto não existe')
@@ -371,11 +383,12 @@ export class BoardRepository {
     return this.card(input.cardId)
   }
 
-  move(cardId: string, columnId: string, beforeCardId: string | null, actor: 'user' | 'agent' = 'user'): Card {
+  /** `skipGate` (só pelo usuário, depois de confirmar) pula teste e revisão do Done e deixa isso registrado no histórico de colunas. */
+  move(cardId: string, columnId: string, beforeCardId: string | null, actor: 'user' | 'agent' = 'user', skipGate = false): Card {
     const current = this.card(cardId)
     this.assertColumn(current.projectId, columnId)
     const destination = this.database.db.prepare('SELECT semantic_state AS state FROM board_columns WHERE id = ?').get(columnId) as { state: string }
-    if (destination.state === 'done') this.assertDoneGate(cardId)
+    const skipped = destination.state === 'done' && current.columnId !== columnId ? this.assertDoneGate(cardId, actor === 'user' && skipGate) : false
     let orderKey: number, priority = current.priority
     if (beforeCardId) {
       const before = this.card(beforeCardId)
@@ -390,7 +403,7 @@ export class BoardRepository {
     const move = this.database.db.transaction(() => {
       this.database.db.prepare('UPDATE cards SET column_id = ?, order_key = ?, priority = ?, updated_at = ? WHERE id = ?').run(columnId, orderKey, priority, now, cardId)
       if (current.columnId !== columnId) this.database.db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), cardId, current.columnId, columnId, now, actor, actor === 'agent' ? 'agent-request' : 'kanban-move')
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), cardId, current.columnId, columnId, now, actor, actor === 'agent' ? 'agent-request' : skipped ? 'kanban-move-skipped-checks' : 'kanban-move')
     })
     move(); return this.card(cardId)
   }
@@ -423,14 +436,24 @@ export class BoardRepository {
     criteria.forEach((item, index) => insert.run(randomUUID(), cardId, item.body, item.checked ? 1 : 0, index))
   }
 
-  private assertDoneGate(cardId: string): void {
-    const test = this.database.db.prepare('SELECT status FROM test_runs WHERE card_id = ? ORDER BY started_at DESC LIMIT 1').get(cardId) as { status: string } | undefined
-    if (test?.status !== 'passed') throw new Error('Done exige um teste aprovado')
-    const review = this.database.db.prepare('SELECT state FROM reviews WHERE card_id = ? ORDER BY updated_at DESC LIMIT 1').get(cardId) as { state: string } | undefined
-    if (!review || !['approved', 'merged'].includes(review.state)) throw new Error('Done exige revisão aprovada ou merge confirmado')
+  /** Confere o gate de Done; devolve true quando testes/revisão estavam pendentes e o usuário escolheu pular. */
+  private assertDoneGate(cardId: string, skip = false): boolean {
+    const pending = this.pendingChecks(cardId)
+    if (pending && !skip) throw new Error(pending)
     // Entrega em vários repositórios não é atômica: um repositório que falhou impede declarar o card entregue.
     const failed = this.database.db.prepare(`SELECT m.repo_path FROM worktree_members m JOIN worktrees w ON w.id = m.worktree_id
       WHERE w.card_id = ? AND m.status = 'failed' AND w.id = (SELECT id FROM worktrees x WHERE x.card_id = w.card_id ORDER BY x.created_at DESC LIMIT 1)`).pluck().all(cardId) as string[]
     if (failed.length) throw new Error(`Done exige todos os repositórios do card prontos; falhou: ${failed.map((path) => basename(path)).join(', ')}`)
+    return Boolean(pending)
+  }
+
+  private pendingChecks(cardId: string): string | null {
+    const test = this.database.db.prepare('SELECT status FROM test_runs WHERE card_id = ? ORDER BY started_at DESC LIMIT 1').get(cardId) as { status: string } | undefined
+    if (!test) return 'Para mover para Done, rode “Testes automatizados” no painel Alterações do chat de Teste.'
+    if (test.status === 'running') return 'Os Testes automatizados ainda estão rodando. Aguarde a conclusão antes de mover para Done.'
+    if (test.status !== 'passed') return 'O último Teste automatizado falhou. Rode-o novamente e deixe-o passar antes de mover para Done.'
+    const review = this.database.db.prepare('SELECT state FROM reviews WHERE card_id = ? ORDER BY updated_at DESC LIMIT 1').get(cardId) as { state: string } | undefined
+    if (!review || !['approved', 'merged'].includes(review.state)) return 'Os testes passaram. Agora use “Revisar” no painel Alterações para aprovar as mudanças antes de mover para Done.'
+    return null
   }
 }

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { toast } from './toasts'
 
 /** Um processo demorado (instalação, revisão de skill…) que continua rodando mesmo com o diálogo fechado. */
 export interface BgTask { id: string; key: string; title: string; detail: string; state: 'running' | 'done' | 'failed'; startedAt: number; endedAt?: number; error?: string }
@@ -23,7 +24,12 @@ export const tasks = {
     set([created, ...state.filter((item) => item.key !== key)].slice(0, 30))
     return id
   },
-  end(id: string, error?: unknown): void { patch(id, error === undefined ? { state: 'done', endedAt: Date.now() } : { state: 'failed', endedAt: Date.now(), error: text(error) }) },
+  end(id: string, error?: unknown): void {
+    const task = state.find((item) => item.id === id)
+    patch(id, error === undefined ? { state: 'done', endedAt: Date.now() } : { state: 'failed', endedAt: Date.now(), error: text(error) })
+    if (task?.state !== 'running') return
+    if (error === undefined) toast.success(`${task.title} concluído`, task.detail || undefined); else toast.error(`${task.title} falhou`, text(error))
+  },
   /** Roda a operação acompanhando-a; o resultado (ou o erro) continua chegando a quem chamou. */
   track<T>(meta: { key?: string; title: string; detail?: string }, run: () => Promise<T>): { id: string; promise: Promise<T> } {
     const id = tasks.begin(meta)

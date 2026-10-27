@@ -2,10 +2,15 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { ipcContracts, type AgentBoardApi, type IpcChannel, type IpcInput, type IpcOutput, type PushedRunEvent } from '@agentboard/contracts'
 
 const allowed = new Set<IpcChannel>(Object.keys(ipcContracts) as IpcChannel[])
+const cleanIpcError = (reason: unknown): Error => {
+  let message = String(reason)
+  for (let index = 0; index < 3; index += 1) message = message.replace(/^Error:\s*/i, '').replace(/^Error invoking remote method ['"][^'"]+['"]:\s*/i, '')
+  return new Error(message || 'Não foi possível concluir a operação')
+}
 const api: AgentBoardApi = {
   async invoke<C extends IpcChannel>(channel: C, input: IpcInput<C>): Promise<IpcOutput<C>> {
     if (!allowed.has(channel)) throw new Error(`IPC channel is not allowed: ${channel}`)
-    return ipcRenderer.invoke(channel, input) as Promise<IpcOutput<C>>
+    try { return await ipcRenderer.invoke(channel, input) as IpcOutput<C> } catch (reason) { throw cleanIpcError(reason) }
   },
   onRunEvent(listener: (event: PushedRunEvent) => void): () => void {
     const handler = (_event: Electron.IpcRendererEvent, value: PushedRunEvent): void => listener(value)

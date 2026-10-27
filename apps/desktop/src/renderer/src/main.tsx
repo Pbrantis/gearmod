@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import type { AgentProfile, AppSettings, Project, ProjectBoard } from '@agentboard/contracts'
 import './prototype.css'
 import { Board } from './Board'
 import { ProjectAgentsDialog, ProjectConfigDialog, ProjectDialog } from './ProjectDialogs'
-import { applySettings, SettingsDialog } from './SettingsDialog'
+import { applySettings, applyTheme, SettingsDialog } from './SettingsDialog'
 import { projectTheme, projectThemeEvent } from './projectTheme'
 import { Sidebar } from './Sidebar'
 import { FolderGlyph } from './icons'
@@ -18,6 +18,9 @@ import { terminal, useTerminal } from './terminalStore'
 import { WorkspaceFiles } from './WorkspaceFiles'
 import { gitChangedEvent } from './GitSetup'
 import { TasksButton } from './TasksButton'
+import { ToastHost } from './ToastHost'
+import { toast } from './toasts'
+import { plainError } from './NoticeDialog'
 import { refreshGit } from './gitConfigCache'
 import type { FileChange } from './changes'
 import { hasAttachmentTarget, hasCommentTarget, queueContextFile, queueContextText } from './Attachments'
@@ -26,14 +29,15 @@ const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'sma
 
 function App(): React.JSX.Element {
   const terminalState = useTerminal()
-  const [filesOpen, setFilesOpen] = useState(pop?.kind === 'file'), [fileContext, setFileContext] = useState<{ projectId: string; cardId: string | null; path?: string } | null>(pop?.kind === 'file' ? { projectId: pop.projectId, cardId: pop.cardId, path: pop.path ?? undefined } : null)
+  const filePop = pop?.kind === 'file' || pop?.kind === 'files' ? pop : null, filePopout = Boolean(filePop)
+  const [filesOpen, setFilesOpen] = useState(filePopout), [fileContext, setFileContext] = useState<{ projectId: string; cardId: string | null; path?: string } | null>(filePop ? { projectId: filePop.projectId, cardId: filePop.cardId, path: filePop.path ?? undefined } : null)
   const [changesView, setChangesView] = useState<{ projectId: string; cardId: string; files: FileChange[]; at: number } | null>(null)
   const [fileSessions, setFileSessions] = useState<Array<{ projectId: string; cardId: string | null; path?: string }>>(fileContext ? [fileContext] : [])
   const showFiles = (target: { projectId: string; cardId: string | null; path?: string }): void => {
     setFileSessions((all) => all.some((item) => item.projectId === target.projectId && item.cardId === target.cardId) ? all.map((item) => item.projectId === target.projectId && item.cardId === target.cardId ? { ...item, ...target } : item) : [...all, target]); setFileContext(target); setFilesOpen(true)
   }
   const [projects, setProjects] = useState<Project[]>([]), [profiles, setProfiles] = useState<AgentProfile[]>([]), [selected, setSelected] = useState<string | undefined>(pop?.projectId), [board, setBoard] = useState<ProjectBoard>()
-  const [removed, setRemoved] = useState<AgentProfile[]>([]), [freeRequest, setFreeRequest] = useState<{ projectId: string; at: number }>(), [constitutionRequest, setConstitutionRequest] = useState<{ projectId: string; prompt?: string; at: number }>(), [openTarget, setOpenTarget] = useState<{ projectId: string; cardId: string | null; chatId: string | null; purpose: string | null } | undefined>(pop?.kind === 'chat' && (pop.cardId || pop.chatId) ? { projectId: pop.projectId, cardId: pop.cardId, chatId: pop.chatId, purpose: pop.purpose } : undefined), [newProject, setNewProject] = useState(false), [settingsOpen, setSettingsOpen] = useState(false), [projectConfig, setProjectConfig] = useState(false), [settings, setSettings] = useState<AppSettings>(defaultSettings), [collapsed, setCollapsed] = useState(false), [agentsPrompt, setAgentsPrompt] = useState<string>(), [error, setError] = useState(''), [deleting, setDeleting] = useState<Project>()
+  const [removed, setRemoved] = useState<AgentProfile[]>([]), [freeRequest, setFreeRequest] = useState<{ projectId: string; at: number }>(), [constitutionRequest, setConstitutionRequest] = useState<{ projectId: string; prompt?: string; at: number }>(), [openTarget, setOpenTarget] = useState<{ projectId: string; cardId: string | null; chatId: string | null; purpose: string | null } | undefined>(pop?.kind === 'chat' && (pop.cardId || pop.chatId) ? { projectId: pop.projectId, cardId: pop.cardId, chatId: pop.chatId, purpose: pop.purpose } : undefined), [newProject, setNewProject] = useState(false), [settingsOpen, setSettingsOpen] = useState(false), [projectConfig, setProjectConfig] = useState<string>(), [settings, setSettings] = useState<AppSettings>(defaultSettings), [collapsed, setCollapsed] = useState(false), [agentsPrompt, setAgentsPrompt] = useState<string>(), [error, setError] = useState(''), [deleting, setDeleting] = useState<Project>()
   const [configTab, setConfigTab] = useState<'general' | 'git'>('general')
   const reloadProjects = async (): Promise<void> => { const [p, a, gone] = await Promise.all([window.agentboard.invoke('projects:list', undefined), window.agentboard.invoke('profiles:list', undefined), window.agentboard.invoke('profiles:removed', undefined)]); setProjects(p); setProfiles(a); setRemoved(gone.map((item) => ({ ...item, label: `${item.label} (desativado)` }))) }
   const reloadBoard = async (id = selected): Promise<void> => { if (id) setBoard(await window.agentboard.invoke('board:get', { projectId: id })) }
@@ -45,7 +49,10 @@ function App(): React.JSX.Element {
     showFiles({ projectId: selected, cardId: context?.projectId === selected ? context.cardId : null })
   }
   const toggleTerminal = (): void => { const current = terminal.snapshot(); if (current.open) terminal.setOpen(false); else if (!current.tabs.length) void terminal.newTab(); else terminal.setOpen(true) }
-  useEffect(() => { if (selected && terminal.snapshot().context?.projectId !== selected) terminal.setContext({ projectId: selected, cardId: null }) }, [selected])
+  useEffect(() => {
+    if (!selected) { if (terminal.snapshot().context) terminal.setContext(null) }
+    else if (terminal.snapshot().context?.projectId !== selected) terminal.setContext({ projectId: selected, cardId: null })
+  }, [selected])
   useEffect(() => {
     const key = (event: KeyboardEvent): void => {
       if (event.ctrlKey && event.shiftKey && event.code === 'KeyF') { event.preventDefault(); toggleFiles() }
@@ -80,11 +87,30 @@ function App(): React.JSX.Element {
   const [themeTick, setThemeTick] = useState(0)
   useEffect(() => { const again = (): void => setThemeTick((value) => value + 1); window.addEventListener(projectThemeEvent, again); return () => window.removeEventListener(projectThemeEvent, again) }, [])
   // Tema global nas configurações; cada projeto pode ter o seu (Configurar projeto > Geral) e vale enquanto ele está aberto.
-  useEffect(() => { applySettings(settings); const own = projectTheme(selected); if (own) document.documentElement.dataset.accent = own }, [settings, selected, themeTick])
+  useEffect(() => { applySettings(settings); const own = projectTheme(selected); if (own) applyTheme(own) }, [settings, selected, themeTick])
   useEffect(() => { void reloadProjects().catch((e: unknown) => setError(String(e))) }, [])
   // Clique numa notificação do sistema: vai para o projeto e abre o chat do card (ou o chat livre).
   useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType === 'agentboard/open-target') { const target = event.payload as { projectId: string; cardId: string | null; chatId: string | null; purpose: string | null }; setSelected(target.projectId); setOpenTarget(target) } }), [])
   useEffect(() => window.agentboard.onRunEvent((event) => { if (['agentboard/run-started', 'agentboard/run-completed', 'agentboard/card-updated'].includes(event.eventType)) void reloadProjects() }), [])
+  // Abrir os arquivos recolhe o menu principal (o painel fica ao lado do quadro); ao fechar, o menu volta se foi o app que o recolheu.
+  const [viewSlot, setViewSlot] = useState<HTMLElement | null>(null), [gearSlot, setGearSlot] = useState<HTMLElement | null>(null), [traySlot, setTraySlot] = useState<HTMLElement | null>(null)
+  // Barra estreita: os botões ao lado da engrenagem vão para o menu de três pontinhos antes de passar por baixo dos botões da janela.
+  const [narrowBar, setNarrowBar] = useState(false), [trayOpen, setTrayOpen] = useState(false), actionsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { const measure = (): void => setNarrowBar(window.innerWidth < (collapsed ? 840 : 1040)); measure(); window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure) }, [collapsed])
+  useEffect(() => { if (!narrowBar) setTrayOpen(false) }, [narrowBar])
+  useEffect(() => {
+    if (!trayOpen) return
+    const close = (event: MouseEvent): void => { if (!actionsRef.current?.contains(event.target as Node)) setTrayOpen(false) }
+    const esc = (event: KeyboardEvent): void => { if (event.key === 'Escape') setTrayOpen(false) }
+    document.addEventListener('mousedown', close); document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc) }
+  }, [trayOpen])
+  const autoCollapsed = useRef(false)
+  useEffect(() => {
+    if (pop) return
+    if (filesOpen && !collapsed) { autoCollapsed.current = true; setCollapsed(true) }
+    else if (!filesOpen && autoCollapsed.current) { autoCollapsed.current = false; setCollapsed(false) }
+  }, [filesOpen])
   // Ao abrir o projeto, procura repositórios criados ou configurados por fora e, se o cadastro mudou, recarrega o quadro.
   useEffect(() => {
     if (!selected) { setBoard(undefined); return }
@@ -93,23 +119,25 @@ function App(): React.JSX.Element {
     return () => { alive = false }
   }, [selected])
   useEffect(() => { const again = (): void => { void refresh().catch(() => undefined) }; window.addEventListener(gitChangedEvent, again); return () => window.removeEventListener(gitChangedEvent, again) }, [selected])
+  const configProject = projects.find((project) => project.id === projectConfig)
   return <>
     {/* Faixa de cima: arrasta a janela; os botões do Windows ficam à direita, por cima dela. */}
-    <div className={`titlebar ${collapsed ? 'collapsed' : ''}`}>{!pop && <span className="tb-side" />}<span className="tb-brand"><img src={logo} alt="" draggable={false} />AgentBoard</span>{board && <span className="pathchip tb-path tip" data-tip="Pasta do projeto"><FolderGlyph />{board.project.localPath}</span>}{pop?.kind !== 'file' && <div className="tb-actions"><TasksButton /><button type="button" className={`ibtn tip ${terminalState.open ? 'on' : ''}`} disabled={!selected} data-tip="Terminal (Ctrl+^)" aria-label="Alternar terminal" aria-pressed={terminalState.open} onClick={toggleTerminal}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 5 5 5-5 5M11 15h5" /></svg></button><button type="button" className={`ibtn tip ${filesOpen ? 'on' : ''}`} disabled={!selected} data-tip="Arquivos (Ctrl+Shift+F)" aria-label="Alternar arquivos" aria-pressed={filesOpen} onClick={toggleFiles}><FolderGlyph /></button></div>}</div>
+    <div className={`titlebar ${collapsed ? 'collapsed' : ''}`}>{!pop && <span className="tb-side" />}<span className="tb-brand"><img src={logo} alt="" draggable={false} />AgentBoard</span><span className="tb-slot tb-slot-gear" ref={setGearSlot} />{board && <span className="tb-title" title={board.project.name}>{board.project.name}</span>}{board && <button type="button" className="pathchip tb-path tip" data-tip="Clique para abrir no Explorer" aria-label={`Abrir ${board.project.localPath} no Explorer`} onClick={() => { void window.agentboard.invoke('workspace:external', { projectId: board.project.id, cardId: null, path: board.project.localPath, target: 'default' }).catch((reason: unknown) => toast.error('Não foi possível abrir a pasta', plainError(reason))) }}><FolderGlyph />{board.project.localPath}</button>}{!filePopout && <div className={`tb-actions ${narrowBar ? 'narrow' : ''} ${trayOpen ? 'open' : ''}`} ref={actionsRef}><span className="tb-slot tb-slot-view" ref={setViewSlot} />{narrowBar && <button type="button" className={`ibtn tip tb-more ${trayOpen ? 'on' : ''}`} data-tip="Mais" aria-label="Mais opções da barra" aria-haspopup="true" aria-expanded={trayOpen} onClick={() => setTrayOpen(!trayOpen)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="1.4" /><circle cx="10" cy="10" r="1.4" /><circle cx="10" cy="16" r="1.4" /></svg></button>}<div className="tb-tray"><span className="tb-slot" ref={setTraySlot} />{selected && <button type="button" className={`ibtn tip ${filesOpen ? 'on' : ''}`} data-tip="Arquivos (Ctrl+Shift+F)" aria-label="Alternar arquivos" aria-pressed={filesOpen} onClick={toggleFiles}><FolderGlyph /></button>}<button type="button" className={`ibtn tip ${terminalState.open ? 'on' : ''}`} data-tip="Terminal (Ctrl+^)" aria-label="Alternar terminal" aria-pressed={terminalState.open} onClick={toggleTerminal}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 5 5 5-5 5M11 15h5" /></svg></button><TasksButton /></div></div>}</div>
     <div className={`shell ${collapsed ? 'collapsed' : ''} ${pop ? 'popout' : ''}`}>
-    {!pop && <Sidebar projects={projects} profiles={profiles} selected={selected} collapsed={collapsed} onSelect={setSelected} onNew={() => setNewProject(true)} onSettings={() => setSettingsOpen(true)} onNewChat={(id) => { setSelected(id); setFreeRequest({ projectId: id, at: Date.now() }) }} onToggle={() => setCollapsed(!collapsed)}
+    {!pop && <Sidebar projects={projects} profiles={profiles} selected={selected} collapsed={collapsed} onSelect={setSelected} onNew={() => setNewProject(true)} onSettings={() => setSettingsOpen(true)} onProjectSettings={(id) => { setConfigTab('general'); setProjectConfig(id) }} onNewChat={(id) => { setSelected(id); setFreeRequest({ projectId: id, at: Date.now() }) }} onToggle={() => setCollapsed(!collapsed)}
       onReorder={(ids) => { setProjects((current) => ids.map((id) => current.find((item) => item.id === id)!).filter(Boolean)); void window.agentboard.invoke('projects:reorder', { projectIds: ids }).then(setProjects).catch((e: unknown) => setError(String(e))) }}
       onDelete={setDeleting} />}
-    {pop?.kind === 'file' || pop?.kind === 'terminal' ? <div /> : board ? <Board key={board.project.id} board={board} profiles={profiles} history={[...profiles, ...removed]} refresh={refresh} onProjectConfig={(tab) => { setConfigTab(tab ?? 'general'); setProjectConfig(true) }} openSettings={() => setSettingsOpen(true)} freeRequest={freeRequest} freeHandled={() => setFreeRequest(undefined)} constitutionRequest={constitutionRequest} constitutionHandled={() => setConstitutionRequest(undefined)} openTarget={openTarget} targetHandled={() => setOpenTarget(undefined)} />
+    {filePopout || pop?.kind === 'terminal' ? <div /> : board ? <Board key={board.project.id} slots={{ view: viewSlot, gear: gearSlot, tray: traySlot }} board={board} profiles={profiles} history={[...profiles, ...removed]} refresh={refresh} onProjectConfig={(tab) => { setConfigTab(tab ?? 'general'); setProjectConfig(board.project.id) }} openSettings={() => setSettingsOpen(true)} freeRequest={freeRequest} freeHandled={() => setFreeRequest(undefined)} constitutionRequest={constitutionRequest} constitutionHandled={() => setConstitutionRequest(undefined)} openTarget={openTarget} targetHandled={() => setOpenTarget(undefined)} />
       : <div className="content"><main><div className="head"><div className="lead"><div><div className="eyebrow">Trabalho local · estado durável</div><h1>{projects.length ? 'Escolha um projeto.' : 'Comece com uma pasta.'}</h1><p>Projetos, cards e transições persistem localmente entre reinícios.</p></div></div></div>{!projects.length && <button style={{ marginTop: 18 }} onClick={() => setNewProject(true)}>Adicionar primeiro projeto</button>}{error && <p className="error" style={{ marginTop: 14 }}>{error}</p>}</main></div>}
     {newProject && <ProjectDialog close={() => setNewProject(false)} created={async (project) => { setNewProject(false); await reloadProjects(); setSelected(project.id); setAgentsPrompt(project.id) }} />}
     {settingsOpen && <SettingsDialog profiles={profiles} settings={settings} close={() => setSettingsOpen(false)} changed={refresh} settingsChanged={setSettings} />}
     {agentsPrompt && !settingsOpen && !newProject && projects.find((item) => item.id === agentsPrompt) && <ProjectAgentsDialog project={projects.find((item) => item.id === agentsPrompt)!} profiles={profiles} close={() => setAgentsPrompt(undefined)} saved={async () => { setAgentsPrompt(undefined); await refresh() }} openSettings={() => setSettingsOpen(true)} />}
-    {projectConfig && board && <ProjectConfigDialog initialTab={configTab} project={board.project} profiles={profiles} close={() => setProjectConfig(false)} saved={async () => { setProjectConfig(false); await refresh() }} openConstitutionChat={(prompt) => { setProjectConfig(false); setConstitutionRequest({ projectId: board.project.id, prompt, at: Date.now() }) }} />}
+    {configProject && <ProjectConfigDialog initialTab={configTab} project={configProject} profiles={profiles} saved={async () => { setProjectConfig(undefined); await refresh() }} openConstitutionChat={(prompt) => { setProjectConfig(undefined); setSelected(configProject.id); setConstitutionRequest({ projectId: configProject.id, prompt, at: Date.now() }) }} />}
     {deleting && <ConfirmDialog eyebrow="Excluir projeto" title={deleting.name} text="O projeto sai do AgentBoard com os cards, chats, documentos e histórico dele. As pastas e os repositórios no disco não são apagados. Isso não pode ser desfeito." ok="Excluir projeto" danger cancel={() => setDeleting(undefined)} confirm={() => { const gone = deleting; setDeleting(undefined); void window.agentboard.invoke('projects:delete', { projectId: gone.id }).then(async () => { if (selected === gone.id) setSelected(undefined); await reloadProjects() }).catch((e: unknown) => setError(String(e).replace(/^Error invoking remote method '[^']+': /, '').replace(/^Error: /, ''))) }} />}
   </div>
+    <ToastHost />
     {changesView && <div className="wf-host"><WorkspaceFiles key={changesView.at} projectId={changesView.projectId} cardId={changesView.cardId} changes={changesView.files} startExpanded close={() => setChangesView(null)} /></div>}
-    {fileSessions.map((session) => <div key={`${session.projectId}:${session.cardId}`} className="wf-host" style={{ display: filesOpen && session.projectId === selected && session.projectId === fileContext?.projectId && session.cardId === fileContext.cardId ? undefined : 'none' }}><WorkspaceFiles projectId={session.projectId} cardId={session.cardId} initialPath={session.path} standalone={pop?.kind === 'file'} close={() => { if (pop?.kind === 'file') window.close(); else setFilesOpen(false) }} /></div>)}
+    {fileSessions.map((session) => <div key={`${session.projectId}:${session.cardId}`} className="wf-host" style={{ display: filesOpen && session.projectId === selected && session.projectId === fileContext?.projectId && session.cardId === fileContext.cardId ? undefined : 'none' }}><WorkspaceFiles projectId={session.projectId} cardId={session.cardId} initialPath={session.path} initialPaths={filePop?.paths ?? []} standalone={filePopout} isolated={filePop?.kind === 'file'} startExpanded={filePop?.kind === 'files'} close={() => { if (filePopout) window.close(); else setFilesOpen(false) }} /></div>)}
     <TerminalPanel standalone={pop?.kind === 'terminal'} />
     <TooltipLayer />
   </>

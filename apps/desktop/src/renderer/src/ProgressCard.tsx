@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react'
 import type { CardChecklist } from '@agentboard/contracts'
 import { checklistKey } from '@agentboard/contracts'
 import { InlineMarkdown } from './markdown'
-import { checklistEvent, markTitle, toggleChecklist } from './checklistToggle'
+import { checklistEvent, toggleChecklist } from './checklistToggle'
+import { MarkBadges } from './MarkBadges'
 import { plainError } from './NoticeDialog'
 
 interface Criterion { text: string; done: boolean; line: number }
@@ -45,7 +46,7 @@ export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'ex
   // Só o checklist do teste é clicável; as Tasks da implementação continuam sendo marcadas pelo agente.
   const interactive = purpose === 'test'
   const flip = (line: number, text: string, checked: boolean): void => { setProblem(''); void toggleChecklist(cardId, line, text, checked).catch((reason: unknown) => { setProblem(plainError(reason)); void load() }) }
-  const by = (text: string, done: boolean): React.ReactNode => { const mark = marks[checklistKey(text)]; return interactive && done && mark ? <span className={`pg-by ${mark.by}`} title={markTitle(mark, true)}>{mark.by === 'user' ? 'você' : 'agente'}</span> : null }
+  const by = (text: string, done: boolean): React.ReactNode => (interactive ? <MarkBadges mark={marks[checklistKey(text)]} checked={done} /> : null)
   useEffect(() => { void load() }, [load])
   useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType === 'agentboard/card-updated' && event.payload.cardId === cardId) void load() }), [cardId, load])
   if (source === undefined) return null

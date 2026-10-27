@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { checklistKey, type CardChecklist } from '@agentboard/contracts'
 import { InlineMarkdown } from './markdown'
-import { markTitle, toggleChecklist } from './checklistToggle'
+import { toggleChecklist } from './checklistToggle'
+import { MarkBadges } from './MarkBadges'
 import { plainError } from './NoticeDialog'
 
 const itemLine = /^(\s*)[-*+]\s+\[( |x|X)\]\s+(.*)$/, headingLine = /^#{1,6}\s+(.*)$/
@@ -19,7 +20,7 @@ export function TestChecklist({ data }: { data: CardChecklist }): React.JSX.Elem
         return <div key={line} className={`tc-item ${done ? 'done' : ''} ${item[1] ? 'sub' : ''}`}>
           <button type="button" className="pg-mark sm btn" role="checkbox" aria-checked={done} aria-label={`${done ? 'Desmarcar' : 'Marcar'}: ${text}`} title={done ? 'Desmarcar este item' : 'Marcar este item como verificado'} onClick={() => flip(line, text, !done)}>{done && <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 5 8.6l4.5-5" /></svg>}</button>
           <span className="tc-text"><InlineMarkdown text={text} /></span>
-          {done && mark && <span className={`pg-by ${mark.by}`} title={markTitle(mark, true)}>{mark.by === 'user' ? 'você' : 'agente'}</span>}
+          <MarkBadges mark={mark} checked={done} />
         </div>
       }
       const heading = headingLine.exec(raw)

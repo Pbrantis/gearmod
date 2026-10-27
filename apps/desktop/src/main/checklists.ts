@@ -31,7 +31,11 @@ export class ChecklistRepository {
     for (const entry of itemsOf(contentMd)) {
       const old = before.marks[entry.key]
       if (was.get(entry.key) === entry.checked && old) marks[entry.key] = old
-      else if (was.get(entry.key) !== entry.checked && (was.has(entry.key) || entry.checked)) marks[entry.key] = { by, at }
+      else if (was.get(entry.key) !== entry.checked && (was.has(entry.key) || entry.checked)) {
+        // O OK do agente fica registrado: o usuário pode desmarcar e marcar de novo sem apagá-lo; só o próprio agente o refaz ou o tira.
+        if (by === 'agent') marks[entry.key] = entry.checked ? { by, at, agent: at } : { by, at }
+        else marks[entry.key] = { by, at, ...(old?.agent ? { agent: old.agent } : {}) }
+      }
     }
     this.database.db.prepare(`INSERT INTO card_checklists(card_id, purpose, content_md, updated_at, marks) VALUES (?, 'test', ?, ?, ?)
       ON CONFLICT(card_id, purpose) DO UPDATE SET content_md = excluded.content_md, updated_at = excluded.updated_at, marks = excluded.marks`).run(cardId, contentMd, at, JSON.stringify(marks))

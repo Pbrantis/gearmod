@@ -48,14 +48,14 @@ function mcpClient(endpoint: { command: string; args: string[]; env: Record<stri
 }
 
 describe('AgentBoard MCP server', () => {
-  it('lists the four tools and lets the agent read, write, check tasks and move the card with the run token', async () => {
+  it('lists the tools and lets the agent read, write, check tasks and move the card with the run token', async () => {
     const { board, bridge, card, columns } = await setup()
     const changes: CardChange[] = []
     const client = mcpClient(bridge.register('run-1', card.id, (change) => changes.push(change)))
     const init = await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('agentboard')
     const listed = await client.request('tools/list')
-    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_criar_card', 'agentboard_concluir_planejamento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_responder_duvida', 'agentboard_pedir_ao_usuario', 'agentboard_ler_constituicao', 'agentboard_escrever_constituicao', 'agentboard_propor_constituicao', 'agentboard_checklist_teste', 'agentboard_mover_card', 'agentboard_pedir_commit', 'agentboard_registrar_entendimento', 'agentboard_registrar_exploracao', 'agentboard_avaliar_complexidade', 'agentboard_escolher_fluxo', 'agentboard_definir_repositorios', 'agentboard_registrar_decisao'])
+    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_ler_skill', 'agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_criar_card', 'agentboard_concluir_planejamento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_responder_duvida', 'agentboard_pedir_ao_usuario', 'agentboard_ler_constituicao', 'agentboard_escrever_constituicao', 'agentboard_propor_constituicao', 'agentboard_checklist_teste', 'agentboard_mover_card', 'agentboard_pedir_commit', 'agentboard_registrar_entendimento', 'agentboard_registrar_exploracao', 'agentboard_avaliar_complexidade', 'agentboard_escolher_fluxo', 'agentboard_definir_repositorios', 'agentboard_registrar_decisao'])
 
     expect((await client.call('agentboard_contexto_do_card', {})).content[0]!.text).toContain('"titulo": "MCP"')
     const bad = await client.call('agentboard_escrever_documento', { tipo: 'tasks', markdown: 'sem itens' })
@@ -70,7 +70,7 @@ describe('AgentBoard MCP server', () => {
     const moved = await client.call('agentboard_mover_card', { coluna: 'Doing', quando: 'agora' })
     expect(moved.content[0]!.text).toContain('Doing'); expect(board.card(card.id).columnId).toBe(columns[2]!.id)
     const refused = await client.call('agentboard_mover_card', { coluna: 'Done', quando: 'agora' })
-    expect(refused.isError).toBe(true); expect(refused.content[0]!.text).toContain('teste aprovado')
+    expect(refused.isError).toBe(true); expect(refused.content[0]!.text).toContain('Testes automatizados')
     expect(changes.map((change) => change.type)).toEqual(['document', 'task', 'card', 'moved'])
     await client.call('agentboard_mover_card', { coluna: 'test', quando: 'ao_terminar' })
     expect(bridge.finish('run-1')).toEqual({ written: ['tasks'], pendingMove: columns[3]!.id })

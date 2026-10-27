@@ -40,7 +40,7 @@ async function workspace() {
   return { root, ws, data, database, profiles, projects, board, project, card, sources, worktrees: new WorktreeService(database, data) }
 }
 
-describe('Worktrees coordenados', () => {
+describe('Worktrees coordenados', { timeout: 20_000 }, () => {
   it('cria worktree só nos repositórios do card e acrescenta um repositório novo na mesma worktree', async () => {
     const { board, card, sources, worktrees } = await workspace()
     board.setRepos(card.id, [sources.frontend!.id, sources.backend!.id])

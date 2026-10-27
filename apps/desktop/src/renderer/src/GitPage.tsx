@@ -7,7 +7,8 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { ConflictDialog, operationLabel, type ConflictState } from './ConflictDialog'
 import { DiffLines } from './gitDiff'
 import { openInEditor } from './openInEditor'
-import { GitEmpty, gitChangedEvent } from './GitSetup'
+import { toast } from './toasts'
+import { GitEmpty, GitUpstreamDialog as UpstreamDialog, gitChangedEvent } from './GitSetup'
 import { plainError } from './NoticeDialog'
 import { agoLabel, ghostChip, graphEdges, initials, isWip, laneColor, laneSpacing, laneX, refChips, rowHeight, shortAgo, splitPath, type RefChip } from './gitView'
 import { Checkbox } from './Checkbox'
@@ -63,16 +64,23 @@ export function FileRow({ file, onOpen }: { file: GitCommitFile | GitChange; onO
   return <div className={`gfile ${onOpen ? 'click' : ''}`} role={onOpen ? 'button' : undefined} tabIndex={onOpen ? 0 : undefined} onClick={onOpen} onKeyDown={onOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } } : undefined}><span className={`st ${file.status}`}>{file.status}</span><span className="pth" title={file.path}>{file.path}</span><span className="nums"><span className="p">+{file.additions}</span> <span className="m">−{file.deletions}</span></span></div>
 }
 
-function Chip({ chip }: { chip: RefChip }): React.JSX.Element {
-  return <span className={`rchip ${chip.head ? 'head' : ''}`} title={`${chip.name}${chip.local ? ' · local' : ''}${chip.remote ? ' · origin' : ''}${chip.tag ? ' · tag' : ''}`}>
+function Chip({ chip, pick, open }: { chip: RefChip; pick?(): void; open?(): void }): React.JSX.Element {
+  // Na lista que abre ao passar o mouse o nome já aparece inteiro e a dica do sistema só atrapalha, por isso sem `title` quando é clicável.
+  const props = pick ? { role: 'button', tabIndex: 0, onClick: (event: React.MouseEvent) => { event.stopPropagation(); pick() }, onDoubleClick: (event: React.MouseEvent) => { event.stopPropagation(); open?.() }, onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter') { event.stopPropagation(); open?.() } } } : { title: `${chip.name}${chip.local ? ' · local' : ''}${chip.remote ? ' · origin' : ''}${chip.tag ? ' · tag' : ''}` }
+  return <span className={`rchip ${chip.head ? 'head' : ''} ${pick ? 'pick' : ''}`} {...props}>
     {chip.head && gitIcons.head}<span className="rn">{chip.name}</span>{chip.tag && gitIcons.tag}{chip.local && gitIcons.pc}{chip.remote && gitIcons.cloud}</span>
 }
 
-function RefsCell({ row, ghost, spacing }: { row: GitRow; ghost: RefChip | null; spacing: number }): React.JSX.Element {
+function RefsCell({ row, ghost, spacing, act }: { row: GitRow; ghost: RefChip | null; spacing: number; act(kind: 'local' | 'remote', name: string, open: boolean): void }): React.JSX.Element {
   const chips = refChips(row.refs), style = { '--lc': laneColor(row.lane), '--lx': `${laneX(row.lane, spacing) - 12}px` } as React.CSSProperties
   if (!chips.length) return ghost ? <span className="grefs ghost" style={style}><span className="grefs-in"><Chip chip={ghost} /></span></span> : <span className="grefs" />
   return <span className={`grefs ${chips.length > 1 ? 'multi' : ''}`} style={style}><span className="grefs-in">{chips.map((chip) => <Chip key={chip.name} chip={chip} />)}</span>
-    <span className="gstack">{chips.map((chip) => <Chip key={chip.name} chip={chip} />)}</span>{chips.length > 1 && <span className="rmore">+{chips.length - 1}</span>}</span>
+    <span className="gstack">{chips.map((chip) => {
+      // Etiquetas (tags) não são branches; as demais abrem a local, ou a remota quando só existe ela.
+      const remote = row.refs.find((ref) => ref.kind === 'remote' && ref.name.replace(/^[^/]+\//, '') === chip.name)?.name
+      const target = chip.tag ? null : chip.local ? { kind: 'local' as const, name: chip.name } : remote ? { kind: 'remote' as const, name: remote } : null
+      return <Chip key={chip.name} chip={chip} {...(target ? { pick: () => act(target.kind, target.name, false), open: () => act(target.kind, target.name, true) } : {})} />
+    })}</span>{chips.length > 1 && <span className="rmore">+{chips.length - 1}</span>}</span>
 }
 
 /** Foto do autor no Gravatar (o mesmo serviço que o GitKraken usa): só o hash do e-mail sai do app; sem foto cadastrada, ficam as iniciais. */
@@ -167,7 +175,6 @@ function DiffView({ viewer, close }: { viewer: { sourceId: string; cardId: strin
   const { sourceId, cardId, file, hash } = viewer
   const [text, setText] = useState<string>(), [error, setError] = useState('')
   useEffect(() => { setText(undefined); setError(''); void (hash ? window.agentboard.invoke('git:commit-diff', { sourceId, hash, path: file.path }) : window.agentboard.invoke('git:diff', { sourceId, cardId, path: file.path, staged: file.staged })).then(setText).catch((reason: unknown) => setError(plainError(reason))) }, [sourceId, cardId, hash, file.path, file.staged])
-  const lines = (text ?? '').split(/\r?\n/)
   return <section className="gdiffview" style={{ gridColumn: '1 / span 2' }} aria-label={`Alterações de ${file.path}`}><header><span className={`st ${file.status}`}>{file.status}</span><b title={file.path}>{file.path}</b><small>{hash ? `commit ${hash.slice(0, 7)}` : file.staged ? 'preparado' : 'não preparado'}</small><span className="gdstat"><span className="p">+{file.additions}</span> <span className="m">−{file.deletions}</span></span><span className="grow1" /><button type="button" className="fv-toggle" title="Abrir a versão atual no editor de arquivos" onClick={() => void openInEditor({ sourceId, cardId, path: file.path }).then(close).catch((reason: unknown) => setError(plainError(reason)))}>Abrir no editor</button><button type="button" className="x" onClick={close} aria-label="Fechar">×</button></header>
     <div className="gdiffbody">{error ? <p className="error">{error}</p> : text === undefined ? <div className="gempty" style={{ padding: 14 }}>Carregando…</div> : !text.trim() ? <div className="gempty" style={{ padding: 14 }}>Sem diferenças para mostrar.</div> : <DiffLines text={text} />}</div></section>
 }
@@ -210,8 +217,6 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
   const [pullMode, setPullMode] = useState<PullMode>(loadPull), [pullMenu, setPullMenu] = useState(false), pullBox = useRef<HTMLSpanElement>(null)
   useEffect(() => { if (!pullMenu) return; const out = (e: MouseEvent): void => { if (!pullBox.current?.contains(e.target as Node)) setPullMenu(false) }; document.addEventListener('mousedown', out); return () => document.removeEventListener('mousedown', out) }, [pullMenu])
   const [viewer, setViewer] = useState<{ sourceId: string; cardId: string | null; hash?: string; file: GitChange }>()
-  const [shut, setShut] = useState<Record<string, boolean>>({})
-  const toggle = (key: string): void => setShut((current) => ({ ...current, [key]: !current[key] }))
   useEffect(() => { if (!viewer) return; const key = (e: KeyboardEvent): void => { if (e.key === 'Escape') setViewer(undefined) }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [viewer])
   useEffect(() => { if (focusRequest) setFocus(focusRequest.cardId) }, [focusRequest])
   const title = (cardId: string | null): string => board.cards.find((card) => card.id === cardId)?.title ?? 'Card'
@@ -243,32 +248,41 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
   const width = Math.max(graphMin, Math.min(cols.cg ?? autoWidth, autoWidth)), spacing = lanes > 1 ? Math.max(0, Math.min(laneSpacing, (width - 32) / (lanes - 1))) : laneSpacing
   const edges = useMemo(() => graphEdges(rows, dimmed, rowHeight, spacing), [rows, dimmed, spacing])
   const selected = rows.find((row) => row.hash === sel)
+  // Cada operação termina com um aviso flutuante (verde se deu certo, vermelho se falhou) e com o texto também guardado em `notice`.
+  const opTitle: Record<string, string> = { fetch: 'Fetch', pull: 'Pull', push: 'Push', stash: 'Stash', pop: 'Pop', checkout: 'Checkout', 'pull-rebase': 'Pull com rebase', 'rebase-onto': 'Rebase', merge: 'Merge', create: 'Criar branch', delete: 'Apagar branch', 'delete-remote': 'Apagar branch remota', 'cherry-pick': 'Cherry-pick', revert: 'Reverter', 'reset-soft': 'Reset', 'reset-mixed': 'Reset', 'reset-hard': 'Reset', branch: 'Criar branch', tag: 'Criar tag', apply: 'Aplicar stash', drop: 'Descartar stash' }
+  const report = (action: string, ok: boolean, text: string): void => {
+    setNotice(text)
+    const name = opTitle[action] ?? action
+    // O repositório e a branch aparecem em letra pequena: com vários repositórios abertos, diz onde a operação rodou.
+    const meta = graph ? `${graph.repo.name}${graph.repo.head ? ` · ${graph.repo.head}` : ''}` : undefined
+    if (ok) toast.success(`${name} concluído`, text, { meta }); else toast.error(`${name} falhou`, text, { meta })
+  }
   const sync = async (action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull?: 'ff' | 'ff-only' | 'rebase'): Promise<void> => {
     if (!graph) return
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:sync', { sourceId: graph.repo.sourceId, cardId: focus, action, pull }); setNotice(out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Pronto.'); await load() } catch (reason) { setNotice(plainError(reason)) } finally { setBusy('') }
+    try { const out = await window.agentboard.invoke('git:sync', { sourceId: graph.repo.sourceId, cardId: focus, action, pull }); report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Pronto.'); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
   }
-  const [picked, setPicked] = useState<string>(), [menu, setMenu] = useState<{ x: number; y: number; kind: 'local' | 'remote' | 'commit' | 'stash'; name: string }>(), [conflicts, setConflicts] = useState<ConflictState>({ operation: null, files: [] }), [resolving, setResolving] = useState(false), [ask, setAsk] = useState<{ kind: 'create' | 'delete' | 'commit-branch' | 'commit-tag' | 'reset-hard'; name: string }>(), [newName, setNewName] = useState('')
+  const [picked, setPicked] = useState<string>(), [menu, setMenu] = useState<{ x: number; y: number; kind: 'local' | 'remote' | 'commit' | 'stash'; name: string }>(), [conflicts, setConflicts] = useState<ConflictState>({ operation: null, files: [] }), [resolving, setResolving] = useState(false), [ask, setAsk] = useState<{ kind: 'create' | 'delete' | 'delete-remote' | 'commit-branch' | 'commit-tag' | 'reset-hard'; name: string }>(), [newName, setNewName] = useState('')
   useEffect(() => { if (!graph) return; void window.agentboard.invoke('git:conflicts', { sourceId: graph.repo.sourceId }).then((state) => { setConflicts(state); if (!state.operation) setResolving(false) }).catch(() => undefined) }, [graph, notice])
   const branchAction = async (action: Exclude<BranchAction, 'copy'>, name: string, extra?: { newName?: string }): Promise<void> => {
     if (!graph) return
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:branch-action', { sourceId: graph.repo.sourceId, action, name, ...extra }); setNotice(out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Pronto.'); await load() } catch (reason) { setNotice(plainError(reason)) } finally { setBusy('') }
+    try { const out = await window.agentboard.invoke('git:branch-action', { sourceId: graph.repo.sourceId, action, name, ...extra }); report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Pronto.'); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
   }
   const commitAction = async (action: Exclude<CommitMenuAction, 'copy'>, hash: string, name?: string): Promise<void> => {
     if (!graph) return
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:commit-action', { sourceId: graph.repo.sourceId, action, hash, name }); setNotice(out.output); await load() } catch (reason) { setNotice(plainError(reason)) } finally { setBusy('') }
+    try { const out = await window.agentboard.invoke('git:commit-action', { sourceId: graph.repo.sourceId, action, hash, name }); report(action, true, out.output); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
   }
   const stashAction = async (action: StashMenuAction, ref: string): Promise<void> => {
     if (!graph) return
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:stash-action', { sourceId: graph.repo.sourceId, action, ref }); setNotice(out.output); await load() } catch (reason) { setNotice(plainError(reason)) } finally { setBusy('') }
+    try { const out = await window.agentboard.invoke('git:stash-action', { sourceId: graph.repo.sourceId, action, ref }); report(action, true, out.output); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
   }
   const runCommitMenu = (action: CommitMenuAction): void => {
     const current = menu; setMenu(undefined)
     if (!current) return
-    if (action === 'copy') { void navigator.clipboard.writeText(current.name).then(() => setNotice('SHA copiado.')).catch(() => undefined); return }
+    if (action === 'copy') { void navigator.clipboard.writeText(current.name).then(() => toast.info('SHA copiado')).catch(() => undefined); return }
     if (action === 'branch' || action === 'tag') { setNewName(''); setAsk({ kind: action === 'branch' ? 'commit-branch' : 'commit-tag', name: current.name }); return }
     if (action === 'reset-hard') { setAsk({ kind: 'reset-hard', name: current.name }); return }
     void commitAction(action, current.name)
@@ -276,16 +290,21 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
   const runMenu = (action: BranchAction): void => {
     const current = menu; setMenu(undefined)
     if (!current) return
-    if (action === 'copy') { void navigator.clipboard.writeText(current.name).then(() => setNotice('Nome copiado.')).catch(() => undefined); return }
+    if (action === 'copy') { void navigator.clipboard.writeText(current.name).then(() => toast.info('Nome copiado')).catch(() => undefined); return }
     if (action === 'create') { setNewName(''); setAsk({ kind: 'create', name: current.name }); return }
-    if (action === 'delete') { setAsk({ kind: 'delete', name: current.name }); return }
+    if (action === 'delete') {
+      const owner = graph?.branches.local.find((item) => item.name === current.name)?.cardId
+      if (owner) { toast.error('Apagar branch falhou', `A branch ${current.name} é do card "${title(owner)}" e está em uso pela worktree dele. Remova a worktree do card antes de apagar a branch.`); return }
+      setAsk({ kind: 'delete', name: current.name }); return
+    }
+    if (action === 'delete-remote') { setAsk({ kind: 'delete-remote', name: current.name }); return }
     void branchAction(action, current.name)
   }
   // Clicar numa branch da lateral seleciona o commit da ponta dela: o grafo rola até lá e o detalhe abre à direita.
   const pickBranch = (kind: 'local' | 'remote', name: string): void => {
     setPicked(`${kind}:${name}`)
     const row = rows.find((item) => item.refs.some((ref) => ref.name === name && (kind === 'remote' ? ref.kind === 'remote' : ref.kind !== 'remote' && ref.kind !== 'tag')))
-    if (!row) { setNotice('Esta branch não aparece no histórico carregado.'); return }
+    if (!row) { toast.info('Branch fora do histórico', 'Esta branch não aparece no histórico carregado.'); return }
     setSel(row.hash); setOpen(true)
     window.requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`[data-hash="${row.hash}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
   }
@@ -315,16 +334,28 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
 
   if (repos && !repos.length) return <div className="gwrap"><GitEmpty projectId={projectId} done={(items) => { setRepos(items); setRepoId(items[0]?.sourceId) }} /></div>
   const labels = rows.map((row) => agoLabel(row.date))
-  const side = <GitSide graph={graph} focus={focus} setFocus={setFocus} title={title} icons={gitIcons} picked={picked} onPick={pickBranch} onMenu={(kind, name, event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, kind, name }) }} />
+  const side = <GitSide graph={graph} focus={focus} setFocus={setFocus} title={title} icons={gitIcons} picked={picked} onPick={pickBranch} onOpen={(kind, name, current) => { if (current) toast.info(`Você já está em ${name}`); else void branchAction('checkout', name) }} onMenu={(kind, name, event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, kind, name }) }} />
   const tool = (icon: React.JSX.Element, label: string, action: 'push' | 'stash' | 'pop', remote = true): React.JSX.Element => <button type="button" className="gtool" disabled={Boolean(busy) || (remote && !graph?.repo.hasRemote)} title={remote && !graph?.repo.hasRemote ? 'Este repositório não tem remoto (origin)' : undefined} onClick={() => void sync(action)}>{icon}{busy === action ? '…' : label}</button>
-  const pullNow = (): void => { if (pullMode === 'fetch-all') void sync('fetch'); else void sync('pull', pullMode) }
-  const pullTool = <span className="gsplit" ref={pullBox}><button type="button" className="gtool" disabled={Boolean(busy) || !graph?.repo.hasRemote} title={graph?.repo.hasRemote ? pullOptions.find((item) => item.id === pullMode)?.label : 'Este repositório não tem remoto (origin)'} onClick={pullNow}>{gitIcons.pull}{busy === 'pull' || busy === 'fetch' ? '…' : 'Pull'}</button>
+  // Pull sem branch remota ligada: pergunta com qual remoto/branch a branch atual puxa e envia, liga e então puxa.
+  const [upstreamAsk, setUpstreamAsk] = useState<{ branch: string; remotes: string[]; mode: 'ff' | 'ff-only' | 'rebase' }>()
+  // O botão de fora roda o padrão; cada opção do menu roda a sua na hora (sem mudar o padrão).
+  const pullNow = (mode: PullMode = pullMode): void => {
+    if (mode === 'fetch-all') { void sync('fetch'); return }
+    if (!graph) return
+    void window.agentboard.invoke('git:upstream', { sourceId: graph.repo.sourceId, cardId: focus }).then((info) => {
+      if (info.branch && !info.upstream && info.remotes.length) setUpstreamAsk({ branch: info.branch, remotes: info.remotes, mode })
+      else void sync('pull', mode)
+    }).catch(() => { void sync('pull', mode) })
+  }
+  const pullTool = <span className="gsplit" ref={pullBox}><button type="button" className="gtool" disabled={Boolean(busy) || !graph?.repo.hasRemote} title={graph?.repo.hasRemote ? pullOptions.find((item) => item.id === pullMode)?.label : 'Este repositório não tem remoto (origin)'} onClick={() => pullNow()}>{gitIcons.pull}{busy === 'pull' || busy === 'fetch' ? '…' : 'Pull'}</button>
     <button type="button" className="gtool gcaret" aria-label="Opções do pull" aria-expanded={pullMenu} onClick={() => setPullMenu(!pullMenu)}>▾</button>
-    {pullMenu && <div className="gpullmenu" role="menu"><p>Escolha a operação padrão do botão Pull</p>{pullOptions.map((item) => <button type="button" role="menuitemradio" aria-checked={pullMode === item.id} key={item.id} className={pullMode === item.id ? 'on' : ''} onClick={() => { setPullMode(item.id); setPullMenu(false); try { localStorage.setItem(pullKey, item.id) } catch { /* só vale nesta sessão */ } }}><i />{item.label}</button>)}</div>}</span>
+    {pullMenu && <div className="gpullmenu" role="menu"><p>Clique numa opção para executá-la agora. O círculo define o padrão do botão Pull.</p>{pullOptions.map((item) => <div className={`gpullrow ${pullMode === item.id ? 'on' : ''}`} key={item.id}>
+      <button type="button" role="menuitemradio" aria-checked={pullMode === item.id} className="gpulldef" title="Definir como padrão do botão Pull" aria-label={`Definir “${item.label}” como padrão`} onClick={() => { setPullMode(item.id); try { localStorage.setItem(pullKey, item.id) } catch { /* só vale nesta sessão */ } }}><i /></button>
+      <button type="button" role="menuitem" className="gpullrun" disabled={Boolean(busy) || !graph?.repo.hasRemote} onClick={() => { setPullMenu(false); pullNow(item.id) }}>{item.label}{pullMode === item.id && <small>padrão</small>}</button></div>)}</div>}</span>
   const colStyle = { '--gw': `${width}px`, ...Object.fromEntries(Object.entries(cols).map(([k, v]) => [`--${k}`, `${v}px`])) } as React.CSSProperties
   const center = <section className="gcenter"><div className="gtools">{pullTool}{tool(gitIcons.push, 'Push', 'push')}{tool(gitIcons.stash, 'Stash', 'stash', false)}{tool(gitIcons.stash, 'Pop', 'pop', false)}<span className="sep" />
     {focus ? <button type="button" className="gonly on" onClick={() => setFocus(null)}>{gitIcons.graph}Só: {title(focus)} ✕</button> : <span className="gonly">{gitIcons.graph}Todas as branches</span>}
-    <span className="gcur">{notice ? <span title={notice}>{notice.length > 70 ? `${notice.slice(0, 70)}…` : notice}</span> : <>Pasta principal em <b>{graph?.repo.head ?? '—'}</b></>}</span></div>
+    <span className="gcur">Pasta principal em <b>{graph?.repo.head ?? '—'}</b></span></div>
     {error && <p className="error" style={{ margin: '10px 14px' }}>{error}</p>}
     <div className={`glist ${cols.cm ? 'fixedcm' : ''}`} style={colStyle} ref={list} onScroll={onListScroll} onClick={(e) => { if (focus && !(e.target as HTMLElement).closest('.grow,.ghead')) setFocus(null) }}>
       <div className="ghead">{['Branch / Tag', 'Grafo', 'Mensagem', 'Card'].map((label) => <span key={label}>{label}</span>)}</div>
@@ -335,7 +366,7 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
         const last = !rows[i + 1] || labels[i + 1] !== labels[i], wip = row.wip
         const cardTitle = row.cardId ? title(row.cardId) : ''
         return <button type="button" key={row.hash} data-hash={row.hash} className={`grow ${last && rows[i + 1] ? 'gbreak' : ''} ${wip ? 'wip' : ''} ${open && row.hash === sel ? 'on' : ''} ${dimmed(row) ? 'dim' : ''}`} onClick={() => clickRow(row)} onContextMenu={wip ? undefined : (event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, kind: 'commit', name: row.hash }) }}>
-          <RefsCell row={row} ghost={ghostChip(rows, i, graph?.repo.head ?? null)} spacing={spacing} /><span className="ggraph"><Dot row={row} profiles={profiles} spacing={spacing} /></span>
+          <RefsCell row={row} ghost={ghostChip(rows, i, graph?.repo.head ?? null)} spacing={spacing} act={(kind, name, open) => { if (!open) pickBranch(kind, name); else if (kind === 'local' && name === graph?.repo.head) toast.info(`Você já está em ${name}`); else void branchAction('checkout', name) }} /><span className="ggraph"><Dot row={row} profiles={profiles} spacing={spacing} /></span>
           <span className="gmsg">{wip ? <><span className="gwipbox">{summaries[row.hash] || '// WIP'}</span><span className="gwipcnt">{wip.modified > 0 && <span className="m">{gitIcons.pen}{wip.modified}</span>}{wip.added > 0 && <span className="a">+{wip.added}</span>}{wip.deleted > 0 && <span className="d">−{wip.deleted}</span>}</span></> : <span className="t">{row.subject}</span>}</span>
           <span className="gcardc">{row.cardId && <span className="ctag" role="link" title="Abrir o Git do card" onClick={(e) => { e.stopPropagation(); openCardGit(row.cardId!) }}>{cardTitle}</span>}</span></button>
       })}
@@ -354,6 +385,8 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
       : menu.kind === 'stash' ? <GitMenu x={menu.x} y={menu.y} title={menu.name} label={`Ações do stash ${menu.name}`} items={stashItems} run={(action) => { const ref = menu.name; setMenu(undefined); void stashAction(action, ref) }} close={() => setMenu(undefined)} />
       : <GitMenu x={menu.x} y={menu.y} title={menu.name} label={`Ações da branch ${menu.name}`} items={branchItems(menu.kind, menu.kind === 'local' && graph?.branches.local.find((item) => item.name === menu.name)?.head === true, graph?.repo.head ?? null)} run={runMenu} close={() => setMenu(undefined)} />)}
     {ask?.kind === 'reset-hard' && <ConfirmDialog eyebrow="Reset hard" title={`Mover a branch atual para ${ask.name.slice(0, 7)}?`} text="Descarta as alterações não commitadas e os commits depois deste na branch atual. Os commits ainda podem ser recuperados pelo reflog, mas o que não foi commitado se perde." ok="Descartar e mover" danger cancel={() => setAsk(undefined)} confirm={() => { const hash = ask.name; setAsk(undefined); void commitAction('reset-hard', hash) }} />}
+    {upstreamAsk && graph && <UpstreamDialog sourceId={graph.repo.sourceId} cardId={focus} branch={upstreamAsk.branch} remotes={upstreamAsk.remotes} close={() => setUpstreamAsk(undefined)} done={() => { const mode = upstreamAsk.mode; setUpstreamAsk(undefined); void sync('pull', mode) }} />}
+    {ask?.kind === 'delete-remote' && <ConfirmDialog eyebrow="Apagar branch remota" title={`Apagar ${ask.name} no servidor?`} text="Isso remove a branch do repositório remoto (git push --delete) e vale para todo mundo que usa esse remoto. As cópias locais não são apagadas. Não dá para desfazer por aqui." ok="Apagar no remoto" danger cancel={() => setAsk(undefined)} confirm={() => { const name = ask.name; setAsk(undefined); void branchAction('delete-remote', name) }} />}
     {ask?.kind === 'delete' && <ConfirmDialog eyebrow="Apagar branch" title={`Apagar ${ask.name}?`} text="Só apaga se tudo dela já estiver em outra branch; se faltar algo, o Git recusa e nada se perde." ok="Apagar" danger cancel={() => setAsk(undefined)} confirm={() => { const name = ask.name; setAsk(undefined); void branchAction('delete', name) }} />}
     {(ask?.kind === 'create' || ask?.kind === 'commit-branch' || ask?.kind === 'commit-tag') && <div className="overlay top" role="dialog" aria-label="Nova branch"><form className="modal" style={{ width: 'min(430px,100%)' }} onSubmit={(event) => { event.preventDefault(); if (!newName.trim()) return; const name = ask.name, kind = ask.kind; setAsk(undefined); if (kind === 'create') void branchAction('create', name, { newName: newName.trim() }); else void commitAction(kind === 'commit-branch' ? 'branch' : 'tag', name, newName.trim()) }}><header><div><div className="eyebrow">{ask.kind === 'commit-tag' ? 'Nova tag' : 'Nova branch'}</div><h2>{ask.kind === 'create' ? `A partir de ${ask.name}` : `No commit ${ask.name.slice(0, 7)}`}</h2></div></header><label className="f"><span>Nome</span><input className="in" autoFocus value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="feature/minha-branch" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setAsk(undefined) } }} /></label>{ask.kind !== 'commit-tag' && <p className="hint">A pasta principal passa para a nova branch.</p>}<div className="actions"><button type="button" className="secondary" onClick={() => setAsk(undefined)}>Cancelar</button><button type="submit" disabled={!newName.trim()}>Criar</button></div></form></div>}
   </div>

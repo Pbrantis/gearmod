@@ -44,4 +44,24 @@ describe('ConversationRepository', () => {
     expect(() => new ConversationRepository(database).createChat({ projectId: project.id, cardId: null, purpose: 'planning', profileId: all[1]!.id })).toThrow('não permitido')
     database.close()
   })
+
+  it('deletes project chats but protects chats linked to cards', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-chat-delete-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
+    const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'Repo', repositories: [{ localPath, name: 'Repo', currentBranch: 'dev', branches: ['dev'] }] }) })
+    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev', profileIds: profiles.list().map((item) => item.id) })
+    const board = new BoardRepository(database, projects), column = board.get(project.id).columns[0]!, profile = profiles.list()[0]!
+    const card = board.create({ projectId: project.id, columnId: column.id, title: 'Protegido', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const repo = new ConversationRepository(database)
+    const free = repo.createChat({ projectId: project.id, cardId: null, purpose: 'free', profileId: profile.id })
+    const linked = repo.createChat({ projectId: project.id, cardId: card.id, purpose: 'planning', profileId: profile.id })
+    repo.addMessage({ chatId: free.id, role: 'user', body: 'Pode apagar', status: 'complete' })
+
+    repo.deleteChat(free.id)
+    expect(repo.listChats(project.id).map((chat) => chat.id)).not.toContain(free.id)
+    expect(() => repo.deleteChat(linked.id)).toThrow('vinculados a cards')
+    expect(repo.listChats(project.id).map((chat) => chat.id)).toContain(linked.id)
+    database.close()
+  })
 })

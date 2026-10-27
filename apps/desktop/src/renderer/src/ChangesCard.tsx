@@ -14,8 +14,8 @@ const readCommand = (projectId: string): string => { try { return localStorage.g
  */
 export function ChangesCard({ cardId, projectId, busy }: { cardId: string; projectId: string; busy: boolean }): React.JSX.Element {
   const [files, setFiles] = useState<FileChange[]>(), [test, setTest] = useState<TestRun | null>(null), [review, setReview] = useState<Review | null>(null)
-  const [open, setOpen] = useState(false), [file, setFile] = useState<string>(), [command, setCommand] = useState(() => readCommand(projectId))
-  const [ask, setAsk] = useState<'' | 'test' | 'review'>(''), [working, setWorking] = useState<'' | 'refresh' | 'test' | 'review'>(''), [error, setError] = useState('')
+  const [command, setCommand] = useState(() => readCommand(projectId)), [draftCommand, setDraftCommand] = useState(() => readCommand(projectId))
+  const [ask, setAsk] = useState<'' | 'test' | 'review'>(''), [configuring, setConfiguring] = useState<'' | 'save' | 'run'>(''), [working, setWorking] = useState<'' | 'refresh' | 'test' | 'review'>(''), [error, setError] = useState('')
   const refresh = useCallback(async () => {
     setWorking('refresh')
     try {
@@ -26,10 +26,11 @@ export function ChangesCard({ cardId, projectId, busy }: { cardId: string; proje
   // Recarrega ao abrir e quando o agente termina um turno (é aí que os arquivos mudam).
   useEffect(() => { if (!busy) void refresh() }, [busy, refresh])
 
-  const runTest = async (): Promise<void> => {
-    const parts = command.trim().split(/\s+/).filter(Boolean)
-    if (!parts.length) { setOpen(true); setError('Informe o comando de teste do projeto (ex.: pytest, npm test).'); return }
-    try { localStorage.setItem(commandKey(projectId), command.trim()) } catch { /* só conveniência */ }
+  const runTest = async (value = command): Promise<void> => {
+    const nextCommand = value.trim(), parts = nextCommand.split(/\s+/).filter(Boolean)
+    if (!parts.length) { setDraftCommand(''); setConfiguring('run'); return }
+    setCommand(nextCommand); setDraftCommand(nextCommand)
+    try { localStorage.setItem(commandKey(projectId), nextCommand) } catch { /* só conveniência */ }
     setWorking('test'); setError('')
     try { setTest(await window.agentboard.invoke('tests:run', { cardId, executable: parts[0]!, args: parts.slice(1) })) } catch (reason) { setError(plainError(reason)) } finally { setWorking('') }
   }
@@ -45,10 +46,15 @@ export function ChangesCard({ cardId, projectId, busy }: { cardId: string; proje
   const showAll = (): void => { if (files?.length) window.dispatchEvent(new CustomEvent('agentboard:open-changes', { detail: { projectId, cardId, files } })) }
   const added = files?.reduce((sum, item) => sum + item.added, 0) ?? 0, removed = files?.reduce((sum, item) => sum + item.removed, 0) ?? 0
   const passed = test?.status === 'passed', approved = review?.state === 'approved' || review?.state === 'merged'
-  const selected = files?.find((item) => item.path === file)
-  return <aside className={`changes ${open ? 'open' : ''}`} aria-label="Alterações do card">
+  const configure = (action: 'save' | 'run'): void => { setDraftCommand(command); setConfiguring(action) }
+  const saveConfiguredCommand = (): void => {
+    const next = draftCommand.trim(); if (!next) return
+    setCommand(next); try { localStorage.setItem(commandKey(projectId), next) } catch { /* só conveniência */ }
+    const action = configuring; setConfiguring(''); if (action === 'run') void runTest(next)
+  }
+  return <aside className="changes" aria-label="Alterações do card">
     <div className="ch-head">
-      <button type="button" className="ch-title" aria-expanded={open} onClick={() => setOpen(!open)}>Alterações<span className="chev" aria-hidden="true">›</span></button>
+      <span className="ch-title">Alterações</span>
       <button type="button" className="ch-icon tip" data-tip="Ver alterações em tela ampla" aria-label="Ver alterações em tela ampla" disabled={!files?.length} onClick={showAll}><ExpandIcon /></button>
       <button type="button" className="ch-icon tip" data-tip="Atualizar" aria-label="Atualizar alterações" disabled={Boolean(working)} onClick={() => void refresh()}>{working === 'refresh' ? <span className="spin sm" /> : <RefreshIcon />}</button>
     </div>
@@ -59,21 +65,14 @@ export function ChangesCard({ cardId, projectId, busy }: { cardId: string; proje
           : <span className="ch-muted">Nenhuma alteração ainda</span>}
     </button>
     <div className="ch-steps">
-      <button type="button" className={`ch-step ${passed ? 'ok' : test?.status === 'failed' ? 'bad' : ''}`} title="Roda o comando de teste do projeto (ex.: npm test) nesta worktree. Para ir para Done, o teste precisa passar e a revisão ser aprovada." disabled={Boolean(working) || busy} onClick={() => setAsk('test')}>{working === 'test' ? <span className="spin sm" /> : passed ? '✓' : test?.status === 'failed' ? '✕' : '○'} Testes automatizados{test?.status === 'failed' ? ' falharam' : passed ? ' passaram' : ''}</button>
+      <button type="button" className={`ch-step ${passed ? 'ok' : test?.status === 'failed' ? 'bad' : ''}`} title="Roda o comando de teste do projeto nesta worktree. É diferente do checklist manual do chat de Teste." disabled={Boolean(working) || busy} onClick={() => command.trim() ? setAsk('test') : configure('run')}>{working === 'test' ? <span className="spin sm" /> : passed ? '✓' : test?.status === 'failed' ? '✕' : '○'} Testes automatizados{test?.status === 'failed' ? ' falharam' : passed ? ' passaram' : ''}</button>
       <button type="button" className={`ch-step ${approved ? 'ok' : ''}`} title="Sua aprovação das alterações; libera depois que os testes passam" disabled={Boolean(working) || busy || !passed || approved} onClick={() => setAsk('review')}>{working === 'review' ? <span className="spin sm" /> : approved ? '✓' : '○'} Revisar{approved ? ' · aprovada' : ''}</button>
+      <button type="button" className={`ch-step ch-command ${command.trim() ? '' : 'bad'}`} title={command.trim() ? `Comando atual: ${command}` : 'Defina qual comando executa os testes deste projeto'} onClick={() => configure('save')}>{command.trim() ? `⌘ ${command}` : '⌘ Configurar comando'}</button>
       {passed && approved && <span className="ch-ready"><CheckIcon />Pronto para Done</span>}
     </div>
-    {open && <div className="ch-body">
-      {!!files?.length && <ul className="ch-files">{files.map((item) => <li key={item.path}>
-        <button type="button" className={`ch-file ${file === item.path ? 'on' : ''}`} disabled={item.untracked} title={item.path} onClick={() => setFile(file === item.path ? undefined : item.path)}>
-          <span className="ch-path">{item.path}</span>{item.untracked ? <span className="ch-new">novo</span> : <><span className="ch-add">+{item.added}</span><span className="ch-del">−{item.removed}</span></>}
-        </button></li>)}</ul>}
-      {selected && <pre className="ch-diff">{selected.diff.split('\n').map((line, index) => <span key={index} className={line.startsWith('+') && !line.startsWith('+++') ? 'a' : line.startsWith('-') && !line.startsWith('---') ? 'd' : line.startsWith('@@') ? 'h' : undefined}>{line}{'\n'}</span>)}</pre>}
-      <label className="ch-cmd">Comando de teste do projeto<input className="in" value={command} placeholder="ex.: pytest, npm test" spellCheck={false} onChange={(e) => setCommand(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runTest() }} /></label>
-      {test?.status === 'failed' && <pre className="ch-diff ch-log">{test.summary.slice(-1500)}</pre>}
-    </div>}
     {error && <p className="ch-error">{error}</p>}
     {ask === 'test' && <ConfirmDialog eyebrow="Testes automatizados" title={test?.status === 'failed' ? 'Rodar os testes de novo?' : 'Rodar os testes?'} text={command.trim() ? `Vai rodar "${command.trim()}" na worktree deste card. Para ir para Done, os testes precisam passar e a revisão ser aprovada.` : 'Vai rodar o comando de teste do projeto na worktree deste card. Você ainda precisa informar o comando (ex.: pytest, npm test).'} ok="Rodar testes" cancel={() => setAsk('')} confirm={() => { setAsk(''); void runTest() }} />}
     {ask === 'review' && <ConfirmDialog eyebrow="Revisão" title="Aprovar as alterações?" text={`Você confirma que revisou as ${files?.length ?? 0} ${files?.length === 1 ? 'alteração' : 'alterações'} (+${added} −${removed}) e aprova este card. Depois disso ele fica pronto para Done.`} ok="Aprovar" cancel={() => setAsk('')} confirm={() => { setAsk(''); void approve() }} />}
+    {configuring && <ConfirmDialog eyebrow="Testes automatizados" title="Comando de teste do projeto" text="Informe o comando que deve passar para liberar este card para Done. O checklist do chat de Teste é separado desta execução automatizada." ok={configuring === 'run' ? 'Salvar e rodar' : 'Salvar comando'} okDisabled={!draftCommand.trim()} extra={<label className="ch-cmd">Comando<input className="in" autoFocus value={draftCommand} placeholder="ex.: pnpm test, npm test, pytest" spellCheck={false} onChange={(event) => setDraftCommand(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && draftCommand.trim()) saveConfiguredCommand() }} /></label>} cancel={() => setConfiguring('')} confirm={saveConfiguredCommand} />}
   </aside>
 }

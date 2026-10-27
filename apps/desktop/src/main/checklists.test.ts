@@ -43,6 +43,23 @@ describe('checklist do teste', () => {
     const undone = checklists.toggle(cardId, 1, 'B', false)
     expect(undone.marks.b).toMatchObject({ by: 'user' }); expect(undone.contentMd).toContain('- [ ] B')
   })
+  it('o OK do agente continua registrado quando o usuário desmarca e marca de novo, e some só se o próprio agente desmarcar', async () => {
+    const { checklists, cardId } = await setup()
+    const first = checklists.write(cardId, '- [x] CA07 parcial\n- [ ] CA08\n')
+    const agentAt = first.marks['ca07 parcial']!.at
+    expect(first.marks['ca07 parcial']).toMatchObject({ by: 'agent', agent: agentAt })
+    const unchecked = checklists.toggle(cardId, 0, 'CA07 parcial', false)
+    expect(unchecked.marks['ca07 parcial']).toMatchObject({ by: 'user', agent: agentAt })
+    const again = checklists.toggle(cardId, 0, 'CA07 parcial', true)
+    expect(again.marks['ca07 parcial']).toMatchObject({ by: 'user', agent: agentAt })
+    // item que só o usuário marcou não ganha OK do agente
+    expect(checklists.toggle(cardId, 1, 'CA08', true).marks.ca08?.agent).toBeUndefined()
+    // se o agente reescrever o checklist deixando tudo igual, nada muda
+    expect(checklists.write(cardId, '- [x] CA07 parcial\n- [x] CA08\n').marks['ca07 parcial']).toMatchObject({ by: 'user', agent: agentAt })
+    // o agente desmarcar tira o OK dele
+    expect(checklists.write(cardId, '- [ ] CA07 parcial\n- [x] CA08\n').marks['ca07 parcial']).toEqual(expect.objectContaining({ by: 'agent' }))
+    expect(checklists.get(cardId).marks['ca07 parcial']!.agent).toBeUndefined()
+  })
   it('recusa o clique quando o item daquela linha não é mais o mesmo', async () => {
     const { checklists, cardId } = await setup()
     checklists.write(cardId, '- [ ] A\n- [ ] B\n')

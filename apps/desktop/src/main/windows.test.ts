@@ -28,4 +28,8 @@ describe('windows', () => {
     const parsed = new URLSearchParams(new URLSearchParams(query).toString())
     expect(parsed.get('pop')).toBe('file'); expect(parsed.get('card')).toBe('c'); expect(parsed.get('path')).toBe('C:/repo/docs/nota #1.md')
   })
+  it('preserva as abas ao destacar o explorador completo', () => {
+    const query = popoutQuery({ kind: 'files', projectId: 'p', paths: ['C:/repo/a.ts', 'C:/repo/b #1.ts'], path: 'C:/repo/b #1.ts' })
+    expect(query.pop).toBe('files'); expect(JSON.parse(query.paths!)).toEqual(['C:/repo/a.ts', 'C:/repo/b #1.ts'])
+  })
 })

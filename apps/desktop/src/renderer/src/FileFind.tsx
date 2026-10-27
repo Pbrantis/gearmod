@@ -18,10 +18,11 @@ export function fileMatches(content: string, query: string, options: FindOptions
 export function FileFind({ input, query, setQuery, options, setOptions, count, index, error, previous, next, close }: { input: React.RefObject<HTMLInputElement | null>; query: string; setQuery(value: string): void; options: FindOptions; setOptions(value: FindOptions): void; count: number; index: number; error: string; previous(): void; next(): void; close(): void }): React.JSX.Element {
   return <div className="wf-find" role="search" aria-label="Localizar no arquivo">
     <div className={`wf-findbox ${error ? 'invalid' : ''}`}><input ref={input} placeholder="Localizar no arquivo…" aria-label="Texto a procurar no arquivo" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); if (event.shiftKey) previous(); else next() } }} />
-      {([['caseSensitive', 'Diferenciar maiúsculas e minúsculas', 'Aa'], ['wholeWord', 'Palavra inteira', 'ab'], ['regex', 'Expressão regular', '.*']] as const).map(([key, label, text]) => <button key={key} type="button" className={`ibtn ${options[key] ? 'on' : ''} ${key === 'wholeWord' ? 'whole-word' : ''}`} title={label} aria-label={label} aria-pressed={options[key]} onClick={() => setOptions({ ...options, [key]: !options[key] })}>{text}</button>)}
-    </div><span className="wf-matchcount" role="status">{error || (query ? count ? `${index < 0 ? 0 : index + 1}/${count}` : 'Sem resultados' : '')}</span>
-    <button type="button" className="ibtn" aria-label="Ocorrência anterior" title="Anterior (Shift+Enter)" disabled={!count} onClick={previous}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4m-5 5 5-5 5 5" /></svg></button>
-    <button type="button" className="ibtn" aria-label="Próxima ocorrência" title="Próxima (Enter)" disabled={!count} onClick={next}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12m-5-5 5 5 5-5" /></svg></button>
-    <button type="button" className="ibtn" aria-label="Fechar pesquisa" onClick={close}><CloseIcon /></button>
+      <span className="wf-matchcount" role="status">{error || (query ? count ? `${index < 0 ? 0 : index + 1}/${count}` : 'Sem resultados' : '')}</span>
+      {([['caseSensitive', 'Diferenciar maiúsculas e minúsculas', 'Aa'], ['wholeWord', 'Palavra inteira', 'ab'], ['regex', 'Expressão regular', '.*']] as const).map(([key, label, text]) => <button key={key} type="button" className={`wf-findopt ${options[key] ? 'on' : ''} ${key === 'wholeWord' ? 'whole-word' : ''}`} title={label} aria-label={label} aria-pressed={options[key]} onClick={() => setOptions({ ...options, [key]: !options[key] })}>{text}</button>)}
+    </div>
+    <button type="button" className="wf-findnav" aria-label="Ocorrência anterior" title="Anterior (Shift+Enter)" disabled={!count} onClick={previous}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4m-5 5 5-5 5 5" /></svg></button>
+    <button type="button" className="wf-findnav" aria-label="Próxima ocorrência" title="Próxima (Enter)" disabled={!count} onClick={next}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12m-5-5 5 5 5-5" /></svg></button>
+    <button type="button" className="wf-findnav close" aria-label="Fechar pesquisa" title="Fechar (Esc)" onClick={close}><CloseIcon /></button>
   </div>
 }

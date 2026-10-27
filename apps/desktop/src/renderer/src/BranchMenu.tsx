@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export interface MenuItem<K extends string = string> { key: K; label: string; danger?: boolean; off?: string }
-export type BranchAction = 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'copy'
+export type BranchAction = 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote' | 'copy'
 export type CommitMenuAction = 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag' | 'copy'
 export type StashMenuAction = 'apply' | 'pop' | 'drop'
 
 /** Menu do botão direito do Git (branches, commits, stashes): lista de ações com setas, Enter e Esc. */
 export function GitMenu<K extends string>({ x, y, title, label, items, run, close }: { x: number; y: number; title: string; label: string; items: Array<MenuItem<K>>; run(key: K): void; close(): void }): React.JSX.Element {
+  const list = items.filter((item) => !item.off)
   const root = useRef<HTMLDivElement>(null), [pos, setPos] = useState({ left: x, top: y }), [active, setActive] = useState(0)
   const go = (item: MenuItem<K>): void => { if (!item.off) run(item.key) }
   useLayoutEffect(() => {
@@ -16,9 +17,9 @@ export function GitMenu<K extends string>({ x, y, title, label, items, run, clos
   useEffect(() => {
     const key = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') { event.preventDefault(); close(); return }
-      if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => (value + 1) % items.length); return }
-      if (event.key === 'ArrowUp') { event.preventDefault(); setActive((value) => (value + items.length - 1) % items.length); return }
-      if (event.key === 'Enter') { event.preventDefault(); go(items[active]!) }
+      if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => (value + 1) % Math.max(1, list.length)); return }
+      if (event.key === 'ArrowUp') { event.preventDefault(); setActive((value) => (value + list.length - 1) % Math.max(1, list.length)); return }
+      if (event.key === 'Enter') { event.preventDefault(); if (list[active]) go(list[active]!) }
     }
     const away = (event: MouseEvent): void => { if (!root.current?.contains(event.target as Node)) close() }
     document.addEventListener('keydown', key, true); document.addEventListener('mousedown', away); window.addEventListener('blur', close); window.addEventListener('resize', close)
@@ -26,7 +27,7 @@ export function GitMenu<K extends string>({ x, y, title, label, items, run, clos
   })
   return <div className="ctxmenu" ref={root} role="menu" aria-label={label} style={pos} onContextMenu={(event) => event.preventDefault()}>
     <div className="ctxtitle" title={title}>{title}</div>
-    {items.map((item, index) => <React.Fragment key={item.key}>
+    {list.map((item, index) => <React.Fragment key={item.key}>
       {item.danger && <div className="ctxsep" />}
       <button type="button" role="menuitem" disabled={Boolean(item.off)} className={`ctxitem ${item.danger ? 'danger' : ''} ${index === active ? 'on' : ''}`} onMouseEnter={() => setActive(index)} onClick={() => go(item)}><span>{item.label}</span>{item.off && <kbd>{item.off}</kbd>}</button>
     </React.Fragment>)}
@@ -47,6 +48,7 @@ export function branchItems(kind: 'local' | 'remote', head: boolean, current: st
     { key: 'merge', label: `Merge desta em ${current ?? 'a atual'}`, off: other },
     { key: 'create', label: 'Criar branch a partir daqui' },
     ...(local ? [{ key: 'delete', label: 'Apagar branch', danger: true, off: head ? 'é a branch atual' : undefined } as MenuItem<BranchAction>] : []),
+    ...(local ? [] : [{ key: 'delete-remote', label: 'Apagar branch remota', danger: true } as MenuItem<BranchAction>]),
     { key: 'copy', label: 'Copiar o nome' }
   ]
 }

@@ -36,8 +36,8 @@ export const terminal = {
   },
   async openPath(context: { projectId: string; cardId: string | null; path: string }): Promise<void> { try { const { id } = await window.agentboard.invoke('workspace:terminal', context); await terminal.attach(id) } catch (reason) { set({ error: String(reason), open: true }) } },
   async newTab(): Promise<string | null> {
-    const context = state.context
-    if (!context) { set({ error: 'Abra um projeto para usar o terminal.', open: true }); return null }
+    // Sem projeto aberto (contexto vazio), o terminal abre na pasta do usuário, como um terminal comum.
+    const context = state.context ?? { projectId: null, cardId: null }
     try {
       const { id, cwd, shell } = await window.agentboard.invoke('terminal:open', context)
       counter += 1

@@ -15,7 +15,7 @@ const FolderIcon = (): React.JSX.Element => <svg className="cx-foldico" viewBox=
 
 /** Configuração do projeto: pesos e limites do Complexity Engine, método das tarefas complexas, SDD central e pasta dos artefatos. */
 export function WorkflowPanel({ projectId }: { projectId: string }): React.JSX.Element {
-  const [config, setConfig] = useState<WorkflowConfig>(), [detected, setDetected] = useState<SddDetection[]>([]), [defaultDir, setDefaultDir] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false)
+  const [config, setConfig] = useState<WorkflowConfig>(), [detected, setDetected] = useState<SddDetection[]>([]), [defaultDir, setDefaultDir] = useState(''), [message, setMessage] = useState('')
   const [editSdd, setEditSdd] = useState(false), [editArt, setEditArt] = useState(false), [saveState, setSaveState] = useState<'' | 'saving' | 'saved'>(''), lastSaved = React.useRef('')
   const take = (state: { config: WorkflowConfig; detected: SddDetection[]; defaultArtifactsDir: string }): void => { lastSaved.current = JSON.stringify(state.config); setConfig(state.config); setDetected(state.detected); setDefaultDir(state.defaultArtifactsDir) }
   useEffect(() => { void window.agentboard.invoke('workflow:get', { projectId }).then(take).catch((reason) => setMessage(plainError(reason))) }, [projectId])

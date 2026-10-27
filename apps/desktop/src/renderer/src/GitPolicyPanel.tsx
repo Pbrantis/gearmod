@@ -7,6 +7,7 @@ import { ruleLabel } from './gitView'
 import { ConfirmDialog } from './ConfirmDialog'
 import { TrashIcon } from './icons'
 import { GitEmpty, gitChangedEvent } from './GitSetup'
+import { toast } from './toasts'
 import { cachedGit, refreshGit, rememberGit } from './gitConfigCache'
 
 const defaultNotes: Record<GitRule, [string, string]> = {
@@ -24,7 +25,7 @@ function Fold({ title, summary, closed = false, children }: { title: string; sum
 /** Aba Git de Configurar projeto: quem commita (padrão do projeto), exceções por branch e os repositórios. Salva ao mudar. */
 export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const warm = cachedGit(projectId)
-  const [policy, setPolicy] = useState<GitPolicy | undefined>(warm.policy), [repos, setRepos] = useState<GitRepo[]>(warm.repos ?? []), [reposLoaded, setReposLoaded] = useState(Boolean(warm.repos)), [error, setError] = useState(''), [saved, setSaved] = useState(false), [askRemove, setAskRemove] = useState<number | null>(null)
+  const [policy, setPolicy] = useState<GitPolicy | undefined>(warm.policy), [repos, setRepos] = useState<GitRepo[]>(warm.repos ?? []), [reposLoaded, setReposLoaded] = useState(Boolean(warm.repos)), [error, setError] = useState(''), [askRemove, setAskRemove] = useState<number | null>(null)
   useEffect(() => {
     // Já tem o que foi carregado ao abrir o projeto: mostra na hora e confere de novo em segundo plano.
     const now = cachedGit(projectId)
@@ -42,7 +43,7 @@ export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.
   if (!policy || !reposLoaded) return <div className="stack">{error ? <p className="error">{error}</p> : <small className="hint">Carregando…</small>}</div>
   if (!repos.length) return <GitEmpty projectId={projectId} done={(items) => { rememberGit(projectId, { repos: items }); setRepos(items) }} />
   const save = async (next: GitPolicy): Promise<void> => {
-    try { setError(''); setPolicy(next); rememberGit(projectId, { policy: next }); const stored = await window.agentboard.invoke('git:policy-set', { projectId, policy: next }); rememberGit(projectId, { policy: stored }); setPolicy((current) => current && current.rules.length === stored.rules.length ? current : stored); setSaved(true); window.setTimeout(() => setSaved(false), 1600) } catch (reason) { setError(plainError(reason)) }
+    try { setError(''); setPolicy(next); rememberGit(projectId, { policy: next }); const stored = await window.agentboard.invoke('git:policy-set', { projectId, policy: next }); rememberGit(projectId, { policy: stored }); setPolicy((current) => current && current.rules.length === stored.rules.length ? current : stored); toast.success('Regra de commit salva') } catch (reason) { setError(plainError(reason)) }
   }
   const rules = policy.rules
   const setRule = (index: number, patch: Partial<GitPolicy['rules'][number]>, persist = true): void => {
@@ -57,7 +58,7 @@ export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.
         <button type="button" className="trashbtn tip" data-tip="Remover exceção" aria-label="Remover exceção" onClick={() => setAskRemove(index)}><TrashIcon /></button></div>)}</div>
       <button type="button" className="mini secondary" style={{ justifySelf: 'start' }} onClick={() => setPolicy({ ...policy, rules: [...rules, { pattern: '', rule: 'auto' }] })}>＋ Adicionar exceção</button></Fold>
     {askRemove !== null && rules[askRemove] && <ConfirmDialog eyebrow="Exceção por branch" title={`Remover a exceção de ${rules[askRemove]!.pattern || 'branch sem nome'}?`} text="Essa branch volta a seguir o padrão do projeto para o commit feito pelo agente." ok="Remover" danger cancel={() => setAskRemove(null)} confirm={() => { const index = askRemove; setAskRemove(null); void save({ ...policy, rules: rules.filter((_, i) => i !== index) }) }} />}
-    {error && <p className="error">{error}</p>}{saved && <small className="hint">Regra salva.</small>}
+    {error && <p className="error">{error}</p>}
     <Fold title="Repositórios do projeto" closed summary={`${repos.length} repositório${repos.length === 1 ? '' : 's'}`}><div className="stack" style={{ gap: 6 }}>{repos.map((repo) => <div className="grepo-row" key={repo.sourceId}>{gitIcons.repo}<span><b>{repo.name}</b><small>{repo.path}</small></span><span className="pillg ok" title="Branch atual">{gitIcons.branch}{repo.head ?? '—'}</span></div>)}{!repos.length && <small className="hint">Nenhum repositório Git neste projeto ainda.</small>}</div></Fold>
   </div>
 }

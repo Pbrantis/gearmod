@@ -24,7 +24,7 @@ function parseConflicts(text: string): Part[] {
         block[side].push(inner)
       }
       parts.push(block); current = { kind: 'text', lines: [] }
-    } else current.kind === 'text' && current.lines.push(line)
+    } else if (current.kind === 'text') current.lines.push(line)
   }
   if (current.kind === 'text' && current.lines.length) parts.push(current)
   return parts

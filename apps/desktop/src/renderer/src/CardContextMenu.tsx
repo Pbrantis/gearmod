@@ -1,15 +1,16 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Card } from '@agentboard/contracts'
-import { ChatIcon, EyeIcon, TrashIcon } from './icons'
+import { BranchIcon, ChatIcon, EyeIcon, TrashIcon } from './icons'
 
 interface Item { key: string; label: string; hint: string; icon: React.ReactNode; danger?: boolean; run(): void }
 
-/** Menu do botão direito no card: abrir, ir para o chat e excluir, com atalho por letra (A, C, E). */
-export function CardContextMenu({ x, y, card, open, chat, remove, close }: { x: number; y: number; card: Card; open(): void; chat(): void; remove(): void; close(): void }): React.JSX.Element {
+/** Menu do botão direito no card: abrir, ir para o chat/Git e excluir, com atalho por letra. */
+export function CardContextMenu({ x, y, card, open, chat, git, remove, close }: { x: number; y: number; card: Card; open(): void; chat(): void; git(): void; remove(): void; close(): void }): React.JSX.Element {
   const root = useRef<HTMLDivElement>(null), [pos, setPos] = useState({ left: x, top: y }), [active, setActive] = useState(0)
   const items: Item[] = [
     { key: 'a', label: 'Abrir card', hint: 'A', icon: <EyeIcon />, run: open },
     { key: 'c', label: 'Ir para o chat do card', hint: 'C', icon: <ChatIcon />, run: chat },
+    { key: 'g', label: 'Abrir Git do card', hint: 'G', icon: <BranchIcon />, run: git },
     { key: 'e', label: 'Excluir card', hint: 'E', icon: <TrashIcon />, danger: true, run: remove }
   ]
   useLayoutEffect(() => {

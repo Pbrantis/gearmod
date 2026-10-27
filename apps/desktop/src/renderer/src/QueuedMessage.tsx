@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { AttachmentChips } from './Attachments'
+import { SendIcon } from './icons'
 
 /**
  * Mensagem escrita enquanto o agente ainda trabalha: fica numa prévia embaixo do chat em vez de se perder. Quando o agente termina,
  * ela segue sozinha; "Enviar agora" interrompe o turno e manda já, para complementar o contexto (a sessão do agente continua).
  * Se você parou o agente no botão, ela espera a sua decisão em vez de sair sozinha.
  */
-export function useQueuedMessage(busy: boolean, deliver: (text: string) => Promise<void>): {
-  queued: string; queue(text: string): void; take(): string; discard(): void; markStopped(): void; sendNow(cancel: () => Promise<void>): void
+export function useQueuedMessage(busy: boolean, deliver: (text: string, files: string[]) => Promise<void>): {
+  queued: string; files: string[]; queue(text: string, files?: string[]): void; take(): { text: string; files: string[] }; discard(): void; markStopped(): void; sendNow(cancel: () => Promise<void>): void
 } {
-  const [queued, setQueued] = useState('')
+  const [queued, setQueued] = useState(''), [files, setFiles] = useState<string[]>([])
   const stopped = useRef(false), interrupting = useRef(false), wasBusy = useRef(busy)
   useEffect(() => {
     const ended = wasBusy.current && !busy; wasBusy.current = busy
@@ -16,21 +18,35 @@ export function useQueuedMessage(busy: boolean, deliver: (text: string) => Promi
     const manual = stopped.current && !interrupting.current
     stopped.current = false; interrupting.current = false
     if (!queued || manual) return
-    setQueued(''); void deliver(queued)
-  }, [busy]) // só reage ao fim do turno; `queued` e `deliver` são os da renderização em que ele terminou
-  const queue = useCallback((text: string) => setQueued((current) => (current ? `${current}\n\n${text}` : text)), [])
-  const take = (): string => { const text = queued; setQueued(''); return text }
+    setQueued(''); setFiles([]); void deliver(queued, files)
+  }, [busy]) // só reage ao fim do turno; a mensagem e os anexos são os da renderização em que ele terminou
+  const queue = useCallback((text: string, nextFiles: string[] = []) => {
+    setQueued((current) => (current ? `${current}\n\n${text}` : text))
+    setFiles((current) => [...new Set([...current, ...nextFiles])].slice(0, 20))
+  }, [])
+  const take = (): { text: string; files: string[] } => { const item = { text: queued, files }; setQueued(''); setFiles([]); return item }
   const sendNow = (cancel: () => Promise<void>): void => {
-    if (!busy) { const text = take(); if (text) void deliver(text); return }
+    if (!busy) { const item = take(); if (item.text) void deliver(item.text, item.files); return }
     interrupting.current = true; void cancel()
   }
-  return { queued, queue, take, discard: () => setQueued(''), markStopped: () => { stopped.current = true }, sendNow }
+  return { queued, files, queue, take, discard: () => { setQueued(''); setFiles([]) }, markStopped: () => { stopped.current = true }, sendNow }
 }
 
-export function QueuedPreview({ text, busy, sendNow, edit, discard }: { text: string; busy: boolean; sendNow(): void; edit(): void; discard(): void }): React.JSX.Element {
+export function QueuedPreview({ text, files, busy, sendNow, edit, discard }: { text: string; files: string[]; busy: boolean; sendNow(): void; edit(): void; discard(): void }): React.JSX.Element {
+  const [open, setOpen] = useState(false), menu = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: PointerEvent): void => { if (!menu.current?.contains(event.target as Node)) setOpen(false) }
+    const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape') setOpen(false) }
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape) }
+  }, [open])
   return <div className="queued" role="status">
-    <div className="q-head"><b>{busy ? 'Na fila' : 'Pronta para enviar'}</b><span>{busy ? 'Segue quando o agente terminar. Enviar agora interrompe o turno atual para complementar o contexto.' : 'O agente foi parado. Quer enviar agora?'}</span></div>
-    <p className="q-text">{text}</p>
-    <div className="q-actions"><button type="button" className="q-now" onClick={sendNow}>{busy ? 'Enviar agora' : 'Enviar'}</button><button type="button" className="secondary" onClick={edit}>Editar</button><button type="button" className="secondary" onClick={discard}>Descartar</button></div>
+    <div className="q-content"><AttachmentChips files={files} /><p className="q-text">{text}</p></div>
+    <div className="q-tools" ref={menu}>
+      <button type="button" className="sendbtn q-send tip" data-tip={busy ? 'Enviar agora' : 'Enviar'} aria-label={busy ? 'Enviar agora' : 'Enviar'} onClick={sendNow}><SendIcon /></button>
+      <button type="button" className="sendbtn q-more" aria-label="Mais opções da fila" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.35" /><circle cx="10" cy="10" r="1.35" /><circle cx="16" cy="10" r="1.35" /></svg></button>
+      {open && <div className="q-menu" role="menu"><button type="button" role="menuitem" onClick={() => { setOpen(false); edit() }}>Editar</button><button type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); discard() }}>Descartar da fila</button></div>}
+    </div>
   </div>
 }

@@ -1,4 +1,4 @@
-export type WindowPlacement = 'new' | 'left' | 'right' | 'top' | 'bottom' | 'fill'
+export type WindowPlacement = 'new' | 'left' | 'right' | 'top' | 'bottom' | 'fill' | 'second'
 export interface Bounds { x: number; y: number; width: number; height: number }
 
 /** Metade da área útil da tela para onde a janela vai (esquerda, direita, em cima, embaixo); `new` é uma janela solta, deslocada um pouco. */
@@ -17,7 +17,7 @@ export function placementBounds(area: Bounds, placement: WindowPlacement): Bound
 /** A outra metade, para a janela que abriu poder dividir a tela com a nova. */
 export const oppositePlacement = (placement: WindowPlacement): WindowPlacement | null => placement === 'left' ? 'right' : placement === 'right' ? 'left' : placement === 'top' ? 'bottom' : placement === 'bottom' ? 'top' : null
 
-export interface PopoutTarget { kind: 'board' | 'git' | 'chat' | 'file' | 'terminal'; projectId: string; cardId?: string | undefined; chatId?: string | undefined; terminalId?: string | undefined; path?: string | undefined; purpose?: string | undefined }
+export interface PopoutTarget { kind: 'board' | 'chats' | 'git' | 'chat' | 'files' | 'file' | 'terminal'; projectId: string; cardId?: string | undefined; chatId?: string | undefined; terminalId?: string | undefined; path?: string | undefined; paths?: string[] | undefined; purpose?: string | undefined }
 
 /** Parâmetros que o renderer lê (`?pop=chat&project=…`) para montar só aquela parte do app. */
 export function popoutQuery(target: PopoutTarget): Record<string, string> {
@@ -26,6 +26,7 @@ export function popoutQuery(target: PopoutTarget): Record<string, string> {
   if (target.chatId) query.chat = target.chatId
   if (target.purpose) query.purpose = target.purpose
   if (target.path) query.path = target.path
+  if (target.paths?.length) query.paths = JSON.stringify(target.paths)
   if (target.terminalId) query.terminal = target.terminalId
   return query
 }

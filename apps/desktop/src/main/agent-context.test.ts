@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AgentContextService, loadSkillInstructions } from './agent-context'
+import { AgentContextService, loadSkillCatalog, loadSkillInstructions } from './agent-context'
 import { AppDatabase } from './database'
 import { BoardRepository, ProjectRepository } from './projects'
 import { SettingsRepository } from './settings'
@@ -42,6 +42,14 @@ describe('AgentContextService', () => {
 })
 
 describe('loadSkillInstructions', () => {
+  it('exposes only metadata in the discovery catalog', () => {
+    const catalog = loadSkillCatalog(pluginDir, true)!
+    expect(catalog).toContain('agentboard-discovery: Discovery de uma demanda')
+    expect(catalog).toContain('agentboard-planejamento: Conduz o chat de planejamento')
+    expect(catalog).not.toContain('# Discovery da demanda')
+    expect(catalog).not.toContain('### Modelo (pt-BR)')
+  })
+
   it('bundles the skills with the templates of the chosen language, falling back to pt-BR', () => {
     const ptBR = loadSkillInstructions(pluginDir, 'pt-BR', true)!
     expect(ptBR).toContain('## Skill agentboard-planejamento'); expect(ptBR).toContain('## Skill agentboard-tasks'); expect(ptBR).not.toContain('name: agentboard-tasks')
@@ -70,6 +78,10 @@ describe('loadSkillInstructions', () => {
     expect(service.developerInstructions(false, null, small.id, 'execution')).toContain('## Skill agentboard-pequena')
     expect(service.developerInstructions(true)).not.toContain('## Skill agentboard-implementar')
     expect(service.freeInstructions(true)).not.toContain('## Skill agentboard-pequena')
+    expect(service.freeInstructions(true)).toContain('catálogo para descoberta')
+    expect(service.freeInstructions(true)).not.toContain('# Planejamento de card')
+    expect(service.skillInstructions('agentboard-planejamento')).toContain('# Planejamento de card')
+    expect(service.skillInstructions('skill-inexistente')).toBeUndefined()
     database.close()
   })
 

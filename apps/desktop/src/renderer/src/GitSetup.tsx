@@ -45,3 +45,27 @@ export function GitEmpty({ projectId, done }: { projectId: string; done(repos: G
     {open && <GitSetupDialog projectId={projectId} close={() => setOpen(false)} done={(repos) => { setOpen(false); done(repos) }} />}
   </div>
 }
+
+/** Pergunta com qual remoto/branch a branch atual faz pull e push (quando ela ainda não está ligada a nenhuma). */
+export function GitUpstreamDialog({ sourceId, cardId, branch, remotes, close, done }: { sourceId: string; cardId: string | null; branch: string; remotes: string[]; close(): void; done(): void }): React.JSX.Element {
+  const [remote, setRemote] = useState(remotes.includes('origin') ? 'origin' : remotes[0] ?? ''), [name, setName] = useState(branch), [busy, setBusy] = useState(false), [error, setError] = useState('')
+  useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !busy) { event.stopPropagation(); close() } }; document.addEventListener('keydown', key, true); return () => document.removeEventListener('keydown', key, true) }, [busy, close])
+  const submit = async (): Promise<void> => {
+    if (!name.trim() || !remote) return
+    setBusy(true); setError('')
+    try { await window.agentboard.invoke('git:set-upstream', { sourceId, cardId, remote, branch: name.trim() }); done() } catch (reason) { setError(plainError(reason)); setBusy(false) }
+  }
+  return <div className="overlay top" role="dialog" aria-label="Remoto e branch do pull"><form className="modal" style={{ width: 'min(520px,100%)' }} onSubmit={(event) => { event.preventDefault(); void submit() }}>
+    <header><div><div className="eyebrow">Pull</div><h2>Com qual remoto e branch fazer pull e push?</h2></div></header>
+    <div className="stack" style={{ gap: 10 }}>
+      <p className="hint" style={{ margin: 0 }}>A branch <b>{branch}</b> ainda não está ligada a uma branch remota. Escolha de onde ela puxa e para onde envia; depois o pull continua.</p>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <select className="in" aria-label="Remoto" value={remote} onChange={(event) => setRemote(event.target.value)} style={{ flex: '0 0 130px' }}>{remotes.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+        <span aria-hidden="true">/</span>
+        <input className="in" aria-label="Branch remota" autoFocus value={name} spellCheck={false} onChange={(event) => setName(event.target.value)} style={{ flex: 1 }} />
+      </div>
+      {error && <p className="error">{error}</p>}
+    </div>
+    <div className="actions"><button type="button" className="secondary" disabled={busy} onClick={close}>Cancelar</button><button type="submit" disabled={busy || !name.trim() || !remote}>{busy ? 'Ligando…' : 'Confirmar e puxar'}</button></div>
+  </form></div>
+}

@@ -7,4 +7,8 @@ export function NoticeDialog({ eyebrow, title, text, ok = 'Entendi', close }: { 
 }
 
 /** Tira o prefixo técnico do Electron das mensagens de erro do main. */
-export const plainError = (reason: unknown): string => String(reason).replace(/^Error invoking remote method '[^']+': /, '').replace(/^Error: /, '')
+export const plainError = (reason: unknown): string => {
+  let message = String(reason)
+  for (let index = 0; index < 3; index += 1) message = message.replace(/^Error:\s*/i, '').replace(/^Error invoking remote method ['"][^'"]+['"]:\s*/i, '')
+  return message || 'Não foi possível concluir a operação'
+}

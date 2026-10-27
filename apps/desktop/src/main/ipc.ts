@@ -1,3 +1,4 @@
+import { homedir } from 'node:os'
 import { systemDocumentKinds, ipcContracts, type AppLanguage, type VoiceModel, type AppTheme, type AgentConfig, type AgentPurpose, type GitPolicy, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
 import type { PopoutTarget, WindowPlacement } from './windows'
 import type { TerminalService } from './terminals'
@@ -29,7 +30,7 @@ import type { DecisionKind, DimensionScores, Effort, PermissionMode, WorkflowCon
 const workflowState = (history: CardHistoryService, projectId: string) => ({ config: history.config(projectId), detected: history.detect(projectId), defaultArtifactsDir: history.defaultArtifactsRoot(projectId) })
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { basename, dirname, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path'
 
 const imageMime: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' }
 
@@ -67,7 +68,7 @@ interface Services {
   playwright: PlaywrightCliService
   openPath(path: string): Promise<void>
   terminals: TerminalService
-  openWindow(target: PopoutTarget, placement: WindowPlacement): void
+  openWindow(target: PopoutTarget, placement: WindowPlacement, point?: { x: number; y: number }): void
   placeWindow(placement: WindowPlacement): void
   returnFile?(input: { projectId: string; cardId: string | null; path: string }): void
   attachFile?(input: { projectId: string; cardId: string | null; path: string }): void
@@ -98,7 +99,15 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'workspace:attach': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path); if (!statSync(path).isFile()) throw new Error('Escolha um arquivo para anexar'); if (!services.attachFile) throw new Error('Chat indisponível'); services.attachFile({ ...input, path }); return {} },
     'workspace:terminal': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path), cwd = statSync(path).isDirectory() ? path : dirname(path), id = services.terminals.open(cwd); return { id, cwd, shell: services.terminals.info(id).shell } },
     'workspace:image': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path), mime = imageMime[extname(path).toLowerCase()]; if (!mime || statSync(path).size > 20_000_000) throw new Error('Prévia disponível para imagens de até 20 MB'); return `data:${mime};base64,${readFileSync(path).toString('base64')}` },
-    'workspace:roots': (input: { projectId: string; cardId: string | null }) => workspaceRoots(input).map((path) => ({ path, name: basename(path) })),
+    'workspace:roots': async (input: { projectId: string; cardId: string | null }) => {
+      const worktree = input.cardId ? services.worktrees.get(input.cardId) : null, cards = services.board.get(input.projectId).cards, paths = workspaceRoots(input)
+      return Promise.all(paths.map(async (path) => {
+        const branch = worktree?.branch ?? await services.git.currentBranch(path)
+        const card = input.cardId ? cards.find((item) => item.id === input.cardId) : branch ? cards.find((item) => !item.archivedAt && item.workspace?.branch === branch) : undefined
+        const primary = !paths.some((parent) => parent !== path && relative(parent, path) !== '' && !relative(parent, path).startsWith('..') && !isAbsolute(relative(parent, path)))
+        return { path, name: basename(path), branch, worktree: Boolean(worktree), primary, cardId: card?.id ?? null, cardTitle: card?.title || null }
+      }))
+    },
     'workspace:list': (input: { projectId: string; cardId: string | null; path: string }) => listProjectDirectory(workspaceRoots(input), input.path),
     'workspace:search': (input: { projectId: string; cardId: string | null; query: string }) => searchProjectFiles(workspaceRoots(input), input.query),
     'workspace:read': (input: { projectId: string; cardId: string | null; path: string }) => readProjectFile(workspaceRoots(input), input.path, true),
@@ -150,7 +159,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'board:get': (input: { projectId: string }) => services.board.get(input.projectId),
     'cards:create': (input: { projectId: string; columnId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }) => services.board.create(input),
     'cards:update': (input: { cardId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }) => services.board.update(input),
-    'cards:move': (input: { cardId: string; columnId: string; beforeCardId: string | null }) => services.board.move(input.cardId, input.columnId, input.beforeCardId),
+    'cards:move': (input: { cardId: string; columnId: string; beforeCardId: string | null; skipGate?: boolean }) => services.board.move(input.cardId, input.columnId, input.beforeCardId, 'user', input.skipGate),
     'cards:archive': (input: { cardId: string }) => services.board.archive(input.cardId),
     'cards:restore': (input: { cardId: string }) => services.board.archive(input.cardId, true),
     'cards:get': (input: { cardId: string }) => services.board.card(input.cardId),
@@ -169,6 +178,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:set-agent-config': (input: { cardId: string; purpose: AgentPurpose; config: AgentConfig }) => services.agentConfigs.set(input.cardId, input.purpose, input.config),
     'cards:resume': (input: { cardId: string; purpose?: 'execution' | 'test' }) => services.executions.resume(input.cardId, input.purpose),
     'chats:reset': (input: { chatId: string }) => { services.conversations.resetChat(input.chatId); return { reset: true as const } },
+    'chats:delete': (input: { chatId: string }) => { services.conversations.deleteChat(input.chatId); return { deleted: true as const } },
     'cards:mark-viewed': (input: { cardId: string }) => services.board.markViewed(input.cardId),
     'constitution:get': (input: { projectId: string }) => services.constitution.state(input.projectId),
     'constitution:save': (input: { projectId: string; contentMd: string }) => { services.constitution.write(input.projectId, input.contentMd, 'user'); return services.constitution.state(input.projectId) },
@@ -238,14 +248,14 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'git:file-read': async (input: { sourceId: string; cardId: string | null; path: string }) => ({ content: await services.gitManager.readFileText(input.sourceId, input.cardId, input.path) }),
     'git:file-path': async (input: { sourceId: string; cardId: string | null; path: string }) => services.gitManager.filePath(input.sourceId, input.cardId, input.path),
     'git:file-write': async (input: { sourceId: string; cardId: string | null; path: string; content: string }) => { await services.gitManager.writeFileText(input.sourceId, input.cardId, input.path, input.content); return {} },
-    'terminal:open': (input: { projectId: string; cardId: string | null }) => {
-      // Dentro da worktree do card (onde o agente trabalha); sem worktree, na pasta do projeto.
-      const worktree = input.cardId ? services.worktrees.get(input.cardId) : null, cwd = worktree && existsSync(worktree.path) ? worktree.path : services.projects.get(input.projectId).localPath
+    'terminal:open': (input: { projectId: string | null; cardId: string | null }) => {
+      // Dentro da worktree do card (onde o agente trabalha); sem worktree, na pasta do projeto; fora de um projeto, na pasta do usuário.
+      const worktree = input.cardId ? services.worktrees.get(input.cardId) : null, cwd = worktree && existsSync(worktree.path) ? worktree.path : input.projectId ? services.projects.get(input.projectId).localPath : homedir()
       const id = services.terminals.open(cwd); return { id, cwd, shell: services.terminals.info(id).shell }
     },
     'terminal:write': (input: { id: string; data: string }) => { services.terminals.write(input.id, input.data); return {} },
     'terminal:kill': (input: { id: string }) => { services.terminals.kill(input.id); return {} },
-    'windows:open': (input: PopoutTarget & { placement: WindowPlacement }) => { services.openWindow({ kind: input.kind, projectId: input.projectId, cardId: input.cardId, chatId: input.chatId, terminalId: input.terminalId, purpose: input.purpose, path: input.path }, input.placement); return {} },
+    'windows:open': (input: PopoutTarget & { placement: WindowPlacement; x?: number; y?: number }) => { services.openWindow({ kind: input.kind, projectId: input.projectId, cardId: input.cardId, chatId: input.chatId, terminalId: input.terminalId, purpose: input.purpose, path: input.path, paths: input.paths }, input.placement, input.x !== undefined && input.y !== undefined ? { x: input.x, y: input.y } : undefined); return {} },
     'windows:place': (input: { placement: WindowPlacement }) => { services.placeWindow(input.placement); return {} },
     'metrics:card': (input: { cardId: string }) => services.conversations.runMetrics(input.cardId),
     'workflow:get': (input: { projectId: string }) => workflowState(services.history, input.projectId),
@@ -274,6 +284,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'quality:status': (input: { cardId: string }) => services.quality.status(input.cardId)
     , 'reviews:prepare-local': (input: { cardId: string }) => services.quality.prepareLocalReview(input.cardId)
     , 'git:repos': (input: { projectId: string }) => services.gitManager.repos(input.projectId)
+    , 'git:upstream': (input: { sourceId: string; cardId: string | null }) => services.gitManager.upstream(input.sourceId, input.cardId)
+    , 'git:set-upstream': (input: { sourceId: string; cardId: string | null; remote: string; branch: string }) => services.gitManager.setUpstream(input)
     , 'git:detect': (input: { projectId: string }) => services.gitManager.detect(input.projectId)
     , 'git:setup-targets': (input: { projectId: string }) => services.gitManager.setupTargets(input.projectId)
     , 'git:setup': (input: { projectId: string; sourceId: string; mode: 'init' | 'origin'; url?: string }) => services.gitManager.setup(input)
@@ -285,7 +297,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'git:stage': (input: { sourceId: string; cardId: string | null; paths: string[]; stage: boolean }) => services.gitManager.stage(input.sourceId, input.cardId, input.paths, input.stage)
     , 'git:commit': (input: { sourceId: string; cardId: string | null; message: string; description?: string; amend?: boolean; paths?: string[] }) => services.gitManager.commit(input)
     , 'git:sync': (input: { sourceId: string; cardId: string | null; action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop'; pull?: 'ff' | 'ff-only' | 'rebase' }) => services.gitManager.sync(input.sourceId, input.cardId, input.action, input.pull)
-    , 'git:branch-action': (input: { sourceId: string; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete'; name: string; newName?: string }) => services.gitManager.branchAction(input.sourceId, input)
+    , 'git:branch-action': (input: { sourceId: string; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }) => services.gitManager.branchAction(input.sourceId, input)
     , 'git:commit-action': (input: { sourceId: string; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }) => services.gitManager.commitAction(input.sourceId, input)
     , 'git:stash-action': (input: { sourceId: string; action: 'apply' | 'pop' | 'drop'; ref: string }) => services.gitManager.stashAction(input.sourceId, input)
     , 'git:conflicts': (input: { sourceId: string }) => services.gitManager.conflicts(input.sourceId)
