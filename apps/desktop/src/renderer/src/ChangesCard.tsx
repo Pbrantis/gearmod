@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import type { Review, TestRun } from '@agentboard/contracts'
-import { groupChanges, parseChanges, type FileChange } from './changes'
+import { parseChanges, type FileChange } from './changes'
 import { CheckIcon, DiffIcon, ExpandIcon, RefreshIcon } from './icons'
 import { ConfirmDialog } from './ConfirmDialog'
 import { plainError } from './NoticeDialog'
+import { LinkWorktreeDialog } from './LinkWorktreeDialog'
 
 const commandKey = (projectId: string): string => `agentboard.testCommand.${projectId}`
 const readCommand = (projectId: string): string => { try { return localStorage.getItem(commandKey(projectId)) ?? '' } catch { return '' } }
@@ -12,7 +13,8 @@ const readCommand = (projectId: string): string => { try { return localStorage.g
  * Alterações do card (worktree): +/− do que o agente mudou, arquivos e os dois passos que liberam Done (teste e revisão).
  * Fica flutuando à esquerda do chat; os dois chips (Testes automatizados e Revisar) são os botões e pedem confirmação.
  */
-export function ChangesCard({ cardId, projectId, busy, openFile }: { cardId: string; projectId: string; busy: boolean; openFile?(path: string): void }): React.JSX.Element {
+export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: string; projectId: string; busy: boolean; shared?: string | null }): React.JSX.Element {
+  const [picking, setPicking] = useState(false), [noWorktree, setNoWorktree] = useState(false)
   const [files, setFiles] = useState<FileChange[]>(), [test, setTest] = useState<TestRun | null>(null), [review, setReview] = useState<Review | null>(null)
   const [command, setCommand] = useState(() => readCommand(projectId)), [draftCommand, setDraftCommand] = useState(() => readCommand(projectId))
   const [ask, setAsk] = useState<'' | 'test' | 'review'>(''), [configuring, setConfiguring] = useState<'' | 'save' | 'run'>(''), [working, setWorking] = useState<'' | 'refresh' | 'test' | 'review'>(''), [error, setError] = useState('')
@@ -20,8 +22,11 @@ export function ChangesCard({ cardId, projectId, busy, openFile }: { cardId: str
     setWorking('refresh')
     try {
       const [snapshot, quality] = await Promise.all([window.agentboard.invoke('worktrees:snapshot', { cardId }), window.agentboard.invoke('quality:status', { cardId })])
-      setFiles(snapshot.exists ? parseChanges(snapshot) : []); setTest(quality.test); setReview(quality.review); setError('')
-    } catch (reason) { setError(plainError(reason)) } finally { setWorking('') }
+      setFiles(snapshot.exists ? parseChanges(snapshot) : []); setTest(quality.test); setReview(quality.review); setError(''); setNoWorktree(false)
+    } catch (reason) {
+      // Card sem worktree (ainda não executou, ou o trabalho foi feito na de outro card): não é erro, só oferece vincular.
+      if (/Worktree ainda não foi criada/i.test(String(reason))) { setFiles([]); setNoWorktree(true); setError('') } else setError(plainError(reason))
+    } finally { setWorking('') }
   }, [cardId])
   // Recarrega ao abrir e quando o agente termina um turno (é aí que os arquivos mudam).
   useEffect(() => { if (!busy) void refresh() }, [busy, refresh])
@@ -64,7 +69,9 @@ export function ChangesCard({ cardId, projectId, busy, openFile }: { cardId: str
         : files.length ? <><span className="ch-add">+{added}</span><span className="ch-del">−{removed}</span><span className="ch-muted">{files.length} {files.length === 1 ? 'arquivo' : 'arquivos'}</span><span className="chev" aria-hidden="true">›</span></>
           : <span className="ch-muted">Nenhuma alteração ainda</span>}
     </button>
-    {files && files.length > 0 && <div className="ch-files" role="list" aria-label="Arquivos alterados">{(() => { const groups = groupChanges(files, []); return groups.map((group) => <React.Fragment key={group.root ?? ''}>{groups.length > 1 && <div className="ch-repohead" role="presentation" title={group.root ?? undefined}><span>{group.name}</span><span className="ch-add">+{group.added}</span><span className="ch-del">−{group.removed}</span></div>}{group.files.slice(0, 8).map((file) => <button key={`${file.root ?? ''}:${file.path}`} type="button" role="listitem" className="ch-file" title={file.path} onClick={() => openFile ? openFile(file.root ? `${file.root.replace(/[\\/]+$/, '')}/${file.path}` : file.path) : showAll()}><span className="ch-fname">{file.path.split('/').at(-1)}</span>{file.untracked ? <span className="ch-new">novo</span> : <><span className="ch-add">+{file.added}</span><span className="ch-del">−{file.removed}</span></>}</button>)}{group.files.length > 8 && <button type="button" className="ch-more" onClick={showAll}>+{group.files.length - 8} arquivos…</button>}</React.Fragment>) })()}</div>}
+    {shared && <p className="ch-muted ch-shared">Usando a worktree de <b>{shared}</b> · <button type="button" className="linklike" onClick={() => void window.agentboard.invoke('worktrees:link', { cardId, fromCardId: null }).then(() => { window.dispatchEvent(new Event('agentboard:board-changed')); void refresh() })}>Desvincular</button></p>}
+    {!shared && noWorktree && <button type="button" className="mini secondary ch-link" onClick={() => setPicking(true)}>Usar worktree de outro card…</button>}
+    {picking && <LinkWorktreeDialog cardId={cardId} close={() => setPicking(false)} linked={() => { setPicking(false); void refresh() }} />}
     <div className="ch-steps">
       <button type="button" className={`ch-step ${passed ? 'ok' : test?.status === 'failed' ? 'bad' : ''}`} title="Roda o comando de teste do projeto nesta worktree. É diferente do checklist manual do chat de Teste." disabled={Boolean(working) || busy} onClick={() => command.trim() ? setAsk('test') : configure('run')}>{working === 'test' ? <span className="spin sm" /> : passed ? '✓' : test?.status === 'failed' ? '✕' : '○'} Testes automatizados{test?.status === 'failed' ? ' falharam' : passed ? ' passaram' : ''}</button>
       <button type="button" className={`ch-step ${approved ? 'ok' : ''}`} title="Sua aprovação das alterações; libera depois que os testes passam" disabled={Boolean(working) || busy || !passed || approved} onClick={() => setAsk('review')}>{working === 'review' ? <span className="spin sm" /> : approved ? '✓' : '○'} Revisar{approved ? ' · aprovada' : ''}</button>

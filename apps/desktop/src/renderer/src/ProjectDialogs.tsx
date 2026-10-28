@@ -9,7 +9,7 @@ import { GitPolicyPanel } from './GitPolicyPanel'
 import { WorkflowPanel } from './WorkflowPanel'
 import { ToolsPanel, useToolsPending } from './ToolsPanel'
 import { ProjectIconPicker } from './ProjectIcon'
-import { themes } from './SettingsDialog'
+import { ThemePicker } from './SettingsDialog'
 import { projectTheme, setProjectTheme } from './projectTheme'
 import { Checkbox } from './Checkbox'
 
@@ -49,28 +49,6 @@ export function ProjectDialog({ close, created }: { close(): void; created(proje
 }
 
 /** Configurar projeto (protótipo `pcfg`): aba Geral (nome e agentes permitidos), Constituição e Skills do repositório. */
-
-/** Tema do projeto: mostra só o escolhido; ao clicar abre a lista com as cores de cada tema. Vale na hora, só para este projeto. */
-function ThemePicker({ value, onChange }: { value: AppTheme | null; onChange(value: AppTheme | null): void }): React.JSX.Element {
-  const [open, setOpen] = useState(false), root = React.useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!open) return
-    const away = (event: MouseEvent): void => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
-    const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) } }
-    document.addEventListener('mousedown', away); document.addEventListener('keydown', key, true)
-    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', key, true) }
-  }, [open])
-  const current = themes.find((theme) => theme.value === value)
-  const face = (label: string, swatches?: readonly string[]): React.JSX.Element => <><span className="sw3">{swatches ? swatches.map((color) => <i key={color} style={{ background: color }} />) : <i className="auto" />}</span><span className="tn">{label}</span></>
-  return <div className="f themepick" ref={root}><span>Tema</span>
-    <button type="button" className="themetrigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>{face(current?.label ?? 'Padrão do app', current?.swatches)}<span className="chev">▾</span></button>
-    {open && <div className="themelist" role="listbox" aria-label="Tema do projeto">
-      <button type="button" role="option" aria-selected={value === null} className={value === null ? 'on' : ''} onClick={() => { onChange(null); setOpen(false) }}>{face('Padrão do app')}</button>
-      {themes.map((theme) => <button type="button" role="option" aria-selected={value === theme.value} key={theme.value} className={value === theme.value ? 'on' : ''} onClick={() => { onChange(theme.value); setOpen(false) }}>{face(theme.label, theme.swatches)}</button>)}
-    </div>}
-    <small className="hint">Vale só para este projeto e é aplicado na hora.</small>
-  </div>
-}
 
 /** Time de agentes do projeto: só os liberados, com o ícone, o nome embaixo e uma bolinha de conexão; o "+" no fim adiciona outro. */
 function AgentTeam({ profiles, allowed, setAllowed, probes }: { profiles: AgentProfile[]; allowed: string[]; setAllowed(value: string[]): void; probes: Record<string, AgentProbe> }): React.JSX.Element {
@@ -145,9 +123,9 @@ export function ProjectConfigDialog({ project, profiles, saved, openConstitution
       : <button type="button" className="pcfg-name-edit" onClick={() => setEditingName(true)} title="Editar nome do projeto"><span>{name.trim() || project.name}</span><span className="pcfg-name-pencil" aria-hidden="true">✎</span></button>}</h2><small className={`pcfg-save-state ${saveState}`}>{saveLabel}</small></div></div></div><button className="x" onClick={() => void finish()} aria-label="Fechar">×</button></header>
     <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['general', 'Geral'], ['git', 'Git'], ['workflow', 'Workflow'], ['tools', 'Ferramentas'], ['skills', 'Skills']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}{value === 'tools' && toolsPending && <i className="tab-dot" title="Há atualização de ferramenta disponível" />}</button>)}</div>
     <div className={`pcfg-body ${tab === 'skills' ? 'fill' : ''}`}>{tab === 'general' ? <>
-      <div className="stack"><ThemePicker value={ownTheme} onChange={(value) => { setOwnTheme(value); setProjectTheme(project.id, value) }} />
-        <AgentTeam profiles={profiles} allowed={allowed} setAllowed={changeAllowed} probes={probes} />
-        <div className="stack" style={{ gap: 8 }}><span className="sectitle">Constituição</span><ConstitutionPanel projectId={project.id} openChat={openConstitutionChat} /></div></div>
+      <div className="stack pcfg-general"><section className="cx-wfcard"><ThemePicker project value={ownTheme} onChange={(value) => { setOwnTheme(value); setProjectTheme(project.id, value) }} /></section>
+        <section className="cx-wfcard"><AgentTeam profiles={profiles} allowed={allowed} setAllowed={changeAllowed} probes={probes} /></section>
+        <section className="cx-wfcard pcfg-general-constitution"><span className="sectitle">Constituição</span><ConstitutionPanel projectId={project.id} openChat={openConstitutionChat} onOpenReference={() => void finish()} /></section></div>
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>
       : tab === 'git' ? <GitPolicyPanel projectId={project.id} />
       : tab === 'workflow' ? <WorkflowPanel projectId={project.id} />

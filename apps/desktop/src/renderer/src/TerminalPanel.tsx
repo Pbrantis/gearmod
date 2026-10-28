@@ -12,6 +12,7 @@ import { CloseIcon, ExpandIcon, CollapseIcon } from './icons'
 import { pop } from './popout'
 import { FileFind, type FindOptions } from './FileFind'
 import { terminalTheme } from './terminalTheme'
+import { nearestDockEdge } from './dockLayout'
 
 /** Caminho com `:linha[:coluna]` na saída (erros do TypeScript, stack traces): vira link com Ctrl+clique. */
 const fileLine = /(?:[A-Za-z]:[\\/])?[\w@.~/\\-]+\.[A-Za-z0-9]{1,8}:\d+(?::\d+)?/g
@@ -78,19 +79,48 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
 }
 
 export function TerminalPanel({ standalone = false }: { standalone?: boolean } = {}): React.JSX.Element | null {
-  const { open, tabs, active, error, context } = useTerminal(), [position, setPosition] = useState<LayoutPosition>('bottom'), [expanded, setExpanded] = useState(false), [height, setHeight] = useState(300), [dragging, setDragging] = useState(false)
-  const current = tabs.find((tab) => tab.id === active)
+  const { open, tabs, active, error, context } = useTerminal(), [position, setPosition] = useState<LayoutPosition>(() => { try { const saved = localStorage.getItem('agentboard.terminalPosition'); return saved === 'top' || saved === 'left' || saved === 'right' ? saved : 'bottom' } catch { return 'bottom' } }), [expanded, setExpanded] = useState(false), [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalHeight')) || 300 } catch { return 300 } }), [width, setWidth] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalWidth')) || Math.round(window.innerWidth * .48) } catch { return Math.round(window.innerWidth * .48) } }), [dragging, setDragging] = useState(false), [moveTarget, setMoveTarget] = useState<LayoutPosition>()
+  const current = tabs.find((tab) => tab.id === active), panel = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const root = document.documentElement.style
+    const clear = (): void => { for (const edge of ['top', 'bottom', 'left', 'right']) root.setProperty(`--terminal-dock-${edge}`, '0px') }
+    const element = panel.current
+    if (!element || standalone || !open || expanded) { clear(); return }
+    const publish = (): void => { const rect = element.getBoundingClientRect(), size = Math.round(position === 'top' || position === 'bottom' ? rect.height : rect.width); clear(); root.setProperty(`--terminal-dock-${position}`, `${size}px`) }
+    publish(); const observer = new ResizeObserver(publish); observer.observe(element)
+    return () => { observer.disconnect(); clear() }
+  }, [open, standalone, expanded, position])
+  const moveTo = (value: LayoutPosition): void => { setPosition(value); setExpanded(false); try { localStorage.setItem('agentboard.terminalPosition', value) } catch { /* só vale nesta sessão */ } }
+  const resize = (event: React.PointerEvent<HTMLDivElement>): void => {
+    const element = panel.current; if (!element) return
+    event.preventDefault(); const vertical = position === 'top' || position === 'bottom', rect = element.getBoundingClientRect(), start = vertical ? event.clientY : event.clientX, initial = vertical ? rect.height : rect.width, sign = position === 'bottom' || position === 'right' ? -1 : 1
+    let nextSize = initial; setDragging(true)
+    const move = (next: PointerEvent): void => { nextSize = Math.round(Math.max(vertical ? 180 : 320, Math.min((vertical ? window.innerHeight : window.innerWidth) * .75, initial + sign * ((vertical ? next.clientY : next.clientX) - start)))); if (vertical) setHeight(nextSize); else setWidth(nextSize) }
+    const up = (): void => { setDragging(false); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); try { localStorage.setItem(vertical ? 'agentboard.terminalHeight' : 'agentboard.terminalWidth', String(nextSize)) } catch { /* só vale nesta sessão */ } }
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
+  }
+  const moveHeader = (event: React.PointerEvent<HTMLDivElement>): void => {
+    if (standalone || event.button !== 0 || (event.target as HTMLElement).closest('button, input, .term-tablist, .windowlayout')) return
+    const header = event.currentTarget, startX = event.clientX, startY = event.clientY; let moved = false
+    header.setPointerCapture(event.pointerId)
+
+    const move = (next: PointerEvent): void => { if (Math.abs(next.clientX - startX) + Math.abs(next.clientY - startY) < 8 && !moved) return; moved = true; const outside = next.clientX < 0 || next.clientY < 0 || next.clientX > window.innerWidth || next.clientY > window.innerHeight; setMoveTarget(outside ? undefined : nearestDockEdge(next.clientX, next.clientY, window.innerWidth, window.innerHeight)) }
+    const end = (next: PointerEvent): void => { header.removeEventListener('pointermove', move); header.removeEventListener('pointerup', end); header.removeEventListener('pointercancel', cancel); setMoveTarget(undefined); if (!moved) return; if (next.clientX < 0 || next.clientY < 0 || next.clientX > window.innerWidth || next.clientY > window.innerHeight) void detach({ x: Math.round(next.screenX), y: Math.round(next.screenY) }); else moveTo(nearestDockEdge(next.clientX, next.clientY, window.innerWidth, window.innerHeight)) }
+    const cancel = (): void => { header.removeEventListener('pointermove', move); header.removeEventListener('pointerup', end); header.removeEventListener('pointercancel', cancel); setMoveTarget(undefined) }
+    header.addEventListener('pointermove', move); header.addEventListener('pointerup', end); header.addEventListener('pointercancel', cancel)
+  }
   useEffect(() => { if (standalone && pop?.terminalId) { terminal.setContext({ projectId: pop.projectId, cardId: pop.cardId }); void terminal.attach(pop.terminalId) } }, [standalone])
-  const detach = async (): Promise<void> => { if (!current || !context) return; try { await window.agentboard.invoke('windows:open', { kind: 'terminal', projectId: context.projectId, cardId: context.cardId ?? undefined, terminalId: current.id, placement: 'new' }); terminal.setOpen(false) } catch { /* a sessão permanece aberta */ } }
+  const detach = async (point?: { x: number; y: number }): Promise<void> => { if (!current || !context) return; try { await window.agentboard.invoke('windows:open', { kind: 'terminal', projectId: context.projectId, cardId: context.cardId ?? undefined, terminalId: current.id, placement: 'new', ...point }); terminal.setOpen(false) } catch { /* a sessão permanece aberta */ } }
   if (!open && !standalone) return null
-  const size = position === 'top' || position === 'bottom' ? { height } : { width: Math.max(420, Math.round(window.innerWidth * .48)) }
+  const size = position === 'top' || position === 'bottom' ? { height } : { width }
   const fill = (): void => { if (standalone) void window.agentboard.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded) }
-  return <section className={`term terminalpty ${standalone ? 'standalone' : expanded ? 'expanded' : position} ${dragging ? 'dragging' : ''}`} style={standalone || expanded ? undefined : size} aria-label="Terminal PowerShell">
-    {!standalone && !expanded && (position === 'top' || position === 'bottom') && <div className="term-grip" role="separator" aria-label="Ajustar altura do terminal" onPointerDown={(event) => { event.preventDefault(); setDragging(true); const move = (e: PointerEvent): void => setHeight(Math.max(180, Math.min(window.innerHeight - 100, position === 'bottom' ? window.innerHeight - e.clientY : e.clientY - 36))); const up = (): void => { setDragging(false); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }; document.addEventListener('pointermove', move); document.addEventListener('pointerup', up) }} />}
-    <div className="term-tabs"><span className="powershell-icon" aria-hidden="true">›_</span><div className="term-tablist">{tabs.map((tab) => <span key={tab.id} className={`term-tab ${tab.id === active ? 'on' : ''}`}><button type="button" onClick={() => terminal.select(tab.id)} title={tab.cwd}>{tab.title}{tab.exited ? ' · encerrado' : ''}</button><button type="button" className="x" aria-label={`Fechar ${tab.title}`} onClick={() => terminal.close(tab.id)}>×</button></span>)}</div>
-      <button type="button" className="ibtn" title="Novo PowerShell" aria-label="Novo terminal" onClick={() => void terminal.newTab()}>+</button><span className="term-cwd" title={current?.cwd}>{current?.cwd}</span>
+  return <section ref={panel} className={`term terminalpty ${standalone ? 'standalone' : expanded ? 'expanded' : position} ${dragging ? 'dragging' : ''}`} style={standalone || expanded ? undefined : size} aria-label="Terminal PowerShell">
+    {!standalone && !expanded && <div className={`term-grip ${position}`} role="separator" aria-orientation={position === 'top' || position === 'bottom' ? 'horizontal' : 'vertical'} aria-label={position === 'top' || position === 'bottom' ? 'Ajustar altura do terminal' : 'Ajustar largura do terminal'} onPointerDown={resize} />}
+    {moveTarget && <div className={`term-move-preview ${moveTarget}`} aria-hidden="true" />}
+    <div className="term-tabs" onPointerDown={moveHeader}><span className="powershell-icon" aria-hidden="true">›_</span><div className="term-tablist">{tabs.map((tab) => <span key={tab.id} className={`term-tab ${tab.id === active ? 'on' : ''}`}><button type="button" onClick={() => terminal.select(tab.id)} title={tab.cwd}>{tab.title}{tab.exited ? ' · encerrado' : ''}</button><button type="button" className="x" aria-label={`Fechar ${tab.title}`} onClick={() => terminal.close(tab.id)}>×</button></span>)}</div>
+      <button type="button" className="ibtn" title="Novo PowerShell" aria-label="Novo terminal" onClick={() => void terminal.newTab()}>+</button><span className="term-header-drag" aria-hidden="true" />
       {current && <button type="button" className="term-link" onClick={() => terminal.clear(current.id)}>Limpar</button>}
-      <WindowLayoutMenu move={(value) => { if (standalone) void window.agentboard.invoke('windows:place', { placement: value }); else { setPosition(value); setExpanded(false) } }} detach={!standalone ? () => void detach() : undefined} detachDisabled={!current || !context} />
+      <WindowLayoutMenu move={(value) => { if (standalone) void window.agentboard.invoke('windows:place', { placement: value }); else moveTo(value) }} detach={!standalone ? () => void detach() : undefined} detachDisabled={!current || !context} />
       {!standalone && <button type="button" className="ibtn" aria-label={expanded ? 'Restaurar terminal' : 'Expandir terminal'} onClick={fill}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button>}<button type="button" className="ibtn" aria-label="Ocultar terminal" onClick={() => { if (standalone) window.close(); else terminal.setOpen(false) }}><CloseIcon /></button>
     </div>
     {error && <p className="term-error">{error}</p>}{tabs.map((tab) => <Screen key={tab.id} tab={tab} visible={active === tab.id} />)}

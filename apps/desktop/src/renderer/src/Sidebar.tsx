@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useAgentUpdatesPending } from './useAgentUpdates'
 import { ProjectAvatar } from './ProjectIcon'
 import { dismissVoiceInstall, useVoiceInstall } from './voiceStore'
 import type { AgentProfile, AgentUsage, Project } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
-import { ChevronLeftIcon, PlusIcon } from './icons'
+import { ChevronLeftIcon, PlusIcon, TrashIcon } from './icons'
 
 const level = (percent: number): string => (percent >= 90 ? 'hi' : percent >= 70 ? 'mid' : 'ok')
 function left(iso: string | null): string {
@@ -64,7 +65,7 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
       {item?.windows.length ? item.windows.map((window) => <div className="ublk" key={window.id}><div className="uh"><span>{window.label}</span>{window.resetsAt && <small>Reseta em {left(window.resetsAt)} · {at(window.resetsAt)}</small>}<b>{window.usedPercent}%</b></div><Bar percent={window.usedPercent} /></div>) : <div className="ublk"><small>{profile.provider === 'claude' ? 'O Claude informa o uso a cada execução; rode algo para ver aqui.' : 'Sem sessões do Codex com limites ainda.'}</small></div>}
       
     </section> })}</div>
-    <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div></div></div>
+    </div></div>
 }
 
 /** O mesmo painel de uso das configurações, aberto de fora do rodapé (anéis do composer): carrega agentes e uso sozinho. */
@@ -81,16 +82,26 @@ export function UsageDialog({ current, close }: { current?: string; close(): voi
 }
 
 export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onProjectSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onProjectSettings(projectId: string): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
+  const agentUpdates = useAgentUpdatesPending(profiles)
   // Arrastar: enquanto arrasta, a lista mostra o projeto já na posição nova; ao soltar, grava a ordem.
   const [drag, setDrag] = useState<{ id: string; over: number }>(), [menu, setMenu] = useState<{ project: Project; x: number; y: number }>()
+  const projectMenu = useRef<HTMLDivElement>(null)
   const ordered = drag ? (() => { const rest = projects.filter((item) => item.id !== drag.id), moving = projects.find((item) => item.id === drag.id)!; rest.splice(drag.over, 0, moving); return rest })() : projects
   const drop = (): void => { if (drag && ordered.some((item, index) => item.id !== projects[index]?.id)) onReorder(ordered.map((item) => item.id)); setDrag(undefined) }
   useEffect(() => {
     if (!menu) return
-    const close = (): void => setMenu(undefined), key = (event: KeyboardEvent): void => { if (event.key === 'Escape') close() }
+    projectMenu.current?.focus()
+    const close = (): void => setMenu(undefined), key = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') { close(); return }
+      if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || (event.target instanceof HTMLElement && event.target.closest('input,textarea,[contenteditable="true"]'))) return
+      const pressed = event.key.toLowerCase()
+      if (pressed !== 'n' && pressed !== 'c' && pressed !== 'delete') return
+      event.preventDefault(); event.stopPropagation(); close()
+      if (pressed === 'n') onNewChat(menu.project.id); else if (pressed === 'c') onProjectSettings(menu.project.id); else onDelete(menu.project)
+    }
     window.addEventListener('click', close); window.addEventListener('blur', close); document.addEventListener('keydown', key)
     return () => { window.removeEventListener('click', close); window.removeEventListener('blur', close); document.removeEventListener('keydown', key) }
-  }, [menu])
+  }, [menu, onNewChat, onProjectSettings, onDelete])
   return <>
     <button type="button" className="side-toggle tip" data-tip={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} aria-label={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} onClick={onToggle}><ChevronLeftIcon /></button>
     <aside>
@@ -115,13 +126,13 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
           <button type="button" className="projnew tip" data-tip="Novo chat livre neste projeto" aria-label={`Novo chat livre em ${project.name}`} onClick={() => onNewChat(project.id)}><PlusIcon /></button></div>
       })}</nav>
       <VoiceInstallCard />
-      <div className="side-foot"><button className="iconbtn" title="Configurações" aria-label="Configurações" onClick={onSettings}>⚙</button><UsedAgents profiles={profiles} /></div>
+      <div className="side-foot"><button className="iconbtn gearwrap" title={agentUpdates ? 'Configurações · há atualização de agente disponível' : 'Configurações'} aria-label={agentUpdates ? 'Configurações, há atualização de agente disponível' : 'Configurações'} onClick={onSettings}>⚙{agentUpdates && <i className="gear-dot" aria-hidden="true" />}</button><UsedAgents profiles={profiles} /></div>
     </aside>
-    {menu && <div className="projmenu" role="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+    {menu && <div ref={projectMenu} className="projmenu" role="menu" aria-label={`Ações do projeto ${menu.project.name}`} tabIndex={-1} style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
       <div className="ctxtitle">{menu.project.name}</div>
-      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onNewChat(menu.project.id) }}>Novo chat livre</button>
-      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onProjectSettings(menu.project.id) }}>Configurar projeto</button>
-      <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(undefined); onDelete(menu.project) }}>Excluir projeto</button>
+      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onNewChat(menu.project.id) }}><PlusIcon /><span>Novo chat livre</span><kbd>N</kbd></button>
+      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onProjectSettings(menu.project.id) }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" /><circle cx="12" cy="12" r="4" /></svg><span>Configurar projeto</span><kbd>C</kbd></button>
+      <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(undefined); onDelete(menu.project) }}><TrashIcon /><span>Excluir projeto</span><kbd>Del</kbd></button>
     </div>}
   </>
 }

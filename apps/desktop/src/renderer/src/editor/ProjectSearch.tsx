@@ -12,8 +12,8 @@ const repoName = (root: Root | undefined, path: string): string => root ? (root.
  * Busca no conteúdo do projeto (lateral do modo Arquivos): campo, Aa / palavra inteira / regex, filtro de arquivos e os resultados
  * agrupados por repositório (quando há mais de um) e por arquivo. Clicar abre o arquivo na linha, com o trecho selecionado.
  */
-export function ProjectSearch({ context, roots, seed, open }: {
-  context: { projectId: string; cardId: string | null }; roots: Root[]; seed: { text: string; at: number } | undefined; open(path: string, line: number, column: number, length: number): void
+export function ProjectSearch({ context, roots, seed, open, onQueryChange }: {
+  context: { projectId: string; cardId: string | null }; roots: Root[]; seed: { text: string; at: number } | undefined; open(path: string, line: number, column: number, length: number): void; onQueryChange?(value: string): void
 }): React.JSX.Element {
   const [query, setQuery] = useState(''), [include, setInclude] = useState(''), [options, setOptions] = useState({ caseSensitive: false, wholeWord: false, regex: false })
   const [data, setData] = useState<IpcOutput<'workspace:grep'>>(), [busy, setBusy] = useState(false), [error, setError] = useState(''), [closed, setClosed] = useState<string[]>([])
@@ -36,7 +36,7 @@ export function ProjectSearch({ context, roots, seed, open }: {
   const total = data?.results.length ?? 0, fileCount = groups.reduce((sum, group) => sum + group.files.length, 0)
   const relativeTo = (root: string, path: string): string => path.replace(/\\/g, '/').slice(root.replace(/[\\/]+$/, '').length + 1)
   return <div className="wf-psearch">
-    <div className={`wf-findbox ${error ? 'invalid' : ''}`}><input ref={field} placeholder="Buscar no projeto…" aria-label="Texto a procurar no projeto" value={query} onChange={(event) => setQuery(event.target.value)} />
+    <div className={`wf-findbox ${error ? 'invalid' : ''}`}><input ref={field} placeholder="Buscar no conteúdo do projeto…" aria-label="Texto a procurar no projeto" value={query} onChange={(event) => { setQuery(event.target.value); onQueryChange?.(event.target.value) }} />
       {([['caseSensitive', 'Diferenciar maiúsculas e minúsculas', 'Aa'], ['wholeWord', 'Palavra inteira', 'ab'], ['regex', 'Expressão regular', '.*']] as const).map(([key, label, text]) => <button key={key} type="button" className={`wf-findopt ${options[key] ? 'on' : ''}`} title={label} aria-label={label} aria-pressed={options[key]} onClick={() => setOptions({ ...options, [key]: !options[key] })}>{text}</button>)}
     </div>
     <input className="in wf-include" placeholder="Arquivos a incluir (ex.: src/**/*.ts)" aria-label="Arquivos a incluir" value={include} onChange={(event) => setInclude(event.target.value)} />

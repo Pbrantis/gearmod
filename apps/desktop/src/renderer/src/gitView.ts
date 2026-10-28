@@ -62,7 +62,7 @@ export function ghostChip(rows: GitRow[], index: number, headName: string | null
     const above = rows[i]!
     if (above.lane === row.lane && above.refs.length) return refChips(above.refs)[0] ?? null
   }
-  return row.lane === 0 && headName ? { name: headName, local: true, remote: true } : null
+  return row.lane === 0 && headName ? { name: headName, local: true } : null
 }
 
 /** Iniciais do autor para o ponto do grafo. */

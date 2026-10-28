@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useFloatingMenu } from './useFloatingMenu'
 import { isOutdated, useLatestVersions } from './toolUpdates'
 import { agentColorPalette, defaultAgentColor, type AgentProbe, type AgentProfile, type AppLanguage, type AppSettings, type AppTheme, type VoiceModel } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
@@ -113,8 +115,32 @@ function GroqKeyField(): React.JSX.Element {
 
 const item = (provider: 'codex' | 'claude'): string => (provider === 'codex' ? 'Codex' : 'Claude')
 
+/** Tema do projeto: mostra só o escolhido; ao clicar abre a lista com as cores de cada tema. Vale na hora, só para este projeto. */
+export function ThemePicker({ value, onChange, project = false }: { value: AppTheme | null; onChange(value: AppTheme | null): void; project?: boolean }): React.JSX.Element {
+  const [open, setOpen] = useState(false), root = React.useRef<HTMLDivElement>(null), button = React.useRef<HTMLButtonElement>(null), list = React.useRef<HTMLDivElement>(null)
+  const box = useFloatingMenu(open, button)
+  useEffect(() => {
+    if (!open) return
+    const away = (event: MouseEvent): void => { if (!root.current?.contains(event.target as Node) && !list.current?.contains(event.target as Node)) setOpen(false) }
+    const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) } }
+    document.addEventListener('mousedown', away); document.addEventListener('keydown', key, true)
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', key, true) }
+  }, [open])
+  const current = themes.find((theme) => theme.value === value)
+  const face = (label: string, swatches?: readonly string[]): React.JSX.Element => <><span className="sw3">{swatches ? swatches.map((color) => <i key={color} style={{ background: color }} />) : <i className="auto" />}</span><span className="tn">{label}</span></>
+  return <div className="f themepick" ref={root}><span>Tema</span>
+    <button ref={button} type="button" className="themetrigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(!open)}>{face(current?.label ?? 'Padrão do app', current?.swatches)}<span className="chev">▾</span></button>
+    {open && box && createPortal(<div ref={list} className="themelist floating-select-list" role="listbox" style={box} onClick={(event) => event.stopPropagation()} aria-label={project ? "Tema do projeto" : "Tema do aplicativo"}>
+      {project && <button type="button" role="option" aria-selected={value === null} className={value === null ? 'on' : ''} onClick={() => { onChange(null); setOpen(false) }}>{face('Padrão do app')}</button>}
+      {themes.map((theme) => <button type="button" role="option" aria-selected={value === theme.value} key={theme.value} className={value === theme.value ? 'on' : ''} onClick={() => { onChange(theme.value); setOpen(false) }}>{face(theme.label, theme.swatches)}</button>)}
+    </div>, document.body)}
+    <small className="hint">{project ? 'Vale só para este projeto e é aplicado na hora.' : 'Define a aparência do aplicativo. Cada projeto pode escolher outro tema.'}</small>
+  </div>
+}
+
+
 export function SettingsDialog({ profiles, settings, close, changed, settingsChanged }: { profiles: AgentProfile[]; settings: AppSettings; close(): void; changed(): Promise<void>; settingsChanged(settings: AppSettings): void }): React.JSX.Element {
-  const [tab, setTab] = useState<'agents' | 'skills' | 'general' | 'look'>('agents'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
+  const [tab, setTab] = useState<'agents' | 'skills' | 'general'>('agents'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
   const [messageSpacing, setMessageSpacing] = useState<MessageSpacing>(() => readMessageSpacing())
   useEffect(() => setItems(profiles), [profiles])
   useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape' && !editing) close() }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [close, editing])
@@ -127,16 +153,15 @@ export function SettingsDialog({ profiles, settings, close, changed, settingsCha
   const updatesPending = items.some((profile) => newer(profile))
   const save = async (patch: Partial<AppSettings>): Promise<void> => { try { setError(''); settingsChanged(await window.agentboard.invoke('settings:update', patch)) } catch (reason) { setError(String(reason)) } }
   const refresh = async (): Promise<void> => { await changed() }
-  return <div className="overlay"><div className="modal" style={{ width: 'min(680px,100%)' }}>
+  return <div className="overlay"><div className="modal settings-dialog">
     <header><div><div className="eyebrow">Configurações</div><h2>AgentBoard</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
-    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['agents', 'Agentes'], ['skills', 'Skills'], ['general', 'Geral'], ['look', 'Aparência']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}{value === 'agents' && updatesPending && <i className="tab-dot" title="Há atualização de agente disponível" />}</button>)}</div>
-    {tab === 'agents' && <><p style={{ marginBottom: 12 }}>Cadastre aqui. Dentro de cada projeto, escolha quais podem trabalhar nele.</p>
-      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">Nenhum agente cadastrado.</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><AgentIcon profile={profile} tip={false} /><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" title="Conta em que este agente está logado">{probe.account}</small>}</span>{newer(profile) && <span className="agupdate" title={`Versão instalada: ${statuses[profile.id]?.version ?? '?'} · última: ${newer(profile)}`}>Atualização disponível<button type="button" className="linklike" onClick={() => { void window.agentboard.invoke('profiles:update-provider', { provider: profile.provider as 'claude' | 'codex' }).catch((reason) => setError(plainError(reason))) }}>Atualizar</button></span>}<span className="agtype" title="Tipo de uso da conta">{profile.scope}</span><span className={`agstatus ${state}`} title={!probe ? 'Verificando a conexão' : probe.authenticated ? 'Conectado' : probe.installed ? 'Instalado, mas sem login' : 'Programa não instalado'}><i aria-hidden="true" />{!probe ? 'Verificando…' : probe.authenticated ? 'Conectado' : 'Desconectado'}</span><button className="mini secondary" onClick={() => setEditing(profile)}>Editar</button></div> })}</div>
+    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['agents', 'Agentes'], ['skills', 'Skills'], ['general', 'Geral']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}{value === 'agents' && updatesPending && <i className="tab-dot" title="Há atualização de agente disponível" />}</button>)}</div>
+    <div className="settings-dialog-body">{tab === 'agents' && <><p style={{ marginBottom: 12 }}>Cadastre aqui. Dentro de cada projeto, escolha quais podem trabalhar nele.</p>
+      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">Nenhum agente cadastrado.</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><span className="settings-agent-avatar tip" data-tip={!probe ? 'Verificando a conexão' : probe.authenticated ? 'Conectado' : probe.installed ? 'Desconectado · sem login' : 'Desconectado · programa não instalado'} aria-label={!probe ? 'Verificando a conexão' : probe.authenticated ? 'Conectado' : 'Desconectado'}><AgentIcon profile={profile} size="lg" tip={false} /><i className={`settings-agent-status ${state}`} aria-hidden="true" /></span><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" title="Conta em que este agente está logado">{probe.account}</small>}</span>{newer(profile) && <span className="agupdate" title={`Versão instalada: ${statuses[profile.id]?.version ?? '?'} · última: ${newer(profile)}`}>Atualização disponível<button type="button" className="linklike" onClick={() => { void window.agentboard.invoke('profiles:update-provider', { provider: profile.provider as 'claude' | 'codex' }).catch((reason) => setError(plainError(reason))) }}>Atualizar</button></span>}<span className="agtype" title="Tipo de uso da conta">{profile.scope}</span><button className="mini secondary" onClick={() => setEditing(profile)}>Editar</button></div> })}</div>
       <button className="bigadd" onClick={() => setEditing('new')}>＋ Adicionar agente</button></>}
     {tab === 'skills' && <SkillsPanel scope="global" profiles={items} />}
-    {tab === 'look' && <><p style={{ fontSize: 12, marginBottom: 12 }}>Escolha uma aparência completa para o sistema. O tema também pode ser definido separadamente em cada projeto.</p>
-      {(['dark', 'light'] as const).map((mode) => <section className="themegroup" key={mode}><h3>{mode === 'dark' ? 'Temas escuros' : 'Temas claros'}</h3><div className="themes">{themes.filter((theme) => theme.mode === mode).map((theme) => <button type="button" key={theme.value} className={`themeopt ${settings.tema === theme.value ? 'on' : ''}`} style={{ '--c': theme.swatches[0] } as React.CSSProperties} aria-pressed={settings.tema === theme.value} onClick={() => void save({ tema: theme.value })}><span className="sw3">{theme.swatches.map((color) => <i key={color} style={{ background: color }} />)}</span>{theme.label}</button>)}</div></section>)}{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}
     {tab === 'general' && <><div className="stack">
+        <ThemePicker value={settings.tema} onChange={(value) => { if (value) void save({ tema: value }) }} />
         <div className="f"><span>Idioma dos agentes</span><Select label="Idioma dos agentes" options={[...languages]} value={settings.idioma} onChange={(value) => void save({ idioma: value as AppLanguage })} /></div>
         <p className="hint">Tudo o que o agente escreve segue este idioma. A interface continua em português por enquanto.</p>
         <div className="f"><span>Espaço entre as mensagens do chat</span><Select label="Espaço entre as mensagens do chat" options={messageSpacings} value={messageSpacing} onChange={(value) => { const spacing = value as MessageSpacing; setMessageSpacing(spacing); saveMessageSpacing(spacing) }} /></div>
@@ -147,8 +172,7 @@ export function SettingsDialog({ profiles, settings, close, changed, settingsCha
         <p className="hint">Se o limite da sessão (ou da semana) acabar no meio de uma execução, o AgentBoard agenda a retomada para quando ele voltar (um minuto depois), confere se voltou mesmo e continua de onde parou. O chat avisa o horário.</p>
         <div className="f"><span>Ditado por voz</span><Select label="Ditado por voz" options={[...voices]} value={settings.voz} onChange={(value) => void save({ voz: value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })} /></div>
         {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do AgentBoard.</p>}
-      </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}
-    <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div>
+      </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}</div>
     {editing && <AgentDialog profile={editing === 'new' ? undefined : editing} close={() => setEditing(undefined)} changed={refresh} />}
   </div></div>
 }

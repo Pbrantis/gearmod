@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import type { GitRepo } from '@agentboard/contracts'
 import { plainError } from './NoticeDialog'
+import { Select } from './Select'
 
 /** Avisa o app inteiro que o cadastro de repositórios do projeto mudou (o quadro recarrega o projeto). */
 export const gitChangedEvent = 'agentboard:git-changed'
@@ -22,7 +23,7 @@ export function GitSetupDialog({ projectId, close, done }: { projectId: string; 
     <div className="stack" style={{ gap: 12 }}>
       {targets && !targets.length ? <p className="hint">Todas as pastas deste projeto já têm Git.</p> : <>
         <div className="stack" style={{ gap: 4 }}>
-          {targets && targets.length > 1 ? <label className="f">Pasta que receberá o Git<select className="in" value={sourceId} onChange={(event) => setSourceId(event.target.value)}>{targets.map((item) => <option key={item.sourceId} value={item.sourceId}>{item.name}</option>)}</select></label> : null}
+          {targets && targets.length > 1 ? <div className="f"><span>Pasta que receberá o Git</span><Select label="Pasta que receberá o Git" value={sourceId} onChange={setSourceId} options={targets.map((item) => ({ value: item.sourceId, label: item.name }))} /></div> : null}
           {target && <small className="hint">O Git será configurado em <b>{target.path}</b>. Os arquivos que já estão nessa pasta não são alterados nem enviados.</small>}
         </div>
         <div className="stack" style={{ gap: 8 }} role="radiogroup" aria-label="Como configurar o Git">
@@ -60,7 +61,7 @@ export function GitUpstreamDialog({ sourceId, cardId, branch, remotes, close, do
     <div className="stack" style={{ gap: 10 }}>
       <p className="hint" style={{ margin: 0 }}>A branch <b>{branch}</b> ainda não está ligada a uma branch remota. Escolha de onde ela puxa e para onde envia; depois o pull continua.</p>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <select className="in" aria-label="Remoto" value={remote} onChange={(event) => setRemote(event.target.value)} style={{ flex: '0 0 130px' }}>{remotes.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+        <div style={{ flex: '0 0 130px', minWidth: 0 }}><Select label="Remoto" value={remote} onChange={setRemote} options={remotes.map((item) => ({ value: item, label: item }))} /></div>
         <span aria-hidden="true">/</span>
         <input className="in" aria-label="Branch remota" autoFocus value={name} spellCheck={false} onChange={(event) => setName(event.target.value)} style={{ flex: 1 }} />
       </div>

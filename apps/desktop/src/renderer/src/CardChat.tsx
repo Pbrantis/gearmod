@@ -1,4 +1,6 @@
+import { AgentPermissions } from './AgentPermissions'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useAtMention } from './AtMention'
 import { defaultPermissionMode, permissionModes, type AgentProfile, type AgentPurpose, type Card, type Chat, type ChatMessage, type Project, type ProjectBoard, type Run, type SkillEntry, type SkillRef } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -21,7 +23,7 @@ import { ChangesCard } from './ChangesCard'
 import { CommitAsks, DiffPane, GitCardPanel, type DiffTarget } from './GitCardPanel'
 import { ProgressCard } from './ProgressCard'
 import { PopMenu } from './PopMenu'
-import { ChatSearch, searchMessages, snippet } from './ChatSearch'
+import { ChatSearch, searchMessages, snippet, useChatSearchShortcut } from './ChatSearch'
 import { useFitInView } from './useFitInView'
 import { terminal } from './terminalStore'
 import { useDictation } from './useDictation'
@@ -54,10 +56,11 @@ const typeColor: Record<Card['type'], string> = { feature: '#8fb8d6', bug: '#ff9
 const SearchGlyph = (): React.JSX.Element => <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2L17 17" /></svg>
 
 /** Ações do cabeçalho agrupadas quando o dock estreito não comporta todos os botões. */
-export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose, expand, view }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; projectId: string; cardId?: string; chatId?: string; purpose?: AgentPurpose; expand(): void; close(): void; view?: { git: boolean; set(value: 'chat' | 'git'): void } }): React.JSX.Element {
+export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose, expand, view, searchRequest = 0 }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; projectId: string; cardId?: string; chatId?: string; purpose?: AgentPurpose; expand(): void; close(): void; view?: { git: boolean; set(value: 'chat' | 'git'): void }; searchRequest?: number }): React.JSX.Element {
   const [open, setOpen] = useState(false), [page, setPage] = useState<'main' | 'search' | 'window'>('main'), [query, setQuery] = useState('')
   const box = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), menu = useRef<HTMLDivElement>(null), results = searchMessages(messages, query)
   useFitInView(menu, open)
+  useEffect(() => { if (!searchRequest || !box.current?.getClientRects().length) return; setPage('search'); setOpen(true); window.setTimeout(() => { input.current?.focus(); input.current?.select() }, 0) }, [searchRequest])
   useEffect(() => {
     if (!open) return
     if (page === 'search') input.current?.focus()
@@ -86,7 +89,7 @@ export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose
       {page !== 'main' && <button type="button" className="pm-back" onClick={() => setPage('main')}>‹ <span>{page === 'search' ? 'Pesquisar' : pop ? 'Mover janela' : 'Abrir em outra janela'}</span></button>}
       {page === 'main' && <>
         {view && <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => { dismiss(); view.set(view.git ? 'chat' : 'git') }}><BranchIcon />{view.git ? 'Voltar ao chat' : 'Ver Git do card'}</button>}
-        <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => setPage('search')}><SearchGlyph />Pesquisar no chat</button>
+        <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => setPage('search')}><SearchGlyph />Pesquisar no chat <small>Ctrl+F</small></button>
         {(cardId || chatId) && <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => setPage('window')}><WindowIcon />{pop ? 'Mover esta janela' : 'Abrir em outra janela'}</button>}
         <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => { dismiss(); expand() }}><ExpandIcon />Expandir em tela cheia</button>
       </>}
@@ -94,7 +97,7 @@ export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose
         <input ref={input} className="in" value={query} placeholder="Pesquisar no chat" aria-label="Pesquisar no chat" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && results[0]) goMessage(results[0].id) }} />
         <div className="cs-list">{query.trim().length < 2 ? <p className="ch-muted">Digite pelo menos 2 letras.</p> : !results.length ? <p className="ch-muted">Nada encontrado.</p> : results.slice(0, 40).map((message) => <button type="button" key={message.id} className="cs-item" onClick={() => goMessage(message.id)}><b>{message.role === 'user' ? 'Você' : message.role === 'assistant' ? 'Agente' : 'Sistema'}</b><span>{snippet(message.body, query.trim())}</span></button>)}</div>
       </>}
-      {page === 'window' && <div className="pm-places">{(['left', 'right', 'top', 'bottom'] as const).map((placement) => <button type="button" role="menuitem" className="pm-item" key={placement} onClick={() => place(placement)}>{{ left: 'À esquerda', right: 'À direita', top: 'Em cima', bottom: 'Embaixo' }[placement]}</button>)}{!pop && <><div className="pm-sep" /><button type="button" role="menuitem" className="pm-item" onClick={() => place('new')}>Abrir em nova janela</button></>}</div>}
+      {page === 'window' && <div className="pm-places">{(['left', 'right', 'top', 'bottom'] as const).map((placement) => <button type="button" role="menuitem" className="pm-item" key={placement} onClick={() => place(placement)}>{{ left: 'À esquerda', right: 'À direita', top: 'Em cima', bottom: 'Embaixo' }[placement]}</button>)}{!pop && <><div className="pm-sep" /><button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => place('new')}><WindowIcon />Abrir em nova janela</button></>}</div>}
     </div>}
   </span>
 }
@@ -112,7 +115,7 @@ function Activity({ board, cardId, profiles, openEdit, hide }: { board: ProjectB
   const cards = board.cards.filter((card) => !card.archivedAt), running = cards.filter((card) => card.run.state === 'running')
   const rank = (card: Card): number => card.id === cardId ? 0 : card.run.state === 'finished' ? 0.5 : card.run.state === 'planning' ? 1 : card.hasPlan && card.run.state === 'idle' ? 2 : 3 + board.columns.findIndex((column) => column.id === card.columnId)
   const rest = cards.filter((card) => card.run.state !== 'running').sort((a, b) => rank(a) - rank(b))
-  return <section className="activity"><div className="qv-head"><div className="eyebrow">Visão rápida</div><button type="button" className="ch-icon tip" data-tip="Ocultar visão rápida" aria-label="Ocultar visão rápida" onClick={hide}>×</button></div>
+  return <section className="activity"><div className="qv-head"><div className="eyebrow">Visão rápida</div><button type="button" className="ch-icon tip" data-tip="Ocultar visão rápida" aria-label="Ocultar visão rápida" onClick={hide}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 6 6-6 6M15 4v12" /></svg></button></div>
     <div className="agrp"><span>Executando</span><b>{running.length}</b></div>
     <div className="tilecol">{running.length ? running.map((card) => <Tile key={card.id} card={card} board={board} here={card.id === cardId} profiles={profiles} open={() => openEdit(card)} />) : <div className="emptyact">Nada executando agora.</div>}</div>
     <div className="agrp"><span>Demais cards</span><b>{rest.length}</b></div>
@@ -127,18 +130,27 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const [input, setInput] = useState(''), [error, setError] = useState(''), [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null)
   const [menu, setMenu] = useState<'mode' | 'skill' | null>(null), [voiceSetup, setVoiceSetup] = useState(false)
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), wrap = useRef<HTMLDivElement>(null)
-  const planning = mode === 'planning'
+  const [chats, setChats] = useState<Chat[]>([])
+  // Tarefa pequena tem um agente e um chat só (planeja, executa e valida): a aba não distingue etapas.
+  const singleChat = card.type === 'minor' && chats.length <= 1
+  // Depois que esse agente já mexeu na worktree (ou o card saiu do planejamento), o chat é completo (altera arquivos, mostra Alterações, testes e Git), mesmo sendo o chat que nasceu como planejamento.
+  const columnState = board.columns.find((column) => column.id === card.columnId)?.semanticState
+  const fullAgent = singleChat && (Boolean(card.workspace) || columnState === 'doing' || columnState === 'test' || columnState === 'done')
+  const planning = mode === 'planning' && !fullAgent
   const [view, setView] = useState<'chat' | 'git'>(initialView), [diff, setDiff] = useState<DiffTarget>()
   const gitView = view === 'git' && Boolean(card.id) && !planning
   const { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth } = useDockSize()
+  const chatSearch = useChatSearchShortcut(expanded)
+  useEffect(() => { const navigate = (): void => { if (expanded) close() }; window.addEventListener('agentboard:select-view', navigate); return () => window.removeEventListener('agentboard:select-view', navigate) }, [expanded, close])
   const [quickHidden, setQuickHiddenState] = useState(() => { try { return localStorage.getItem('agentboard.quickView.hidden') === '1' } catch { return false } })
   const setQuickHidden = (value: boolean): void => { setQuickHiddenState(value); try { localStorage.setItem('agentboard.quickView.hidden', value ? '1' : '0') } catch { /* só conveniência */ } }
   useEffect(() => { if (!card.id) return; terminal.setContext({ projectId: project.id, cardId: card.id }); return () => terminal.setContext({ projectId: project.id, cardId: null }) }, [card.id, project.id])
   const viewer = useFileViewer(width, setWidth)
   const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
-  const [switchTo, setSwitchTo] = useState<AgentProfile>(), [chats, setChats] = useState<Chat[]>([])
+  const [switchTo, setSwitchTo] = useState<AgentProfile>()
   const agentState = useAgentConfig(card.id, mode, usable, chat?.profileId)
   const attach = useAttachments({ projectId: project.id, cardId: card.id || null })
+  const mention = useAtMention({ projectId: project.id, cardId: card.id || null, input, setInput })
   useContextText({ projectId: project.id, cardId: card.id || null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []), card.title || undefined)
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
@@ -248,18 +260,19 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
 
   const diffOpen = Boolean(diff) && view === 'git' && Boolean(card.id) && !planning
   const viewing = !expanded && (viewer.requested !== null || diffOpen)
-  return <section className={`dock open ${expanded ? 'full' : ''} ${expanded && quickHidden ? 'noactivity' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label="Chat do card" style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
+  return <section ref={chatSearch.ref} className={`dock open ${expanded ? 'full' : ''} ${expanded && quickHidden ? 'noactivity' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label="Chat do card" style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
     {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label={viewing ? 'Ajustar a largura do arquivo' : 'Ajustar a largura do chat'} onPointerDown={viewing ? viewer.startResize : startResize} onDoubleClick={viewing ? undefined : resetWidth} />}
     {viewing && <>{diffOpen && diff ? <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} style={{ width: viewer.width }} /> : viewer.request && <FocusedFile projectId={project.id} cardId={card.id || null} chatId={chat?.id} request={viewer.request} close={viewer.close} setDirty={viewer.setDirty} style={{ width: viewer.width }} />}<ViewGrip viewer={viewer} /></>}
     <FileOpenContext.Provider value={openFile}><QuestionAnswerContext.Provider value={answerQuestions}>
     <div className="dock-in" style={expanded ? undefined : { width }}>
-      <div className="dock-head" draggable={Boolean(card.id) && !pop} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) setExpanded(!expanded) }} onDragStart={(event) => { if ((event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) { event.preventDefault(); return }; event.preventDefault(); void detachChat({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><div className="top"><div><div className="headrow">          <div className="tabs stepTabs" role="tablist" aria-label="Chats do card">{(['planning', 'execution', 'test'] as const).filter((step) => step === mode || chats.some((item) => item.purpose === step)).map((step) => { const working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{stepLabel[step]}{working ? <span className="spin sm" /> : null}</button> })}</div></div>
+      <div className="dock-head" draggable={Boolean(card.id) && !pop} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) setExpanded(!expanded) }} onDragStart={(event) => { if ((event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) { event.preventDefault(); return }; event.preventDefault(); void detachChat({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><div className="top"><div><div className="headrow">          <div className="tabs stepTabs" role="tablist" aria-label="Chats do card">{(['planning', 'execution', 'test'] as const).filter((step) => singleChat ? step === (chats[0]?.purpose ?? mode) : step === mode || chats.some((item) => item.purpose === step)).map((step) => { const working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{singleChat ? 'Agente' : stepLabel[step]}{working ? <span className="spin sm" /> : null}</button> })}</div></div>
           <h2>{card.title || 'Novo card'}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span>{card.id && <ComplexityBadge complexity={card.complexity} onClick={() => setAssessing(true)} />}{assessing && <AssessmentDialog card={card} close={() => setAssessing(false)} changed={() => undefined} />}{card.workspace && <span className="ctxchip ws tip" data-tip={`Worktree: ${card.workspace.path}`}><BranchIcon /><span className="wsname">{card.workspace.branch} · {worktreeName(card.workspace.path)}</span></span>}</div></div>
-        <div className="dock-tools"><div className="dock-tools-wide">{card.id && !planning && <div className="viewtoggle sm" role="group" aria-label="Chat ou Git"><button type="button" className={gitView ? '' : 'on'} aria-pressed={!gitView} onClick={() => setView('chat')}>Chat</button><button type="button" className={gitView ? 'on' : ''} aria-pressed={gitView} onClick={() => setView('git')}><BranchIcon />Git{card.pending.commits > 0 && <i className="pendot" />}</button></div>}<ChatSearch messages={messages} log={log} reveal={gitView ? () => setView('chat') : undefined} />{card.id && <PopMenu target={{ kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode }} />}<button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div><div className="dock-tools-compact"><ChatMoreMenu messages={messages} log={log} projectId={project.id} cardId={card.id || undefined} purpose={mode} expand={() => setExpanded(true)} close={close} view={card.id && !planning ? { git: gitView, set: setView } : undefined} /><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div></div>
+        <div className="dock-tools"><div className="dock-tools-wide">{card.id && !planning && <div className="viewtoggle sm" role="group" aria-label="Chat ou Git"><button type="button" className={gitView ? '' : 'on'} aria-pressed={!gitView} onClick={() => setView('chat')}>Chat</button><button type="button" className={gitView ? 'on' : ''} aria-pressed={gitView} onClick={() => setView('git')}><BranchIcon />Git{card.pending.commits > 0 && <i className="pendot" />}</button></div>}<ChatSearch messages={messages} log={log} request={chatSearch.request} reveal={gitView ? () => setView('chat') : undefined} />{card.id && <PopMenu target={{ kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode }} />}<button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div><div className="dock-tools-compact"><ChatMoreMenu searchRequest={chatSearch.request} messages={messages} log={log} projectId={project.id} cardId={card.id || undefined} purpose={mode} expand={() => setExpanded(true)} close={close} view={card.id && !planning ? { git: gitView, set: setView } : undefined} /><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div></div>
       {gitView && <GitCardPanel cardId={card.id} profiles={profiles} openRules={() => openRules?.()} openGraph={(id) => openGraph?.(id)} diff={diff} setDiff={setDiff} />}
       <div className="chatlog" ref={log} style={gitView ? { display: 'none' } : undefined}>
         {!messages.length && !live && <div className="msg sys">{planning ? 'Skill de planejamento carregada. Este chat só planeja, não altera arquivos.' : testing ? 'Chat de teste do card. Use Testar no card ou escreva o que o agente deve conferir.' : 'Chat de implementação do card. Use Iniciar no card ou escreva uma instrução.'}</div>}
         <ChatMessageList messages={messages} busy={busy} />
+        <AgentPermissions chatId={chat?.id} />
         {live && <div className="msg agent"><div className="md chatmd"><AgentMessage source={typed} live /><span className="caret" /></div></div>}
         {mode === 'execution' && card.id && <CommitAsks cardId={card.id} branch={card.workspace?.branch} profiles={profiles} openGit={() => setView('git')} />}
         {busy && <ThinkingIndicator purpose={mode} messages={messages} since={busySince} />}
@@ -277,7 +290,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
             <AttachmentChips files={attach.files} remove={attach.remove} />
           </div>}
           <AttachButton onClick={() => void attach.choose()} />
-          <textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : planning ? 'Descreva o que você quer planejar…' : testing ? 'Diga o que o agente deve testar…' : 'Envie uma instrução ao agente…'} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
+          {mention.menu}<textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : planning ? 'Descreva o que você quer planejar…' : testing ? 'Diga o que o agente deve testar…' : 'Envie uma instrução ao agente…'} ref={mention.ref} onSelect={(e) => mention.caret(e.currentTarget.selectionStart)} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart) }} onKeyDown={(e) => { if (mention.keyDown(e)) return; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
           {busy && <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button>}<button type="button" className="sendbtn tip" data-tip={busy ? 'Colocar na fila (Enter)' : 'Enviar (Enter)'} aria-label={busy ? 'Colocar na fila' : 'Enviar'} hidden={!input.trim()} onClick={() => void send()}><SendIcon /></button>
           <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? 'Parar de ouvir' : dictation.transcribing ? 'Transcrevendo…' : 'Ditar por voz'} aria-label="Ditar por voz" aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : setVoiceSetup(true))}>{dictation.transcribing ? <span className="spin sm" /> : <MicIcon />}</button>
@@ -298,7 +311,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     {switchTo && <ConfirmDialog eyebrow="Trocar agente" title={`Reiniciar o chat com ${switchTo.label}?`} text="Este chat já começou com outro agente. Trocar apaga as mensagens e as execuções deste chat e ele recomeça do zero com o novo agente. Os documentos do card ficam como estão." ok="Trocar e reiniciar" danger cancel={() => setSwitchTo(undefined)} confirm={() => void resetAndSwitch(switchTo)} />}
     {/* Só com o chat em tela cheia: coluna à esquerda com o progresso (Tasks ou checklist do teste) e as Alterações. Dividindo a tela com o quadro, não aparece. */}
     {expanded && diffOpen && diff && <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} />}
-    {expanded && !diffOpen && !planning && card.id && <div className="dockside"><ProgressCard key={`${card.id}-${mode}`} cardId={card.id} purpose={mode === 'test' ? 'test' : 'execution'} />{card.workspace && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} openFile={openFile} />}</div>}
+    {expanded && !diffOpen && !planning && card.id && <div className="dockside"><ProgressCard key={`${card.id}-${mode}-${columnState}`} cardId={card.id} purpose={mode === 'test' || (fullAgent && columnState === 'test') ? 'test' : 'execution'} />{(card.workspace || fullAgent) && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} shared={card.workspace?.sharedFrom ?? null} />}</div>}
     {expanded && !diffOpen && !quickHidden && <Activity board={board} cardId={card.id} profiles={profiles} openEdit={openEdit} hide={() => setQuickHidden(true)} />}
     {expanded && !diffOpen && quickHidden && <button type="button" className="qv-show tip" data-tip="Mostrar visão rápida" aria-label="Mostrar visão rápida" onClick={() => setQuickHidden(false)}>Visão rápida</button>}
   </section>

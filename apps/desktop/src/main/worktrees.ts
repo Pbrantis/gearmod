@@ -14,10 +14,43 @@ export const nativeGit: GitRunner = { run: (args) => exec('git', args, { timeout
 export class WorktreeService {
   constructor(private readonly database: AppDatabase, private readonly dataDir: string, private readonly git: GitRunner = nativeGit) {}
 
+  /** Dono da worktree que o card usa: ele mesmo, ou o card cuja worktree ele pegou emprestada (`link`). */
+  ownerOf(cardId: string): string {
+    const linked = this.database.db.prepare(`SELECT o.id FROM cards c JOIN cards o ON o.id = c.worktree_card_id WHERE c.id = ?`).pluck().get(cardId) as string | undefined
+    return linked ?? cardId
+  }
+
   get(cardId: string): Worktree | null {
     const row = this.database.db.prepare(`SELECT id, card_id AS cardId, repo_path AS repoPath, path, branch, base_ref AS baseRef,
-      created_at AS createdAt, cleanup_state AS cleanupState FROM worktrees WHERE card_id = ? ORDER BY created_at DESC LIMIT 1`).get(cardId) as Worktree | undefined
+      created_at AS createdAt, cleanup_state AS cleanupState FROM worktrees WHERE card_id = ? ORDER BY created_at DESC LIMIT 1`).get(this.ownerOf(cardId)) as Worktree | undefined
     return row ?? null
+  }
+
+  /** Cards do mesmo projeto com worktree ativa que este card pode usar (não inclui ele mesmo nem cards que também usam a de outro). */
+  candidates(cardId: string): Array<{ cardId: string; title: string; branch: string; path: string }> {
+    return this.database.db.prepare(`SELECT c.id AS cardId, c.title, w.branch, w.path FROM cards c JOIN worktrees w ON w.card_id = c.id
+      WHERE c.project_id = (SELECT project_id FROM cards WHERE id = ?) AND c.id != ? AND c.worktree_card_id IS NULL AND w.cleanup_state = 'active'
+        AND w.id = (SELECT id FROM worktrees x WHERE x.card_id = c.id ORDER BY x.created_at DESC LIMIT 1) ORDER BY c.updated_at DESC`).all(cardId, cardId) as Array<{ cardId: string; title: string; branch: string; path: string }>
+  }
+
+  /** Faz o card usar a worktree de outro (ou volta a ter a própria com `null`). Só enxerga e trabalha lá: limpeza e merge continuam do dono. */
+  link(cardId: string, fromCardId: string | null): void {
+    if (fromCardId === null) { this.database.db.prepare('UPDATE cards SET worktree_card_id = NULL WHERE id = ?').run(cardId); return }
+    if (fromCardId === cardId) throw new Error('Um card não pode usar a própria worktree como se fosse de outro')
+    if (!this.candidates(cardId).some((item) => item.cardId === fromCardId)) throw new Error('Esse card não tem uma worktree ativa neste projeto')
+    const own = this.database.db.prepare(`SELECT 1 FROM worktrees WHERE card_id = ? AND cleanup_state = 'active' LIMIT 1`).get(cardId)
+    if (own) throw new Error('Este card já tem uma worktree própria. Remova-a antes de usar a de outro card.')
+    this.database.db.prepare('UPDATE cards SET worktree_card_id = ? WHERE id = ?').run(fromCardId, cardId)
+  }
+
+  /** Se o arquivo está dentro da worktree de outro card (e este card ainda não a usa), devolve quem é o dono. */
+  foreignOwner(cardId: string, filePath: string): { cardId: string; title: string } | null {
+    const normal = (value: string): string => value.split(String.fromCharCode(92)).join('/').toLowerCase()
+    const target = normal(filePath), mine = this.ownerOf(cardId)
+    const rows = this.database.db.prepare(`SELECT c.id AS cardId, c.title, w.path FROM worktrees w JOIN cards c ON c.id = w.card_id
+      WHERE c.project_id = (SELECT project_id FROM cards WHERE id = ?) AND c.id != ? AND w.cleanup_state = 'active'`).all(cardId, mine) as Array<{ cardId: string; title: string; path: string }>
+    const hit = rows.find((row) => { const base = normal(row.path).replace(/\/+$/, ''); return target === base || target.startsWith(`${base}/`) })
+    return hit ? { cardId: hit.cardId, title: hit.title } : null
   }
 
   /**
@@ -26,6 +59,8 @@ export class WorktreeService {
    * Repositório que entra no card depois (o agente descobriu que precisa) ganha a sua pasta na worktree que já existe.
    */
   async prepare(cardId: string): Promise<Worktree> {
+    const owner = this.ownerOf(cardId)
+    if (owner !== cardId) return this.prepare(owner)
     const existing = this.get(cardId)
     const alive = existing && await exists(existing.path) ? existing : null
     if (existing && !alive) this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(existing.id)

@@ -296,10 +296,12 @@ export class BoardRepository {
     const hasPlanningChat = Boolean(this.database.db.prepare("SELECT 1 FROM chats WHERE card_id = ? AND purpose = 'planning' LIMIT 1").get(cardId))
     const planningOpen = run.state === 'idle' && !hasPlan && tasks.total === 0 && !row.description.trim() && !this.documents.read(cardId, 'especificacao').trim() && (!row.title.trim() || hasPlanningChat)
     // Branch e worktree em que o card trabalha (a mais recente ativa), para mostrar no card.
-    const workspace = (this.database.db.prepare("SELECT branch, base_ref AS baseRef, path FROM worktrees WHERE card_id = ? AND cleanup_state = 'active' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(cardId) as { branch: string; baseRef: string; path: string } | undefined) ?? null
+    const workspace = (this.database.db.prepare("SELECT branch, base_ref AS baseRef, path FROM worktrees WHERE card_id = COALESCE((SELECT worktree_card_id FROM cards WHERE id = ?), ?) AND cleanup_state = 'active' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(cardId, cardId) as { branch: string; baseRef: string; path: string } | undefined) ?? null
     // Todos os agentes que trabalharam no card (planejamento, implementação e teste), na ordem em que entraram.
     const agentIds = this.database.db.prepare('SELECT profile_id FROM chats WHERE card_id = ? GROUP BY profile_id ORDER BY MIN(created_at)').pluck().all(cardId) as string[]
-    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace, pending: this.pendingCounts(cardId), ...this.execSettings(cardId), agentIds, complexity: complexitySummary(this.database.db, cardId), repoIds: this.repoIds(cardId) }
+    // Quando o card usa a worktree de outro, a tela mostra de quem é (e oferece desvincular).
+    const sharedFrom = (this.database.db.prepare('SELECT o.title FROM cards c JOIN cards o ON o.id = c.worktree_card_id WHERE c.id = ?').pluck().get(cardId) as string | undefined) ?? null
+    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace: workspace ? { ...workspace, sharedFrom } : null, pending: this.pendingCounts(cardId), ...this.execSettings(cardId), agentIds, complexity: complexitySummary(this.database.db, cardId), repoIds: this.repoIds(cardId) }
   }
 
   /** Repositórios em que o card trabalha (nulo = todos os do projeto). */

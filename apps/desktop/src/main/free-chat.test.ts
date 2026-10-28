@@ -1,3 +1,6 @@
+import { AgentOrchestrator } from './orchestrator'
+import type { AgentAdapter } from './adapters'
+import type { WorktreeService } from './worktrees'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -16,6 +19,35 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 describe('free chat', () => {
+  it.each(['allow', 'deny', 'cancel', 'shutdown'] as const)('routes permission to its originating free-chat run and handles %s', async (decision) => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-permission-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
+    const projects = new ProjectRepository(database, git), profile = profiles.list()[0]!
+    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev', profileIds: [profile.id] })
+    const conversations = new ConversationRepository(database)
+    const chat = conversations.createChat({ projectId: project.id, cardId: null, purpose: 'free', profileId: profile.id })
+    let allowed: boolean | undefined
+    const adapter: AgentAdapter = { async run(options) {
+      allowed = await options.requestPermission!('Write', { file: 'a.txt' })
+      return { sessionId: 's', turnId: 'u', text: allowed ? 'approved' : 'denied', status: options.signal?.aborted ? 'interrupted' : 'completed', error: null }
+    } }
+    const events: string[] = []
+    const orchestrator = new AgentOrchestrator(conversations, { claude: adapter, codex: adapter }, (event) => events.push(event.eventType), {} as WorktreeService)
+    const run = orchestrator.start({ chatId: chat.id, prompt: 'x', planning: false })
+    const request = orchestrator.permissions.list(chat.id)[0]!
+    expect(request).toMatchObject({ runId: run.id, chatId: chat.id, provider: profile.provider, kind: 'Write' })
+    if (decision === 'cancel') orchestrator.cancel(run.id)
+    else if (decision === 'shutdown') orchestrator.shutdown()
+    else expect(orchestrator.permissions.decide(run.id, request.id, decision === 'allow')).toBe(true)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(allowed).toBe(decision === 'allow')
+    expect(orchestrator.permissions.list(chat.id)).toEqual([])
+    expect(orchestrator.permissions.decide(run.id, request.id, true)).toBe(false)
+    if (decision !== 'shutdown') expect(events).toContain('agentboard/run-completed')
+    database.close()
+  })
+
   it('runs without a card, then becomes the planning chat of the card it creates', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-free-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()

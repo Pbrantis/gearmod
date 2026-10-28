@@ -29,7 +29,7 @@ describe('chips de branch', () => {
   it('linha sem branch mostra a da faixa (acima) ou a principal na faixa 0', () => {
     const rows = [row('a', 1, ['b'], { refs: [{ name: 'feat', kind: 'local' }] }), row('b', 1, ['c']), row('c', 0, [])]
     expect(ghostChip(rows, 1, 'main')).toEqual({ name: 'feat', local: true })
-    expect(ghostChip(rows, 2, 'main')).toEqual({ name: 'main', local: true, remote: true })
+    expect(ghostChip(rows, 2, 'main')).toEqual({ name: 'main', local: true })
     expect(ghostChip(rows, 0, 'main')).toBeNull()
   })
 })

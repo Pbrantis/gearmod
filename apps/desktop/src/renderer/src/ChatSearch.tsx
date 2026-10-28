@@ -28,11 +28,29 @@ export function searchMessages(messages: ChatMessage[], query: string): ChatMess
   return messages.filter((message) => message.role !== 'tool' && (message.body.toLowerCase().includes(needle) || visibleText(message.body).toLowerCase().includes(needle)))
 }
 
+/** O atalho pertence ao chat com foco; em tela cheia também funciona quando o foco está no corpo da janela. */
+export function useChatSearchShortcut(expanded: boolean): { ref: React.RefObject<HTMLElement | null>; request: number } {
+  const ref = useRef<HTMLElement>(null), [request, setRequest] = useState(0)
+  useEffect(() => {
+    const key = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || !event.ctrlKey || event.shiftKey || event.altKey || event.metaKey || event.key.toLowerCase() !== 'f' || document.querySelector('.overlay')) return
+      const active = document.activeElement
+      if (!ref.current || !(active && ref.current.contains(active)) && !(expanded && (active === document.body || active === document.documentElement))) return
+      if (active instanceof HTMLElement && active.closest('.wf-document, .term-screen')) return
+      event.preventDefault(); event.stopPropagation(); setRequest((value) => value + 1)
+    }
+    document.addEventListener('keydown', key)
+    return () => document.removeEventListener('keydown', key)
+  }, [expanded])
+  return { ref, request }
+}
+
 /** Lupa do chat: pesquisa no que foi dito (eu e o agente); clicar num resultado rola até a mensagem e a destaca. */
-export function ChatSearch({ messages, log, reveal }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; reveal?(): void }): React.JSX.Element {
+export function ChatSearch({ messages, log, reveal, request = 0 }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; reveal?(): void; request?: number }): React.JSX.Element {
   const [open, setOpen] = useState(false), [query, setQuery] = useState(''), box = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), pop = useRef<HTMLDivElement>(null)
   useFitInView(pop, open)
   const results = useMemo(() => searchMessages(messages, query), [messages, query])
+  useEffect(() => { if (!request || !box.current?.getClientRects().length) return; setOpen(true); window.setTimeout(() => { input.current?.focus(); input.current?.select() }, 0) }, [request])
   useEffect(() => {
     if (!open) return
     input.current?.focus()
@@ -51,7 +69,7 @@ export function ChatSearch({ messages, log, reveal }: { messages: ChatMessage[];
     }, reveal ? 80 : 0)
   }
   return <span className="popwrap chatsearch" ref={box}>
-    <button type="button" className="ibtn tip" data-tip="Pesquisar no chat" aria-label="Pesquisar no chat" aria-expanded={open} onClick={() => setOpen(!open)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2L17 17" /></svg></button>
+    <button type="button" className="ibtn tip" data-tip="Pesquisar no chat (Ctrl+F)" aria-label="Pesquisar no chat" aria-expanded={open} onClick={() => setOpen(!open)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2L17 17" /></svg></button>
     {open && <div className="popmenu cs-pop" ref={pop} role="dialog" aria-label="Pesquisar no chat">
       <input ref={input} className="in" value={query} placeholder="Pesquisar no chat" aria-label="Pesquisar no chat" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) go(results[0].id) }} />
       <div className="cs-list">{query.trim().length < 2 ? <p className="ch-muted">Digite pelo menos 2 letras.</p> : !results.length ? <p className="ch-muted">Nada encontrado.</p>

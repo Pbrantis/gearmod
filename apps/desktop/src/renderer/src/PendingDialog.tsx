@@ -52,6 +52,6 @@ export function PendingDialog({ card, close, changed }: { card: Card; close(): v
       {data && !changes.length && !questions.length && !toSend.length && <div className="emptyBox">Nada esperando por você neste card.</div>}
     </div>
     {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
-    <div className="actions"><button className="secondary" onClick={close}>Fechar</button></div>
+
   </div></div>
 }

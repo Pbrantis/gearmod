@@ -6,19 +6,30 @@ import { PlaywrightSection } from './PlaywrightSection'
 import { terminal } from './terminalStore'
 import { checkedAgo, isOutdated, loadLatest, useLatestVersions } from './toolUpdates'
 
-/** Há atualização pendente de Spec Kit, OpenSpec ou Playwright neste projeto? (ponto na aba Ferramentas) */
+const pendingByProject = new Map<string, boolean>()
+const pendingListeners = new Set<(projectId: string, pending: boolean) => void>()
+const pendingChecks = new Map<string, Promise<void>>()
+
+/** A engrenagem e a aba compartilham o último resultado, sem esperar outra verificação ao abrir o diálogo. */
 export function useToolsPending(projectId: string): boolean {
-  const latest = useLatestVersions(), [pending, setPending] = useState(false)
+  const latest = useLatestVersions(), [state, setState] = useState(() => ({ projectId, pending: pendingByProject.get(projectId) ?? false }))
   useEffect(() => {
-    if (!latest) return
-    let alive = true
-    void Promise.all([window.agentboard.invoke('tools:status', { projectId }), window.agentboard.invoke('playwright:status', { projectId })]).then(([tools, playwright]) => {
-      const local = playwright.installs.find((item) => item.origin === 'local')
-      if (alive) setPending(isOutdated(tools.specify.version, latest.versions.specify) || isOutdated(tools.openspec.version, latest.versions.openspec) || Boolean(local && isOutdated(local.version, latest.versions.playwright)))
-    }).catch(() => undefined)
-    return () => { alive = false }
+    const listen = (id: string, pending: boolean): void => { if (id === projectId) setState({ projectId: id, pending }) }
+    pendingListeners.add(listen); setState({ projectId, pending: pendingByProject.get(projectId) ?? false })
+    if (latest) {
+      const key = `${projectId}:${latest.checkedAt}`
+      if (!pendingChecks.has(key)) {
+        const check = Promise.all([window.agentboard.invoke('tools:status', { projectId }), window.agentboard.invoke('playwright:status', { projectId })]).then(([tools, playwright]) => {
+          const local = playwright.installs.find((item) => item.origin === 'local')
+          const pending = isOutdated(tools.specify.version, latest.versions.specify) || isOutdated(tools.openspec.version, latest.versions.openspec) || Boolean(local && isOutdated(local.version, latest.versions.playwright))
+          pendingByProject.set(projectId, pending); pendingListeners.forEach((listener) => listener(projectId, pending))
+        }).catch(() => undefined).finally(() => pendingChecks.delete(key))
+        pendingChecks.set(key, check)
+      }
+    }
+    return () => { pendingListeners.delete(listen) }
   }, [projectId, latest?.checkedAt])
-  return pending
+  return state.projectId === projectId ? state.pending : pendingByProject.get(projectId) ?? false
 }
 
 const windows = typeof navigator !== 'undefined' && /Win/i.test(navigator.platform)
@@ -45,9 +56,15 @@ export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; o
   const copy = (command: string): void => { void navigator.clipboard.writeText(command).then(() => { setCopied(command); window.setTimeout(() => setCopied(''), 1400) }).catch(() => undefined) }
   const upToDate = (installed: string | null, key: 'specify' | 'openspec'): { from: string; to: string } | null => installed && latest?.versions[key] && isOutdated(installed, latest.versions[key]) ? { from: installed, to: latest.versions[key]! } : null
 
-  const buttons = (steps: Step[], repoId: string): React.JSX.Element => <div className="tl-steps">{steps.map((step) => <div key={step.label + step.command} className="tl-step">
-    <button type="button" className="mini" disabled={Boolean(step.disabled) || !folder(repoId)} title={step.disabled ?? `Roda no terminal, em ${folder(repoId) || 'um repositório do projeto'}: ${step.command}`} onClick={() => void run(step.command, repoId)}>{step.label}</button>
-    {step.next && <small className="tl-next">Próximo passo: <code>{step.next}</code><button type="button" className="tl-copy" aria-label="Copiar o comando" title="Copiar o comando" onClick={() => copy(step.next!)}>{copied === step.next ? 'copiado' : 'copiar'}</button></small>}</div>)}</div>
+  // Os botões ficam lado a lado; o "Próximo passo" de cada um vem numa linha própria embaixo (senão alarga a coluna do primeiro botão e afasta os outros).
+  const buttons = (steps: Step[], repoId: string): React.JSX.Element => <div className="tl-steps"><div className="tl-btns">{steps.map((step) => <button key={step.label + step.command} type="button" className="mini" disabled={Boolean(step.disabled) || !folder(repoId)} title={step.disabled ?? `Roda no terminal, em ${folder(repoId) || 'um repositório do projeto'}: ${step.command}`} onClick={() => void run(step.command, repoId)}>{step.label}</button>)}</div>
+    {steps.filter((step) => step.next).map((step) => <small key={step.label + step.command} className="tl-next">Próximo passo: <code>{step.next}</code><button type="button" className="tl-copy" aria-label="Copiar o comando" title="Copiar o comando" onClick={() => copy(step.next!)}>{copied === step.next ? 'copiado' : 'copiar'}</button></small>)}</div>
+  // Só os repositórios que têm a ferramenta viram chip; os demais ficam resumidos numa frase (os nomes aparecem ao passar o mouse).
+  type RepoInfo = NonNullable<typeof status>['repos'][number]
+  const startedChips = (started: (repo: RepoInfo) => boolean, detail: (repo: RepoInfo) => string): React.JSX.Element => {
+    const all = status?.repos ?? [], on = all.filter(started), off = all.filter((repo) => !started(repo))
+    return <>{on.map((repo) => <span key={repo.sourceId} className="pw-chip ok" title={repo.path}>{repo.name} · iniciado{detail(repo)}</span>)}{off.length > 0 && <span className="pw-chip muted" title={off.map((repo) => repo.name).join(', ')}>{on.length ? `não iniciado em ${off.length} ${off.length === 1 ? 'repositório' : 'repositórios'}` : 'não iniciado em nenhum repositório'}</span>}</>
+  }
   const repoPicker = (value: string, set: (id: string) => void, label: string): React.JSX.Element | null => status && status.repos.length > 1 ? <label className="f tl-repo"><span>{label}</span><Select label={label} value={value} options={status.repos.map((repo) => ({ value: repo.sourceId, label: repo.name }))} onChange={set} /></label> : null
 
   const spec = status?.repos.find((repo) => repo.sourceId === specRepo), open = status?.repos.find((repo) => repo.sourceId === openRepo)
@@ -69,6 +86,7 @@ export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; o
   const notice = (old: { from: string; to: string } | null): React.JSX.Element | null => old ? <p className="pw-warn" role="status">Atualização disponível: {old.from} → {old.to}</p> : null
   const importable = constitution?.importable && !constitution.constitution.contentMd.trim() && spec?.specKit
   return <div className="cx-wfpanel">
+    <div className="cx-autosave" role="status">{latest?.error ? <span className="cx-warn">{latest.error}</span> : latest?.checkedAt ? `Verificado ${checkedAgo(latest.checkedAt)}` : 'Ainda não verificado'} · <button type="button" className="linklike" disabled={checking} onClick={() => void verify()}>{checking ? 'Verificando…' : 'Buscar atualizações'}</button></div>
     {error && <div className="cx-error">{error}</div>}
     <section className="cx-wfcard">
       <h4>Spec Kit (GitHub)</h4>
@@ -79,7 +97,7 @@ export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; o
           <span className={`pw-chip ${status.uv ? '' : 'warn'}`}>{status.uv ? `uv ${status.uv}` : 'uv não encontrado'}</span>
           <span className={`pw-chip ${status.python ? '' : 'muted'}`} title="O Spec Kit precisa do Python 3.11 ou mais novo">{status.python ? `Python ${status.python}` : 'Python não encontrado'}</span>
           <span className={`pw-chip ${status.specify.installed ? 'ok' : 'muted'}`}>{status.specify.installed ? <><i aria-hidden="true" />specify{status.specify.version ? ` · v${status.specify.version}` : ''}</> : 'specify · não instalado'}</span>
-          {status.repos.map((repo) => <span key={repo.sourceId} className={`pw-chip ${repo.specKit ? 'ok' : 'muted'}`} title={repo.path}>{repo.name} · {repo.specKit ? `iniciado${repo.specKitIntegrations.length ? ` · ${repo.specKitIntegrations.join(', ')}` : ''}` : 'não iniciado'}</span>)}
+          {startedChips((repo) => repo.specKit, (repo) => repo.specKitIntegrations.length ? ` · ${repo.specKitIntegrations.join(', ')}` : '')}
         </div>
         {repoPicker(specRepo, setSpecRepo, 'Repositório do Spec Kit')}
         {notice(specOld)}
@@ -95,7 +113,7 @@ export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; o
         <div className="pw-chips">
           <span className={`pw-chip ${nodeOk ? '' : 'warn'}`} title="O OpenSpec precisa do Node.js 20.19.0 ou mais novo">{status.node ? `Node.js ${status.node}${nodeOk ? '' : ' (precisa de 20.19+)'}` : 'Node.js não encontrado no PATH'}</span>
           <span className={`pw-chip ${status.openspec.installed ? 'ok' : 'muted'}`}>{status.openspec.installed ? <><i aria-hidden="true" />openspec{status.openspec.version ? ` · v${status.openspec.version}` : ''}</> : 'openspec · não instalado'}</span>
-          {status.repos.map((repo) => <span key={repo.sourceId} className={`pw-chip ${repo.openSpec ? 'ok' : 'muted'}`} title={repo.path}>{repo.name} · {repo.openSpec ? 'iniciado' : 'não iniciado'}</span>)}
+          {startedChips((repo) => repo.openSpec, () => '')}
         </div>
         {repoPicker(openRepo, setOpenRepo, 'Repositório do OpenSpec')}
         {notice(openOld)}
@@ -103,6 +121,5 @@ export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; o
       </> : <p className="cx-muted">Verificando…</p>}
     </section>
     <PlaywrightSection projectId={projectId} enabled={config?.playwrightCli ?? false} toggle={togglePlaywright} latest={latest?.versions.playwright ?? null} />
-    <div className="cx-autosave" role="status">{latest?.error ? <span className="cx-warn">{latest.error}</span> : latest?.checkedAt ? `Verificado ${checkedAgo(latest.checkedAt)}` : 'Ainda não verificado'} · <button type="button" className="linklike" disabled={checking} onClick={() => void verify()}>{checking ? 'Verificando…' : 'Verificar agora'}</button></div>
   </div>
 }

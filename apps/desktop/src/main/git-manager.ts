@@ -60,6 +60,8 @@ export function friendlyError(error: unknown): string {
   if (/nothing (added )?to commit|no changes added/i.test(text)) return 'Não há nada preparado para commitar.'
   if (/Authentication failed|could not read Username|Permission denied \(publickey\)|terminal prompts disabled/i.test(text)) return 'O Git não conseguiu entrar no servidor (login ou chave). Entre uma vez pelo terminal ou pelo seu gerenciador de credenciais e tente de novo.'
   if (/non-fast-forward|\[rejected\]|fetch first|failed to push some refs/i.test(text)) return 'O servidor recusou: a branch remota tem commits que esta ainda não tem. Faça Pull antes de publicar.'
+  const busy = /'([^']+)' is already (?:used by worktree|checked out) at '([^']+)'/i.exec(text)
+  if (busy) return `A branch ${busy[1]} já está aberta em outra pasta de trabalho (${busy[2]}), geralmente a worktree de um card. O Git não deixa a mesma branch aberta em dois lugares: use a worktree do card ou remova-a antes.`
   if (/Not possible to fast-forward|divergent branches/i.test(text)) return 'A branch local e a remota seguiram caminhos diferentes; não dá para atualizar sozinho. Resolva pelo terminal (merge ou rebase).'
   if (/no upstream|has no upstream branch/i.test(text)) return 'Esta branch ainda não foi publicada.'
   if (/not a git repository/i.test(text)) return 'A pasta não é um repositório Git.'
@@ -225,16 +227,18 @@ export class GitManager {
   }
 
   private latestWorktree(cardId: string): { id: string; branch: string } | undefined {
-    return this.database.db.prepare(`SELECT id, branch FROM worktrees WHERE card_id = ? AND cleanup_state != 'removed' ORDER BY created_at DESC LIMIT 1`).get(cardId) as { id: string; branch: string } | undefined
+    return this.database.db.prepare(`SELECT id, branch FROM worktrees WHERE card_id = COALESCE((SELECT worktree_card_id FROM cards WHERE id = ?), ?) AND cleanup_state != 'removed' ORDER BY created_at DESC LIMIT 1`).get(cardId, cardId) as { id: string; branch: string } | undefined
   }
 
   // ---------- grafo ----------
-  async graph(projectId: string, sourceId: string, limit = 300): Promise<GitGraph> {
+  async graph(projectId: string, sourceId: string, limit = 300, cardId?: string | null): Promise<GitGraph> {
     const source = this.source(sourceId)
     if (source.projectId !== projectId) throw new Error('Repositório não encontrado no projeto')
-    const dir = source.path
-    const repo = (await this.repos(projectId)).find((item) => item.sourceId === sourceId)!
-    const members = this.members(projectId).filter((item) => same(item.repoPath, dir))
+    const dir = (await this.target(source, cardId ?? null)).dir
+    const baseRepo = (await this.repos(projectId)).find((item) => item.sourceId === sourceId)!
+    const head = (await this.tryRun(dir, ['branch', '--show-current']))?.trim() || null
+    const repo = { ...baseRepo, path: dir, head }
+    const members = this.members(projectId).filter((item) => same(item.repoPath, source.path))
     const present = await Promise.all(members.map((member) => isDir(member.path)))
     const live = members.filter((_, index) => present[index])
     const [log, refsOut, stashOut] = await Promise.all([
@@ -274,7 +278,7 @@ export class GitManager {
       return { hash, short: hash.slice(0, 7), parents: parents.split(' ').filter(Boolean), lane: 0, author, email, date: new Date(date).toISOString(), subject, refs, cardId: cardOf.get(hash) ?? null, agentProfileId: agents.get(hash) ?? null, wip: null }
     })
     // Alterações sem commit: pasta principal e cada worktree de card.
-    const places: Array<{ cardId: string | null; dir: string; branch: string | null }> = [{ cardId: null, dir, branch: null }, ...live.map((member) => ({ cardId: member.cardId, dir: member.path, branch: member.branch }))]
+    const places: Array<{ cardId: string | null; dir: string; branch: string | null }> = [{ cardId: null, dir: source.path, branch: null }, ...live.map((member) => ({ cardId: member.cardId, dir: member.path, branch: member.branch }))]
     const wips = (await Promise.all(places.map(async (place): Promise<GitRow | null> => {
       const files = await this.listChanges(place.dir).catch(() => [] as GitChange[])
       if (!files.length) return null
@@ -287,14 +291,17 @@ export class GitManager {
     }))).filter((item): item is GitRow => Boolean(item))
     const rows = [...wips, ...commits]
     assignLanes(rows).forEach((lane, index) => { rows[index]!.lane = lane })
-    const cardByBranch = new Map(live.map((member) => [member.branch, member.cardId]))
+    // A pasta da worktree pode estar em outra branch que a registrada (o usuário ou o agente fez checkout lá): vale a que está aberta de fato.
+    const opened = await Promise.all(live.map(async (member) => (await this.tryRun(member.path, ['branch', '--show-current']))?.trim() ?? ''))
+    const cardByBranch = new Map<string, string>()
+    live.forEach((member, index) => { cardByBranch.set(member.branch, member.cardId); if (opened[index]) cardByBranch.set(opened[index]!, member.cardId) })
     return {
       repo, rows, truncated: records.length > limit,
       branches: {
         local: [...locals].sort().map((name) => ({ name, cardId: cardByBranch.get(name) ?? null, head: name === repo.head, ahead: tracking.get(name)?.ahead ?? 0, behind: tracking.get(name)?.behind ?? 0 })),
         remote: [...remotes].sort().map((name) => ({ name, cardId: cardByBranch.get(name.replace(/^[^/]+\//, '')) ?? null }))
       },
-      worktrees: live.map((member) => ({ cardId: member.cardId, title: member.title, branch: member.branch, path: member.path })),
+      worktrees: live.map((member, index) => ({ cardId: member.cardId, title: member.title, branch: opened[index] || member.branch, path: member.path })),
       stashes: (stashOut ?? '').split(/\r?\n/).filter(Boolean).map((line) => { const [ref = '', message = ''] = line.split('\x1f'); return { ref, message } })
     }
   }
@@ -410,7 +417,7 @@ export class GitManager {
     return { hash: await this.commitAt(target.dir, input) }
   }
 
-  async sync(sourceId: string, cardId: string | null, action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull: 'ff' | 'ff-only' | 'rebase' = 'ff-only'): Promise<{ output: string }> {
+  async sync(sourceId: string, cardId: string | null, action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull: 'ff' | 'ff-only' | 'rebase' = 'ff-only', force = false): Promise<{ output: string }> {
     const source = this.source(sourceId), target = await this.target(source, cardId)
     if (action === 'stash') return { output: (await this.run(target.dir, ['stash', 'push', '--include-untracked'])).trim() || 'Alterações guardadas no stash.' }
     if (action === 'pop') return { output: (await this.run(target.dir, ['stash', 'pop'])).trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Stash aplicado.' }
@@ -419,7 +426,8 @@ export class GitManager {
     if (action === 'pull') return { output: (await this.run(target.dir, ['pull', pull === 'rebase' ? '--rebase' : pull === 'ff' ? '--ff' : '--ff-only'])).trim() || 'Tudo atualizado.' }
     const branch = target.branch ?? (await this.run(target.dir, ['branch', '--show-current'])).trim()
     if (!branch) throw new Error('A pasta está sem branch (HEAD solto); escolha uma branch antes de publicar.')
-    return { output: (await this.run(target.dir, ['push', '-u', 'origin', branch])).trim() || `Branch ${branch} publicada.` }
+    // Forçar usa --force-with-lease: só sobrescreve se o remoto ainda estiver como o último fetch (não atropela o que chegou depois).
+    return { output: (await this.run(target.dir, ['push', '-u', ...(force ? ['--force-with-lease'] : []), 'origin', branch])).trim() || `Branch ${branch} ${force ? 'publicada à força' : 'publicada'}.` }
   }
 
   /** Branch atual (da pasta principal ou da worktree do card), a remota que ela acompanha (null se nenhuma) e os remotos do repositório. */
@@ -445,9 +453,29 @@ export class GitManager {
     return { upstream: `${remote}/${branch}` }
   }
 
+  /** Trava: não atualiza a pasta de um card enquanto um agente (dele, ou de quem usa a worktree dele) está rodando, para não trocar arquivos debaixo dele. */
+  private assertIdle(sourceId: string, folder: string): void {
+    const normal = (value: string): string => value.split(String.fromCharCode(92)).join('/').toLowerCase().replace(/\/+$/, '')
+    const owner = this.members(this.source(sourceId).projectId).find((member) => normal(member.path) === normal(folder))
+    if (!owner) return
+    const busy = this.database.db.prepare(`SELECT c.title FROM cards c WHERE (c.id = ? OR c.worktree_card_id = ?)
+      AND EXISTS (SELECT 1 FROM runs r WHERE r.card_id = c.id AND r.status IN ('queued', 'running')) LIMIT 1`).pluck().get(owner.cardId, owner.cardId) as string | undefined
+    if (busy !== undefined) throw new Error(`O card "${busy || 'sem título'}" está com um agente rodando nessa pasta. Espere terminar para atualizar a branch.`)
+  }
+
+  /** Pasta (worktree) onde a branch está aberta, se não for a pasta principal; `null` se não estiver aberta em lugar nenhum. */
+  private async worktreeOf(dir: string, branch: string): Promise<string | null> {
+    let path = ''
+    for (const line of ((await this.tryRun(dir, ['worktree', 'list', '--porcelain'])) ?? '').split(/\r?\n/)) {
+      if (line.startsWith('worktree ')) path = line.slice(9)
+      else if (line === `branch refs/heads/${branch}`) return path && path !== dir ? path : null
+    }
+    return null
+  }
+
   /** Ações do menu de uma branch na pasta principal do repositório. Merge e rebase com conflito são desfeitos, para não deixar a pasta no meio do caminho. */
-  async branchAction(sourceId: string, input: { action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }): Promise<{ output: string }> {
-    const dir = this.source(sourceId).path, { action, name } = input
+  async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }): Promise<{ output: string }> {
+    const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir, { action, name } = input
     const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(`Nome de branch inválido: ${ref}`) }
     await valid(name)
     const current = (await this.run(dir, ['branch', '--show-current'])).trim(), isHead = current === name
@@ -477,13 +505,18 @@ export class GitManager {
     if (action === 'pull') {
       await needRemote()
       if (isHead) return { output: last(await this.run(dir, ['pull', '--ff-only']), 'Tudo atualizado.') }
+      // Branch aberta na worktree de um card: o Git não deixa atualizá-la de fora (fetch name:name), então o pull roda dentro dessa pasta.
+      const inWorktree = await this.worktreeOf(dir, name)
+      if (inWorktree) { this.assertIdle(sourceId, inWorktree); return { output: last(await this.run(inWorktree, ['pull', '--ff-only']), 'Tudo atualizado.') } }
       const remote = (await this.tryRun(dir, ['config', `branch.${name}.remote`]))?.trim() || 'origin'
       return { output: last(await this.run(dir, ['fetch', remote, `${name}:${name}`]), 'Tudo atualizado.') }
     }
     if (action === 'pull-rebase') {
       await needRemote()
-      if (!isHead) throw new Error('Para puxar com rebase, faça checkout da branch primeiro.')
-      return { output: last(await this.run(dir, ['pull', '--rebase']), 'Tudo atualizado.') }
+      const place = isHead ? dir : await this.worktreeOf(dir, name)
+      if (!place) throw new Error('Para puxar com rebase, faça checkout da branch primeiro.')
+      if (place !== dir) this.assertIdle(sourceId, place)
+      return { output: last(await this.run(place, ['pull', '--rebase']), 'Tudo atualizado.') }
     }
     if (action === 'push') { await needRemote(); return { output: last(await this.run(dir, ['push', '-u', 'origin', name]), `Branch ${name} publicada.`) } }
     if (action === 'rebase-onto' || action === 'merge') {
@@ -504,8 +537,8 @@ export class GitManager {
   }
 
   /** Ações do menu de um commit na pasta principal. Cherry-pick e revert com conflito são desfeitos. */
-  async commitAction(sourceId: string, input: { action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }): Promise<{ output: string }> {
-    const dir = this.source(sourceId).path, { action, hash } = input
+  async commitAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }): Promise<{ output: string }> {
+    const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir, { action, hash } = input
     if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error('Commit inválido')
     const name = input.name?.trim() ?? ''
     if (action === 'branch' || action === 'tag') {
@@ -610,8 +643,8 @@ export class GitManager {
     return binary || truncated ? { before: null, after: null, binary, truncated } : { before, after, binary: false, truncated: false }
   }
 
-  async stashAction(sourceId: string, input: { action: 'apply' | 'pop' | 'drop'; ref: string }): Promise<{ output: string }> {
-    const dir = this.source(sourceId).path
+  async stashAction(sourceId: string, input: { cardId?: string | null; action: 'apply' | 'pop' | 'drop'; ref: string }): Promise<{ output: string }> {
+    const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir
     if (!/^stash@\{\d+\}$/.test(input.ref)) throw new Error('Stash inválido')
     await this.run(dir, ['stash', input.action, input.ref])
     return { output: input.action === 'drop' ? 'Stash apagado.' : input.action === 'pop' ? 'Stash aplicado e removido.' : 'Stash aplicado.' }

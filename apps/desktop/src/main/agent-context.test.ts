@@ -13,6 +13,15 @@ const pluginDir = join(__dirname, '..', '..', 'resources', 'agentboard-plugin')
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 describe('AgentContextService', () => {
+  it('oferece documentar alterações no chat livre sem repetir escolhas já feitas', () => {
+    const service = new AgentContextService({} as never, { get: () => ({ idioma: 'pt-BR' }) } as never, null)
+    for (const text of [service.freePrompt('Ajuste a tela', undefined, true), service.freeInstructions(false, true), service.freeInstructions(true, false)]) {
+      expect(text).toContain('Criar card')
+      expect(text).toContain('Alterar direto')
+      expect(text).toContain('não repita a pergunta')
+      expect(text).toContain('agentboard-perguntas')
+    }
+  })
   it('describes language, card, current column, available columns and documents', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-ctx-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()

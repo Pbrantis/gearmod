@@ -14,7 +14,7 @@ const when = (iso: string | null): string => iso ? new Date(iso).toLocaleDateStr
  * Aba Constituição do projeto: os princípios que todo card respeita (opcional). Mostra o texto, edita à mão, importa do Spec Kit,
  * abre o chat da Constituição e lista as mudanças que os agentes sugeriram nos outros chats.
  */
-export function ConstitutionPanel({ projectId, openChat }: { projectId: string; openChat(prompt?: string): void }): React.JSX.Element {
+export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { projectId: string; openChat(prompt?: string): void; onOpenReference?(): void }): React.JSX.Element {
   const [state, setState] = useState<ConstitutionState>(), [editing, setEditing] = useState<string | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [askImport, setAskImport] = useState(false), [viewing, setViewing] = useState(false)
   const load = useCallback(async () => { try { setState(await window.agentboard.invoke('constitution:get', { projectId })) } catch (reason) { setError(plainError(reason)) } }, [projectId])
   useEffect(() => { void load() }, [load])
@@ -35,19 +35,19 @@ export function ConstitutionPanel({ projectId, openChat }: { projectId: string; 
   const importButton = importable && <button type="button" className="secondary" disabled={working} title={importable} onClick={() => (empty ? void runImport() : setAskImport(true))}>Importar do Spec Kit</button>
 
   return <div className="stack cons">
+    {editing === null && importButton && <div className="cons-import">{importButton}</div>}
     {editing !== null && !viewing ? <>
       <CodeEditor variant="prose" className="in cons-edit" path="constituicao.md" value={editing} options={proseOptions} ariaLabel="Texto da Constituição" onChange={setEditing} />
       <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button><button type="button" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:save', { projectId, contentMd: editing }))}>Salvar versão</button></div>
     </> : empty ? <div className="cons-empty">
       <b>Este projeto ainda não tem Constituição</b>
       <p>Ela é opcional e reúne os princípios que valem para todo card: o que não pode ser quebrado, seja qual for a tarefa. Os agentes avisam quando um pedido fere um princípio e sugerem o que deveria virar um.</p>
-      <div className="cons-actions start"><button type="button" onClick={() => openChat('Crie a Constituição deste projeto a partir do código e do que já é regra nele.')}>Criar com o agente</button><button type="button" className="secondary" onClick={() => setEditing('')}>Escrever à mão</button>{importButton}</div>
+      <div className="cons-actions start"><button type="button" onClick={() => openChat('Crie a Constituição deste projeto a partir do código e do que já é regra nele.')}>Criar com o agente</button><button type="button" className="secondary" onClick={() => setEditing('')}>Escrever à mão</button></div>
     </div> : <>
       <div className="cons-card"><div className="cons-card-t"><b>{heading}</b><span className="ctxchip">Versão {constitution.version}</span></div>
         {excerpt && <p>{excerpt}{excerpt.length >= 240 ? '…' : ''}</p>}
         <div className="cons-card-f"><span className="hint">{sections > 0 ? `${sections} seções · ` : ''}atualizada em {when(constitution.updatedAt)} {constitution.updatedBy === 'agent' ? 'pelo agente' : 'por você'}</span><span className="ch-spacer" />
           <button type="button" className="mini secondary" onClick={() => openChat()}>Conversar com o agente</button><button type="button" className="mini" onClick={() => setViewing(true)}>Ver Constituição</button></div></div>
-      {importButton && <div className="cons-actions start">{importButton}</div>}
     </>}
     {pending.length > 0 && <div className="stack" style={{ gap: 8 }}>
       <span className="sectitle">Mudanças sugeridas pelos agentes</span>
@@ -64,7 +64,7 @@ export function ConstitutionPanel({ projectId, openChat }: { projectId: string; 
       <header><div><div className="eyebrow">Constituição · Versão {constitution.version}</div><h2>{heading}</h2></div><div className="hdr-actions">{editing === null && <><button type="button" className="mini secondary" onClick={() => setEditing(constitution.contentMd)}>Editar</button><button type="button" className="mini" onClick={() => { closeView(); openChat() }}>Conversar com o agente</button></>}<button type="button" className="x" onClick={closeView} aria-label="Fechar">×</button></div></header>
       {editing !== null ? <><CodeEditor variant="prose" className="in cons-edit cons-dialog-edit" path="constituicao.md" value={editing} options={proseOptions} ariaLabel="Texto da Constituição" onChange={setEditing} />
         <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button><button type="button" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:save', { projectId, contentMd: editing }))}>Salvar versão</button></div></>
-        : <div className="cons-view md cons-dialog-view"><Markdown source={constitution.contentMd} /></div>}
+        : <div className="cons-view md cons-dialog-view"><Markdown source={constitution.contentMd} base={{ projectId, cardId: null, path: importable ?? '' }} onOpenReference={() => { closeView(); onOpenReference?.() }} /></div>}
       {error && <p className="error">{error}</p>}
     </div></div>}
     {error && !viewing && <p className="error">{error}</p>}

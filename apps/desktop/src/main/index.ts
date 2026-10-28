@@ -249,9 +249,9 @@ const fileActions = {
   async trashItem(path: string): Promise<void> { await shell.trashItem(path) }
 }
 
-async function chooseDirectory(): Promise<string | null> {
+async function chooseDirectory(defaultPath?: string): Promise<string | null> {
   const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-  const options: OpenDialogOptions = { properties: ['openDirectory'], title: 'Selecione uma pasta de origem' }
+  const options: OpenDialogOptions = { properties: ['openDirectory'], title: 'Selecione uma pasta', ...(defaultPath ? { defaultPath } : {}) }
   const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
   return result.canceled ? null : result.filePaths[0] ?? null
 }
@@ -333,4 +333,4 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 // Qualquer saída (bandeja, desligar o Windows, atualização) libera o fechamento da janela.
-app.on('before-quit', () => { quitting = true; autoResume.stop(); terminals.dispose(); fileWatch.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); database.close() })
+app.on('before-quit', () => { quitting = true; orchestrator.shutdown(); autoResume.stop(); terminals.dispose(); fileWatch.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); database.close() })

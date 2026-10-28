@@ -23,7 +23,7 @@ export function WindowLayoutMenu({ move, detach, detachDisabled = false, closeWi
     {open && <div className="popmenu" ref={menu} role="menu" aria-label="Mover e organizar">
       <div className="pm-label">Mover</div><div className="pm-row">{(Object.keys(labels) as LayoutPosition[]).map((position) => <button type="button" role="menuitem" key={position} className="pm-ic tip" data-tip={labels[position]} aria-label={labels[position]} onClick={() => run(() => move(position))}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2.5" /><rect x={position === 'right' ? 11 : 3} y={position === 'bottom' ? 11 : 4} width={position === 'left' || position === 'right' ? 6 : 14} height={position === 'top' || position === 'bottom' ? 5 : 12} rx="1.5" fill="currentColor" /></svg></button>)}</div>
       {(detach || closeWindow) && <div className="pm-sep" />}
-      {detach && <button type="button" role="menuitem" className="pm-item" disabled={detachDisabled} onClick={() => run(detach)}>Abrir em nova janela</button>}
+      {detach && <button type="button" role="menuitem" className="pm-item pm-ico" disabled={detachDisabled} onClick={() => run(detach)}><WindowIcon />Abrir em nova janela</button>}
       {closeWindow && <button type="button" role="menuitem" className="pm-item" onClick={() => run(closeWindow)}>Fechar esta janela</button>}
     </div>}
   </span>

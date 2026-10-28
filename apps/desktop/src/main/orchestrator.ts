@@ -1,3 +1,4 @@
+import { AgentPermissions } from './agent-permissions'
 import type { AgentPurpose, ChatPurpose, Effort, PermissionMode, Run } from '@agentboard/contracts'
 import type { AgentAdapter, AgentEvent } from './adapters'
 import type { ConversationRepository } from './conversations'
@@ -6,7 +7,7 @@ import type { AgentContextService } from './agent-context'
 import type { AgentWriteback } from './agent-writeback'
 import type { AgentConfigRepository } from './agent-config'
 import { titleFromPrompt } from './agent-writeback'
-import { toolActivities } from './tool-activity'
+import { toolActivities, toolEditedFiles } from './tool-activity'
 import type { RunHarness } from './harness'
 import { existsSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -20,6 +21,8 @@ type AgentChoice = { model?: string | null; effort?: Effort | null; mode?: Permi
 type Job = { run: Run; chatId: string; prompt: string; planning: boolean; notice?: string; attachments?: string[]; automatic?: boolean; choice?: AgentChoice }
 
 export class AgentOrchestrator {
+  readonly permissions = new AgentPermissions()
+  private stopping = false
   private active = 0
   private readonly queue: Job[] = []
   private readonly controllers = new Map<string, AbortController>()
@@ -43,6 +46,7 @@ export class AgentOrchestrator {
 
   /** `notice` troca o prompt no chat por um aviso curto (instruções internas do app não aparecem como mensagem do usuário). */
   start(input: { chatId: string; prompt: string; planning: boolean; notice?: string; attachments?: string[]; automatic?: boolean; choice?: AgentChoice }): Run {
+    if (this.stopping) throw new Error('O aplicativo está encerrando')
     const context = this.conversations.context(input.chatId)
     // `automatic`: retomada que o app dispara sozinho (encadeamento entre etapas); só ela é barrada por falhas repetidas.
     const blocked = context.cardId ? this.harness?.before({ cardId: context.cardId, chatId: input.chatId, automatic: Boolean(input.automatic) }) : null
@@ -66,6 +70,12 @@ export class AgentOrchestrator {
   /** Execuções rodando ou na fila: o que morre se o app fechar. */
   pendingCount(): number { return this.active + this.queue.length }
 
+  shutdown(): void {
+    this.stopping = true
+    for (const job of this.queue.splice(0)) this.conversations.updateRun(job.run.id, 'cancelled', 'Aplicativo encerrado')
+    for (const controller of this.controllers.values()) controller.abort()
+  }
+
   cancel(runId: string): boolean {
     const queued = this.queue.findIndex((job) => job.run.id === runId)
     if (queued >= 0) { this.queue.splice(queued, 1); this.conversations.updateRun(runId, 'cancelled', 'Cancelled before start'); return true }
@@ -87,11 +97,18 @@ export class AgentOrchestrator {
     let timedOut = false
     const timer = limit ? setTimeout(() => { timedOut = true; controller.abort() }, limit) : null
     const timeoutError = (): string => `Tempo limite de ${Math.round((limit ?? 0) / 60_000)} min atingido (Configurar projeto > Workflow).`
+    const offered = new Set<string>()
     const publish = (event: AgentEvent): void => {
+      if (this.stopping) return
       if (event.type === 'claude/rate_limit_event') { try { this.usage?.recordClaude(context.profile.id, event.payload) } catch { /* uso é informativo */ } }
       const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload })
       // Ferramentas usadas viram linhas cinzas no chat (como no Claude Code); a tela recarrega as mensagens ao receber o aviso.
       const tools = toolActivities(event.type, event.payload)
+      // O agente mexeu na worktree de outro card (ex.: o usuário pediu para trabalhar lá): avisa uma vez por dono, para a tela oferecer o vínculo.
+      if (context.cardId) for (const file of toolEditedFiles(event.type, event.payload)) {
+        const owner = this.worktrees.foreignOwner(context.cardId, file)
+        if (owner && !offered.has(owner.cardId)) { offered.add(owner.cardId); this.emit({ runId: job.run.id, eventType: 'agentboard/worktree-foreign', payload: { cardId: context.cardId, ownerCardId: owner.cardId, ownerTitle: owner.title } }) }
+      }
       if (tools.length) {
         for (const tool of tools) this.conversations.addMessage({ chatId: job.chatId, role: 'tool', body: tool.detail ? `${tool.title}\n${tool.detail}` : tool.title, status: 'complete' })
         this.emit({ runId: job.run.id, eventType: 'agentboard/tool-activity', payload: { chatId: job.chatId } })
@@ -100,6 +117,7 @@ export class AgentOrchestrator {
     try {
       const free = context.chat.purpose === 'free', constitution = context.chat.purpose === 'constitution'
       const worktree = job.planning || !context.cardId ? null : await this.worktrees.prepare(context.cardId)
+      if (this.stopping) return
       const cwd = worktree?.path ?? context.projectPath
       if (worktree) this.conversations.attachWorktree(job.run.id, worktree.id)
       const failedRepos = worktree && context.cardId ? this.worktrees.repositories(context.cardId).filter((repo) => repo.status === 'failed') : []
@@ -114,7 +132,8 @@ export class AgentOrchestrator {
       const mcp = this.writeback?.begin(job.run.id, context.cardId, (type, payload) => publish({ type, payload }), { id: context.chat.id, purpose: context.chat.purpose })
       const prompt = this.agentContext ? (constitution ? this.agentContext.constitutionPrompt(context.chat.projectId, job.prompt) : free || !context.cardId ? this.agentContext.freePrompt(job.prompt, context.chat.projectId, !job.planning) : this.agentContext.prompt(context.cardId, job.prompt, job.planning, context.chat.skill)) : job.prompt
       try { this.conversations.recordRunMeta(job.run.id, { purpose: context.chat.purpose, provider: context.profile.provider, model: config?.model ?? null, effort: config?.effort ?? null, promptChars: prompt.length }) } catch { /* métrica é informativa */ }
-      const raw = await this.adapters[context.profile.provider].run({ cwd, prompt, pluginDir: this.agentContext?.pluginDir, mcp, model: config?.model ?? job.choice?.model, effort: config?.effort ?? job.choice?.effort, mode: job.planning ? 'plan' : config?.mode ?? job.choice?.mode, developerInstructions: free ? this.agentContext?.freeInstructions(context.profile.provider === 'codex', !job.planning) : this.agentContext?.developerInstructions(job.planning, context.chat.skill, context.cardId, context.chat.purpose), sessionId: context.chat.providerSessionId, planning: job.planning, attachments: job.attachments, profile: context.profile, signal: controller.signal, onEvent: publish })
+      const raw = await this.adapters[context.profile.provider].run({ cwd, prompt, pluginDir: this.agentContext?.pluginDir, mcp, model: config?.model ?? job.choice?.model, effort: config?.effort ?? job.choice?.effort, mode: job.planning ? 'plan' : config?.mode ?? job.choice?.mode, developerInstructions: free ? this.agentContext?.freeInstructions(context.profile.provider === 'codex', !job.planning) : this.agentContext?.developerInstructions(job.planning, context.chat.skill, context.cardId, context.chat.purpose), sessionId: context.chat.providerSessionId, planning: job.planning, attachments: job.attachments, profile: context.profile, signal: controller.signal, requestPermission: (kind, details, signal) => this.permissions.request({ runId: job.run.id, chatId: job.chatId, provider: context.profile.provider, kind, details }, signal ? AbortSignal.any([controller.signal, signal]) : controller.signal, publish), onEvent: publish })
+      if (this.stopping) return
       const result = timedOut ? { ...raw, status: 'failed' as const, error: timeoutError() } : raw
       this.conversations.updateSession(job.chatId, result.sessionId)
       try { this.conversations.recordUsage(job.run.id, result.usage) } catch { /* contagem de tokens é informativa */ }
@@ -136,6 +155,7 @@ export class AgentOrchestrator {
       try { if (after.cardId && after.chat.purpose !== 'free' && after.chat.purpose !== 'constitution') this.collab?.afterRun({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status: result.status }) } catch { /* encadeamento é best-effort; o chat mostra o aviso */ }
       try { this.onFinished?.({ cardId: after.cardId, chatId: job.chatId, runId: job.run.id, purpose: after.chat.purpose, status: result.status, error: result.error ?? null }) } catch { /* notificação é best-effort */ }
     } catch (error) {
+      if (this.stopping) return
       const message = timedOut ? timeoutError() : error instanceof Error ? error.message : String(error)
       const aborted = controller.signal.aborted && !timedOut
       // Sem isto o card só ficava Pausado, sem dizer por quê (ex.: a worktree não pôde ser criada).
@@ -143,6 +163,6 @@ export class AgentOrchestrator {
       this.conversations.updateRun(job.run.id, aborted ? 'interrupted' : 'failed', message)
       publish({ type: 'agentboard/run-completed', payload: { status: aborted ? 'interrupted' : 'failed', error: message } })
       try { const after = this.conversations.context(job.chatId); this.onFinished?.({ cardId: after.cardId, chatId: job.chatId, runId: job.run.id, purpose: after.chat.purpose, status: aborted ? 'interrupted' : 'failed', error: message }) } catch { /* notificação é best-effort */ }
-    } finally { if (timer) clearTimeout(timer); this.controllers.delete(job.run.id) }
+    } finally { this.permissions.closeRun(job.run.id); if (timer) clearTimeout(timer); this.controllers.delete(job.run.id) }
   }
 }

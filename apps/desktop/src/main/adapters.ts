@@ -16,7 +16,7 @@ import type { ApprovalsReviewer } from './generated/codex-app-server/v2/Approval
 import type { TurnStartParams } from './generated/codex-app-server/v2/TurnStartParams'
 
 export type AgentEvent = { type: string; payload: Record<string, unknown> }
-export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; attachments?: string[]; signal?: AbortSignal; onEvent(event: AgentEvent): void }
+export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; attachments?: string[]; signal?: AbortSignal; requestPermission?(kind: string, details: Record<string, unknown>, signal?: AbortSignal): Promise<boolean>; onEvent(event: AgentEvent): void }
 /** `costUsd`: só quando o próprio agente informa (Claude: `total_cost_usd` do result); nunca estimado aqui. */
 export type RunTokens = { input: number; cached: number; output: number; costUsd?: number }
 export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null; usage?: RunTokens }
@@ -53,8 +53,10 @@ class JsonLineRpc {
     const id = this.nextId++
     return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.write({ id, method, params }) })
   }
+  respond(id: string | number, result: JsonObject): void { this.write({ id, result }) }
+  unsupported(id: string | number): void { this.write({ id, error: { code: -32601, message: 'Solicitação do agente não suportada pelo AgentBoard' } }) }
   stop(): void { if (!this.process.killed) this.process.kill() }
-  private write(value: JsonObject): void { this.process.stdin.write(`${JSON.stringify(value)}\n`) }
+  private write(value: JsonObject): void { if (!this.process.stdin.writable || this.process.stdin.destroyed) return; this.process.stdin.write(`${JSON.stringify(value)}\n`) }
   private receive(line: string): void {
     let message: JsonObject
     try { message = JSON.parse(line) as JsonObject } catch { return }
@@ -98,10 +100,14 @@ export const claudePermissionMode: Record<PermissionMode, string | null> = { pla
 export class CodexAppServerAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
+    if (options.signal?.aborted) throw new Error('Execução cancelada')
     const child = this.processes.start(options.profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: options.cwd, env: { ...process.env, CODEX_HOME: options.profile.configDir } })
     const rpc = new JsonLineRpc(child)
-    const abort = () => rpc.stop(); options.signal?.addEventListener('abort', abort, { once: true })
+    const approvals = new ProviderApprovals(options)
+    const abort = () => { approvals.close(); rpc.stop() }; options.signal?.addEventListener('abort', abort, { once: true })
     let text = '', turnId: string | null = null
+    let turnAbort: (() => void) | undefined
+    const items = new Map<string, JsonObject>()
     // O Codex avisa o uso a cada chamada ao modelo (`last`); soma só quando o total do thread muda, para não contar aviso repetido.
     const usage: RunTokens = { input: 0, cached: 0, output: 0 }; let lastTotal = -1
     try {
@@ -114,14 +120,32 @@ export class CodexAppServerAdapter implements AgentAdapter {
         : await rpc.request('thread/start', policy)
       const thread = threadResult.thread as { id: string }
       const completed = new Promise<AgentRunResult>((resolve, reject) => {
-        const onAbort = () => resolve({ sessionId: thread.id, turnId, text, status: 'interrupted', error: 'Interrompido pelo usuário', usage: { ...usage } })
+        const onAbort = turnAbort = () => resolve({ sessionId: thread.id, turnId, text, status: 'interrupted', error: 'Interrompido pelo usuário', usage: { ...usage } })
         options.signal?.addEventListener('abort', onAbort, { once: true })
         rpc.onMessage((raw) => {
+          if (typeof raw.id === 'string' || typeof raw.id === 'number') {
+            const id = raw.id, method = String(raw.method), params = (raw.params ?? {}) as JsonObject
+            if ((params.threadId ?? params.conversationId) !== thread.id || (turnId && params.turnId && params.turnId !== turnId)) { rpc.unsupported(id); return }
+            const permission = method === 'item/permissions/requestApproval'
+            const modern = method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval'
+            const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval'
+            if (permission || modern || legacy) {
+              approvals.ask(JSON.stringify(id), method, { ...params, ...(typeof params.itemId === 'string' && items.has(params.itemId) ? { item: items.get(params.itemId) } : {}) }, (allow) => {
+                if (permission) {
+                  const requested = (params.permissions ?? {}) as JsonObject
+                  rpc.respond(id, { permissions: allow ? Object.fromEntries(Object.entries(requested).filter(([, value]) => value !== null)) : {}, scope: 'turn' })
+                } else rpc.respond(id, { decision: modern ? (allow ? 'accept' : 'decline') : (allow ? 'approved' : 'denied') })
+              })
+            } else rpc.unsupported(id)
+            return
+          }
           const event = raw as unknown as ServerNotification
           if (!('method' in event)) return
-          const params = event.params as unknown as Record<string, unknown>
+          const params = (event.params ?? {}) as unknown as Record<string, unknown>
+          if (params.item && typeof params.item === 'object' && params.threadId === thread.id) { const item = params.item as JsonObject; if (typeof item.id === 'string') items.set(item.id, item) }
           if (event.method === 'item/agentMessage/delta') { const delta = String(params.delta ?? ''); text += delta; options.onEvent({ type: event.method, payload: { delta } }) }
           else options.onEvent({ type: event.method, payload: redactObject(params) })
+          if (event.method === 'serverRequest/resolved' && params.threadId === thread.id) approvals.cancel(JSON.stringify(params.requestId))
           if (event.method === 'thread/tokenUsage/updated') {
             const token = params.tokenUsage as { total?: { totalTokens?: number }; last?: { inputTokens?: number; cachedInputTokens?: number; outputTokens?: number } } | undefined
             if (token?.last && token.total?.totalTokens !== lastTotal) {
@@ -130,7 +154,8 @@ export class CodexAppServerAdapter implements AgentAdapter {
               usage.cached += cached; usage.input += Math.max(0, (token.last.inputTokens ?? 0) - cached); usage.output += token.last.outputTokens ?? 0
             }
           }
-          if (event.method === 'turn/completed') {
+          if (event.method === 'turn/completed' && params.threadId === thread.id) {
+            approvals.close()
             const turn = params.turn as { id?: string; status?: string; error?: unknown }; turnId = turn.id ?? turnId
             const status = turn.status === 'completed' ? 'completed' : turn.status === 'interrupted' ? 'interrupted' : 'failed'
             resolve({ sessionId: thread.id, turnId, text, status, error: status === 'failed' ? sanitize(JSON.stringify(turn.error ?? 'Turn failed')) : null, usage: { ...usage } })
@@ -142,7 +167,7 @@ export class CodexAppServerAdapter implements AgentAdapter {
       const started = await rpc.request('turn/start', turnParams as unknown as JsonObject)
       turnId = (started.turn as { id?: string } | undefined)?.id ?? null
       return await completed
-    } finally { options.signal?.removeEventListener('abort', abort); rpc.stop() }
+    } finally { approvals.close(); if (turnAbort) options.signal?.removeEventListener('abort', turnAbort); options.signal?.removeEventListener('abort', abort); rpc.stop() }
   }
 }
 
@@ -206,6 +231,7 @@ export async function probeClaudeLimits(profile: AgentProfile, processes: Proces
 export class ClaudeCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
+    if (options.signal?.aborted) throw new Error('Execução cancelada')
     // Em `plan` o Claude se recusa a chamar ferramentas que gravam (inclusive as do AgentBoard; confirmado em teste real).
     // Com o MCP ligado, o planejamento usa o modo padrão só com ferramentas de leitura + as do AgentBoard; sem MCP, `plan` e documentos por marcadores.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
@@ -220,27 +246,41 @@ export class ClaudeCliAdapter implements AgentAdapter {
     if (options.sessionId) args.push('--resume', options.sessionId)
     // Anexos fora da pasta do projeto: libera a leitura da pasta de cada um.
     for (const dir of new Set((options.attachments ?? []).map((path) => dirname(path)))) args.push('--add-dir', dir)
-    args.push('--', options.prompt)
+    const interactive = Boolean(options.requestPermission)
+    if (interactive) args.push('--input-format', 'stream-json', '--permission-prompt-tool', 'stdio')
+    else args.push('--', options.prompt)
     const child = this.processes.start(options.profile.executablePath || 'claude', args, { cwd: options.cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: options.profile.configDir } })
-    child.stdin.end()
+    const approvals = new ProviderApprovals(options)
+    if (!interactive) child.stdin.end()
     let text = '', sessionId = options.sessionId ?? '', stderr = ''
-    const abort = () => child.kill(); options.signal?.addEventListener('abort', abort, { once: true })
+    const abort = () => { approvals.close(); child.kill() }; options.signal?.addEventListener('abort', abort, { once: true })
     child.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString()}`.slice(-4000) })
     return new Promise<AgentRunResult>((resolve, reject) => {
       createInterface({ input: child.stdout }).on('line', (line) => {
         let message: JsonObject; try { message = JSON.parse(line) as JsonObject } catch { return }
+        if (message.type === 'control_request' && typeof message.request_id === 'string') {
+          const id = message.request_id, request = (message.request ?? {}) as JsonObject
+          const respond = (allow: boolean): void => { if (!child.stdin.writable || child.stdin.destroyed) return; child.stdin.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response: allow ? { behavior: 'allow', updatedInput: request.input ?? {} } : { behavior: 'deny', message: 'Permissão negada pelo usuário ou execução encerrada' } } })}\n`) }
+          if (request.subtype === 'can_use_tool') approvals.ask(id, String(request.tool_name ?? 'Ferramenta'), request, respond)
+          else child.stdin.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'error', request_id: id, error: 'Solicitação não suportada' } })}\n`)
+          return
+        }
+        if (message.type === 'control_cancel_request' && typeof message.request_id === 'string') { approvals.cancel(message.request_id); return }
         if (typeof message.session_id === 'string') sessionId = message.session_id
         const event = message.event as JsonObject | undefined, delta = event?.delta as JsonObject | undefined
         if (message.type === 'stream_event' && delta?.type === 'text_delta' && typeof delta.text === 'string') { text += delta.text; options.onEvent({ type: 'item/agentMessage/delta', payload: { delta: delta.text } }) }
         else options.onEvent({ type: `claude/${String(message.type ?? 'event')}`, payload: redactObject(message) })
         if (message.type === 'result') {
+          approvals.close()
           if (!text && typeof message.result === 'string') text = message.result
           resolve({ sessionId, turnId: null, text, status: message.is_error ? 'failed' : 'completed', error: message.is_error ? sanitize(String(message.result ?? 'Claude failed')) : null, usage: claudeUsage(message.usage, message.total_cost_usd) })
         }
       })
       child.on('error', (error) => reject(error))
-      child.on('exit', (code) => { if (options.signal?.aborted) resolve({ sessionId, turnId: null, text, status: 'interrupted', error: 'Interrompido pelo usuário' }); else if (code !== 0) reject(new Error(`Claude exited (${code}): ${sanitize(stderr)}`)) })
-    }).finally(() => options.signal?.removeEventListener('abort', abort))
+      child.on('exit', (code) => { if (options.signal?.aborted) resolve({ sessionId, turnId: null, text, status: 'interrupted', error: 'Interrompido pelo usuário' }); else reject(new Error(`Claude encerrou sem resultado (${code}): ${sanitize(stderr)}`)) })
+      if (interactive) child.stdin.write(`${JSON.stringify({ type: 'user', session_id: '', message: { role: 'user', content: options.prompt }, parent_tool_use_id: null })}\n`)
+      if (options.signal?.aborted) abort()
+    }).finally(() => { approvals.close(); options.signal?.removeEventListener('abort', abort); if (!child.killed) child.kill() })
   }
 }
 
@@ -250,7 +290,7 @@ function claudeUsage(value: unknown, cost?: unknown): RunTokens | undefined {
   const usage = value as Record<string, unknown>, count = (key: string): number => (typeof usage[key] === 'number' && Number.isFinite(usage[key]) ? Math.max(0, Math.round(usage[key] as number)) : 0)
   return { input: count('input_tokens') + count('cache_creation_input_tokens'), cached: count('cache_read_input_tokens'), output: count('output_tokens'), ...(typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {}) }
 }
-function redactObject(value: Record<string, unknown>): Record<string, unknown> { return JSON.parse(sanitize(JSON.stringify(value))) as Record<string, unknown> }
+function redactObject(value: Record<string, unknown>): Record<string, unknown> { return JSON.parse(JSON.stringify(value, (_key, item: unknown) => typeof item === 'string' ? sanitize(item) : item)) as Record<string, unknown> }
 function sanitize(value: string): string { return value.replace(/(?:sk-|Bearer\s+)[A-Za-z0-9._-]+/gi, '[redacted]').slice(0, 100_000) }
 
 function safeExecutable(command: string): string {
@@ -268,4 +308,21 @@ function safeExecutable(command: string): string {
     }
   }
   throw new Error(`Executável seguro não encontrado no PATH: ${command}`)
+}
+
+/** Responses are synchronous on close, before killing the provider process; late UI replies cannot write. */
+class ProviderApprovals {
+  private readonly pending = new Map<string, (allow: boolean, send?: boolean) => void>()
+  private closed = false
+  constructor(private readonly options: AgentRunOptions) {}
+  ask(id: string, kind: string, details: JsonObject, respond: (allow: boolean) => void): void {
+    if (this.closed || this.options.signal?.aborted || !this.options.requestPermission) { respond(false); return }
+    if (this.pending.has(id)) return
+    const controller = new AbortController()
+    const finish = (allow: boolean, send = true): void => { if (!this.pending.delete(id)) return; if (send) respond(allow); controller.abort() }
+    this.pending.set(id, finish)
+    void this.options.requestPermission(kind, redactObject(details), controller.signal).then(finish, () => finish(false))
+  }
+  cancel(id: string): void { this.pending.get(id)?.(false, false) }
+  close(): void { this.closed = true; for (const finish of this.pending.values()) finish(false) }
 }

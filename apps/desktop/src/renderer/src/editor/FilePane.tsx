@@ -152,7 +152,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
       {dirty && !doc.compare && <button type="button" className="wf-iconchip" aria-label="Comparar com o salvo" title="Comparar com o salvo" onClick={() => update(doc.path, { compare: { before: doc.saved, title: 'Alterações não salvas', split: false } })}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 3H3v14h4M13 3h4v14h-4M10 2v16" /></svg></button>}
       <button type="button" className="wf-iconchip" aria-label="Salvar arquivo" title="Salvar (Ctrl+S)" disabled={!dirty} onClick={() => void save(doc.path)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 2h11l3 3v13H3zM6 2v6h7V2M6 18v-7h8v7" /></svg></button></>}
     <button type="button" className="wf-iconchip" aria-label="Recarregar arquivo" title="Recarregar arquivo" onClick={() => reload(doc.path)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16 7a7 7 0 1 0 1 6M16 2v5h-5" /></svg></button>
-    {focused && !doc.binary && <button type="button" className="wf-iconchip" aria-label="Pesquisar no arquivo" title="Pesquisar no arquivo (Ctrl+F)" onClick={() => find ? setFind(false) : showFind()}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg></button>}
+    {!doc.binary && <button type="button" className="wf-iconchip" aria-label="Pesquisar no arquivo" title="Pesquisar no arquivo (Ctrl+F)" onClick={() => find ? setFind(false) : showFind()}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg></button>}
   </>
   const parts = doc.relative.split('/')
   return <div className={`wf-document ${focused ? 'focused' : ''}`} onKeyDown={keyDown} onKeyDownCapture={escape}>

@@ -8,7 +8,7 @@ import { FilePane } from './FilePane'
 import { splitLineSuffix } from './position'
 import { usePreferences } from './preferences'
 import { useFileDocuments } from './useFileDocuments'
-import { QuickOpen } from './QuickOpen'
+import { QuickOpen } from './QuickOpenDialog'
 import { pushRecent, readRecents } from './quickOpen'
 
 /** Caminho como o agente costuma escrever: aceita `file:///`, `?consulta`, `:linha` e `#L42`. */

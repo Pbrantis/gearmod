@@ -11,7 +11,7 @@ const inlinePattern = /(!\[[^\]]*\]\([^)]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[
 /** Quem estiver acima (o chat) recebe o clique em um arquivo citado e abre o visualizador; sem ele, a citação fica como texto. */
 export const FileOpenContext = React.createContext<((path: string) => void) | null>(null)
 const codeExtensions = /\.(md|mdx|txt|json|jsonc|ya?ml|toml|ini|env|csv|html?|css|scss|less|svg|[cm]?[jt]sx?|vue|svelte|py|rb|go|rs|java|kt|cs|php|sh|bat|ps1|sql|xml|lock|log|c|h|cpp|hpp)$/i
-const withoutLine = (target: string): string => target.replace(/#L?\d+(-L?\d+)?$/, '').replace(/:\d+(:\d+)?$/, '')
+const withoutLine = (target: string): string => target.replace(/[?#].*$/, '').replace(/:\d+(:\d+)?$/, '')
 /** Link de Markdown aponta para um arquivo local (não é URL, âncora nem e-mail). */
 const shellLangs = /^(bash|sh|shell|zsh|powershell|pwsh|ps1|ps|cmd|bat|console|terminal)$/i
 
@@ -34,6 +34,7 @@ function CodeBlock({ code, lang, runnable: allowRun = true }: { code: string; la
 /** De qual arquivo o Markdown veio: com isso as imagens de caminho relativo são carregadas do projeto (`workspace:image`). */
 export interface MarkdownBaseInfo { projectId: string; cardId: string | null; path: string }
 const MarkdownBase = React.createContext<MarkdownBaseInfo | null>(null)
+const MarkdownFiles = React.createContext<{ paths: Map<string, { path: string; directory: boolean }>; open(target: string): void } | null>(null)
 const imageCache = new Map<string, Promise<string>>()
 
 function MdImage({ alt, src }: { alt: string; src: string }): React.JSX.Element {
@@ -62,8 +63,9 @@ function isFileLink(target: string): boolean {
 const isFileCode = (text: string): boolean => /^[\w@.~/\\:-]+$/.test(text) && codeExtensions.test(withoutLine(text))
 
 function FileRef({ target, children, code }: { target: string; children: React.ReactNode; code?: boolean }): React.JSX.Element {
-  const open = React.useContext(FileOpenContext)
-  const ok = open && (code ? isFileCode(target) : isFileLink(target))
+  const open = React.useContext(FileOpenContext), files = React.useContext(MarkdownFiles), resolved = files?.paths.get(target)
+  if (resolved && files) return <button type="button" className={`mdFile ${code ? 'code' : ''}`} title={`${resolved.directory ? 'Mostrar pasta' : 'Abrir arquivo'}: ${resolved.path}`} onClick={(event) => { event.stopPropagation(); files.open(target) }} onDoubleClick={(event) => event.stopPropagation()}>{children}</button>
+  const ok = !files && open && (code ? isFileCode(target) : isFileLink(target))
   if (!ok && !code && /^(https?:\/\/|mailto:)/i.test(target)) return <a className="mdLink ext" href={target} title={target} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void window.agentboard.invoke('app:open-link', { url: target }).catch(() => undefined) }}>{children}</a>
   if (!ok) return code ? <code>{children}</code> : <span className="mdLink" title={target}>{children}</span>
   return <button type="button" className={`mdFile ${code ? 'code' : ''}`} title={`Abrir ${target}`} onClick={() => open(target.replace(/^file:\/\/\/?/i, '').replace(/^\/([A-Za-z]:)/, '$1'))}>{children}</button>
@@ -111,8 +113,17 @@ function buildTree(lines: Array<{ match: RegExpExecArray; line: number }>): Item
   return root
 }
 
-export function Markdown({ source, onToggle, base, runnable = true }: { source: string; onToggle?(line: number, checked: boolean): void; base?: MarkdownBaseInfo; runnable?: boolean }): React.JSX.Element {
+export function Markdown({ source, onToggle, base, runnable = true, onOpenReference }: { source: string; onToggle?(line: number, checked: boolean): void; base?: MarkdownBaseInfo; runnable?: boolean; onOpenReference?(): void }): React.JSX.Element {
   const inherited = React.useContext(MarkdownBase)
+  const context = base ?? inherited, [paths, setPaths] = useState<Map<string, { path: string; directory: boolean }>>(new Map())
+  useEffect(() => {
+    if (!context) { setPaths(new Map()); return }
+    const withoutFences = source.replace(/^\s*(```|~~~)[^\n]*\n[\s\S]*?^\s*\1[^\n]*$/gm, ''), candidates = new Set<string>()
+    for (const match of withoutFences.matchAll(/`([^`\n]+)`|(?<!!)\[[^\]]+\]\(([^)]+)\)/g)) { const value = (match[1] ?? match[2] ?? '').trim(); if (value.length <= 4096 && (match[2] ? isFileLink(value) : /^[\w@.~/\\:-]{2,}$/.test(value))) candidates.add(value) }
+    let alive = true; setPaths(new Map())
+    const timer = window.setTimeout(() => { if (candidates.size) void window.agentboard.invoke('workspace:resolve-references', { projectId: context.projectId, cardId: context.cardId, ...(context.path ? { markdownPath: context.path } : {}), targets: [...candidates].slice(0, 200) }).then((items) => { if (alive) setPaths(new Map(items.map((item) => [item.target, item]))) }).catch(() => undefined) }, 250)
+    return () => { alive = false; window.clearTimeout(timer) }
+  }, [source, context?.projectId, context?.cardId, context?.path])
   // Aceita quebras do Windows (CRLF): o `\r` no fim da linha impedia de reconhecer títulos e listas.
   const lines = source.split(/\r?\n/), blocks: React.ReactNode[] = []
   let i = 0
@@ -160,5 +171,6 @@ export function Markdown({ source, onToggle, base, runnable = true }: { source: 
     while (i < lines.length && lines[i]!.trim() && (i === start || !isSpecial(lines[i]!))) { body.push(lines[i]!.trim()); i += 1 }
     blocks.push(<p key={`b${start}`}>{inline(body.join(' '), `b${start}`)}</p>)
   }
-  return <MarkdownBase.Provider value={base ?? inherited}>{blocks.length ? blocks : <p className="mdEmpty">Nada escrito ainda.</p>}</MarkdownBase.Provider>
+  const files = context ? { paths, open: (target: string): void => { const item = paths.get(target); if (!item) return; onOpenReference?.(); const suffix = /(?::\d+(?::\d+)?|#L?\d+(?:-L?\d+)?)$/.exec(target)?.[0] ?? ''; const line = suffix.startsWith('#') ? `:${suffix.match(/\d+/)?.[0]}` : suffix; window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path: item.path + (item.directory ? '' : line), directory: item.directory } })) } } : null
+  return <MarkdownBase.Provider value={context}><MarkdownFiles.Provider value={files}>{blocks.length ? blocks : <p className="mdEmpty">Nada escrito ainda.</p>}</MarkdownFiles.Provider></MarkdownBase.Provider>
 }

@@ -1,7 +1,9 @@
+import { AgentPermissions } from './AgentPermissions'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAtMention } from './AtMention'
 import { defaultPermissionMode, permissionModes, type AgentProfile, type Chat, type ChatMessage, type Effort, type PermissionMode, type Project } from '@agentboard/contracts'
 import { PopMenu } from './PopMenu'
-import { ChatSearch } from './ChatSearch'
+import { ChatSearch, useChatSearchShortcut } from './ChatSearch'
 import { ChatMoreMenu, useDockSize } from './CardChat'
 import { CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { Select } from './Select'
@@ -29,7 +31,7 @@ const readSaved = (projectId: string): Saved | null => { try { return JSON.parse
 
 /** Textos de cada chat do projeto: o livre e o da Constituição. */
 const modes = {
-  free: { eyebrow: 'Chat livre', title: 'Conversa livre', chip: 'Sem card · direto no projeto', empty: 'Chat livre: converse sobre o projeto e peça alterações quando quiser. Se virar um planejamento, peça e eu crio o card aqui mesmo.', placeholder: 'Converse ou peça uma alteração…', badge: '✎ Pode alterar arquivos', badgeTip: 'Altera arquivos do projeto quando você pedir, conforme o modo escolhido' },
+  free: { eyebrow: 'Chat livre', title: 'Conversa livre', chip: 'Sem card · direto no projeto', empty: 'Converse sobre o projeto ou peça uma alteração. O agente pode perguntar se você prefere criar um card para documentá-la ou fazer direto no chat.', placeholder: 'Converse ou peça uma alteração…', badge: '✎ Pode alterar arquivos', badgeTip: 'Altera arquivos do projeto quando você pedir, conforme o modo escolhido' },
   constitution: { eyebrow: 'Constituição', title: 'Constituição do projeto', chip: 'Do projeto · não altera arquivos', empty: 'Chat da Constituição: os princípios que todo card do projeto respeita. Peça para criar, revisar ou mudar um princípio; eu leio o projeto, proponho e só gravo com o seu acordo.', placeholder: 'Ex.: crie a Constituição a partir do projeto…', badge: '§ Constituição', badgeTip: 'Só escreve a Constituição; não altera arquivos nem cards' }
 } as const
 
@@ -41,6 +43,8 @@ const modes = {
 export function FreeChat({ project, profiles, chat: start, close, onConverted, changed, mode = 'free', prompt: firstPrompt }: { project: Project; profiles: AgentProfile[]; chat?: Chat; close(): void; onConverted(cardId: string): void; changed(): void; mode?: 'free' | 'constitution'; prompt?: string }): React.JSX.Element {
   const text = modes[mode]
   const { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth } = useDockSize()
+  const chatSearch = useChatSearchShortcut(expanded)
+  useEffect(() => { const navigate = (): void => { if (expanded) close() }; window.addEventListener('agentboard:select-view', navigate); return () => window.removeEventListener('agentboard:select-view', navigate) }, [expanded, close])
   const [chat, setChat] = useState<Chat | undefined>(start), [messages, setMessages] = useState<ChatMessage[]>([]), [input, setInput] = useState(''), [live, setLive] = useState(''), [error, setError] = useState('')
   const saved = useMemo(() => (mode === 'free' ? readSaved(project.id) : null), [project.id, mode])
   const [profileId, setProfileId] = useState(start?.profileId ?? (saved && profiles.some((item) => item.id === saved.profileId) ? saved.profileId : undefined) ?? profiles[0]?.id ?? ''), [busy, setBusy] = useState(Boolean(start?.busy))
@@ -73,6 +77,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
     return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc) }
   }, [modeMenu])
   const attach = useAttachments({ projectId: project.id, cardId: null })
+  const mention = useAtMention({ projectId: project.id, cardId: null, input, setInput })
   useContextText({ projectId: project.id, cardId: null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []))
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
@@ -122,16 +127,17 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
   const typed = useTypewriter(live), busySince = useBusySince(busy)
   const agent = profiles.find((item) => item.id === profileId)
-  return <section className={`dock open ${expanded ? 'full' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label={text.eyebrow} style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
+  return <section ref={chatSearch.ref} className={`dock open ${expanded ? 'full' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label={text.eyebrow} style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
     {!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label={viewing ? 'Ajustar a largura do arquivo' : 'Ajustar a largura do chat'} onPointerDown={viewing ? viewer.startResize : startResize} onDoubleClick={viewing ? undefined : resetWidth} />}
     {viewing && viewer.request && <><FocusedFile projectId={project.id} cardId={null} chatId={chat?.id} request={viewer.request} close={viewer.close} setDirty={viewer.setDirty} style={{ width: viewer.width }} /><ViewGrip viewer={viewer} /></>}
     <FileOpenContext.Provider value={openFile}><QuestionAnswerContext.Provider value={answerQuestions}>
     <div className="dock-in" style={expanded ? undefined : { width }}>
       <div className="dock-head" draggable={Boolean(chat?.id) && !pop} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest('button,input,textarea,.dock-tools')) setExpanded(!expanded) }} onDragStart={(event) => { if ((event.target as HTMLElement).closest('button,input,textarea,.dock-tools')) { event.preventDefault(); return }; event.preventDefault(); void detachChat({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><div className="top"><div><div className="headrow"><div className="eyebrow">{text.eyebrow}</div></div><h2>{mode === 'constitution' ? text.title : chat?.title || text.title}</h2><div className="ctxline"><span className="ctxchip">{text.chip}</span></div></div>
-        <div className="dock-tools"><div className="dock-tools-wide"><ChatSearch messages={messages} log={log} />{chat?.id && <PopMenu target={{ kind: 'chat', projectId: project.id, chatId: chat.id }} />}<button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div><div className="dock-tools-compact"><ChatMoreMenu messages={messages} log={log} projectId={project.id} chatId={chat?.id} expand={() => setExpanded(true)} close={close} /><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div></div>
+        <div className="dock-tools"><div className="dock-tools-wide"><ChatSearch messages={messages} log={log} request={chatSearch.request} />{chat?.id && <PopMenu target={{ kind: 'chat', projectId: project.id, chatId: chat.id }} />}<button type="button" className="ibtn tip" data-tip={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} aria-label={expanded ? 'Voltar para o canto' : 'Expandir em tela cheia'} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div><div className="dock-tools-compact"><ChatMoreMenu searchRequest={chatSearch.request} messages={messages} log={log} projectId={project.id} chatId={chat?.id} expand={() => setExpanded(true)} close={close} /><button className="x" aria-label="Fechar chat" onClick={close}><CloseIcon /></button></div></div></div></div>
       <div className="chatlog" ref={log}>
         {!messages.length && !live && <div className="msg sys">{text.empty}</div>}
         <ChatMessageList messages={messages} busy={busy} />
+        <AgentPermissions chatId={chat?.id} />
         {live && <div className="msg agent"><div className="md chatmd"><AgentMessage source={typed} live /><span className="caret" /></div></div>}
         {busy && <ThinkingIndicator purpose="free" messages={messages} since={busySince} />}
       </div>
@@ -141,7 +147,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
         <div className={`cbox ${attach.dragging ? 'dropping' : ''}`} {...attach.dropProps}>
           {attach.files.length > 0 && <div className="cbox-top"><AttachmentChips files={attach.files} remove={attach.remove} /></div>}
           <AttachButton onClick={() => void attach.choose()} />
-          <textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : text.placeholder} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
+          {mention.menu}<textarea rows={1} aria-label="Mensagem para o agente" value={input} placeholder={dictation.recording ? 'Ouvindo…' : text.placeholder} ref={mention.ref} onSelect={(e) => mention.caret(e.currentTarget.selectionStart)} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart) }} onKeyDown={(e) => { if (mention.keyDown(e)) return; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} />
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
           {busy && <button type="button" className="sendbtn stop tip" data-tip="Parar" aria-label="Parar" onClick={() => void stop()}><StopIcon /></button>}<button type="button" className="sendbtn tip" data-tip={busy ? 'Colocar na fila (Enter)' : 'Enviar (Enter)'} aria-label={busy ? 'Colocar na fila' : 'Enviar'} hidden={!input.trim()} onClick={() => void send()}><SendIcon /></button>
           <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? 'Parar de ouvir' : dictation.transcribing ? 'Transcrevendo…' : voiceReady ? 'Ditar por voz' : 'Instalar o ditado por voz'} aria-label="Ditar por voz" aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : void startVoiceInstall())}>{dictation.transcribing ? <span className="spin sm" /> : <MicIcon />}</button>

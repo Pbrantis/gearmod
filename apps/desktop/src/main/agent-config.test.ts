@@ -36,12 +36,12 @@ describe('AgentConfigRepository', () => {
     database.close()
   })
 
-  it('rejects modes that do not exist for the purpose or still need the approval screen', async () => {
+  it('rejects invalid modes and accepts modes with chat approval', async () => {
     const { database, claude, codex, card, configs } = await setup()
     expect(() => configs.set(card.id, 'execution', { profileId: claude.id, model: null, effort: null, mode: 'plan' })).toThrow('não existe para executar')
     expect(() => configs.set(card.id, 'planning', { profileId: claude.id, model: null, effort: null, mode: 'auto' })).toThrow('não existe para planejar')
-    expect(() => configs.set(card.id, 'execution', { profileId: claude.id, model: null, effort: null, mode: 'manual' })).toThrow('tela de aprovação')
-    expect(() => configs.set(card.id, 'execution', { profileId: codex.id, model: null, effort: null, mode: 'on_request' })).toThrow('tela de aprovação')
+    expect(() => configs.set(card.id, 'execution', { profileId: claude.id, model: null, effort: null, mode: 'manual' })).not.toThrow()
+    expect(() => configs.set(card.id, 'execution', { profileId: codex.id, model: null, effort: null, mode: 'on_request' })).not.toThrow()
     expect(() => configs.set(card.id, 'execution', { profileId: codex.id, model: null, effort: null, mode: 'accept_edits' })).toThrow('não existe')
     database.close()
   })

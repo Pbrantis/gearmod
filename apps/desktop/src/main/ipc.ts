@@ -24,7 +24,7 @@ import type { GitManager } from './git-manager'
 import { fileVersions } from './file-versions'
 import { grepProject } from './workspace-grep'
 import { nativeGit } from './worktrees'
-import { allowedPath, createProjectItem, listProjectDirectory, readProjectFile, renameProjectItem, saveMarkdownImage, searchProjectFiles, trashablePath, writeProjectFile } from './file-viewer'
+import { allowedPath, createProjectItem, listProjectDirectory, readProjectFile, resolveProjectReferences, renameProjectItem, saveMarkdownImage, searchProjectFiles, trashablePath, writeProjectFile } from './file-viewer'
 import type { CardHistoryService } from './history'
 import type { PlaywrightCliService } from './playwright-cli'
 import type { FileWatchService } from './file-watch'
@@ -54,7 +54,7 @@ interface Services {
   projects: ProjectRepository
   board: BoardRepository
   git: GitService
-  chooseDirectory(): Promise<string | null>
+  chooseDirectory(defaultPath?: string): Promise<string | null>
   chooseFiles(): Promise<string[]>
   agentProbes: AgentProbeService
   conversations: ConversationRepository
@@ -125,6 +125,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'workspace:trash': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await trashablePath(workspaceRoots(input), input.path); if (!services.trashItem) throw new Error('Lixeira indisponível'); await services.trashItem(path); return {} },
     'workspace:grep': (input: { projectId: string; cardId: string | null; query: string; caseSensitive: boolean; wholeWord: boolean; regex: boolean; include?: string | undefined }) => grepProject(workspaceRoots(input), input),
     'workspace:save-image': (input: { projectId: string; cardId: string | null; markdownPath: string; data: string; mime: string }) => saveMarkdownImage(workspaceRoots(input), input.markdownPath, input.data, input.mime),
+    'workspace:resolve-references': (input: { projectId: string; cardId: string | null; markdownPath?: string; targets: string[] }) => resolveProjectReferences(workspaceRoots(input), input.targets, input.markdownPath),
     'workspace:search': (input: { projectId: string; cardId: string | null; query: string; fuzzy?: boolean | undefined }) => searchProjectFiles(workspaceRoots(input), input.query, input.fuzzy),
     'workspace:read': (input: { projectId: string; cardId: string | null; path: string }) => readProjectFile(workspaceRoots(input), input.path, true),
     'workspace:versions': (input: { projectId: string; cardId: string | null; path: string }) => fileVersions(workspaceRoots(input), input.path, { git: nativeGit, baseFor: (top) => input.cardId ? services.worktrees.baseFor(input.cardId, top) : Promise.resolve(null) }),
@@ -169,7 +170,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'projects:update': (input: { projectId: string; name: string; icon?: string | null }) => services.projects.update(input),
     'projects:inspect': (input: { localPath: string }) => services.git.inspect(input.localPath),
     'projects:branches': (input: { localPath: string }) => services.git.branches(input.localPath),
-    'projects:choose-directory': () => services.chooseDirectory(),
+    'projects:choose-directory': (input?: { projectId: string }) => services.chooseDirectory(input ? services.projects.get(input.projectId).localPath : undefined),
     'projects:set-profiles': async (input: { projectId: string; profileIds: string[] }) => {
       if (!input.profileIds.length) return services.projects.setProfiles(input.projectId, [])
       const probes = await Promise.all(input.profileIds.map((profileId) => services.agentProbes.probe(profileId)))
@@ -294,12 +295,16 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'runs:event': (input: { runId: string; eventType: string; payload: Record<string, unknown> }) => services.conversations.appendEvent(input.runId, input.eventType, input.payload)
     , 'agents:start': (input: { chatId: string; prompt: string; planning: boolean; attachments?: string[]; choice?: { model?: string | null; effort?: Effort | null; mode?: PermissionMode } }) => services.orchestrator.start(input)
     , 'files:choose': () => services.chooseFiles()
+    , 'agents:permissions': (input: { chatId: string }) => services.orchestrator.permissions.list(input.chatId)
+    , 'agents:permission-decide': (input: { runId: string; requestId: string; allow: boolean }) => ({ decided: services.orchestrator.permissions.decide(input.runId, input.requestId, input.allow) })
     , 'agents:cancel': (input: { runId: string }) => ({ cancelled: services.orchestrator.cancel(input.runId) })
     , 'plans:list': (input: { cardId: string }) => services.conversations.listPlans(input.cardId)
     , 'plans:approve': (input: { planId: string }) => services.conversations.approvePlan(input.planId)
     , 'worktrees:get': (input: { cardId: string }) => services.worktrees.get(input.cardId)
     , 'worktrees:prepare': (input: { cardId: string }) => services.worktrees.prepare(input.cardId)
     , 'worktrees:snapshot': (input: { cardId: string }) => services.worktrees.snapshot(input.cardId)
+    , 'worktrees:candidates': (input: { cardId: string }) => services.worktrees.candidates(input.cardId)
+    , 'worktrees:link': (input: { cardId: string; fromCardId: string | null }) => { services.worktrees.link(input.cardId, input.fromCardId); return {} }
     , 'tests:run': (input: { cardId: string; executable: string; args: string[] }) => services.quality.runTest(input.cardId, input.executable, input.args)
     , 'quality:status': (input: { cardId: string }) => services.quality.status(input.cardId)
     , 'reviews:prepare-local': (input: { cardId: string }) => services.quality.prepareLocalReview(input.cardId)
@@ -309,17 +314,17 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'git:detect': (input: { projectId: string }) => services.gitManager.detect(input.projectId)
     , 'git:setup-targets': (input: { projectId: string }) => services.gitManager.setupTargets(input.projectId)
     , 'git:setup': (input: { projectId: string; sourceId: string; mode: 'init' | 'origin'; url?: string }) => services.gitManager.setup(input)
-    , 'git:graph': (input: { projectId: string; sourceId: string; limit?: number }) => services.gitManager.graph(input.projectId, input.sourceId, input.limit)
+    , 'git:graph': (input: { projectId: string; sourceId: string; cardId?: string | null; limit?: number }) => services.gitManager.graph(input.projectId, input.sourceId, input.limit, input.cardId)
     , 'git:commit-detail': (input: { sourceId: string; hash: string }) => services.gitManager.commitDetail(input.sourceId, input.hash)
     , 'git:changes': (input: { sourceId: string; cardId: string | null }) => services.gitManager.changes(input.sourceId, input.cardId)
     , 'git:commit-diff': (input: { sourceId: string; hash: string; path: string }) => services.gitManager.commitDiff(input.sourceId, input.hash, input.path)
     , 'git:diff': (input: { sourceId: string; cardId: string | null; path: string; staged: boolean }) => services.gitManager.diff(input.sourceId, input.cardId, input.path, input.staged)
     , 'git:stage': (input: { sourceId: string; cardId: string | null; paths: string[]; stage: boolean }) => services.gitManager.stage(input.sourceId, input.cardId, input.paths, input.stage)
     , 'git:commit': (input: { sourceId: string; cardId: string | null; message: string; description?: string; amend?: boolean; paths?: string[] }) => services.gitManager.commit(input)
-    , 'git:sync': (input: { sourceId: string; cardId: string | null; action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop'; pull?: 'ff' | 'ff-only' | 'rebase' }) => services.gitManager.sync(input.sourceId, input.cardId, input.action, input.pull)
-    , 'git:branch-action': (input: { sourceId: string; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }) => services.gitManager.branchAction(input.sourceId, input)
-    , 'git:commit-action': (input: { sourceId: string; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }) => services.gitManager.commitAction(input.sourceId, input)
-    , 'git:stash-action': (input: { sourceId: string; action: 'apply' | 'pop' | 'drop'; ref: string }) => services.gitManager.stashAction(input.sourceId, input)
+    , 'git:sync': (input: { sourceId: string; cardId: string | null; action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop'; pull?: 'ff' | 'ff-only' | 'rebase'; force?: boolean }) => services.gitManager.sync(input.sourceId, input.cardId, input.action, input.pull, input.force)
+    , 'git:branch-action': (input: { sourceId: string; cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }) => services.gitManager.branchAction(input.sourceId, input)
+    , 'git:commit-action': (input: { sourceId: string; cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }) => services.gitManager.commitAction(input.sourceId, input)
+    , 'git:stash-action': (input: { sourceId: string; cardId?: string | null; action: 'apply' | 'pop' | 'drop'; ref: string }) => services.gitManager.stashAction(input.sourceId, input)
     , 'git:conflicts': (input: { sourceId: string; cardId?: string | null | undefined }) => services.gitManager.conflicts(input.sourceId, input.cardId)
     , 'git:conflicts-all': (input: { projectId: string }) => services.gitManager.conflictsAll(input.projectId)
     , 'git:file-versions': (input: { sourceId: string; cardId: string | null; path: string; mode: 'unstaged' | 'staged' | 'commit'; hash?: string | undefined }) => services.gitManager.fileVersions(input.sourceId, input.cardId, input.path, input.mode, input.hash)

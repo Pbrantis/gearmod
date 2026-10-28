@@ -11,6 +11,15 @@ function describe(name: string, input: Json): ToolActivity {
   return { title: short(target ? `${label} ${target}` : label, 90), detail: short(JSON.stringify(input, null, 2), 800) }
 }
 
+/** Arquivos que o agente alterou (ferramentas de escrita do Claude): usados para perceber trabalho feito na worktree de outro card. */
+export function toolEditedFiles(type: string, payload: Json): string[] {
+  if (type !== 'claude/assistant') return []
+  const content = asObject(payload.message).content
+  return (Array.isArray(content) ? content : []).map(asObject)
+    .filter((block) => block.type === 'tool_use' && ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(String(block.name)))
+    .map((block) => asObject(block.input).file_path ?? asObject(block.input).notebook_path).filter((value): value is string => typeof value === 'string')
+}
+
 /** Extrai as ferramentas usadas de um evento do Claude (`tool_use` em mensagens do assistente) ou do Codex (itens iniciados). */
 export function toolActivities(type: string, payload: Json): ToolActivity[] {
   if (type === 'claude/assistant') {

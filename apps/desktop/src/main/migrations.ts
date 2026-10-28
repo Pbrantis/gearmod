@@ -522,6 +522,14 @@ export const migrations: readonly Migration[] = [
       // Quem marcou cada item do checklist de teste (usuário ou agente) e quando: JSON { "<texto do item>": { by, at } }.
       db.exec(`ALTER TABLE card_checklists ADD COLUMN marks TEXT;`)
     }
+  },
+  {
+    version: 29,
+    checksum: 'sha256:agentboard-shared-worktree-v29-2026-10-27',
+    up(db) {
+      // Card que usa a worktree de outro card (em vez de criar a sua): guarda quem é o dono. Vazio = o card tem a própria.
+      db.exec(`ALTER TABLE cards ADD COLUMN worktree_card_id TEXT;`)
+    }
   }
 ]
 

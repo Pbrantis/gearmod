@@ -26,7 +26,7 @@ export function WorkflowPanel({ projectId }: { projectId: string }): React.JSX.E
   }, [config, projectId])
   if (!config) return <p className="cx-muted">{message || 'Carregando…'}</p>
   const set = (patch: Partial<WorkflowConfig>): void => setConfig({ ...config, ...patch })
-  const choose = async (key: 'sddPath' | 'artifactsDir'): Promise<void> => { const path = await window.agentboard.invoke('projects:choose-directory', undefined); if (path) set({ [key]: path }) }
+  const choose = async (key: 'sddPath' | 'artifactsDir'): Promise<void> => { try { const path = await window.agentboard.invoke('projects:choose-directory', { projectId }); if (path) set({ [key]: path }) } catch (reason) { setMessage(plainError(reason)) } }
   const openFolder = (which: 'artifacts' | 'sdd'): void => { void window.agentboard.invoke('workflow:open-path', { projectId, which }).catch((reason) => setMessage(plainError(reason))) }
   const harness = config.harness, setHarness = (patch: Partial<WorkflowConfig['harness']>): void => set({ harness: { ...harness, ...patch } })
   const optional = (value: string): number | null => value.trim() === '' ? null : Number(value)

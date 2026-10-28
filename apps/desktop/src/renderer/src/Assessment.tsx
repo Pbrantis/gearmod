@@ -54,7 +54,7 @@ export function AssessmentDialog({ card, close, changed }: { card: Card; close()
     <header><div><div className="eyebrow">Complexidade e decisões</div><h2>{card.title || 'Card sem título'}</h2></div><button type="button" className="x" onClick={close} aria-label="Fechar">×</button></header>
     <div className="cx-tabrow"><div className="tabs" role="tablist">{([['avaliacao', 'Avaliação'], ['decisoes', `Decisões${history?.decisions.length ? ` (${history.decisions.length})` : ''}`], ['entendimento', 'Entendimento'], ['metricas', 'Métricas'], ['eventos', 'Eventos']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div><button type="button" className="mini secondary cx-open" onClick={() => { void window.agentboard.invoke('history:open-folder', { cardId: card.id }).catch((reason) => setError(plainError(reason))) }}>Abrir artefatos</button></div>
     {error && <div className="cx-error" role="alert">{error}</div>}
-    {!history ? <p className="cx-muted">Carregando…</p> : <div className="cx-body">
+    {!history ? <p className="cx-muted">Carregando…</p> : <div className={`cx-body ${tab === 'decisoes' ? 'cx-body-decisions' : ''}`}>
       {tab === 'avaliacao' && <div className="cx-grid">
         <aside className="cx-versions">{assessments.length ? [...assessments].reverse().map((item) => <button type="button" key={item.id} className={`cx-version ${item.id === current?.id ? 'on' : ''}`} onClick={() => { setSelected(item.id); setContesting(false) }}>
           <span className={`cx-dot ${item.level}`} /><b>v{item.version}</b><span>{item.preliminary ? '~' : ''}{item.total} pts · {levelLabels[item.level]}</span><small>{triggerLabels[item.trigger]} · {item.actor === 'user' ? 'você' : item.model ?? item.provider ?? 'agente'}</small><small>{formatDate(item.createdAt)}</small>
@@ -64,7 +64,7 @@ export function AssessmentDialog({ card, close, changed }: { card: Card; close()
       </div>}
       {tab === 'decisoes' && <Decisions history={history} set={(decisionId, status) => apply(window.agentboard.invoke('history:set-decision', { decisionId, status }))} add={(statement) => apply(window.agentboard.invoke('history:add-decision', { cardId: card.id, kind: 'other', statement }))} />}
       {tab === 'entendimento' && <Understanding history={history} />}
-      {tab === 'metricas' && <Metrics runs={metrics} />}
+      {tab === 'metricas' && <Metrics runs={metrics} simple={card.type === 'minor'} />}
       {tab === 'eventos' && <Events history={history} rebuild={async () => { try { const result = await window.agentboard.invoke('history:rebuild', { cardId: card.id }); setError(`Reconstruído do history.jsonl: ${result.events} eventos, ${result.assessments} avaliações e ${result.decisions} decisões que faltavam no banco.`); await load(); changed() } catch (reason) { setError(plainError(reason)) } }} />}
     </div>}
   </div></div>
@@ -101,11 +101,11 @@ function AssessmentView({ item, previous, latest, workflow, method, contest, cho
 function ContestForm({ current, cancel, submit }: { current?: Assessment; cancel?(): void; submit(scores: DimensionScores, reason: string): Promise<void> }): React.JSX.Element {
   const [scores, setScores] = useState<DimensionScores>(() => current?.scores ?? { escopo: 1, acoplamento: 1, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }), [reason, setReason] = useState(''), [busy, setBusy] = useState(false)
   const changed = useMemo(() => !current || complexityDimensions.some((dimension) => scores[dimension] !== current.scores[dimension]), [scores, current])
-  return <form className="cx-contest" onSubmit={(event) => { event.preventDefault(); setBusy(true); void submit(scores, reason).finally(() => setBusy(false)) }}>
+  return <form className="cx-contest" onSubmit={(event) => { event.preventDefault(); if (busy || !changed || !reason.trim()) return; setBusy(true); void submit(scores, reason.trim()).finally(() => setBusy(false)) }}>
     <h3>{current ? `Corrigir a avaliação v${current.version}` : 'Registrar uma avaliação'}</h3>
     <p className="cx-muted">{current ? 'A avaliação do agente continua no histórico; a sua vira uma versão nova, marcada como correção do usuário.' : 'Notas de 0 a 3 por dimensão; os pesos do projeto calculam a pontuação.'}</p>
     {complexityDimensions.map((dimension) => <label key={dimension} className="cx-slider"><span>{dimensionLabels[dimension]}</span><span className="cx-pick">{[0, 1, 2, 3].map((value) => <button type="button" key={value} className={scores[dimension] === value ? 'on' : ''} onClick={() => setScores({ ...scores, [dimension]: value })}>{value}</button>)}</span>{current && current.scores[dimension] !== scores[dimension] && <small>era {current.scores[dimension]}</small>}</label>)}
-    <label className="cx-reason">Motivo (fica registrado como evidência)<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required placeholder="Ex.: o endpoint de notificações já existe no backend; o escopo é só no app." /></label>
+    <label className="cx-reason"><span className="cx-reason-label">Motivo da correção <span>Obrigatório</span></span><span className="cx-reason-hint">Explique o que mudou ou por que as notas precisam ser ajustadas. O motivo ficará registrado como evidência.</span><textarea className="in" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={4000} required placeholder="Ex.: o endpoint de notificações já existe no backend; o escopo é só no app." /></label>
     <div className="cx-actions">{cancel && <button type="button" className="mini secondary" onClick={cancel}>Cancelar</button>}<button type="submit" className="mini" disabled={busy || !changed || !reason.trim()}>Registrar correção</button></div>
   </form>
 }
@@ -146,7 +146,7 @@ const fmt = (value: number): string => value.toLocaleString('pt-BR')
 const compact = (value: number): string => (value < 1000 ? String(value) : value < 1_000_000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)} mil` : `${(value / 1_000_000).toFixed(1)} mi`).replace('.', ',')
 const seconds = (ms: number): string => ms < 90_000 ? `${Math.round(ms / 1000)} s` : ms < 5_400_000 ? `${Math.round(ms / 60_000)} min` : `${(ms / 3_600_000).toFixed(1).replace('.', ',')} h`
 
-function Metrics({ runs }: { runs: RunMetric[] }): React.JSX.Element {
+function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): React.JSX.Element {
   const [view, setView] = useState<'dashboard' | 'tabela'>(() => { try { return localStorage.getItem('agentboard.metricsView') === 'tabela' ? 'tabela' : 'dashboard' } catch { return 'dashboard' } })
   const [runsOpen, setRunsOpen] = useState(false)
   const choose = (value: 'dashboard' | 'tabela'): void => { setView(value); try { localStorage.setItem('agentboard.metricsView', value) } catch { /* só conveniência */ } }
@@ -156,6 +156,8 @@ function Metrics({ runs }: { runs: RunMetric[] }): React.JSX.Element {
   const tests = runs.filter((run) => run.purpose === 'test'), average = (items: RunMetric[]): number => Math.round(items.reduce((sum, run) => sum + run.input + run.output, 0) / items.length)
   const withCli = tests.filter((run) => run.usedPlaywrightCli), withoutCli = tests.filter((run) => !run.usedPlaywrightCli)
   const steps = ['planning', 'execution', 'test'].map((key) => { const items = runs.filter((run) => run.purpose === key); return { key, runs: items.length, input: items.reduce((s, r) => s + r.input, 0), output: items.reduce((s, r) => s + r.output, 0), cached: items.reduce((s, r) => s + r.cached, 0), ms: items.reduce((s, r) => s + (r.durationMs ?? 0), 0) } }).filter((step) => step.runs > 0)
+  const singleAgent = simple && steps.length === 1 && steps[0]?.key !== 'test'
+  const stepName = (purpose: string | null): string => singleAgent && purpose === steps[0]?.key ? 'Agente' : stepLabels[purpose ?? ''] ?? purpose ?? '—'
   const biggest = Math.max(1, ...steps.map((step) => step.input + step.output))
   return <div className="cx-metrics">
     <div className="cx-sechead"><h3>Métricas das execuções</h3><span className="cx-count">{runs.length}</span><span className="cx-spacer" />
@@ -170,16 +172,16 @@ function Metrics({ runs }: { runs: RunMetric[] }): React.JSX.Element {
         <div className="cx-tile"><span>Tempo de execução</span><b>{seconds(total.ms)}</b></div>
       </div>
       <section className="cx-card"><h4>Tokens por etapa</h4>
-        <div className="cx-bars">{steps.map((step) => <div className="cx-bar" key={step.key}><span className="cx-bl">{stepLabels[step.key]}<small>{step.runs} {step.runs === 1 ? 'execução' : 'execuções'} · {seconds(step.ms)}</small></span>
+        <div className="cx-bars">{steps.map((step) => <div className="cx-bar" key={step.key}><span className="cx-bl">{stepName(step.key)}<small>{step.runs} {step.runs === 1 ? 'execução' : 'execuções'} · {seconds(step.ms)}</small></span>
           <div className="cx-track" title={`${fmt(step.input)} lidos · ${fmt(step.output)} escritos · ${fmt(step.cached)} do cache`}><i className="in" style={{ width: `${(step.input / biggest) * 100}%` }} /><i className="out" style={{ width: `${(step.output / biggest) * 100}%` }} /></div>
           <b>{compact(step.input + step.output)}</b></div>)}</div>
         <div className="cx-legend"><span><i className="in" />lidos</span><span><i className="out" />escritos</span></div></section>
       <section className="cx-card"><h4><button type="button" className="cx-fold" aria-expanded={runsOpen} onClick={() => setRunsOpen(!runsOpen)}><span className="cx-chev">{runsOpen ? '▾' : '▸'}</span>Execuções<span className="cx-count">{runs.length}</span></button></h4>
         {runsOpen && <ul className="cx-runs">{[...runs].reverse().map((run) => <li key={run.runId}><span className={`cx-dot ${run.status === 'failed' ? 'complex' : run.status === 'running' ? 'medium' : 'simple'}`} />
-          <div><b>{stepLabels[run.purpose ?? ''] ?? run.purpose ?? '—'}</b>{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}<small>{[run.provider, run.model, run.effort].filter(Boolean).join(' · ') || '—'}</small></div>
+          <div><b>{stepName(run.purpose)}</b>{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}<small>{[run.provider, run.model, run.effort].filter(Boolean).join(' · ') || '—'}</small></div>
           <span className="cx-run-n">{compact(run.input + run.output)}<small>tokens</small></span><span className="cx-run-n">{run.durationMs === null ? '—' : seconds(run.durationMs)}<small>duração</small></span><span className="cx-run-n">{run.costUsd === null ? '—' : `US$ ${run.costUsd.toFixed(2)}`}<small>custo</small></span></li>)}</ul>}</section>
-    </> : <div className="cx-tablewrap"><table className="cx-table cx-mtable"><thead><tr><th>Etapa</th><th>Status</th><th>Agente / modelo</th><th>Esforço</th><th>Duração</th><th>Entrada</th><th>Cache</th><th>Saída</th><th>Contexto enviado</th><th>Custo</th></tr></thead><tbody>
-      {runs.map((run) => <tr key={run.runId}><td>{stepLabels[run.purpose ?? ''] ?? run.purpose ?? '—'}{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}</td><td><span className={`cx-pill ${run.status === 'failed' ? 'bad' : run.status === 'running' ? 'warn' : 'ok'}`}>{run.status}</span></td><td>{[run.provider, run.model].filter(Boolean).join(' · ') || '—'}</td><td>{run.effort ?? '—'}</td><td>{run.durationMs === null ? '—' : seconds(run.durationMs)}</td><td className="num">{fmt(run.input)}</td><td className="num">{fmt(run.cached)}</td><td className="num">{fmt(run.output)}</td><td className="num">{run.promptChars === null ? '—' : `${fmt(run.promptChars)} caract.`}</td><td className="num">{run.costUsd === null ? <span className="cx-muted">não informado</span> : `US$ ${run.costUsd.toFixed(4)}`}</td></tr>)}
+    </> : <div className="cx-tablewrap"><table className="cx-table cx-mtable"><thead><tr><th>Etapa</th><th>Status</th><th>Agente / modelo</th><th>Esforço</th><th className="num">Duração</th><th className="num">Entrada</th><th className="num">Cache</th><th className="num">Saída</th><th className="num">Contexto enviado</th><th className="num">Custo</th></tr></thead><tbody>
+      {runs.map((run) => <tr key={run.runId}><td>{stepName(run.purpose)}{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}</td><td><span className={`cx-pill ${run.status === 'failed' ? 'bad' : run.status === 'running' ? 'warn' : 'ok'}`}>{run.status}</span></td><td>{[run.provider, run.model].filter(Boolean).join(' · ') || '—'}</td><td>{run.effort ?? '—'}</td><td className="num">{run.durationMs === null ? '—' : seconds(run.durationMs)}</td><td className="num">{fmt(run.input)}</td><td className="num">{fmt(run.cached)}</td><td className="num">{fmt(run.output)}</td><td className="num">{run.promptChars === null ? '—' : `${fmt(run.promptChars)} caract.`}</td><td className="num">{run.costUsd === null ? <span className="cx-muted">não informado</span> : `US$ ${run.costUsd.toFixed(4)}`}</td></tr>)}
       <tr className="cx-total"><td colSpan={5}>Total ({runs.length} execuções)</td><td className="num">{fmt(total.input)}</td><td className="num">{fmt(total.cached)}</td><td className="num">{fmt(total.output)}</td><td /><td className="num">US$ {total.cost.toFixed(4)}{total.unknown ? ` + ${total.unknown} sem valor` : ''}</td></tr>
     </tbody></table></div>}
     {withCli.length > 0 && <p className="cx-muted">Testes com Playwright CLI: {withCli.length} execução(ões), média de {fmt(average(withCli))} tokens{withoutCli.length ? `; sem ele: ${withoutCli.length}, média de ${fmt(average(withoutCli))} tokens. A diferença depende do que cada teste verificou; compare cards parecidos.` : '. Ainda não há teste sem ele neste card para comparar.'}</p>}

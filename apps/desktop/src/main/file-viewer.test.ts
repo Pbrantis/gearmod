@@ -2,13 +2,23 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createProjectItem, listProjectDirectory, readProjectFile, renameProjectItem, saveMarkdownImage, searchProjectFiles, trashablePath, validateName, writeProjectFile } from './file-viewer'
+import { createProjectItem, listProjectDirectory, readProjectFile, resolveProjectReferences, renameProjectItem, saveMarkdownImage, searchProjectFiles, trashablePath, validateName, writeProjectFile } from './file-viewer'
 
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-file-')); dirs.push(dir); return dir }
 
 describe('readProjectFile', () => {
+  it('resolve referências relativas e pastas do projeto, sem adivinhar nomes ambíguos ou sair das raízes', async () => {
+    const root = await temp(), outside = await temp()
+    await mkdir(join(root, 'docs')); await mkdir(join(root, 'src')); await mkdir(join(root, 'other'))
+    await writeFile(join(root, 'docs', 'readme.md'), '# documento'); await writeFile(join(root, 'docs', 'guia.md'), '# guia')
+    await writeFile(join(root, 'src', 'unique.ts'), 'ok'); await writeFile(join(root, 'src', 'same.ts'), 'a'); await writeFile(join(root, 'other', 'same.ts'), 'b'); await writeFile(join(outside, 'secret.md'), 'secret')
+    const items = await resolveProjectReferences([root], ['guia.md', 'src', 'unique.ts', 'same.ts', join(outside, 'secret.md'), 'nao-existe.md'], join(root, 'docs', 'readme.md'))
+    expect(items.map((item) => item.target)).toEqual(['guia.md', 'src', 'unique.ts'])
+    expect(items.find((item) => item.target === 'src')).toMatchObject({ directory: true })
+    expect(items.find((item) => item.target === 'guia.md')?.path).toBe(join(await realpath(root), 'docs', 'guia.md'))
+  })
   it('lê por caminho relativo ou absoluto e ignora :linha', async () => {
     const root = await temp(); await mkdir(join(root, 'docs')); await writeFile(join(root, 'docs', 'a.md'), '# Oi')
     expect((await readProjectFile([root], 'docs/a.md')).content).toBe('# Oi')

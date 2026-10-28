@@ -149,7 +149,7 @@ export function GitCardPanel({ cardId, profiles, openRules, openGraph, diff, set
     <Delivery cardId={cardId} data={data} reload={load} />
     {data.repos.map((repo) => <RepoSection key={repo.sourceId} repo={repo} cardId={cardId} base={repo.baseRef} profiles={profiles} excluded={excluded[repo.sourceId] ?? []} setExcluded={(value) => setExcluded({ ...excluded, [repo.sourceId]: value })} reload={load} openGraph={() => openGraph(cardId)} decided={() => void load()} diff={diff} setDiff={setDiff} />)}
   </div>
-  {targetRepo && <div className="cgfoot"><div className="cglabel">Seu commit{withFiles.length > 1 ? ' em ' : ''}{withFiles.length > 1 && <select className="in" style={{ marginLeft: 6, padding: '2px 6px' }} value={targetRepo.sourceId} onChange={(e) => setTarget(e.target.value)} aria-label="Repositório do commit">{withFiles.map((repo) => <option key={repo.sourceId} value={repo.sourceId}>{repo.name}</option>)}</select>}</div>
+  {targetRepo && <div className="cgfoot"><div className="cglabel">Seu commit{withFiles.length > 1 ? ' em ' : ''}{withFiles.length > 1 && <Select className="cg-repo-select" label="Repositório do commit" value={targetRepo.sourceId} onChange={setTarget} options={withFiles.map((repo) => ({ value: repo.sourceId, label: repo.name }))} />}</div>
     <textarea className="autogrow" placeholder="Mensagem do seu commit" aria-label="Mensagem do seu commit" value={message} onChange={(e) => setMessage(e.target.value)} />
     {error && <p className="error">{error}</p>}{done && <div className="cgnote">{done}</div>}
     <div className="cgrow"><span className="grow1" /><button type="button" className="mini" disabled={busy} onClick={() => void commit()}>Commit</button></div></div>}

@@ -81,23 +81,25 @@ export const agentOptionsSchema = z.object({ models: z.array(modelOptionSchema),
 
 export type PermissionMode = z.infer<typeof permissionModeSchema>
 export interface PermissionModeInfo { id: PermissionMode; label: string; description: string; purposes: Array<z.infer<typeof agentPurposeSchema>>; needsApprovalUi?: boolean; dangerous?: boolean; recommended?: boolean }
-/** Modos de permissão por provedor (plano 08, seção 6). Modos que dependem da tela de aprovação (F14, pendente) ficam desabilitados. */
+/** Modos de permissão por provedor (plano 08, seção 6). Solicitações de aprovação aparecem no chat da execução. */
 export const permissionModes: Record<'claude' | 'codex', PermissionModeInfo[]> = {
   claude: [
     { id: 'plan', label: 'Plano', description: 'Só lê e planeja; não altera arquivos.', purposes: ['planning'], recommended: true },
-    { id: 'accept_edits', label: 'Aceitar edições', description: 'Edita arquivos sem perguntar; comandos fora da lista são negados.', purposes: ['execution', 'test'], recommended: true },
+    { id: 'accept_edits', label: 'Aceitar edições', description: 'Edita arquivos sem perguntar; pede aprovação para comandos que precisarem.', purposes: ['execution', 'test'], recommended: true },
     { id: 'auto', label: 'Automático', description: 'O próprio Claude decide o que é seguro aprovar.', purposes: ['execution', 'test'] },
-    { id: 'manual', label: 'Manual', description: 'Pergunta a cada ação. Precisa da tela de aprovação (em breve).', purposes: ['execution', 'test'], needsApprovalUi: true },
+    { id: 'manual', label: 'Manual', description: 'Pergunta a cada ação. A aprovação aparece no chat.', purposes: ['execution', 'test'] },
     { id: 'bypass', label: 'Ignorar permissões', description: 'Executa tudo sem pedir. Use só em ambiente descartável.', purposes: ['execution', 'test'], dangerous: true }
   ],
   codex: [
     { id: 'plan', label: 'Plano', description: 'Somente leitura, só planeja.', purposes: ['planning'], recommended: true },
     { id: 'auto', label: 'Automático', description: 'Edita na pasta do projeto e uma revisão automática aprova o que for seguro.', purposes: ['execution', 'test'], recommended: true },
-    { id: 'on_request', label: 'Sob pedido', description: 'Edita na pasta do projeto e pede aprovação para o resto. Precisa da tela de aprovação (em breve).', purposes: ['execution', 'test'], needsApprovalUi: true },
-    { id: 'read_only', label: 'Somente leitura', description: 'Lê e pede aprovação para qualquer mudança. Precisa da tela de aprovação (em breve).', purposes: ['execution', 'test'], needsApprovalUi: true },
+    { id: 'on_request', label: 'Sob pedido', description: 'Edita na pasta do projeto e pede aprovação para o resto. A aprovação aparece no chat.', purposes: ['execution', 'test'] },
+    { id: 'read_only', label: 'Somente leitura', description: 'Lê e pede aprovação para qualquer mudança. A aprovação aparece no chat.', purposes: ['execution', 'test'] },
     { id: 'bypass', label: 'Ignorar permissões', description: 'Sem sandbox e sem aprovações. Use só em ambiente descartável.', purposes: ['execution', 'test'], dangerous: true }
   ]
 }
+export const agentPermissionSchema = z.object({ id: uuid, runId: uuid, chatId: uuid, provider: z.enum(['claude', 'codex']), kind: z.string(), details: z.record(z.string(), z.unknown()) })
+export type AgentPermission = z.infer<typeof agentPermissionSchema>
 export const defaultPermissionMode = (provider: 'claude' | 'codex', purpose: z.infer<typeof agentPurposeSchema>): PermissionMode => (purpose === 'planning' ? 'plan' : provider === 'claude' ? 'accept_edits' : 'auto')
 
 export const skillScopeSchema = z.enum(['global', 'project'])
@@ -139,7 +141,7 @@ export const cardRunStateSchema = z.object({ state: z.enum(['idle', 'planning', 
 export const cardSchema = z.object({
   id: uuid, projectId: uuid, columnId: uuid, sourceId: uuid.nullable(), type: cardTypeSchema, title: z.string(), description: z.string(),
   priority: cardPrioritySchema, orderKey: z.number(), createdAt: isoDate, updatedAt: isoDate,
-  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema, run: cardRunStateSchema, hasPlan: z.boolean(), planningOpen: z.boolean(), workspace: z.object({ branch: z.string(), baseRef: z.string(), path: z.string() }).nullable(), pending: z.object({ changes: z.number().int().nonnegative(), questions: z.number().int().nonnegative(), commits: z.number().int().nonnegative(), toSend: z.number().int().nonnegative() }), execProfileId: uuid.nullable(), execModel: z.string().nullable(), agentIds: z.array(uuid), complexity: cardComplexitySchema.nullable(), repoIds: z.array(uuid).nullable()
+  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema, run: cardRunStateSchema, hasPlan: z.boolean(), planningOpen: z.boolean(), workspace: z.object({ branch: z.string(), baseRef: z.string(), path: z.string(), sharedFrom: z.string().nullable().optional() }).nullable(), pending: z.object({ changes: z.number().int().nonnegative(), questions: z.number().int().nonnegative(), commits: z.number().int().nonnegative(), toSend: z.number().int().nonnegative() }), execProfileId: uuid.nullable(), execModel: z.string().nullable(), agentIds: z.array(uuid), complexity: cardComplexitySchema.nullable(), repoIds: z.array(uuid).nullable()
 })
 export const projectBoardSchema = z.object({ project: projectSchema, columns: z.array(boardColumnSchema), cards: z.array(cardSchema) })
 export const agentProbeSchema = z.object({
@@ -301,7 +303,7 @@ export const ipcContracts = {
   , 'constitution:set-proposal': { input: z.object({ proposalId: uuid, status: z.enum(['applied', 'dismissed']) }).strict(), output: constitutionStateSchema }
   , 'projects:inspect': { input: z.object({ localPath: z.string().trim().min(1).max(2048) }).strict(), output: projectInspectionSchema }
   , 'projects:branches': { input: z.object({ localPath: z.string().trim().min(1).max(2048) }).strict(), output: z.array(z.string()) }
-  , 'projects:choose-directory': { input: z.undefined(), output: z.string().nullable() }
+  , 'projects:choose-directory': { input: z.object({ projectId: uuid }).strict().optional(), output: z.string().nullable() }
   , 'projects:set-profiles': { input: setProjectProfilesInputSchema, output: projectSchema }
   , 'board:get': { input: projectIdInput, output: projectBoardSchema }
   , 'cards:create': { input: createCardInputSchema, output: cardSchema }
@@ -348,6 +350,7 @@ export const ipcContracts = {
   , 'workspace:terminal': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({ id: uuid, cwd: z.string(), shell: z.string() }) }
   , 'workspace:image': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.string() }
   , 'workspace:list': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.array(z.object({ path: z.string(), name: z.string(), directory: z.boolean() })) }
+  , 'workspace:resolve-references': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), markdownPath: z.string().max(4096).optional(), targets: z.array(z.string().min(1).max(4096)).max(200) }).strict(), output: z.array(z.object({ target: z.string(), path: z.string(), directory: z.boolean() })) }
   , 'workspace:search': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), query: z.string().min(1).max(200), fuzzy: z.boolean().optional() }).strict(), output: z.object({ paths: z.array(z.string()), limited: z.boolean() }) }
   , 'workspace:read': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({ path: z.string(), relative: z.string(), content: z.string(), truncated: z.boolean(), size: z.number(), binary: z.boolean() }) }
   , 'workspace:write': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096), content: z.string().max(1_000_000), expected: z.string().max(1_000_000) }).strict(), output: z.object({ path: z.string(), relative: z.string(), content: z.string(), truncated: z.boolean(), size: z.number(), binary: z.boolean() }) }
@@ -398,6 +401,8 @@ export const ipcContracts = {
   , 'messages:add': { input: z.object({ chatId: uuid, role: z.enum(['user', 'assistant', 'system', 'tool']), body: z.string().min(1).max(100_000), status: z.enum(['streaming', 'complete', 'failed']).default('complete') }).strict(), output: chatMessageSchema }
   , 'runs:create': { input: z.object({ cardId: uuid, chatId: uuid, profileId: uuid }).strict(), output: runSchema }
   , 'runs:event': { input: z.object({ runId: uuid, eventType: z.string().min(1).max(120), payload: z.record(z.string(), z.unknown()) }).strict(), output: runEventSchema }
+  , 'agents:permissions': { input: z.object({ chatId: uuid }).strict(), output: z.array(agentPermissionSchema) }
+  , 'agents:permission-decide': { input: z.object({ runId: uuid, requestId: uuid, allow: z.boolean() }).strict(), output: z.object({ decided: z.boolean() }) }
   , 'agents:start': { input: z.object({ chatId: uuid, prompt: z.string().trim().min(1).max(100_000), planning: z.boolean(), attachments: z.array(z.string().min(1).max(2048)).max(20).optional(), choice: z.object({ model: z.string().trim().max(120).nullable().optional(), effort: effortSchema.nullable().optional(), mode: permissionModeSchema.optional() }).strict().optional() }).strict(), output: runSchema }
   , 'files:preview': { input: z.object({ path: z.string() }), output: z.string().nullable() }
   , 'files:choose': { input: z.undefined(), output: z.array(z.string()) }
@@ -408,6 +413,8 @@ export const ipcContracts = {
   , 'worktrees:get': { input: cardIdInput, output: worktreeSchema.nullable() }
   , 'worktrees:prepare': { input: cardIdInput, output: worktreeSchema }
   , 'worktrees:snapshot': { input: cardIdInput, output: gitSnapshotSchema }
+  , 'worktrees:candidates': { input: cardIdInput, output: z.array(z.object({ cardId: uuid, title: z.string(), branch: z.string(), path: z.string() })) }
+  , 'worktrees:link': { input: z.object({ cardId: uuid, fromCardId: uuid.nullable() }).strict(), output: z.object({}) }
   , 'tests:run': { input: z.object({ cardId: uuid, executable: z.string().min(1).max(2048), args: z.array(z.string().max(4096)).max(100) }).strict(), output: testRunSchema }
   , 'quality:status': { input: cardIdInput, output: z.object({ test: testRunSchema.nullable(), review: reviewSchema.nullable() }) }
   , 'reviews:prepare-local': { input: cardIdInput, output: reviewSchema }
@@ -418,16 +425,16 @@ export const ipcContracts = {
   , 'git:detect': { input: z.object({ projectId: uuid }).strict(), output: z.object({ repos: z.array(gitRepoSchema), changed: z.boolean() }) }
   , 'git:setup-targets': { input: z.object({ projectId: uuid }).strict(), output: z.array(z.object({ sourceId: uuid, name: z.string(), path: z.string() })) }
   , 'git:setup': { input: z.object({ projectId: uuid, sourceId: uuid, mode: z.enum(['init', 'origin']), url: z.string().trim().max(500).optional() }).strict(), output: z.array(gitRepoSchema) }
-  , 'git:graph': { input: z.object({ projectId: uuid, sourceId: uuid, limit: z.number().int().min(20).max(20000).optional() }).strict(), output: gitGraphSchema }
+  , 'git:graph': { input: z.object({ projectId: uuid, sourceId: uuid, cardId: uuid.nullable().optional(), limit: z.number().int().min(20).max(20000).optional() }).strict(), output: gitGraphSchema }
   , 'git:commit-detail': { input: z.object({ sourceId: uuid, hash: z.string().regex(/^[0-9a-f]{7,64}$/) }).strict(), output: z.object({ body: z.string(), files: z.array(gitCommitFileSchema) }) }
   , 'git:changes': { input: z.object(gitTarget).strict(), output: gitChangesSchema }
   , 'git:commit-diff': { input: z.object({ sourceId: uuid, hash: z.string().regex(/^[0-9a-f]{7,64}$/), path: z.string().min(1).max(4096) }).strict(), output: z.string() }
   , 'git:diff': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096), staged: z.boolean() }).strict(), output: z.string() }
   , 'git:stage': { input: z.object({ ...gitTarget, paths: z.array(z.string().min(1).max(4096)).max(5000), stage: z.boolean() }).strict(), output: gitChangesSchema }
   , 'git:commit': { input: z.object({ ...gitTarget, message: z.string().max(2000), description: z.string().max(20_000).optional(), amend: z.boolean().optional(), paths: z.array(z.string().min(1).max(4096)).max(5000).optional() }).strict(), output: z.object({ hash: z.string() }) }
-  , 'git:branch-action': { input: z.object({ sourceId: uuid, action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete', 'delete-remote']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
-  , 'git:commit-action': { input: z.object({ sourceId: uuid, action: z.enum(['checkout', 'cherry-pick', 'revert', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
-  , 'git:stash-action': { input: z.object({ sourceId: uuid, action: z.enum(['apply', 'pop', 'drop']), ref: z.string().regex(/^stash@\{\d+\}$/) }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:branch-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete', 'delete-remote']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:commit-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'cherry-pick', 'revert', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:stash-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['apply', 'pop', 'drop']), ref: z.string().regex(/^stash@\{\d+\}$/) }).strict(), output: z.object({ output: z.string() }) }
   , 'git:conflicts': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional() }).strict(), output: z.object({ operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']).nullable(), files: z.array(z.string()) }) }
   , 'git:conflict-file': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000) }).strict(), output: z.string() }
   , 'git:conflict-save': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000), content: z.string().max(2_000_000) }).strict(), output: z.object({ left: z.number().int() }) }
@@ -436,7 +443,7 @@ export const ipcContracts = {
   , 'git:conflict-resolve': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000), side: z.enum(['ours', 'theirs', 'marked']) }).strict(), output: z.object({ left: z.number().int() }) }
   , 'git:conflict-finish': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['continue', 'abort']) }).strict(), output: z.object({ output: z.string() }) }
   , 'app:open-link': { input: z.object({ url: z.string().min(1).max(2048) }).strict(), output: z.object({ opened: z.literal(true) }) }
-  , 'git:sync': { input: z.object({ ...gitTarget, action: z.enum(['fetch', 'pull', 'push', 'stash', 'pop']), pull: z.enum(['ff', 'ff-only', 'rebase']).optional() }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:sync': { input: z.object({ ...gitTarget, action: z.enum(['fetch', 'pull', 'push', 'stash', 'pop']), pull: z.enum(['ff', 'ff-only', 'rebase']).optional(), force: z.boolean().optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:card': { input: cardIdInput, output: gitCardSchema }
   , 'git:base-options': { input: z.object({ sourceId: uuid }).strict(), output: z.array(z.string()) }
   , 'git:set-base': { input: z.object({ cardId: uuid, sourceId: uuid, baseRef: z.string().trim().min(1).max(200) }).strict(), output: z.object({ baseRef: z.string() }) }

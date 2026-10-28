@@ -11,8 +11,8 @@ const clocks = new Map<number, { timer: number; startedAt: number; remaining: nu
 let counter = 0
 const set = (next: Toast[]): void => { state = next; listeners.forEach((listener) => listener()) }
 const maxVisible = 4
-// Erro fica até ser fechado; os outros somem sozinhos (atenção e notificação ficam um pouco mais, por serem mais importantes que um "deu certo").
-const lengths: Record<ToastKind, number> = { success: 5000, info: 4000, warning: 8000, notify: 6000, error: 0 }
+// Todos somem sozinhos; erro, atenção e notificação ficam mais tempo, por serem mais importantes que um "deu certo". Com o mouse em cima o tempo para.
+const lengths: Record<ToastKind, number> = { success: 5000, info: 4000, warning: 8000, notify: 6000, error: 10000 }
 
 function arm(id: number, remaining: number): void {
   const timer = window.setTimeout(() => dismiss(id), remaining)
@@ -24,7 +24,7 @@ function push(kind: Toast['kind'], title: string, message = '', options: ToastOp
   const dropped = state.length >= maxVisible ? state.slice(0, state.length - maxVisible + 1) : []
   dropped.forEach((item) => dismiss(item.id))
   set([...state.filter((item) => !dropped.includes(item)), { id, kind, title, message, meta: options.meta ?? '', duration: lengths[kind], paused: false }])
-  // Sucesso e informação somem sozinhos; falha fica até ser fechada, para dar tempo de ler.
+  // Some sozinho depois do tempo do tipo (a barra embaixo mostra); com o mouse em cima, pausa.
   if (lengths[kind]) arm(id, lengths[kind])
   return id
 }

@@ -109,3 +109,76 @@ describe('real provider protocol adapters', () => {
     expect(await listCodexModels(profile('codex'), factory)).toEqual([{ id: 'gpt-a', label: 'GPT A', description: 'A', efforts: ['low', 'medium'], recommendedFor: ['planning', 'execution'], defaultEffort: 'medium' }])
   })
 })
+
+
+describe('interactive provider permissions', () => {
+  it.each([true, false])('answers Codex string request IDs and resumes the originating thread (allow=%s)', async (allow) => {
+    const responses: Record<string, unknown>[] = [], policies: Record<string, unknown>[] = []
+    const factory: ProcessFactory = { start() { return fakeProcess((request, child) => {
+      const id = request.id
+      if (request.method === 'initialize') send(child, { id, result: {} })
+      if (request.method === 'thread/resume') { policies.push(request.params as Record<string, unknown>); send(child, { id, result: { thread: { id: 'existing-thread' } } }) }
+      if (request.method === 'turn/start') {
+        send(child, { id, result: { turn: { id: 'turn-2' } } })
+        send(child, { id: 'approval-1', method: 'item/commandExecution/requestApproval', params: { threadId: 'existing-thread', turnId: 'turn-2', itemId: 'cmd', command: 'npm test', cwd: 'C:\\repo' } })
+      }
+      if (id === 'approval-1') { responses.push(request); send(child, { method: 'turn/completed', params: { threadId: 'existing-thread', turn: { id: 'turn-2', status: 'completed' } } }) }
+    }) } }
+    const result = await new CodexAppServerAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: 'existing-thread', planning: false, mode: 'on_request', profile: profile('codex'), requestPermission: async (kind, details) => { expect(kind).toBe('item/commandExecution/requestApproval'); expect(details.command).toBe('npm test'); return allow }, onEvent: () => {} })
+    expect(result.status).toBe('completed')
+    expect(policies[0]).toMatchObject({ threadId: 'existing-thread', approvalPolicy: 'on-request', approvalsReviewer: 'user' })
+    expect(responses).toEqual([{ id: 'approval-1', result: { decision: allow ? 'accept' : 'decline' } }])
+  })
+
+  it.each([true, false])('answers Claude can_use_tool over open stdin and preserves the resume session (allow=%s)', async (allow) => {
+    let args: string[] = []
+    const responses: Record<string, unknown>[] = []
+    const factory: ProcessFactory = { start(_command, received) { args = received; return fakeProcess((message, child) => {
+      if (message.type === 'user') send(child, { type: 'control_request', request_id: 'c-1', request: { subtype: 'can_use_tool', tool_name: 'Write', input: { file_path: '/repo/a', content: 'hello' }, tool_use_id: 'tool-1' } })
+      if (message.type === 'control_response') { responses.push(message); send(child, { type: 'result', session_id: 'existing-session', result: 'finished' }) }
+    }) } }
+    const result = await new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'write a', sessionId: 'existing-session', planning: false, mode: 'manual', profile: profile('claude'), requestPermission: async (kind, details) => { expect(kind).toBe('Write'); expect(details.input).toEqual({ file_path: '/repo/a', content: 'hello' }); return allow }, onEvent: () => {} })
+    expect(result.status).toBe('completed'); expect(args).toContain('--input-format'); expect(args).toContain('--permission-prompt-tool'); expect(args[args.indexOf('--resume') + 1]).toBe('existing-session')
+    expect(args.slice(-2)).toEqual(['--permission-prompt-tool', 'stdio'])
+    expect(responses[0]).toMatchObject({ type: 'control_response', response: { subtype: 'success', request_id: 'c-1', response: allow ? { behavior: 'allow', updatedInput: { file_path: '/repo/a', content: 'hello' } } : { behavior: 'deny' } } })
+  })
+
+  it('denies pending Claude permission before killing on cancellation; ignores late approval', async () => {
+    const controller = new AbortController(), order: string[] = []
+    let decide!: (allow: boolean) => void
+    const factory: ProcessFactory = { start() { const child = fakeProcess((message, process) => {
+      if (message.type === 'user') send(process, { type: 'control_request', request_id: 'c', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'x' } } })
+      if (message.type === 'control_response') order.push('deny')
+    }); child.kill = () => { order.push('kill'); queueMicrotask(() => child.emit('exit', null)); return true }; return child } }
+    const pending = new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, mode: 'manual', profile: profile('claude'), signal: controller.signal, requestPermission: () => new Promise((resolve) => { decide = resolve }), onEvent: () => {} })
+    controller.abort(); expect((await pending).status).toBe('interrupted')
+    decide(true); await Promise.resolve()
+    expect(order[0]).toBe('deny'); expect(order[1]).toBe('kill'); expect(order.filter((item) => item === 'deny')).toHaveLength(1)
+  })
+})
+
+
+describe('Codex permission categories', () => {
+  it.each([
+    ['item/fileChange/requestApproval', true, { decision: 'accept' }],
+    ['item/fileChange/requestApproval', false, { decision: 'decline' }],
+    ['item/permissions/requestApproval', true, { permissions: { network: { enabled: true } }, scope: 'turn' }],
+    ['item/permissions/requestApproval', false, { permissions: {}, scope: 'turn' }],
+    ['execCommandApproval', true, { decision: 'approved' }],
+    ['applyPatchApproval', false, { decision: 'denied' }]
+  ])('responds to %s (allow=%s) with the provider-specific payload', async (method, allow, response) => {
+    let actual: unknown
+    const factory: ProcessFactory = { start() { return fakeProcess((request, child) => {
+      const id = request.id
+      if (request.method === 'initialize') send(child, { id, result: {} })
+      if (request.method === 'thread/start') send(child, { id, result: { thread: { id: 't' } } })
+      if (request.method === 'turn/start') {
+        send(child, { id, result: { turn: { id: 'u' } } })
+        send(child, { id: 101, method, params: { ...(String(method).startsWith('item/') ? { threadId: 't', turnId: 'u' } : { conversationId: 't', callId: 'file' }), itemId: 'file', permissions: { network: { enabled: true }, fileSystem: null } } })
+      }
+      if (id === 101) { actual = request.result; send(child, { method: 'turn/completed', params: { threadId: 't', turn: { id: 'u', status: 'completed' } } }) }
+    }) } }
+    await new CodexAppServerAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, mode: 'read_only', profile: profile('codex'), requestPermission: async () => Boolean(allow), onEvent: () => {} })
+    expect(actual).toEqual(response)
+  })
+})

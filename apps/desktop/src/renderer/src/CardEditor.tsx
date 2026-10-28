@@ -132,22 +132,22 @@ export function CardEditor({ projectId, sources, profiles, draft: start, close, 
   const [openSec, setOpenSec] =useState<Partial<Record<AgentPurpose, boolean>>>({})
   const startLabel: Record<'execution' | 'test', string> = { execution: 'Iniciar execução', test: 'Iniciar teste' }
   // Planejamento sempre aparece; execução e teste só depois de iniciados (antes disso é um botão que escolhe o agente e já começa).
-  const section = (purpose: AgentPurpose, state: typeof planAgent): React.JSX.Element | null => {
-    const chat = chatOf(purpose), profile = profiles.find((item) => item.id === state.config?.profileId)
-    const chatButton = d.id && openChat && <button type="button" className="ibtn tip" data-tip={chat ? 'Abrir o chat desta etapa' : 'Abrir chat (ainda sem conversa)'} aria-label={`Abrir chat de ${stepTitle[purpose]}`} onClick={() => openChat(purpose)}><ChatIcon /></button>
+  const section = (purpose: AgentPurpose, state: typeof planAgent, title?: string): React.JSX.Element | null => {
+    const chat = chatOf(purpose), label = title ?? stepTitle[purpose], profile = profiles.find((item) => item.id === state.config?.profileId)
+    const chatButton = d.id && openChat && <button type="button" className="ibtn tip" data-tip={chat ? 'Abrir o chat desta etapa' : 'Abrir chat (ainda sem conversa)'} aria-label={`Abrir chat de ${label}`} onClick={() => openChat(purpose)}><ChatIcon /></button>
     if (purpose !== 'planning' && !chat) {
       if (!d.id || !onStart) return null
-      return <div className="sep"><div className="sechead"><span className="sectitle">{stepTitle[purpose]}</span></div><button type="button" className="mini startsec" onClick={() => onStart(purpose as 'execution' | 'test')}>{startLabel[purpose as 'execution' | 'test']}</button></div>
+      return <div className="sep"><div className="sechead"><span className="sectitle">{label}</span></div><button type="button" className="mini startsec" onClick={() => onStart(purpose as 'execution' | 'test')}>{startLabel[purpose as 'execution' | 'test']}</button></div>
     }
     const expanded = openSec[purpose] ?? !d.id
     const model = state.options?.models.find((item) => item.id === state.config?.model)
     const preview = [profile?.label, model?.label ?? state.config?.model ?? 'Modelo padrão', state.config?.effort ? effortLabel[state.config.effort] : ''].filter(Boolean).join(' · ')
-    return <div className={`sep secfold ${expanded ? 'open' : ''}`}><div className="sechead"><button type="button" className="foldbtn" aria-expanded={expanded} onClick={() => setOpenSec({ ...openSec, [purpose]: !expanded })}><span className="chev" aria-hidden="true">›</span><span className="sectitle">{stepTitle[purpose]}</span></button>{chatButton}</div>{!expanded && <button type="button" className="foldprev" onClick={() => setOpenSec({ ...openSec, [purpose]: true })}>{profile && <AgentIcon profile={profile} size="sm" tip={false} />}<span>{preview}</span></button>}{expanded && agentField(purpose, state)}</div>
+    return <div className={`sep secfold ${expanded ? 'open' : ''}`}><div className="sechead"><button type="button" className="foldbtn" aria-expanded={expanded} onClick={() => setOpenSec({ ...openSec, [purpose]: !expanded })}><span className="chev" aria-hidden="true">›</span><span className="sectitle">{label}</span></button>{chatButton}</div>{!expanded && <button type="button" className="foldprev" onClick={() => setOpenSec({ ...openSec, [purpose]: true })}>{profile && <AgentIcon profile={profile} size="sm" tip={false} />}<span>{preview}</span></button>}{expanded && agentField(purpose, state)}</div>
   }
   // Worktree por repositório: só busca ao expandir o bloco (o estado de cada repositório custa uma consulta ao Git).
   useEffect(() => { if (wsOpen && d.id) void window.agentboard.invoke('git:card', { cardId: d.id }).then((git) => setWsRepos(git.repos)).catch(() => setWsRepos([])) }, [wsOpen, d.id])
   const text = texts[kind]
-  return <div className="overlay full"><div className="modal wide" role="dialog" aria-label={d.id ? 'Editar card' : 'Novo card'}>
+  return <div className="overlay full card-editor-overlay"><div className="modal wide" role="dialog" aria-label={d.id ? 'Editar card' : 'Novo card'}>
     <header><div><h2><input className="titlein" aria-label="Título" value={d.title} placeholder="Sem título" onChange={(e) => set({ ...d, title: e.target.value })} /></h2>{assessing && complexity && <AssessmentDialog card={complexity} close={() => setAssessing(false)} changed={() => { void window.agentboard.invoke('cards:get', { cardId: complexity.id }).then(setComplexity).catch(() => undefined) }} />}</div><div className="hdr-actions">{d.id && pending && (pending.changes > 0 || pending.questions > 0) && <button type="button" className="mini ask" onClick={onPending}>Autorizar mudanças ({pending.changes + pending.questions})</button>}{d.id && openChat && <button type="button" className="mini secondary openchat" onClick={() => openChat('planning')}><ChatIcon />Abrir chat</button>}<button type="button" className="x" onClick={close} aria-label="Fechar">×</button></div></header>
     <form onSubmit={(e) => void submit(e)} style={{ display: 'contents' }}>
       <div className={`editor docs ${small ? 'smallcard' : ''} ${wide ? 'wide' : ''}`}>
@@ -158,7 +158,10 @@ export function CardEditor({ projectId, sources, profiles, draft: start, close, 
           {d.id && complexity && gitSources.length > 1 && !workspace && <RepoChooser card={complexity} sources={gitSources} changed={setComplexity} />}
           {!d.id && gitSources.length > 1 && <div className="f"><span>Repositório</span><Select label="Repositório" options={gitSources.map((source) => ({ value: source.id, label: source.name, sub: source.currentBranch ?? '' }))} value={d.sourceId ?? gitSources[0]!.id} onChange={(value) => set({ ...d, sourceId: value })} /></div>}
           {small && <p className="smallnote"><b>Tarefa pequena.</b> Um agente só implementa e valida, sem planejamento nem teste separados, para gastar menos tokens. Descreva ao lado o que fazer.</p>}
-          {profiles.length > 0 && <>{!small && section('planning', planAgent)}{section('execution', execAgent)}{!small && section('test', testAgent)}</>}
+          {profiles.length > 0 && (small && chatOf('planning') && !chatOf('execution')
+            // Tarefa pequena que o próprio planejador já tocou: é um agente só (planeja, executa e valida) e um chat só, então aparece como "Agente".
+            ? section('planning', planAgent, 'Agente')
+            : <>{!small && section('planning', planAgent)}{section('execution', execAgent)}{!small && section('test', testAgent)}</>)}
           {d.id && small && <TokenUsage cardId={d.id} small />}
           {d.id && workspace && <div className="f"><span>Branch e worktree</span><div className="wsbox"><button type="button" className="wsfold" aria-expanded={wsOpen} onClick={() => setWsOpen(!wsOpen)}><BranchIcon /><b>{workspace.branch}</b><span className="chev" aria-hidden="true">›</span></button><div className="wsmeta"><small className="wsbase">base {workspace.baseRef}</small></div>{wsOpen && (wsRepos?.length ? <ul className="wsrepos">{wsRepos.map((repo) => { const shown = openRepos.includes(repo.sourceId), touched = repo.ahead > 0 || repo.files.length > 0
     return <li key={repo.sourceId} className={`wstree ${touched ? 'touched' : ''}`}>
