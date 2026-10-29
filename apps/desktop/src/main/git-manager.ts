@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { realpathSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { defaultGitPolicy, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { nativeGit, type GitRunner } from './worktrees'
@@ -244,7 +244,7 @@ export class GitManager {
     const [log, refsOut, stashOut] = await Promise.all([
       this.tryRun(dir, ['log', '--branches', '--remotes', '--tags', 'HEAD', '--topo-order', '-n', String(limit + 1), '--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D']),
       this.tryRun(dir, ['for-each-ref', '--format=%(refname)%1f%(upstream:track)', 'refs/heads', 'refs/remotes']),
-      this.tryRun(dir, ['stash', 'list', '--format=%gd%x1f%gs'])
+      this.tryRun(dir, ['stash', 'list', '--format=%gd%x1f%gs%x1f%H%x1f%P%x1f%aI'])
     ])
     const locals = new Set<string>(), remotes = new Set<string>()
     const tracking = new Map<string, { ahead: number; behind: number }>()
@@ -289,7 +289,12 @@ export class GitManager {
       const branch = place.branch ?? (await this.tryRun(place.dir, ['branch', '--show-current']))?.trim() ?? ''
       return { hash: `wip:${place.cardId ?? 'main'}`, short: '', parents: head ? [head] : [], lane: 0, author: '', email: '', date: null, subject: '', refs: [], cardId: place.cardId, agentProfileId: null, wip: { modified: count('M'), added: count('A'), deleted: count('D'), staged: files.filter((file) => file.staged).length, branch } }
     }))).filter((item): item is GitRow => Boolean(item))
-    const rows = [...wips, ...commits]
+    const stashEntries = (stashOut ?? '').split(/\r?\n/).filter(Boolean).map((line) => { const [ref = '', message = '', commit = '', parents = '', date = ''] = line.split('\x1f'); return { ref, message, commit, parent: parents.split(' ')[0] ?? '', date } })
+    const stashRows: GitRow[] = stashEntries.filter((item) => item.commit && item.parent).map((item) => ({ hash: `stash:${item.commit}:${item.ref}`, short: item.commit.slice(0, 7), parents: [item.parent], lane: 0, author: '', email: '', date: item.date ? new Date(item.date).toISOString() : null, subject: item.message, refs: [], cardId: cardOf.get(item.parent) ?? null, agentProfileId: null, wip: null, stash: { ref: item.ref, commit: item.commit } }))
+    const byParent = new Map<string, GitRow[]>()
+    for (const stash of stashRows) { const parent = stash.parents[0]!; byParent.set(parent, [...(byParent.get(parent) ?? []), stash]) }
+    const visible = new Set(commits.map((commit) => commit.hash))
+    const rows = [...wips, ...stashRows.filter((row) => !visible.has(row.parents[0]!)), ...commits.flatMap((commit) => [...(byParent.get(commit.hash) ?? []), commit])]
     assignLanes(rows).forEach((lane, index) => { rows[index]!.lane = lane })
     // A pasta da worktree pode estar em outra branch que a registrada (o usuário ou o agente fez checkout lá): vale a que está aberta de fato.
     const opened = await Promise.all(live.map(async (member) => (await this.tryRun(member.path, ['branch', '--show-current']))?.trim() ?? ''))
@@ -302,7 +307,7 @@ export class GitManager {
         remote: [...remotes].sort().map((name) => ({ name, cardId: cardByBranch.get(name.replace(/^[^/]+\//, '')) ?? null }))
       },
       worktrees: live.map((member, index) => ({ cardId: member.cardId, title: member.title, branch: opened[index] || member.branch, path: member.path })),
-      stashes: (stashOut ?? '').split(/\r?\n/).filter(Boolean).map((line) => { const [ref = '', message = ''] = line.split('\x1f'); return { ref, message } })
+      stashes: stashEntries.map(({ ref, message }) => ({ ref, message }))
     }
   }
 
@@ -398,6 +403,42 @@ export class GitManager {
     return this.changes(sourceId, cardId)
   }
 
+  async discardUnstaged(sourceId: string, cardId: string | null, paths: string[]): Promise<GitChanges> {
+    const target = await this.target(this.source(sourceId), cardId)
+    const available = new Set((await this.listChanges(target.dir)).filter((file) => !file.staged).map((file) => file.path))
+    for (const path of paths) {
+      if (!available.has(path)) throw new Error(`O arquivo não tem alterações não preparadas: ${path}`)
+      await this.inside(sourceId, cardId, path)
+    }
+    for (const path of paths) {
+      const literal = `:(literal)${path}`
+      if (await this.tryRun(target.dir, ['ls-files', '--error-unmatch', '--', literal]) !== null) await this.run(target.dir, ['restore', '--worktree', '--', literal])
+      else await unlink(await this.inside(sourceId, cardId, path))
+    }
+    return this.changes(sourceId, cardId)
+  }
+
+  async stashFile(sourceId: string, cardId: string | null, path: string): Promise<GitChanges> {
+    const target = await this.target(this.source(sourceId), cardId)
+    await this.inside(sourceId, cardId, path)
+    if (!(await this.listChanges(target.dir)).some((file) => file.path === path)) throw new Error('O arquivo não tem alterações')
+    await this.run(target.dir, ['stash', 'push', '--include-untracked', '--', `:(literal)${path}`])
+    return this.changes(sourceId, cardId)
+  }
+
+  async ignoreFile(sourceId: string, cardId: string | null, path: string, kind: 'file' | 'directory' | 'extension'): Promise<GitChanges> {
+    const target = await this.target(this.source(sourceId), cardId)
+    await this.inside(sourceId, cardId, path)
+    if (!(await this.listChanges(target.dir)).some((file) => file.path === path)) throw new Error('O arquivo não tem alterações')
+    const slash = path.replace(/\\/g, '/'), directory = slash.includes('/') ? slash.slice(0, slash.lastIndexOf('/')) : '', extension = extname(slash)
+    if (/[\r\n]/.test(slash) || (kind === 'directory' && !directory) || (kind === 'extension' && !extension)) throw new Error('Não é possível criar essa regra para este arquivo')
+    const escape = (value: string): string => value.replace(/[\\*?[\] !#]/g, '\\$&')
+    const pattern = kind === 'extension' ? `*${escape(extension)}` : `/${escape(kind === 'file' ? slash : directory)}${kind === 'directory' ? '/' : ''}`
+    const ignorePath = join(target.dir, '.gitignore'), current = await readFile(ignorePath, 'utf8').catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return ''; throw error })
+    if (!current.split(/\r?\n/).includes(pattern)) await writeFile(ignorePath, `${current}${current && !current.endsWith('\n') ? '\n' : ''}${pattern}\n`, 'utf8')
+    return this.changes(sourceId, cardId)
+  }
+
   private async commitAt(dir: string, input: { message: string; description?: string; amend?: boolean; paths?: string[] }): Promise<string> {
     const { subject, body } = splitMessage(input.message), description = [body, input.description?.trim()].filter(Boolean).join('\n\n')
     if (!subject && !input.amend) throw new Error('Escreva o resumo do commit')
@@ -415,6 +456,17 @@ export class GitManager {
   async commit(input: { sourceId: string; cardId: string | null; message: string; description?: string; amend?: boolean; paths?: string[] }): Promise<{ hash: string }> {
     const target = await this.target(this.source(input.sourceId), input.cardId)
     return { hash: await this.commitAt(target.dir, input) }
+  }
+
+  async renameCommit(input: { sourceId: string; cardId: string | null; hash: string; message: string }): Promise<{ hash: string }> {
+    const dir = (await this.target(this.source(input.sourceId), input.cardId)).dir
+    if (!/^[0-9a-f]{40,64}$/.test(input.hash) || (await this.run(dir, ['rev-parse', 'HEAD'])).trim() !== input.hash) throw new Error('Só é possível editar o último commit da branch atual.')
+    if (!(await this.tryRun(dir, ['symbolic-ref', '-q', 'HEAD']))?.trim()) throw new Error('Faça checkout de uma branch antes de editar a mensagem.')
+    const subject = input.message.trim()
+    if (!subject || /[\r\n]/.test(subject)) throw new Error('Informe um resumo em uma única linha.')
+    const body = (await this.run(dir, ['show', '-s', '--format=%b', input.hash])).trim()
+    await this.run(dir, ['commit', '--amend', '--only', '-m', subject, ...(body ? ['-m', body] : [])])
+    return { hash: (await this.run(dir, ['rev-parse', 'HEAD'])).trim() }
   }
 
   async sync(sourceId: string, cardId: string | null, action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull: 'ff' | 'ff-only' | 'rebase' = 'ff-only', force = false): Promise<{ output: string }> {
@@ -471,6 +523,33 @@ export class GitManager {
       else if (line === `branch refs/heads/${branch}`) return path && path !== dir ? path : null
     }
     return null
+  }
+
+  /** Atualiza a branch escolhida somente por fast-forward antes de abri-la. */
+  async checkoutRemote(sourceId: string, cardId: string | null, name: string): Promise<{ output: string }> {
+    const dir = (await this.target(this.source(sourceId), cardId)).dir, slash = name.indexOf('/')
+    const remote = name.slice(0, slash), local = name.slice(slash + 1)
+    if (slash <= 0 || !local || local === 'HEAD' || name.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', name]) === null) throw new Error('Branch remota inválida.')
+    if (!(await this.tryRun(dir, ['remote']))?.split(/\r?\n/).includes(remote)) throw new Error(`O remoto ${remote} não existe.`)
+    await this.run(dir, ['fetch', remote])
+    const remoteRef = `refs/remotes/${name}`, localRef = `refs/heads/${local}`
+    if (await this.tryRun(dir, ['show-ref', '--verify', '-q', remoteRef]) === null) throw new Error(`A branch remota ${name} não existe.`)
+    if (await this.tryRun(dir, ['show-ref', '--verify', '-q', localRef]) === null) {
+      await this.run(dir, ['checkout', '--track', name])
+      return { output: `Branch ${local} criada e aberta a partir de ${name}.` }
+    }
+    const upstream = (await this.tryRun(dir, ['rev-parse', '--abbrev-ref', `${local}@{upstream}`]))?.trim()
+    if (upstream && upstream !== name) throw new Error(`${local} acompanha ${upstream}, não ${name}.`)
+    const isBehind = await this.tryRun(dir, ['merge-base', '--is-ancestor', localRef, remoteRef]) !== null
+    const isAhead = await this.tryRun(dir, ['merge-base', '--is-ancestor', remoteRef, localRef]) !== null
+    if (!isBehind && !isAhead) throw new Error(`As branches ${local} e ${name} divergiram; não é possível atualizar por fast-forward.`)
+    const current = (await this.run(dir, ['branch', '--show-current'])).trim()
+    if (isBehind && !isAhead) {
+      if (current === local) await this.run(dir, ['merge', '--ff-only', remoteRef])
+      else await this.run(dir, ['branch', '-f', local, remoteRef])
+    }
+    if (current !== local) await this.run(dir, ['checkout', local])
+    return { output: isBehind && !isAhead ? `Branch ${local} atualizada por fast-forward e aberta.` : `Branch ${local} aberta; já contém ${name}.` }
   }
 
   /** Ações do menu de uma branch na pasta principal do repositório. Merge e rebase com conflito são desfeitos, para não deixar a pasta no meio do caminho. */
@@ -648,6 +727,34 @@ export class GitManager {
     if (!/^stash@\{\d+\}$/.test(input.ref)) throw new Error('Stash inválido')
     await this.run(dir, ['stash', input.action, input.ref])
     return { output: input.action === 'drop' ? 'Stash apagado.' : input.action === 'pop' ? 'Stash aplicado e removido.' : 'Stash aplicado.' }
+  }
+
+  private async checkedStash(dir: string, ref: string, commit: string): Promise<void> {
+    if (!/^stash@\{\d+\}$/.test(ref) || !/^[0-9a-f]{40,64}$/.test(commit) || (await this.run(dir, ['rev-parse', '--verify', ref])).trim() !== commit) throw new Error('O stash mudou. Atualize a lista e tente novamente.')
+  }
+
+  async stashDetail(sourceId: string, cardId: string | null, ref: string, commit: string): Promise<{ files: GitCommitFile[] }> {
+    const dir = (await this.target(this.source(sourceId), cardId)).dir
+    await this.checkedStash(dir, ref, commit)
+    const [names, nums] = await Promise.all([this.run(dir, ['stash', 'show', '--include-untracked', '--name-status', '-z', '--no-renames', ref]), this.run(dir, ['stash', 'show', '--include-untracked', '--numstat', '-z', '--no-renames', ref])])
+    const counts = parseNumstat(nums), parts = names.split('\0').filter(Boolean), files: GitCommitFile[] = []
+    for (let i = 0; i + 1 < parts.length; i += 2) { const path = parts[i + 1]!, found = counts.get(path); files.push({ path, status: statusOf(parts[i]!.charAt(0)), additions: found?.[0] ?? 0, deletions: found?.[1] ?? 0 }) }
+    return { files }
+  }
+
+  async renameStash(sourceId: string, cardId: string | null, ref: string, commit: string, message: string): Promise<{ ref: string; commit: string }> {
+    const dir = (await this.target(this.source(sourceId), cardId)).dir
+    if (!message.trim() || /[\r\n]/.test(message)) throw new Error('Informe um nome em uma única linha.')
+    await this.checkedStash(dir, ref, commit)
+    const index = Number(/^stash@\{(\d+)\}$/.exec(ref)![1])
+    const tree = (await this.run(dir, ['rev-parse', `${commit}^{tree}`])).trim()
+    const parents = (await this.run(dir, ['rev-list', '--parents', '-n', '1', commit])).trim().split(' ').slice(1)
+    const replacement = (await this.run(dir, ['commit-tree', tree, ...parents.flatMap((parent) => ['-p', parent]), '-m', message.trim()])).trim()
+    await this.run(dir, ['stash', 'store', '-m', message.trim(), replacement])
+    const oldRef = `stash@{${index + 1}}`
+    await this.checkedStash(dir, oldRef, commit)
+    await this.run(dir, ['stash', 'drop', oldRef])
+    return { ref: 'stash@{0}', commit: replacement }
   }
 
   // ---------- origem de cada repositório do card ----------

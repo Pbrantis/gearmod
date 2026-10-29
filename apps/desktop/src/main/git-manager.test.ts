@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -92,6 +92,43 @@ describe('regra de commit do agente', () => {
 })
 
 describe('GitManager com repositórios reais', () => {
+  it('descarta somente a parte não preparada, inclusive arquivos novos', async () => {
+    const { manager, sourceId, cardId, wt } = await setup()
+    await writeFile(join(wt, 'README.md'), 'preparado\n'); await manager.stage(sourceId, cardId, ['README.md'], true)
+    await writeFile(join(wt, 'README.md'), 'não preparado\n'); await writeFile(join(wt, 'novo.txt'), 'novo\n')
+    await manager.discardUnstaged(sourceId, cardId, ['README.md', 'novo.txt'])
+    expect(await readFile(join(wt, 'README.md'), 'utf8')).toBe('preparado\n')
+    await expect(readFile(join(wt, 'novo.txt'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect((await manager.changes(sourceId, cardId)).files).toMatchObject([{ path: 'README.md', staged: true }])
+  })
+
+  it('guarda apenas o arquivo escolhido no stash e cria regras de ignore', async () => {
+    const { manager, sourceId, cardId, wt, projectId } = await setup()
+    await mkdir(join(wt, 'pasta')); await writeFile(join(wt, 'pasta', 'novo.txt'), 'novo\n'); await writeFile(join(wt, 'outro.txt'), 'outro\n')
+    await manager.stashFile(sourceId, cardId, 'pasta/novo.txt')
+    const graph = await manager.graph(projectId, sourceId, 300, cardId), stashRow = graph.rows.find((row) => row.stash)
+    expect(stashRow?.stash?.ref).toBe('stash@{0}')
+    expect(graph.rows.findIndex((row) => row.hash === stashRow?.parents[0])).toBeGreaterThan(graph.rows.indexOf(stashRow!))
+    expect((await manager.stashDetail(sourceId, cardId, stashRow!.stash!.ref, stashRow!.stash!.commit)).files.map((file) => file.path)).toEqual(['pasta/novo.txt'])
+    await manager.renameStash(sourceId, cardId, stashRow!.stash!.ref, stashRow!.stash!.commit, 'Nome novo')
+    expect((await manager.graph(projectId, sourceId, 300, cardId)).stashes[0]?.message).toBe('Nome novo')
+    expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toEqual(['outro.txt'])
+    await git(wt, 'stash', 'pop'); expect(await readFile(join(wt, 'pasta', 'novo.txt'), 'utf8')).toBe('novo\n')
+    await manager.ignoreFile(sourceId, cardId, 'pasta/novo.txt', 'directory')
+    expect(await readFile(join(wt, '.gitignore'), 'utf8')).toBe('/pasta/\n')
+    expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toEqual(['.gitignore', 'outro.txt'])
+  })
+  it('altera só a mensagem do último commit, preservando o corpo e o index', async () => {
+    const { manager, sourceId, cardId, wt } = await setup()
+    await writeFile(join(wt, 'README.md'), 'preparado\n'); await manager.stage(sourceId, cardId, ['README.md'], true)
+    const before = (await git(wt, 'rev-parse', 'HEAD')).stdout.trim()
+    const result = await manager.renameCommit({ sourceId, cardId, hash: before, message: 'Novo resumo' })
+    expect(result.hash).not.toBe(before)
+    expect((await git(wt, 'show', '-s', '--format=%s')).stdout.trim()).toBe('Novo resumo')
+    expect((await git(wt, 'show', 'HEAD:README.md')).stdout).toBe('# fixture\n')
+    expect((await git(wt, 'show', ':README.md')).stdout).toBe('preparado\n')
+    await expect(manager.renameCommit({ sourceId, cardId, hash: before, message: 'Antigo' })).rejects.toThrow(/último commit/)
+  })
   it('lista repositórios, grafo com commits do card, WIP e worktrees', async () => {
     const { manager, projectId, sourceId, cardId, wt, branch, repo } = await setup()
     const repos = await manager.repos(projectId)
@@ -101,7 +138,7 @@ describe('GitManager com repositórios reais', () => {
     await writeFile(join(repo, 'README.md'), '# fixture\nmudou\n')
     await git(repo, 'stash'); await writeFile(join(repo, 'README.md'), '# fixture\nde novo\n')
     const graph = await manager.graph(projectId, sourceId)
-    const commits = graph.rows.filter((row) => !row.wip)
+    const commits = graph.rows.filter((row) => !row.wip && !row.stash)
     expect(commits.map((row) => row.subject)).toEqual(['Card: cria a.txt', 'primeiro'])
     expect(commits[0]).toMatchObject({ cardId, author: 'AgentBoard Test', agentProfileId: null }); expect(commits[0]!.refs.some((ref) => ref.name === branch)).toBe(true)
     expect(commits[1]!.cardId).toBeNull(); expect(commits[1]!.refs).toContainEqual({ name: 'main', kind: 'head' })
@@ -113,7 +150,7 @@ describe('GitManager com repositórios reais', () => {
     expect(graph.worktrees).toEqual([{ cardId, title: 'Tela de teste', branch, path: wt }])
     expect(graph.branches.local.find((item) => item.name === branch)?.cardId).toBe(cardId)
     expect(graph.stashes).toHaveLength(1); expect(graph.truncated).toBe(false)
-    expect((await manager.graph(projectId, sourceId, 20)).rows.filter((row) => !row.wip)).toHaveLength(2)
+    expect((await manager.graph(projectId, sourceId, 20)).rows.filter((row) => !row.wip && !row.stash)).toHaveLength(2)
   })
 
   it('stage, unstage, diff, commit e amend na worktree do card', async () => {

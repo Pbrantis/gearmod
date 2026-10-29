@@ -13,6 +13,7 @@ import { GitEmpty, GitUpstreamDialog as UpstreamDialog, gitChangedEvent } from '
 import { plainError } from './NoticeDialog'
 import { agoLabel, ghostChip, graphEdges, initials, isWip, laneColor, laneSpacing, laneX, refChips, rowHeight, shortAgo, splitPath, type RefChip } from './gitView'
 import { Checkbox } from './Checkbox'
+import { FileContextMenu, type FileMenuItem } from './FileContextMenu'
 
 const I = (children: React.ReactNode): React.JSX.Element => <svg viewBox="0 0 24 24" aria-hidden="true">{children}</svg>
 export const gitIcons = {
@@ -28,6 +29,7 @@ export const gitIcons = {
   graph: I(<><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="12" r="2" /><path d="M6 8v8" /><path d="M8 6c6 0 8 2 8 4" /></>),
   head: I(<path d="m5 12.5 4.5 4.5L19 7.5" />),
   pen: I(<path d="M4 20h4L19 9l-4-4L4 16z" />),
+  trash: I(<><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7M14 10v7" /></>),
   tree: I(<><rect x="9" y="3" width="6" height="5" rx="1" /><rect x="3" y="16" width="6" height="5" rx="1" /><rect x="15" y="16" width="6" height="5" rx="1" /><path d="M12 8v4M6 16v-4h12v4" /></>),
   tag: I(<><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1" /></>),
   card: I(<><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 9h8M8 13h5" /></>)
@@ -111,6 +113,7 @@ function useGravatar(email: string): string | null {
 function Dot({ row, profiles, spacing }: { row: GitRow; profiles: AgentProfile[]; spacing: number }): React.JSX.Element {
   const style = { left: laneX(row.lane, spacing), '--lc': laneColor(row.lane) } as React.CSSProperties
   if (isWip(row)) return <span className="gdot wip" style={style} />
+  if (row.stash) return <span className="gdot gstashdot" style={style} title={row.stash.ref}>{gitIcons.stash}</span>
   const agent = profiles.find((profile) => profile.id === row.agentProfileId), photo = useGravatar(row.email)
   return <span className="gdot tip" style={style} data-tip={row.email ? `${row.author} · ${row.email}` : row.author}>{photo ? <img className="gphoto" src={photo} alt="" /> : <b>{initials(row.author)}</b>}{agent && <span className="gdotag tip" data-tip={`Commit feito por ${agent.label}`}><AgentIcon profile={agent} size="sm" tip={false} /></span>}</span>
 }
@@ -126,11 +129,47 @@ function WipForm({ row, graph, summary, setSummary, changed, openDiff }: { row: 
   const sourceId = graph.repo.sourceId, cardId = row.cardId
   const [files, setFiles] = useState<GitChange[]>([]), [last, setLast] = useState(''), [description, setDescription] = useState(''), [amend, setAmend] = useState(false)
   const [closed, setClosed] = useState<{ un?: boolean; on?: boolean }>({}), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  const [split, setSplit] = useState(50), listsRef = useRef<HTMLDivElement>(null)
+  const [fileMenu, setFileMenu] = useState<{ x: number; y: number; file: GitChange }>(), [pending, setPending] = useState<{ kind: 'discard' | 'stash'; paths: string[] }>()
+  const [sectionMenu, setSectionMenu] = useState<{ x: number; y: number }>()
+  const resizeLists = (event: React.PointerEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    const handle = event.currentTarget
+    handle.setPointerCapture(event.pointerId)
+    const move = (e: PointerEvent): void => {
+      const bounds = listsRef.current?.getBoundingClientRect()
+      if (bounds?.height) setSplit(Math.max(10, Math.min(90, (e.clientY - bounds.top) / bounds.height * 100)))
+    }
+    const finish = (): void => { handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', finish); handle.removeEventListener('pointercancel', finish) }
+    handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish)
+  }
   const load = useCallback(async () => { try { const state = await window.agentboard.invoke('git:changes', { sourceId, cardId }); setFiles(state.files); setLast(state.lastMessage) } catch (reason) { setError(plainError(reason)) } }, [sourceId, cardId])
   useEffect(() => { void load() }, [load, row.wip?.modified, row.wip?.added, row.wip?.deleted, row.wip?.staged])
+  useEffect(() => { const refresh = (): void => { void load() }; window.addEventListener(gitChangedEvent, refresh); return () => window.removeEventListener(gitChangedEvent, refresh) }, [load])
   const unstaged = files.filter((file) => !file.staged), staged = files.filter((file) => file.staged)
   const stage = async (paths: string[], value: boolean): Promise<void> => {
     try { setError(''); const state = await window.agentboard.invoke('git:stage', { sourceId, cardId, paths, stage: value }); setFiles(state.files); changed() } catch (reason) { setError(plainError(reason)) }
+  }
+  const perform = async (action: 'discard' | 'stash', paths: string[]): Promise<void> => {
+    try { setError(''); const state = action === 'discard' ? await window.agentboard.invoke('git:discard-unstaged', { sourceId, cardId, paths }) : await window.agentboard.invoke('git:stash-file', { sourceId, cardId, path: paths[0]! }); setFiles(state.files); changed() } catch (reason) { setError(plainError(reason)) }
+  }
+  const ignore = async (path: string, kind: 'file' | 'directory' | 'extension'): Promise<void> => {
+    try { const state = await window.agentboard.invoke('git:ignore-file', { sourceId, cardId, path, kind }); setFiles(state.files); changed(); toast.info('Regra adicionada ao .gitignore. Arquivos já rastreados continuam rastreados.') } catch (reason) { setError(plainError(reason)) }
+  }
+  const menuItems = (file: GitChange): FileMenuItem[] => {
+    const { dir, name } = splitPath(file.path), extension = /\.[^.]+$/.exec(name)?.[0]
+    const external = async (target: 'explorer'): Promise<void> => { try { const found = await window.agentboard.invoke('git:file-path', { sourceId, cardId, path: file.path }); await window.agentboard.invoke('workspace:external', { ...found, cardId, target }) } catch (reason) { setError(plainError(reason)) } }
+    const edit = async (): Promise<void> => { try { const found = await window.agentboard.invoke('git:file-path', { sourceId, cardId, path: file.path }); await window.agentboard.invoke('windows:open', { kind: 'file', projectId: found.projectId, cardId: cardId ?? undefined, path: found.path, placement: 'new' }) } catch (reason) { setError(plainError(reason)) } }
+    return [
+      { label: file.staged ? 'Retirar arquivo do preparo' : 'Preparar arquivo', action: () => void stage([file.path], !file.staged) },
+      ...(!file.staged ? [{ label: 'Descartar alterações', action: () => setPending({ kind: 'discard' as const, paths: [file.path] }) }] : []),
+      { label: 'Ignore', children: [{ label: `Ignorar ${name}`, action: () => void ignore(file.path, 'file') }, { label: `Ignorar arquivos ${extension ?? 'sem extensão'}`, disabled: !extension, action: () => void ignore(file.path, 'extension') }, { label: `Ignorar pasta ${dir || '(raiz)'}`, disabled: !dir, action: () => void ignore(file.path, 'directory') }] },
+      { label: 'Stash file', action: () => setPending({ kind: 'stash', paths: [file.path] }) },
+      { label: 'Abrir em Arquivos', separator: true, action: () => void openInEditor({ sourceId, cardId, path: file.path }).catch((reason: unknown) => setError(plainError(reason))) },
+      { label: 'Edit file', action: () => void edit() },
+      { label: 'Copy file path', action: () => void navigator.clipboard.writeText(file.path).catch((reason: unknown) => setError(plainError(reason))) },
+      { label: 'Show in folder', action: () => void external('explorer') }
+    ]
   }
   const commit = async (): Promise<void> => {
     setBusy(true); setError('')
@@ -138,34 +177,37 @@ function WipForm({ row, graph, summary, setSummary, changed, openDiff }: { row: 
   }
   const lines = (list: GitChange[], isStaged: boolean): React.JSX.Element => <>{list.map((file) => {
     const { dir, name } = splitPath(file.path), key = `${isStaged ? 's' : 'u'}:${file.path}`
-    return <React.Fragment key={key}><div className="gwrow" title={file.path}><span className={`st ${file.status}`}>{file.status === 'M' ? gitIcons.pen : file.status === 'A' ? '+' : '−'}</span>
+    return <React.Fragment key={key}><div className="gwrow" title={file.path} onContextMenu={(event) => { event.preventDefault(); setFileMenu({ x: event.clientX, y: event.clientY, file }) }}><span className={`st ${file.status}`}>{file.status === 'M' ? gitIcons.pen : file.status === 'A' ? '+' : '−'}</span>
       <button type="button" className="gwp" onClick={() => openDiff(file)}>{dir && <span className="dir">{dir}</span>}<b>{name}</b></button>
-      <button type="button" className={`gwbtn ${isStaged ? 'un' : ''}`} onClick={() => void stage([file.path], !isStaged)}>{isStaged ? 'Unstage' : 'Stage'}</button></div>
+      <button type="button" className={`gwbtn ${isStaged ? 'un' : ''}`} onClick={() => void stage([file.path], !isStaged)}>{isStaged ? 'Retirar do preparo' : 'Preparar'}</button></div>
       </React.Fragment>
   })}{!list.length && <div className="gwempty">Nada aqui.</div>}</>
-  const section = (id: 'un' | 'on', title: string, list: GitChange[], isStaged: boolean): React.JSX.Element => <div className="gwsec"><div className="gwsech">
+  const section = (id: 'un' | 'on', title: string, list: GitChange[], isStaged: boolean): React.JSX.Element => <div className={`gwsec ${closed[id] ? 'closed' : ''}`} style={{ flexGrow: closed[id] ? 0 : closed[id === 'un' ? 'on' : 'un'] ? 1 : id === 'un' ? split : 100 - split }}><div className="gwsech" onContextMenu={!isStaged && list.length ? (event) => { event.preventDefault(); setSectionMenu({ x: event.clientX, y: event.clientY }) } : undefined}>
     <button type="button" className="gwtog" onClick={() => setClosed({ ...closed, [id]: !closed[id] })}>{closed[id] ? '▸' : '▾'} {title} ({list.length})</button>
-    {list.length > 0 && <button type="button" className={`gwall ${isStaged ? 'un' : ''}`} onClick={() => void stage([], !isStaged)}>{isStaged ? 'Unstage tudo' : 'Stage tudo'}</button>}</div>
+    {list.length > 0 && <span className="gwsection-actions">{!isStaged && <button type="button" className="gwdiscard" title="Descartar todas as alterações não preparadas" aria-label="Descartar todas as alterações não preparadas" onClick={() => setPending({ kind: 'discard', paths: list.map((file) => file.path) })}>{gitIcons.trash}</button>}<button type="button" className={`gwall ${isStaged ? 'un' : ''}`} onClick={() => void stage([], !isStaged)}>{isStaged ? 'Retirar tudo do preparo' : 'Preparar tudo'}</button></span>}</div>
     {!closed[id] && <div className="gwlist">{lines(list, isStaged)}</div>}</div>
   const toggleAmend = (value: boolean): void => { setAmend(value); if (value && !summary.trim()) setSummary(last); else if (!value && summary === last) setSummary('') }
   const ready = staged.length > 0 || amend, count = Array.from(new Set(staged.map((file) => file.path))).length
   return <div className="gwform"><div className="gwtop"><span>{new Set(files.map((file) => file.path)).size} arquivos alterados em <code>{row.wip?.branch}</code></span></div>
-    <div className="gwlists">{section('un', 'Não preparados', unstaged, false)}{section('on', 'Preparados', staged, true)}</div>
+    <div className="gwlists" ref={listsRef}>{section('un', 'Não preparados', unstaged, false)}{!closed.un && !closed.on && <div className="gwresize" role="separator" aria-label="Redimensionar listas de arquivos" aria-orientation="horizontal" aria-valuemin={10} aria-valuemax={90} aria-valuenow={Math.round(split)} tabIndex={0} onPointerDown={resizeLists} onKeyDown={(event) => { if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); setSplit((value) => Math.max(10, Math.min(90, value + (event.key === 'ArrowUp' ? -5 : 5)))) } }} />}{section('on', 'Preparados', staged, true)}</div>
     <div className="gwcommit"><label className="gwamend"><GitCheck checked={amend} onChange={toggleAmend} label="Corrigir o último commit" /> Corrigir o último commit (amend)</label>
       <div className="gwmsg"><div className="gwsumrow"><input maxLength={120} placeholder="Resumo do commit" value={summary} onChange={(e) => setSummary(e.target.value)} /><span className={`gwcount ${summary.length > 72 ? 'over' : ''}`}>{72 - summary.length}</span></div>
         <textarea className="autogrow" placeholder="Descrição" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       {error && <p className="error">{error}</p>}
-      <button type="button" className="gwgo" disabled={!ready || busy || (!amend && !summary.trim())} onClick={() => void commit()}>{amend ? 'Corrigir o último commit' : staged.length ? `Commit de ${count} arquivo${count > 1 ? 's' : ''}` : 'Coloque arquivos no stage para commitar'}</button></div></div>
+      <button type="button" className="gwgo" disabled={!ready || busy || (!amend && !summary.trim())} onClick={() => void commit()}>{amend ? 'Corrigir o último commit' : staged.length ? `Commit de ${count} arquivo${count > 1 ? 's' : ''}` : 'Prepare arquivos para commitar'}</button></div>
+    {fileMenu && <FileContextMenu x={fileMenu.x} y={fileMenu.y} items={menuItems(fileMenu.file)} close={() => setFileMenu(undefined)} />}
+    {sectionMenu && <FileContextMenu x={sectionMenu.x} y={sectionMenu.y} label="Ações dos arquivos não preparados" items={[{ label: 'Preparar tudo', action: () => void stage([], true) }, { label: 'Descartar todas as alterações', action: () => setPending({ kind: 'discard', paths: unstaged.map((file) => file.path) }) }]} close={() => setSectionMenu(undefined)} />}
+    {pending && <ConfirmDialog eyebrow={pending.kind === 'stash' ? 'Stash file' : 'Descartar alterações'} title={pending.kind === 'stash' ? `Guardar alterações de ${pending.paths[0]}?` : pending.paths.length === 1 ? `Descartar alterações de ${pending.paths[0]}?` : `Descartar alterações de ${pending.paths.length} arquivos?`} text={pending.kind === 'stash' ? 'As alterações preparadas e não preparadas deste arquivo serão guardadas no stash, incluindo o arquivo se ele ainda não for rastreado.' : 'As alterações não preparadas serão perdidas. Arquivos novos não rastreados serão apagados. Alterações já preparadas serão preservadas.'} ok={pending.kind === 'stash' ? 'Guardar no stash' : 'Descartar alterações'} danger={pending.kind === 'discard'} cancel={() => setPending(undefined)} confirm={() => { const action = pending; setPending(undefined); void perform(action.kind, action.paths) }} />}</div>
 }
 
-function CommitDetail({ row, graph, profiles, board, focus, setFocus, openCardGit, openFile }: { row: GitRow; graph: GitGraph; profiles: AgentProfile[]; board: ProjectBoard; focus: string | null; setFocus(id: string | null): void; openCardGit(cardId: string): void; openFile(file: GitCommitFile): void }): React.JSX.Element {
+function CommitDetail({ row, graph, profiles, board, focus, setFocus, openCardGit, openFile, editMessage }: { row: GitRow; graph: GitGraph; profiles: AgentProfile[]; board: ProjectBoard; focus: string | null; setFocus(id: string | null): void; openCardGit(cardId: string): void; openFile(file: GitCommitFile): void; editMessage?(): void }): React.JSX.Element {
   const [detail, setDetail] = useState<{ body: string; files: GitCommitFile[] }>(), [error, setError] = useState(''), [moreBody, setMoreBody] = useState(false)
   useEffect(() => { setDetail(undefined); setError(''); setMoreBody(false); void window.agentboard.invoke('git:commit-detail', { sourceId: graph.repo.sourceId, hash: row.hash }).then(setDetail).catch((reason: unknown) => setError(plainError(reason))) }, [graph.repo.sourceId, row.hash])
   const card = board.cards.find((item) => item.id === row.cardId), branch = graph.worktrees.find((item) => item.cardId === row.cardId)?.branch
   const files = detail?.files ?? []
   return <>
     {card && <CardButton cardId={card.id} title={card.title} branch={branch} focus={focus} setFocus={setFocus} openCardGit={openCardGit} />}
-    <div className="gmeta"><span>commit <code>{row.short}</code>{row.parents.length > 1 ? ' · merge' : ''}</span></div><h3>{row.subject}</h3>
+    <div className="gmeta"><span>commit <code>{row.short}</code>{row.parents.length > 1 ? ' · merge' : ''}</span></div>{editMessage ? <button type="button" className="gstashname" title="Editar mensagem do último commit" onClick={editMessage}>{row.subject} {gitIcons.pen}</button> : <h3>{row.subject}</h3>}
     <div className="gmeta"><span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Who row={row} profiles={profiles} /> · {shortAgo(row.date)}</span>{row.parents.length > 0 && <span>pai: <code>{row.parents.map((hash) => hash.slice(0, 7)).join(', ')}</code></span>}</div>
     {detail?.body && detail.body !== row.subject && (() => { const text = detail.body.replace(row.subject, '').trim(), long = text.length > 180 || text.split('\n').length > 3; return <><p className={`gbody ${long && !moreBody ? 'short' : ''}`}>{text}</p>{long && <button type="button" className="gmore" aria-expanded={moreBody} onClick={() => setMoreBody(!moreBody)}>{moreBody ? 'Ver menos' : 'Ver mais'}</button>}</> })()}
     {!card && <div className="cgnote">Commit fora de card (feito direto na branch).</div>}
@@ -173,12 +215,21 @@ function CommitDetail({ row, graph, profiles, board, focus, setFocus, openCardGi
   </>
 }
 
+function StashDetail({ row, sourceId, cardId, busy, action, rename }: { row: GitRow; sourceId: string; cardId: string | null; busy: boolean; action(action: StashMenuAction, ref: string): void; rename(): void }): React.JSX.Element {
+  const [files, setFiles] = useState<GitCommitFile[]>(), [error, setError] = useState('')
+  const stash = row.stash!
+  useEffect(() => { let alive = true; setFiles(undefined); setError(''); void window.agentboard.invoke('git:stash-detail', { sourceId, cardId, ref: stash.ref, commit: stash.commit }).then((result) => { if (alive) setFiles(result.files) }).catch((reason: unknown) => { if (alive) setError(plainError(reason)) }); return () => { alive = false } }, [sourceId, cardId, stash.ref, stash.commit])
+  return <><div className="gmeta"><span>Stash · {stash.ref}</span></div><button type="button" className="gstashname" title="Editar nome do stash" onClick={rename}>{row.subject} {gitIcons.pen}</button><div className="gmeta"><span>Base: {row.parents[0]?.slice(0, 7)}</span></div><div className="cgrow">{stashItems.map((item) => <button type="button" className="mini secondary" key={item.key} disabled={busy} onClick={() => action(item.key, stash.ref)}>{item.label}</button>)}</div>{error ? <p className="error">{error}</p> : files ? <><div className="cglabel">{files.length} arquivo{files.length === 1 ? '' : 's'} · <FileCounts files={files} /></div><div className="gfiles">{files.map((file) => <FileRow key={file.path} file={file} />)}</div></> : <p className="gmeta">Carregando arquivos…</p>}</>
+}
+
 /** Código do arquivo alterado (diff) na área do grafo: abre ao clicar num arquivo do WIP. */
-function DiffView({ viewer, close }: { viewer: { sourceId: string; cardId: string | null; hash?: string; file: GitChange }; close(): void }): React.JSX.Element {
+function DiffView({ viewer, close, changed }: { viewer: { sourceId: string; cardId: string | null; hash?: string; file: GitChange }; close(): void; changed(): void }): React.JSX.Element {
   const { sourceId, cardId, file, hash } = viewer
-  const [error, setError] = useState('')
+  const [error, setError] = useState(''), [discard, setDiscard] = useState(false)
+  const act = async (action: 'stage' | 'discard'): Promise<void> => { try { if (action === 'stage') await window.agentboard.invoke('git:stage', { sourceId, cardId, paths: [file.path], stage: !file.staged }); else await window.agentboard.invoke('git:discard-unstaged', { sourceId, cardId, paths: [file.path] }); window.dispatchEvent(new Event(gitChangedEvent)); changed(); close() } catch (reason) { setError(plainError(reason)) } }
   return <section className="gdiffview" style={{ gridColumn: '1 / span 2' }} aria-label={`Alterações de ${file.path}`}><header><span className={`st ${file.status}`}>{file.status}</span><b title={file.path}>{file.path}</b><small>{hash ? `commit ${hash.slice(0, 7)}` : file.staged ? 'preparado' : 'não preparado'}</small><span className="gdstat"><span className="p">+{file.additions}</span> <span className="m">−{file.deletions}</span></span><span className="grow1" /><button type="button" className="fv-toggle" title="Abrir a versão atual no editor de arquivos" onClick={() => void openInEditor({ sourceId, cardId, path: file.path }).then(close).catch((reason: unknown) => setError(plainError(reason)))}>Abrir no editor</button><button type="button" className="x" onClick={close} aria-label="Fechar">×</button></header>
-    <div className="gdiffbody">{error ? <p className="error">{error}</p> : <GitDiffEditor sourceId={sourceId} cardId={cardId} path={file.path} hash={hash} mode={file.staged ? 'staged' : 'unstaged'} />}</div></section>
+    {!hash && <div className="gdiff-actions">{!file.staged && <button type="button" className="gwdiscard" title="Descartar alterações" aria-label="Descartar alterações" onClick={() => setDiscard(true)}>{gitIcons.trash}</button>}<button type="button" className={`gwall ${file.staged ? 'un' : ''}`} onClick={() => void act('stage')}>{file.staged ? 'Retirar arquivo do preparo' : 'Preparar arquivo'}</button></div>}
+    <div className="gdiffbody">{error && <p className="error">{error}</p>}<GitDiffEditor sourceId={sourceId} cardId={cardId} path={file.path} hash={hash} mode={file.staged ? 'staged' : 'unstaged'} /></div>{discard && <ConfirmDialog eyebrow="Descartar alterações" title={`Descartar alterações de ${file.path}?`} text="As alterações não preparadas serão perdidas. Se o arquivo for novo e não rastreado, ele será apagado; alterações já preparadas serão preservadas." ok="Descartar alterações" danger cancel={() => setDiscard(false)} confirm={() => { setDiscard(false); void act('discard') }} />}</section>
 }
 
 type PullMode = 'fetch-all' | 'ff' | 'ff-only' | 'rebase'
@@ -196,23 +247,36 @@ const graphMin = 36
 const colKey = 'agentboard.gitCols'
 const loadCols = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem(colKey) ?? '{}') as Record<string, number> } catch { return {} } }
 
+function RepoTabs({ repos, selected, select, reorder, conflicts }: { repos: GitRepo[]; selected?: string; select(id: string): void; reorder(id: string, index: number): void; conflicts: Array<ConflictTarget & { operation: keyof typeof operationLabel; files: string[] }> }): React.JSX.Element {
+  const [dragging, setDragging] = useState<string>(), [drop, setDrop] = useState<number>(), geometry = useRef<number[]>([]), dragWidth = useRef(0)
+  const position = (x: number): number => { const index = geometry.current.findIndex((center) => x < center); return index < 0 ? geometry.current.length : index }
+  let visibleIndex = 0
+  const dragged = repos.find((repo) => repo.sourceId === dragging)
+  const placeholder = dragged ? <span className="gtab gtab-placeholder" style={{ width: dragWidth.current }} aria-hidden="true">{gitIcons.repo}<span className="gtn">{dragged.name}</span></span> : null
+  return <div className="gtabs" role="tablist" aria-label="Repositórios do projeto" onDragOver={(event) => { if (!event.dataTransfer.types.includes('application/x-agentboard-git-repo')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDrop(position(event.clientX)) }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDrop(undefined) }} onDrop={(event) => { event.preventDefault(); const id = event.dataTransfer.getData('application/x-agentboard-git-repo'); if (id) reorder(id, drop ?? position(event.clientX)); setDragging(undefined); setDrop(undefined) }}>
+    {repos.map((repo) => { const index = repo.sourceId === dragging ? -1 : visibleIndex++; const flagged = conflicts.filter((entry) => entry.sourceId === repo.sourceId), total = flagged.reduce((sum, entry) => sum + entry.files.length, 0); return <React.Fragment key={repo.sourceId}>{index >= 0 && drop === index && placeholder}<button type="button" role="tab" data-repo-tab={repo.sourceId} aria-selected={repo.sourceId === selected} className={`gtab ${repo.sourceId === selected ? 'on' : ''} ${repo.sourceId === dragging ? 'dragging' : ''}`} draggable onDragStart={(event) => { const source = event.currentTarget, rect = source.getBoundingClientRect(), tabs = [...source.parentElement!.querySelectorAll<HTMLElement>('[data-repo-tab]')], sourceIndex = tabs.indexOf(source); dragWidth.current = Math.round(rect.width); geometry.current = tabs.filter((tab) => tab !== source).map((tab, i) => { const box = tab.getBoundingClientRect(); return box.left + box.width / 2 - (i >= sourceIndex ? rect.width + 4 : 0) }); window.setTimeout(() => { setDragging(repo.sourceId); setDrop(sourceIndex) }, 0); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-agentboard-git-repo', repo.sourceId) }} onDragEnd={() => { setDragging(undefined); setDrop(undefined); geometry.current = [] }} title={`${repo.path}${repo.head ? ` · ${repo.head}` : ''}`} onClick={() => select(repo.sourceId)}>{gitIcons.repo}<span className="gtn">{repo.name}</span>{flagged.length > 0 && <span className="gtab-conflict" title={`${flagged.length} operação${flagged.length === 1 ? '' : 'ões'} com conflito neste repositório`}>conflito{total ? ` · ${total}` : ''}</span>}</button></React.Fragment> })}
+    {dragging && drop === visibleIndex && placeholder}
+  </div>
+}
+
 /** Aba Git do quadro: um repositório por vez, branches/worktrees/stashes na lateral, grafo no centro e o detalhe do commit à direita. */
 export function GitPage({ board, profiles, openCardGit, focusRequest }: { board: ProjectBoard; profiles: AgentProfile[]; openCardGit(cardId: string): void; focusRequest?: { cardId: string; at: number } }): React.JSX.Element {
   const projectId = board.project.id
   const [repos, setRepos] = useState<GitRepo[]>(), [repoId, setRepoId] = useState<string>(), [graph, setGraph] = useState<GitGraph>(), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState('')
-  const [draggedRepo, setDraggedRepo] = useState<string>(), [repoDrop, setRepoDrop] = useState<{ id: string; after: boolean }>()
   const repoOrderKey = `agentboard.gitRepoOrder.${projectId}`
   const sortRepos = (items: GitRepo[]): GitRepo[] => {
     try { const saved: unknown = JSON.parse(localStorage.getItem(repoOrderKey) ?? '[]'); if (!Array.isArray(saved)) return items; const order = new Map(saved.filter((id): id is string => typeof id === 'string').map((id, index) => [id, index])); return [...items].sort((a, b) => (order.get(a.sourceId) ?? Infinity) - (order.get(b.sourceId) ?? Infinity)) } catch { return items }
   }
-  const dropRepo = (source: string, target: string, after: boolean): void => {
-    if (!repos || source === target) return
+  const dropRepo = (source: string, index: number): void => {
+    if (!repos) return
     const item = repos.find((repo) => repo.sourceId === source); if (!item) return
-    const next = repos.filter((repo) => repo.sourceId !== source), index = next.findIndex((repo) => repo.sourceId === target); if (index < 0) return
-    next.splice(index + (after ? 1 : 0), 0, item); setRepos(next)
+    const next = repos.filter((repo) => repo.sourceId !== source)
+    next.splice(Math.max(0, Math.min(index, next.length)), 0, item); setRepos(next)
     try { localStorage.setItem(repoOrderKey, JSON.stringify(next.map((repo) => repo.sourceId))) } catch { /* só vale nesta sessão */ }
   }
   const [worktree, setWorktree] = useState<string | null>(null)
+  const [renameStash, setRenameStash] = useState<{ ref: string; commit: string; message: string }>()
+  const [renameCommit, setRenameCommit] = useState<{ hash: string; message: string; confirm: boolean }>()
   const [focus, setFocus] = useState<string | null>(null), [sel, setSel] = useState<string | null>(null), [open, setOpen] = useState(false), [cols, setCols] = useState(loadCols), [summaries, setSummaries] = useState<Record<string, string>>({})
   const list = useRef<HTMLDivElement>(null)
   const [panes, setPanes] = useState(loadPanes), page = useRef<HTMLElement>(null)
@@ -296,6 +360,11 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
     setBusy(action); setNotice('')
     try { const out = await window.agentboard.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, name, ...extra }); report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Pronto.'); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
   }
+  const openRemoteBranch = async (name: string): Promise<void> => {
+    if (!graph || busy) return
+    setBusy('checkout'); setNotice('')
+    try { const out = await window.agentboard.invoke('git:checkout-remote', { sourceId: graph.repo.sourceId, cardId: worktree, name }); report('checkout', true, out.output) } catch (reason) { report('checkout', false, plainError(reason)) } finally { await load(); setBusy('') }
+  }
   const commitAction = async (action: Exclude<CommitMenuAction, 'copy'>, hash: string, name?: string): Promise<void> => {
     if (!graph) return
     setBusy(action); setNotice('')
@@ -305,6 +374,15 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
     if (!graph) return
     setBusy(action); setNotice('')
     try { const out = await window.agentboard.invoke('git:stash-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, ref }); report(action, true, out.output); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
+  }
+  const beginRenameStash = (ref: string): void => { const row = rows.find((item) => item.stash?.ref === ref); if (row?.stash) setRenameStash({ ref, commit: row.stash.commit, message: row.subject }) }
+  const saveStashName = async (): Promise<void> => {
+    if (!graph || !renameStash) return
+    try { const result = await window.agentboard.invoke('git:stash-rename', { sourceId: graph.repo.sourceId, cardId: worktree, ...renameStash }); const hash = `stash:${result.commit}:${result.ref}`; setRenameStash(undefined); await load(); setSel(hash); setOpen(true); setPicked(`stash:${result.ref}`); toast.info('Stash renomeado') } catch (reason) { toast.error('Não foi possível renomear o stash', plainError(reason)) }
+  }
+  const saveCommitName = async (): Promise<void> => {
+    if (!graph || !renameCommit) return
+    try { const result = await window.agentboard.invoke('git:rename-commit', { sourceId: graph.repo.sourceId, cardId: worktree, hash: renameCommit.hash, message: renameCommit.message }); setRenameCommit(undefined); await load(); setSel(result.hash); setOpen(true); toast.info('Mensagem do commit atualizada') } catch (reason) { toast.error('Não foi possível atualizar a mensagem', plainError(reason)) }
   }
   const runCommitMenu = (action: CommitMenuAction): void => {
     const current = menu; setMenu(undefined)
@@ -361,7 +439,7 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
 
   if (repos && !repos.length) return <div className="gwrap"><GitEmpty projectId={projectId} done={(items) => { setRepos(items); setRepoId(items[0]?.sourceId) }} /></div>
   const labels = rows.map((row) => agoLabel(row.date))
-  const side = <GitSide graph={graph} worktree={worktree} selectWorktree={(id) => { if (id !== worktree) setGraph(undefined); setWorktree(id); setFocus(null); setSel(null); setOpen(false); setViewer(undefined) }} title={title} icons={gitIcons} picked={picked} onPick={pickBranch} onOpen={(kind, name, current) => { if (current) toast.info(`Você já está em ${name}`); else void branchAction('checkout', name) }} onMenu={(kind, name, event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, kind, name }) }} />
+  const side = <GitSide graph={graph} worktree={worktree} selectWorktree={(id) => { if (id !== worktree) setGraph(undefined); setWorktree(id); setFocus(null); setSel(null); setOpen(false); setViewer(undefined) }} title={title} icons={gitIcons} picked={picked} onPick={pickBranch} onPickStash={(ref) => { const row = rows.find((item) => item.stash?.ref === ref); if (!row) return; setPicked(`stash:${ref}`); setSel(row.hash); setOpen(true); window.requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(`[data-hash="${row.hash}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })) }} onOpen={(kind, name, current) => { if (current) toast.info(`Você já está em ${name}`); else void branchAction('checkout', name) }} onMenu={(kind, name, event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, kind, name }) }} />
   const tool = (icon: React.JSX.Element, label: string, action: 'push' | 'stash' | 'pop', remote = true): React.JSX.Element => <button type="button" className="gtool" disabled={Boolean(busy) || (remote && !graph?.repo.hasRemote)} title={remote && !graph?.repo.hasRemote ? 'Este repositório não tem remoto (origin)' : undefined} onClick={() => { if (action === 'push' && (graph?.branches.local.find((item) => item.head)?.behind ?? 0) > 0) setPushRejected(true); else void sync(action) }}>{icon}{busy === action ? '…' : label}</button>
   // Pull sem branch remota ligada: pergunta com qual remoto/branch a branch atual puxa e envia, liga e então puxa.
   const [upstreamAsk, setUpstreamAsk] = useState<{ branch: string; remotes: string[]; mode: 'ff' | 'ff-only' | 'rebase' }>()
@@ -392,9 +470,9 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
       {rows.map((row, i) => {
         const last = !rows[i + 1] || labels[i + 1] !== labels[i], wip = row.wip
         const cardTitle = row.cardId ? title(row.cardId) : ''
-        return <button type="button" key={row.hash} data-hash={row.hash} className={`grow ${last && rows[i + 1] ? 'gbreak' : ''} ${wip ? 'wip' : ''} ${open && row.hash === sel ? 'on' : ''} ${dimmed(row) ? 'dim' : ''}`} onClick={() => clickRow(row)} onContextMenu={wip ? undefined : (event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, kind: 'commit', name: row.hash }) }}>
-          <RefsCell row={row} ghost={ghostChip(rows, i, graph?.repo.head ?? null)} spacing={spacing} worktrees={graph?.worktrees ?? []} act={(kind, name, open) => { if (!open) pickBranch(kind, name); else if (kind === 'local' && name === graph?.repo.head) toast.info(`Você já está em ${name}`); else void branchAction('checkout', name) }} /><span className="ggraph"><Dot row={row} profiles={profiles} spacing={spacing} /></span>
-          <span className="gmsg">{wip ? <><span className="gwipbox">{summaries[row.hash] || '// WIP'}</span><span className="gwipcnt">{wip.modified > 0 && <span className="m">{gitIcons.pen}{wip.modified}</span>}{wip.added > 0 && <span className="a">+{wip.added}</span>}{wip.deleted > 0 && <span className="d">−{wip.deleted}</span>}</span></> : <span className="t">{row.subject}</span>}</span>
+        return <button type="button" key={row.hash} data-hash={row.hash} className={`grow ${last && rows[i + 1] ? 'gbreak' : ''} ${wip ? 'wip' : ''} ${open && row.hash === sel ? 'on' : ''} ${dimmed(row) ? 'dim' : ''}`} onClick={() => clickRow(row)} onContextMenu={wip ? undefined : (event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, kind: row.stash ? 'stash' : 'commit', name: row.stash?.ref ?? row.hash }) }}>
+          <RefsCell row={row} ghost={ghostChip(rows, i, graph?.repo.head ?? null)} spacing={spacing} worktrees={graph?.worktrees ?? []} act={(kind, name, open) => { if (!open) pickBranch(kind, name); else if (kind === 'remote') void openRemoteBranch(name); else if (name === graph?.repo.head) toast.info(`Você já está em ${name}`); else void branchAction('checkout', name) }} /><span className="ggraph"><Dot row={row} profiles={profiles} spacing={spacing} /></span>
+          <span className="gmsg">{wip ? <><span className="gwipbox">{summaries[row.hash] || '// WIP'}</span><span className="gwipcnt">{wip.modified > 0 && <span className="m">{gitIcons.pen}{wip.modified}</span>}{wip.added > 0 && <span className="a">+{wip.added}</span>}{wip.deleted > 0 && <span className="d">−{wip.deleted}</span>}</span></> : <span className="t">{row.stash && <b className="gstashlabel">{row.stash.ref} · </b>}{row.subject}</span>}</span>
           <span className="gcardc">{row.cardId && <span className="ctag" role="link" title="Abrir o Git do card" onClick={(e) => { e.stopPropagation(); openCardGit(row.cardId!) }}>{cardTitle}</span>}</span></button>
       })}
       {rows.map((row, i) => (!rows[i + 1] || labels[i + 1] !== labels[i]) ? <span key={`ago-${row.hash}`} className="gago gago2" style={{ top: 28 + (i + 1) * rowHeight }}>{labels[i]}</span> : null)}
@@ -404,14 +482,17 @@ export function GitPage({ board, profiles, openCardGit, focusRequest }: { board:
     {isWip(selected) ? <><div className="gmeta"><span>Alterações sem commit</span></div><h3>{selected.cardId ? 'Alterações na worktree do card' : 'Alterações na pasta principal'}</h3>
       {selected.cardId && <CardButton cardId={selected.cardId} title={title(selected.cardId)} branch={selected.wip?.branch} focus={focus} setFocus={setFocus} openCardGit={openCardGit} />}
       <WipForm key={selected.hash} row={selected} graph={graph} summary={summaries[selected.hash] ?? ''} setSummary={(value) => setSummaries((current) => ({ ...current, [selected.hash]: value }))} changed={() => void load()} openDiff={(file) => setViewer({ sourceId: graph.repo.sourceId, cardId: selected.cardId, file })} /></>
-      : <CommitDetail row={selected} graph={graph} profiles={profiles} board={board} focus={focus} setFocus={setFocus} openCardGit={openCardGit} openFile={(file) => setViewer({ sourceId: graph.repo.sourceId, cardId: selected.cardId, hash: selected.hash, file: { ...file, staged: false } })} />}
+      : selected.stash ? <StashDetail row={selected} sourceId={graph.repo.sourceId} cardId={worktree} busy={Boolean(busy)} action={(action, ref) => void stashAction(action, ref)} rename={() => beginRenameStash(selected.stash!.ref)} />
+      : <CommitDetail row={selected} graph={graph} profiles={profiles} board={board} focus={focus} setFocus={setFocus} openCardGit={openCardGit} {...(selected.refs.some((ref) => ref.kind === 'head') ? { editMessage: () => setRenameCommit({ hash: selected.hash, message: selected.subject, confirm: false }) } : {})} openFile={(file) => setViewer({ sourceId: graph.repo.sourceId, cardId: selected.cardId, hash: selected.hash, file: { ...file, staged: false } })} />}
   </aside> : null
-  return <div className="gwrap"><div className="gtabs" role="tablist" aria-label="Repositórios do projeto">{(repos ?? []).map((repo) => <button type="button" role="tab" aria-selected={repo.sourceId === repoId} key={repo.sourceId} className={`gtab ${repo.sourceId === repoId ? 'on' : ''} ${draggedRepo === repo.sourceId ? 'dragging' : ''} ${repoDrop?.id === repo.sourceId && draggedRepo !== repo.sourceId ? (repoDrop.after ? 'drop-after' : 'drop-before') : ''}`} draggable onDragStart={(event) => { setDraggedRepo(repo.sourceId); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-agentboard-git-repo', repo.sourceId) }} onDragOver={(event) => { if (!event.dataTransfer.types.includes('application/x-agentboard-git-repo')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; const rect = event.currentTarget.getBoundingClientRect(); setRepoDrop({ id: repo.sourceId, after: event.clientX >= rect.left + rect.width / 2 }) }} onDrop={(event) => { const source = event.dataTransfer.getData('application/x-agentboard-git-repo'); if (!source) return; event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); dropRepo(source, repo.sourceId, event.clientX >= rect.left + rect.width / 2); setDraggedRepo(undefined); setRepoDrop(undefined) }} onDragEnd={() => { setDraggedRepo(undefined); setRepoDrop(undefined) }} title={`${repo.path}${repo.head ? ` · ${repo.head}` : ''}`} onClick={() => { if (resolveTarget && !leaveConflicts()) return; setRepoId(repo.sourceId); setWorktree(null); setFocus(null); setViewer(undefined); setResolveTarget(undefined); try { localStorage.setItem(`agentboard.gitRepo.${projectId}`, repo.sourceId) } catch { /* só vale nesta sessão */ } }}>{gitIcons.repo}<span className="gtn">{repo.name}</span>{(() => { const flagged = allConflicts.filter((entry) => entry.sourceId === repo.sourceId); const total = flagged.reduce((sum, entry) => sum + entry.files.length, 0); return flagged.length ? <span className="gtab-conflict" title={`${flagged.length} operação${flagged.length === 1 ? '' : 'ões'} com conflito neste repositório`}>conflito{total ? ` · ${total}` : ''}</span> : null })()}</button>)}</div>{allConflicts.length > 0 && <div className="cfl-banner" role="status"><span>{allConflicts.length === 1 ? 'Conflito em 1 repositório' : `Conflitos em ${allConflicts.length} repositórios`}{allConflicts.length === 1 ? ` · ${operationLabel[allConflicts[0]!.operation]} em andamento${allConflicts[0]!.files.length ? ` · ${allConflicts[0]!.files.length} arquivo${allConflicts[0]!.files.length === 1 ? '' : 's'}` : ' · conflitos resolvidos, falta continuar'}` : ''}</span><span className="cfl-targets">{allConflicts.map((entry) => <button key={`${entry.sourceId}:${entry.cardId ?? ''}`} type="button" className="mini" title={`${operationLabel[entry.operation]} em ${entry.repo}${entry.cardTitle ? ` (worktree de ${entry.cardTitle})` : ''}`} onClick={() => resolve(entry)}>{entry.repo}{entry.cardTitle ? ` · ${entry.cardTitle}` : ''} · {entry.files.length ? 'Resolver' : 'Continuar'}</button>)}</span></div>}<section ref={page} className={`gitpage ${detail ? '' : 'nodetail'}`} style={{ '--gside': `${panes.side}px`, '--gdetail': `${panes.detail}px` } as React.CSSProperties} aria-label="Git do projeto">{resolveTarget ? <ConflictsView key={`${resolveTarget.sourceId}:${resolveTarget.cardId ?? ''}`} target={resolveTarget} setDirty={(value) => { conflictDirty.current = value }} changed={() => { void load(); refreshConflicts() }} back={() => { setResolveTarget(undefined); refreshConflicts() }} /> : viewer ? <DiffView viewer={viewer} close={() => setViewer(undefined)} /> : <>{side}{center}</>}{!resolveTarget && detail}{!viewer && !resolveTarget && <div className="gpanegrip side" role="separator" aria-orientation="vertical" title="Arraste para mudar a largura (duplo clique restaura)" onPointerDown={gripPane('side')} onDoubleClick={resetPane('side')} />}{detail && !resolveTarget && <div className="gpanegrip detail" role="separator" aria-orientation="vertical" title="Arraste para mudar a largura (duplo clique restaura)" onPointerDown={gripPane('detail')} onDoubleClick={resetPane('detail')} />}</section>
+  return <div className="gwrap"><RepoTabs repos={repos ?? []} selected={repoId} conflicts={allConflicts} reorder={dropRepo} select={(id) => { if (resolveTarget && !leaveConflicts()) return; setRepoId(id); setWorktree(null); setFocus(null); setViewer(undefined); setResolveTarget(undefined); try { localStorage.setItem(`agentboard.gitRepo.${projectId}`, id) } catch { /* só vale nesta sessão */ } }} />{allConflicts.length > 0 && <div className="cfl-banner" role="status"><span>{allConflicts.length === 1 ? 'Conflito em 1 repositório' : `Conflitos em ${allConflicts.length} repositórios`}{allConflicts.length === 1 ? ` · ${operationLabel[allConflicts[0]!.operation]} em andamento${allConflicts[0]!.files.length ? ` · ${allConflicts[0]!.files.length} arquivo${allConflicts[0]!.files.length === 1 ? '' : 's'}` : ' · conflitos resolvidos, falta continuar'}` : ''}</span><span className="cfl-targets">{allConflicts.map((entry) => <button key={`${entry.sourceId}:${entry.cardId ?? ''}`} type="button" className="mini" title={`${operationLabel[entry.operation]} em ${entry.repo}${entry.cardTitle ? ` (worktree de ${entry.cardTitle})` : ''}`} onClick={() => resolve(entry)}>{entry.repo}{entry.cardTitle ? ` · ${entry.cardTitle}` : ''} · {entry.files.length ? 'Resolver' : 'Continuar'}</button>)}</span></div>}<section ref={page} className={`gitpage ${detail ? '' : 'nodetail'}`} style={{ '--gside': `${panes.side}px`, '--gdetail': `${panes.detail}px` } as React.CSSProperties} aria-label="Git do projeto">{resolveTarget ? <ConflictsView key={`${resolveTarget.sourceId}:${resolveTarget.cardId ?? ''}`} target={resolveTarget} setDirty={(value) => { conflictDirty.current = value }} changed={() => { void load(); refreshConflicts() }} back={() => { setResolveTarget(undefined); refreshConflicts() }} /> : viewer ? <DiffView viewer={viewer} close={() => setViewer(undefined)} changed={() => void load()} /> : <>{side}{center}</>}{!resolveTarget && detail}{!viewer && !resolveTarget && <div className="gpanegrip side" role="separator" aria-orientation="vertical" title="Arraste para mudar a largura (duplo clique restaura)" onPointerDown={gripPane('side')} onDoubleClick={resetPane('side')} />}{detail && !resolveTarget && <div className="gpanegrip detail" role="separator" aria-orientation="vertical" title="Arraste para mudar a largura (duplo clique restaura)" onPointerDown={gripPane('detail')} onDoubleClick={resetPane('detail')} />}</section>
     {menu && (menu.kind === 'commit' ? <GitMenu x={menu.x} y={menu.y} title={menu.name.slice(0, 7)} label={`Ações do commit ${menu.name.slice(0, 7)}`} items={commitItems(graph?.repo.head ?? null)} run={runCommitMenu} close={() => setMenu(undefined)} />
-      : menu.kind === 'stash' ? <GitMenu x={menu.x} y={menu.y} title={menu.name} label={`Ações do stash ${menu.name}`} items={stashItems} run={(action) => { const ref = menu.name; setMenu(undefined); void stashAction(action, ref) }} close={() => setMenu(undefined)} />
+      : menu.kind === 'stash' ? <GitMenu x={menu.x} y={menu.y} title={menu.name} label={`Ações do stash ${menu.name}`} items={[...stashItems, { key: 'rename' as const, label: 'Renomear stash' }]} run={(action) => { const ref = menu.name; setMenu(undefined); if (action === 'rename') beginRenameStash(ref); else void stashAction(action, ref) }} close={() => setMenu(undefined)} />
       : <GitMenu x={menu.x} y={menu.y} title={menu.name} label={`Ações da branch ${menu.name}`} items={branchItems(menu.kind, menu.kind === 'local' && graph?.branches.local.find((item) => item.name === menu.name)?.head === true, graph?.repo.head ?? null)} run={runMenu} close={() => setMenu(undefined)} />)}
     {ask?.kind === 'reset-hard' && <ConfirmDialog eyebrow="Reset hard" title={`Mover a branch atual para ${ask.name.slice(0, 7)}?`} text="Descarta as alterações não commitadas e os commits depois deste na branch atual. Os commits ainda podem ser recuperados pelo reflog, mas o que não foi commitado se perde." ok="Descartar e mover" danger cancel={() => setAsk(undefined)} confirm={() => { const hash = ask.name; setAsk(undefined); void commitAction('reset-hard', hash) }} />}
     {pushRejected && graph && <PushRejectedDialog branch={graph.repo.head ?? ''} cancel={() => setPushRejected(false)} pull={(mode) => { setPushRejected(false); void sync('pull', mode) }} force={() => { setPushRejected(false); void sync('push', undefined, true) }} />}
+    {renameStash && <ConfirmDialog eyebrow="Stash" title="Renomear stash" text="Escolha um nome para identificar estas alterações guardadas." extra={<label className="f"><span>Nome</span><input className="in" autoFocus maxLength={500} value={renameStash.message} onChange={(event) => setRenameStash({ ...renameStash, message: event.target.value })} /></label>} ok="Salvar nome" okDisabled={!renameStash.message.trim()} cancel={() => setRenameStash(undefined)} confirm={() => void saveStashName()} />}
+    {renameCommit && (renameCommit.confirm ? <ConfirmDialog eyebrow="Alterar commit" title="Atualizar a mensagem do último commit?" text="Isso cria um novo commit com outro identificador. Se o commit já foi publicado, será necessário atualizar a branch remota. As alterações preparadas continuam fora do commit." ok="Atualizar mensagem" danger cancel={() => setRenameCommit({ ...renameCommit, confirm: false })} confirm={() => void saveCommitName()} /> : <ConfirmDialog eyebrow="Alterar commit" title="Editar mensagem do último commit" text="Altere o resumo; a descrição do commit será preservada." extra={<label className="f"><span>Resumo</span><input className="in" autoFocus maxLength={2000} value={renameCommit.message} onChange={(event) => setRenameCommit({ ...renameCommit, message: event.target.value })} /></label>} ok="Continuar" okDisabled={!renameCommit.message.trim()} cancel={() => setRenameCommit(undefined)} confirm={() => setRenameCommit({ ...renameCommit, confirm: true })} />)}
     {upstreamAsk && graph && <UpstreamDialog sourceId={graph.repo.sourceId} cardId={worktree} branch={upstreamAsk.branch} remotes={upstreamAsk.remotes} close={() => setUpstreamAsk(undefined)} done={() => { const mode = upstreamAsk.mode; setUpstreamAsk(undefined); void sync('pull', mode) }} />}
     {ask?.kind === 'delete-remote' && <ConfirmDialog eyebrow="Apagar branch remota" title={`Apagar ${ask.name} no servidor?`} text="Isso remove a branch do repositório remoto (git push --delete) e vale para todo mundo que usa esse remoto. As cópias locais não são apagadas. Não dá para desfazer por aqui." ok="Apagar no remoto" danger cancel={() => setAsk(undefined)} confirm={() => { const name = ask.name; setAsk(undefined); void branchAction('delete-remote', name) }} />}
     {ask?.kind === 'delete' && <ConfirmDialog eyebrow="Apagar branch" title={`Apagar ${ask.name}?`} text="Só apaga se tudo dela já estiver em outra branch; se faltar algo, o Git recusa e nada se perde." ok="Apagar" danger cancel={() => setAsk(undefined)} confirm={() => { const name = ask.name; setAsk(undefined); void branchAction('delete', name) }} />}

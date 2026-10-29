@@ -57,7 +57,7 @@ export function refChips(refs: GitRef[]): RefChip[] {
 /** Nas linhas sem branch, a branch daquela faixa (a mais próxima acima) aparece apagada ao passar o mouse. */
 export function ghostChip(rows: GitRow[], index: number, headName: string | null): RefChip | null {
   const row = rows[index]!
-  if (row.refs.length || isWip(row)) return null
+  if (row.refs.length || isWip(row) || row.stash) return null
   for (let i = index - 1; i >= 0; i--) {
     const above = rows[i]!
     if (above.lane === row.lane && above.refs.length) return refChips(above.refs)[0] ?? null
@@ -83,12 +83,12 @@ export function graphEdges(rows: GitRow[], dimmed: (row: GitRow) => boolean, hei
   rows.forEach((row, i) => {
     for (const hash of row.parents) {
       const j = index.get(hash), xi = laneX(row.lane, spacing), yi = y(i)
-      if (j === undefined) { edges.push({ d: `M${xi} ${yi}V${rows.length * height}`, color: laneColor(row.lane), wip: isWip(row), dim: dimmed(row) }); continue }
+      if (j === undefined) { edges.push({ d: `M${xi} ${yi}V${rows.length * height}`, color: laneColor(row.lane), wip: isWip(row) || Boolean(row.stash), dim: dimmed(row) }); continue }
       const parent = rows[j]!, xj = laneX(parent.lane, spacing), yj = y(j), sign = Math.sign(xj - xi)
       const d = row.lane === parent.lane ? `M${xi} ${yi}V${yj}`
         : row.lane < parent.lane ? `M${xi} ${yi}H${xj - sign * radius}Q${xj} ${yi} ${xj} ${yi + radius}V${yj}`
           : `M${xi} ${yi}V${yj - radius}Q${xi} ${yj} ${xi + sign * radius} ${yj}H${xj}`
-      edges.push({ d, color: laneColor(Math.max(row.lane, parent.lane)), wip: isWip(row), dim: dimmed(row) || dimmed(parent) })
+      edges.push({ d, color: laneColor(Math.max(row.lane, parent.lane)), wip: isWip(row) || Boolean(row.stash), dim: dimmed(row) || dimmed(parent) })
     }
   })
   return edges

@@ -29,6 +29,19 @@ async function withRemote(): Promise<{ manager: GitManager; repo: string; remote
 }
 
 describe('branches remotas', { timeout: 20_000 }, () => {
+  it('atualiza a branch remota por fast-forward ao abri-la e recusa divergências', async () => {
+    const { manager, repo, remote, sourceId } = await withRemote()
+    const other = join(repo, '..', 'other'); await exec('git', ['clone', remote, other])
+    await git(other, 'config', 'user.email', 'test@example.invalid'); await git(other, 'config', 'user.name', 'Test')
+    await writeFile(join(other, 'remote.txt'), 'remoto\n'); await git(other, 'add', '.'); await git(other, 'commit', '-m', 'remoto'); await git(other, 'push')
+    expect((await manager.checkoutRemote(sourceId, null, 'origin/main')).output).toContain('fast-forward')
+    expect((await git(repo, 'rev-parse', 'HEAD')).stdout.trim()).toBe((await git(other, 'rev-parse', 'HEAD')).stdout.trim())
+    await writeFile(join(repo, 'local.txt'), 'local\n'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'local')
+    await writeFile(join(other, 'remote2.txt'), 'remoto\n'); await git(other, 'add', '.'); await git(other, 'commit', '-m', 'remoto 2'); await git(other, 'push')
+    const before = (await git(repo, 'rev-parse', 'HEAD')).stdout.trim()
+    await expect(manager.checkoutRemote(sourceId, null, 'origin/main')).rejects.toThrow(/divergiram/)
+    expect((await git(repo, 'rev-parse', 'HEAD')).stdout.trim()).toBe(before)
+  })
   it('checkout de uma branch remota cria a local acompanhando a remota e, se a local já existe, só muda para ela', async () => {
     const { manager, repo, sourceId } = await withRemote()
     const first = await manager.branchAction(sourceId, { action: 'checkout', name: 'origin/feature/x' })

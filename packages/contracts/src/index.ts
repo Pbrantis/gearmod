@@ -243,7 +243,7 @@ export const gitRefSchema = z.object({ name: z.string(), kind: z.enum(['head', '
 /** Linha do grafo: um commit, ou (`wip` preenchido) as alterações ainda sem commit da pasta principal ou da worktree de um card. */
 export const gitRowSchema = z.object({
   hash: z.string(), short: z.string(), parents: z.array(z.string()), lane: z.number().int().nonnegative(), author: z.string(), email: z.string(), date: isoDate.nullable(), subject: z.string(),
-  refs: z.array(gitRefSchema), cardId: uuid.nullable(), agentProfileId: uuid.nullable(), wip: z.object({ modified: z.number().int(), added: z.number().int(), deleted: z.number().int(), staged: z.number().int(), branch: z.string() }).nullable()
+  refs: z.array(gitRefSchema), cardId: uuid.nullable(), agentProfileId: uuid.nullable(), wip: z.object({ modified: z.number().int(), added: z.number().int(), deleted: z.number().int(), staged: z.number().int(), branch: z.string() }).nullable(), stash: z.object({ ref: z.string(), commit: z.string() }).optional()
 })
 export const gitGraphSchema = z.object({
   repo: gitRepoSchema, rows: z.array(gitRowSchema), truncated: z.boolean(),
@@ -431,10 +431,17 @@ export const ipcContracts = {
   , 'git:commit-diff': { input: z.object({ sourceId: uuid, hash: z.string().regex(/^[0-9a-f]{7,64}$/), path: z.string().min(1).max(4096) }).strict(), output: z.string() }
   , 'git:diff': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096), staged: z.boolean() }).strict(), output: z.string() }
   , 'git:stage': { input: z.object({ ...gitTarget, paths: z.array(z.string().min(1).max(4096)).max(5000), stage: z.boolean() }).strict(), output: gitChangesSchema }
+  , 'git:discard-unstaged': { input: z.object({ ...gitTarget, paths: z.array(z.string().min(1).max(4096)).min(1).max(5000) }).strict(), output: gitChangesSchema }
+  , 'git:stash-file': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096) }).strict(), output: gitChangesSchema }
+  , 'git:ignore-file': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096), kind: z.enum(['file', 'directory', 'extension']) }).strict(), output: gitChangesSchema }
   , 'git:commit': { input: z.object({ ...gitTarget, message: z.string().max(2000), description: z.string().max(20_000).optional(), amend: z.boolean().optional(), paths: z.array(z.string().min(1).max(4096)).max(5000).optional() }).strict(), output: z.object({ hash: z.string() }) }
+  , 'git:rename-commit': { input: z.object({ ...gitTarget, hash: z.string().regex(/^[0-9a-f]{40,64}$/), message: z.string().trim().min(1).max(2000) }).strict(), output: z.object({ hash: z.string() }) }
   , 'git:branch-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete', 'delete-remote']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:checkout-remote': { input: z.object({ ...gitTarget, name: z.string().min(1).max(250) }).strict(), output: z.object({ output: z.string() }) }
   , 'git:commit-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'cherry-pick', 'revert', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:stash-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['apply', 'pop', 'drop']), ref: z.string().regex(/^stash@\{\d+\}$/) }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:stash-detail': { input: z.object({ ...gitTarget, ref: z.string().regex(/^stash@\{\d+\}$/), commit: z.string().regex(/^[0-9a-f]{40,64}$/) }).strict(), output: z.object({ files: z.array(gitCommitFileSchema) }) }
+  , 'git:stash-rename': { input: z.object({ ...gitTarget, ref: z.string().regex(/^stash@\{\d+\}$/), commit: z.string().regex(/^[0-9a-f]{40,64}$/), message: z.string().trim().min(1).max(500) }).strict(), output: z.object({ ref: z.string(), commit: z.string() }) }
   , 'git:conflicts': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional() }).strict(), output: z.object({ operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']).nullable(), files: z.array(z.string()) }) }
   , 'git:conflict-file': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000) }).strict(), output: z.string() }
   , 'git:conflict-save': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000), content: z.string().max(2_000_000) }).strict(), output: z.object({ left: z.number().int() }) }

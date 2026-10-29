@@ -1,3 +1,4 @@
+import { SettingsIcon } from './SettingsIcon'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAgentUpdatesPending } from './useAgentUpdates'
 import { ProjectAvatar } from './ProjectIcon'
@@ -131,7 +132,7 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
     {menu && <div ref={projectMenu} className="projmenu" role="menu" aria-label={`Ações do projeto ${menu.project.name}`} tabIndex={-1} style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
       <div className="ctxtitle">{menu.project.name}</div>
       <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onNewChat(menu.project.id) }}><PlusIcon /><span>Novo chat livre</span><kbd>N</kbd></button>
-      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onProjectSettings(menu.project.id) }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" /><circle cx="12" cy="12" r="4" /></svg><span>Configurar projeto</span><kbd>C</kbd></button>
+      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onProjectSettings(menu.project.id) }}><SettingsIcon /><span>Configurar projeto</span><kbd>C</kbd></button>
       <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(undefined); onDelete(menu.project) }}><TrashIcon /><span>Excluir projeto</span><kbd>Del</kbd></button>
     </div>}
   </>
