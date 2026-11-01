@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { agentColorPalette, type CardTypeDef, type Project } from '@agentboard/contracts'
 import { ConfirmDialog } from './ConfirmDialog'
+import { TrashIcon } from './icons'
 import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
 
@@ -13,7 +14,7 @@ export function cardTypeView(types: readonly CardTypeDef[], id: string): { name:
 /** Selo do tipo (`.pill`) na cor cadastrada; tipo desconhecido fica com a cor neutra do selo. */
 export function CardTypePill({ types, type }: { types: readonly CardTypeDef[]; type: string }): React.JSX.Element {
   const view = cardTypeView(types, type)
-  return <span className="pill cardtype-pill" title={view.name} style={view.color ? { color: view.color, background: `color-mix(in srgb, ${view.color} 16%, var(--surface-2))` } : undefined}>{view.name}</span>
+  return <span className={`pill cardtype-pill ${view.color ? 'tc' : ''}`} title={view.name} style={view.color ? { '--tc': view.color } as React.CSSProperties : undefined}>{view.name}</span>
 }
 
 /** Opções de tipo para os seletores (com a cor); mantém o tipo atual do card mesmo que tenha saído da lista. */
@@ -68,8 +69,8 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
     <ul className="cardtypes-list">{types.map((type) => <li key={type.id} className="cardtypes-row">
       <button type="button" className="cardtypes-swatch tip" disabled={disabled} data-tip={t.color} aria-label={t.colorOf(type.name)} aria-expanded={palette === type.id} style={{ background: type.color }} onClick={() => setPalette(palette === type.id ? undefined : type.id)} />
       <input className="in cardtypes-name" disabled={disabled} aria-label={t.name} maxLength={40} value={names[type.id] ?? type.name} onChange={(event) => setNames({ ...names, [type.id]: event.target.value })} onBlur={() => rename(type)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.stopPropagation(); forget(type.id) } }} />
-      <span className="pill cardtype-pill" style={{ color: type.color, background: `color-mix(in srgb, ${type.color} 16%, var(--surface-2))` }}>{(names[type.id] ?? type.name) || type.id}</span>
-      <button type="button" className="ibtn tip cardtypes-x" disabled={disabled || types.length <= 1} data-tip={types.length <= 1 ? t.lastOne : t.remove} aria-label={t.removeOf(type.name)} onClick={() => void askRemove(type)}>×</button>
+      <span className="pill cardtype-pill tc" style={{ '--tc': type.color } as React.CSSProperties}>{(names[type.id] ?? type.name) || type.id}</span>
+      <button type="button" className="ibtn tip cardtypes-x" disabled={disabled || types.length <= 1} data-tip={types.length <= 1 ? t.lastOne : t.remove} aria-label={t.removeOf(type.name)} onClick={() => void askRemove(type)}><TrashIcon /></button>
       {palette === type.id && <div className="cardtypes-palette" role="listbox" aria-label={t.colorOf(type.name)}>{agentColorPalette.map((color) => <button type="button" role="option" aria-selected={color.toLowerCase() === type.color.toLowerCase()} key={color} className={color.toLowerCase() === type.color.toLowerCase() ? 'on' : ''} style={{ background: color }} aria-label={color} onClick={() => recolor(type, color)} />)}<label className="cardtypes-custom tip" data-tip={t.customColor}><input type="color" aria-label={t.customColor} value={type.color} onChange={(event) => recolor(type, event.target.value)} /></label></div>}
     </li>)}
       {adding !== null && <li className="cardtypes-row"><span className="cardtypes-swatch" aria-hidden="true" /><input className="in cardtypes-name" autoFocus aria-label={t.name} maxLength={40} placeholder={t.newName} value={adding} onChange={(event) => setAdding(event.target.value)} onBlur={add} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.stopPropagation(); setAdding(null) } }} /></li>}

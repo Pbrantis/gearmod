@@ -10,5 +10,5 @@ export function ProviderLogo({ provider }: { provider: AgentProfile['provider'] 
 
 /** Avatar do agente (`.av`): logo do provedor na cor do agente; o nome dado ao agente aparece só no tooltip. */
 export function AgentIcon({ profile, size = 'md', tip = true }: { profile: Pick<AgentProfile, 'provider' | 'label' | 'color'>; size?: 'sm' | 'md' | 'lg'; tip?: boolean }): React.JSX.Element {
-  return <i className={`av ${profile.provider} ${size === 'lg' ? 'lg' : ''} ${size === 'sm' ? 'smav' : ''} ${tip ? 'tip' : ''}`} style={{ color: profile.color, background: `color-mix(in srgb, ${profile.color} 22%, var(--surface-2))` }} data-tip={tip ? profile.label : undefined} role="img" aria-label={profile.label}><ProviderLogo provider={profile.provider} /></i>
+  return <i className={`av ${profile.provider} ${size === 'lg' ? 'lg' : ''} ${size === 'sm' ? 'smav' : ''} ${tip ? 'tip' : ''} tc`} style={{ '--tc': profile.color } as React.CSSProperties} data-tip={tip ? profile.label : undefined} role="img" aria-label={profile.label}><ProviderLogo provider={profile.provider} /></i>
 }

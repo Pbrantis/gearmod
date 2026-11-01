@@ -188,20 +188,20 @@ export function SettingsDialog({ profiles, settings, close, changed, settingsCha
     {tab === 'skills' && <SkillsPanel scope="global" profiles={items} />}
     {tab === 'mcp' && <McpPanel scope="global" available={['claude', 'codex']} />}
     {tab === 'general' && <><div className="stack">
-        <ThemePicker value={settings.tema} onChange={(value) => { if (value) void save({ tema: value }) }} />
+        <section className="cx-wfcard"><h4>{td.cardLook}</h4><ThemePicker value={settings.tema} onChange={(value) => { if (value) void save({ tema: value }) }} />
         <div className="f"><span>{t.settings.language}</span><Select label={t.settings.language} options={[...languages]} value={settings.idioma} onChange={(value) => void save({ idioma: value as AppLanguage })} /></div>
         <p className="hint">{t.settings.languageHint}</p>
         <div className="f"><span>{td.messageSpacing}</span><Select label={td.messageSpacing} options={spacingOptions} value={messageSpacing} onChange={(value) => { const spacing = value as MessageSpacing; setMessageSpacing(spacing); saveMessageSpacing(spacing) }} /></div>
-        <p className="hint">{td.messageSpacingHint}</p>
-        <Switch style={{ marginRight: 0 }} checked={settings.notificacoes} onChange={(value) => void save({ notificacoes: value })}>{td.notifications}</Switch>
+        <p className="hint">{td.messageSpacingHint}</p></section>
+        <section className="cx-wfcard"><h4>{td.cardBehavior}</h4><Switch style={{ marginRight: 0 }} checked={settings.notificacoes} onChange={(value) => void save({ notificacoes: value })}>{td.notifications}</Switch>
         <p className="hint">{td.notificationsHint}</p>
         <Switch style={{ marginRight: 0 }} checked={settings.retomarSozinho} onChange={(value) => void save({ retomarSozinho: value })}>{td.autoResume}</Switch>
-        <p className="hint">{td.autoResumeHint}</p>
-        <Switch style={{ marginRight: 0 }} checked={settings.fotosGravatar} onChange={(value) => { setGravatarEnabled(value); void save({ fotosGravatar: value }) }}>{td.gitPhotos}</Switch>
-        <p className="hint">{td.gitPhotosHint}</p>
-        <DefaultCardTypes />
-        <div className="f"><span>{td.voice}</span><Select label={td.voice} options={[...voices]} value={settings.voz} onChange={(value) => void save({ voz: value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })} /></div>
-        {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">{td.voiceModelHint}</p>}
+        <p className="hint">{td.autoResumeHint}</p></section>
+        <section className="cx-wfcard"><h4>{td.cardGit}</h4><Switch style={{ marginRight: 0 }} checked={settings.fotosGravatar} onChange={(value) => { setGravatarEnabled(value); void save({ fotosGravatar: value }) }}>{td.gitPhotos}</Switch>
+        <p className="hint">{td.gitPhotosHint}</p></section>
+        <section className="cx-wfcard"><DefaultCardTypes /></section>
+        <section className="cx-wfcard"><h4>{td.cardVoice}</h4><div className="f"><span>{td.voice}</span><Select label={td.voice} options={[...voices]} value={settings.voz} onChange={(value) => void save({ voz: value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })} /></div>
+        {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">{td.voiceModelHint}</p>}</section>
       </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}</div>
     {editing && <AgentDialog profile={editing === 'new' ? undefined : editing} close={() => setEditing(undefined)} changed={refresh} />}
   </div></div>
