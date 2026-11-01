@@ -20,7 +20,7 @@ const docLabels: Record<CardDocumentKind, string> = { resumo: 'Summary', especif
 export class AgentContextService {
   /** G06: cache por blob sha (chave `projectId:blobSha`) do trecho já formatado da Constituição, para não recalcular o índice a cada turno. */
   private readonly constitutionCache = new Map<string, string>()
-  constructor(private readonly board: BoardRepository, private readonly settings: SettingsRepository, readonly pluginDir: string | null, private readonly constitution?: Pick<ConstitutionRepository, 'get' | 'proposals'>, private readonly gitRule?: (cardId: string) => string | null, private readonly history?: CardHistoryService, private readonly extra?: (cardId: string) => Record<string, unknown>, private readonly sddResolver?: Pick<SddResolver, 'constitution'>, private readonly sddFileFirst: boolean = process.env.AGENTBOARD_SDD_FILE_FIRST === '1') {}
+  constructor(private readonly board: BoardRepository, private readonly settings: SettingsRepository, readonly pluginDir: string | null, private readonly constitution?: Pick<ConstitutionRepository, 'get' | 'proposals'>, private readonly gitRule?: (cardId: string) => string | null, private readonly history?: CardHistoryService, private readonly extra?: (cardId: string) => Record<string, unknown>, private readonly sddResolver?: Pick<SddResolver, 'constitution'>) {}
 
   language(): AppLanguage { return this.settings.get().idioma }
 
@@ -78,7 +78,8 @@ export class AgentContextService {
    * fere um princípio e a sugerir o que deveria virar princípio, sem alterá-la direto.
    */
   private async constitutionSection(projectId: string, cardId?: string): Promise<string> {
-    if (this.sddFileFirst && this.sddResolver) {
+    // O arquivo do repositório é a única fonte da Constituição; o SQLite não entra no contexto do agente.
+    if (this.sddResolver) {
       try {
         const view = await this.sddResolver.constitution({ projectId, cardId })
         if (view.content !== null) {
@@ -92,15 +93,13 @@ export class AgentContextService {
           this.constitutionCache.set(cacheKey, section)
           return section
         }
-        // view.content === null: ainda não migrada para o SDD nesse ponto — cai no legado abaixo, com o aviso.
-      } catch { /* resolver indisponível (sourceId removido etc.): cai no legado */ }
+        // view.content === null: o arquivo ainda não existe; segue abaixo como "sem Constituição".
+      } catch { /* resolver indisponível (sourceId removido etc.): trata como sem Constituição */ }
     }
-    if (!this.constitution) return ''
-    const current = this.constitution.get(projectId), text = current.contentMd.trim()
-    if (!text) return `\n\n## Project Constitution\n(The project has no Constitution yet.) ${constitutionRule}`
-    const body = text.length <= inlineLimit ? text : `${constitutionIndex(text)}\n\n(This is only the index. Read the full text with agentboard_ler_constituicao before planning or deciding whether something violates a principle.)`
-    const legacyNote = this.sddFileFirst ? ' — not yet migrated to file-first SDD' : ''
-    return `\n\n## Project Constitution (version ${current.version}${legacyNote})\n${constitutionRule}\n\n${body}`
+    return `
+
+## Project Constitution
+(The project has no Constitution yet.) ${constitutionRule}`
   }
 
   /** Chat da Constituição: a versão atual inteira e as mudanças que os agentes sugeriram e ainda esperam decisão. */

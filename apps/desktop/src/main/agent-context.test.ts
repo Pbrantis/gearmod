@@ -49,7 +49,7 @@ describe('AgentContextService', () => {
     database.close()
   })
 
-  it('G06: com AGENTBOARD_SDD_FILE_FIRST, lê a Constituição pelo resolver (cache por blob sha) e cai no SQLite quando o arquivo ainda não existe lá', async () => {
+  it('G06/B1: lê a Constituição pelo resolver (cache por blob sha) e, sem arquivo, diz que não há Constituição (nunca lê o SQLite)', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-ctx-g06-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects), settings = new SettingsRepository(database)
@@ -57,15 +57,15 @@ describe('AgentContextService', () => {
     const card = board.create({ projectId: project.id, columnId: board.get(project.id).columns[0]!.id, title: 'Card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     let calls = 0
     const sddResolver = { constitution: async () => { calls += 1; return { path: 'constitution.md', content: '# Constituição do SDD', blobSha: 'sha-1', baseBlobSha: 'sha-1', headBlobSha: 'sha-1', state: 'in-sync' as const, method: 'native' as const, via: 'ref' as const } } }
-    const withFile = new AgentContextService(board, settings, null, undefined, undefined, undefined, undefined, sddResolver, true)
+    const withFile = new AgentContextService(board, settings, null, undefined, undefined, undefined, undefined, sddResolver)
     const first = await withFile.block(card.id); const second = await withFile.block(card.id)
     expect(first).toContain('Constituição do SDD'); expect(second).toContain('Constituição do SDD')
     expect(calls).toBe(2) // chama o resolver a cada turno; o cache evita recalcular o índice, não a leitura em si
     const legacyConstitution = { get: () => ({ projectId: project.id, contentMd: 'Legado no SQLite', version: 1, updatedAt: null, updatedBy: null }), proposals: () => [] }
     const noFileYet = { constitution: async () => ({ path: 'constitution.md', content: null, blobSha: null, baseBlobSha: null, headBlobSha: null, state: 'missing' as const, method: 'native' as const, via: 'ref' as const }) }
-    const withFallback = new AgentContextService(board, settings, null, legacyConstitution, undefined, undefined, undefined, noFileYet, true)
+    const withFallback = new AgentContextService(board, settings, null, legacyConstitution, undefined, undefined, undefined, noFileYet)
     const fallbackBlock = await withFallback.block(card.id)
-    expect(fallbackBlock).toContain('Legado no SQLite'); expect(fallbackBlock).toContain('not yet migrated')
+    expect(fallbackBlock).not.toContain('Legado no SQLite'); expect(fallbackBlock).toContain('no Constitution yet')
     database.close()
   })
 })

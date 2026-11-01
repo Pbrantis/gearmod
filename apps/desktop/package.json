@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "license": "PolyForm-Shield-1.0.0",
+  "author": {
+    "name": "Francisco Lucas Lima Sena"
+  },
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
@@ -111,6 +114,10 @@
       {
         "from": "../../THIRD-PARTY-NOTICES.md",
         "to": "THIRD-PARTY-NOTICES.md"
+      },
+      {
+        "from": "../../NOTICE",
+        "to": "NOTICE"
       }
     ],
     "win": {

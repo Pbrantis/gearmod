@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "license": "PolyForm-Shield-1.0.0",
+  "author": {
+    "name": "Francisco Lucas Lima Sena"
+  },
   "engines": {
     "node": ">=22",
     "pnpm": ">=11"

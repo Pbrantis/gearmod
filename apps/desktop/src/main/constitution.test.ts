@@ -79,7 +79,10 @@ describe('Constituição do projeto', () => {
     expect(constitution.state(project.id).importable).toContain('constitution.md')
     expect(constitution.importSpecKit(project.id).constitution).toMatchObject({ version: 2, updatedBy: 'user' })
     expect(constitutionIndex(long)).toBe('# Constituição\n### I. Primeiro\n### II. Segundo')
-    const block = await context.block(card.id)
+    // O contexto do agente lê o arquivo (pelo resolver), não o SQLite.
+    const fromFile = { constitution: async () => ({ path: 'constitution.md', content: long, blobSha: 'sha', baseBlobSha: 'sha', headBlobSha: 'sha', state: 'in-sync' as const, method: 'native' as const, via: 'ref' as const }) }
+    const fileContext = new AgentContextService(context['board'], new SettingsRepository(database), null, constitution, undefined, undefined, undefined, fromFile)
+    const block = await fileContext.block(card.id)
     expect(block).toContain('### II. Segundo')
     expect(block).toContain('agentboard_ler_constituicao')
     expect(block).not.toContain('texto texto')

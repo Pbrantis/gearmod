@@ -362,8 +362,13 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'chats:reset': (input: { chatId: string }) => { services.conversations.resetChat(input.chatId); return { reset: true as const } },
     'chats:delete': (input: { chatId: string }) => { services.conversations.deleteChat(input.chatId); return { deleted: true as const } },
     'cards:mark-viewed': (input: { cardId: string }) => services.board.markViewed(input.cardId),
-    'constitution:get': (input: { projectId: string }) => services.constitution.state(input.projectId),
-    'constitution:save': (input: { projectId: string; contentMd: string }) => { services.constitution.write(input.projectId, input.contentMd, 'user'); return services.constitution.state(input.projectId) },
+    // O arquivo do repositório é a fonte da Constituição: a aba mostra o texto dele (as sugestões continuam no banco) e a edição passa por um card, com aprovação.
+    'constitution:get': async (input: { projectId: string }) => {
+      const state = services.constitution.state(input.projectId)
+      const view = await services.sddResolver.constitution({ projectId: input.projectId }).catch(() => null)
+      return { ...state, constitution: { ...state.constitution, contentMd: view?.content ?? '' } }
+    },
+    'constitution:save': (): never => { throw new Error(tm().ipc.constitutionSaveViaCard) },
     'constitution:import': (input: { projectId: string }) => services.constitution.importSpecKit(input.projectId),
     'constitution:set-proposal': (input: { proposalId: string; status: 'applied' | 'dismissed' }) => services.constitution.state(services.constitution.setProposal(input.proposalId, input.status)),
     // G10: canais do SDD file-first (resolver/writer), ao lado dos antigos `constitution:*` (SQLite, legado até G14).

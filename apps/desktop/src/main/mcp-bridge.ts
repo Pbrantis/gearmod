@@ -352,11 +352,9 @@ export class McpBridge {
         try {
           const view = await this.deps.sddResolver.constitution({ projectId, cardId: run.cardId ?? undefined })
           if (view.content !== null) return { ok: true, text: `Project Constitution:\n\n${view.content}` }
-        } catch { /* repositório do SDD ainda não configurado ou indisponível: cai no legado abaixo */ }
+        } catch { /* repositório do SDD ainda não configurado ou indisponível: trata como sem Constituição */ }
       }
-      if (!constitution) return { ok: false, error: 'The Constitution is not available' }
-      const current = constitution.get(projectId)
-      return { ok: true, text: current.contentMd.trim() ? `Project Constitution (version ${current.version}, not yet migrated to file-first SDD):\n\n${current.contentMd}` : 'The project has no Constitution yet.' }
+      return { ok: true, text: 'The project has no Constitution yet.' }
     }
     if (tool === 'agentboard_escrever_constituicao') {
       if (!run.cardId) return { ok: false, error: 'This tool writes to a card worktree. Create a card (agentboard_criar_card) to make this change.' }

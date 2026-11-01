@@ -248,6 +248,7 @@ export const ptBR = {
     documentGeneratedBySystem: 'Este documento é gerado pelo sistema',
     restoreAgentsRunning: 'Não dá para restaurar um backup com agentes em execução. Espere terminarem ou cancele antes.',
     deleteCardUncommitted: 'Este card tem alterações sem commit na worktree. Faça o commit ou descarte (página Git) antes de apagar o card.',
+    constitutionSaveViaCard: 'A Constituição fica no arquivo do repositório. Para alterar, use o chat da Constituição: ele cria um card e a mudança só entra depois da sua aprovação.',
     untrustedSender: 'Pedido recusado: não veio da janela do AgentBoard',
     linkNotAllowed: 'Link não permitido',
     artifactsSharedCannotDelete: 'A pasta de artefatos é compartilhada com outro card e não pode ser excluída automaticamente.',
