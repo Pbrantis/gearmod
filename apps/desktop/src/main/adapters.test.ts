@@ -65,6 +65,13 @@ describe('real provider protocol adapters', () => {
     expect(result).toMatchObject({ sessionId: 'session-2', status: 'completed', apiKeySource: 'ANTHROPIC_API_KEY' })
   })
 
+  it('B4: task_started sem task_notification não prende a run para sempre: vale o resultado do turno depois de um tempo sem atividade', async () => {
+    let child: ChildProcessWithoutNullStreams
+    const factory: ProcessFactory = { start() { child = fakeProcess(); queueMicrotask(() => { send(child, { type: 'system', subtype: 'task_started', task_id: 't1', session_id: 's' }); send(child, { type: 'result', session_id: 's', is_error: false, result: 'pronto' }) }); return child } }
+    const result = await new ClaudeCliAdapter(factory, { graceMs: 10, pendingIdleMs: 30 }).run({ cwd: 'C:\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('claude'), onEvent: () => undefined })
+    expect(result).toMatchObject({ status: 'completed', text: 'pronto' })
+  })
+
   it('passes the system skills to Codex as developerInstructions and to Claude as --plugin-dir', async () => {
     const started: Record<string, unknown>[] = []
     const codex: ProcessFactory = { start() { return fakeProcess((request, child) => {

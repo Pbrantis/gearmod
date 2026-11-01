@@ -102,7 +102,7 @@ export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; appro
 export const claudePermissionMode: Record<PermissionMode, string | null> = { plan: 'plan', auto: 'auto', accept_edits: 'acceptEdits', manual: 'manual', on_request: null, read_only: null, bypass: 'bypassPermissions' }
 
 export class CodexAppServerAdapter implements AgentAdapter {
-  constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
+  constructor(private readonly processes: ProcessFactory = nodeProcesses, private readonly timing = { graceMs: 60_000, pendingIdleMs: 10 * 60_000 }) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
     const child = this.processes.start(options.profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: options.cwd, env: { ...applyEnvPolicy(options.profile, process.env), CODEX_HOME: options.profile.configDir, ...options.env } })
@@ -248,7 +248,7 @@ export async function probeClaudeLimits(profile: AgentProfile, processes: Proces
 }
 
 export class ClaudeCliAdapter implements AgentAdapter {
-  constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
+  constructor(private readonly processes: ProcessFactory = nodeProcesses, private readonly timing = { graceMs: 60_000, pendingIdleMs: 10 * 60_000 }) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
     // Em `plan` o Claude se recusa a chamar ferramentas que gravam (inclusive as do AgentBoard; confirmado em teste real).
@@ -285,9 +285,11 @@ export class ClaudeCliAdapter implements AgentAdapter {
     return new Promise<AgentRunResult>((resolve, reject) => {
       // Tarefas em segundo plano (subagentes e comandos): o `result` do turno chega com elas ainda rodando. O processo só pode sair quando todas
       // terminarem e o Claude responder à notificação delas (outro `result`); se não responder, vale o último resultado depois de uma folga.
-      const pending = new Set<string>(), grace = 60_000
-      let deferred: AgentRunResult | null = null, graceTimer: NodeJS.Timeout | undefined
-      const finish = (result: AgentRunResult): void => { if (graceTimer) clearTimeout(graceTimer); resolve(result) }
+      const pending = new Set<string>(), { graceMs: grace, pendingIdleMs } = this.timing
+      let deferred: AgentRunResult | null = null, graceTimer: NodeJS.Timeout | undefined, idleTimer: NodeJS.Timeout | undefined
+      const finish = (result: AgentRunResult): void => { if (graceTimer) clearTimeout(graceTimer); if (idleTimer) clearTimeout(idleTimer); resolve(result) }
+      // Tarefa em segundo plano que nunca avisa que terminou (task_started sem task_notification): sem nenhuma atividade por `pendingIdleMs`, vale o resultado do turno.
+      const armIdle = (): void => { if (!deferred) return; if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => { if (deferred) { const last = deferred; child.kill(); finish(last) } }, pendingIdleMs) }
       const settle = (): void => { if (deferred && !pending.size && !graceTimer) { const last = deferred; graceTimer = setTimeout(() => finish(last), grace) } }
       createInterface({ input: child.stdout }).on('line', (line) => {
         let message: JsonObject; try { message = JSON.parse(line) as JsonObject } catch { return }
@@ -300,6 +302,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
         }
         if (message.type === 'control_cancel_request' && typeof message.request_id === 'string') { approvals.cancel(message.request_id); return }
         if (typeof message.session_id === 'string') sessionId = message.session_id
+        armIdle()
         if (message.type === 'system' && message.subtype === 'init' && typeof message.apiKeySource === 'string') apiKeySource = message.apiKeySource
         const event = message.event as JsonObject | undefined, delta = event?.delta as JsonObject | undefined
         if (message.type === 'stream_event' && delta?.type === 'text_delta' && typeof delta.text === 'string') { text += delta.text; options.onEvent({ type: 'item/agentMessage/delta', payload: { delta: delta.text } }) }
@@ -314,7 +317,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
           if (!text && typeof message.result === 'string') text = message.result
           const modelEffective = typeof message.model === 'string' ? message.model : typeof (message.result as JsonObject | undefined)?.model === 'string' ? (message.result as JsonObject).model as string : undefined
           const result: AgentRunResult = { sessionId, turnId: null, text, status: message.is_error ? 'failed' : 'completed', error: message.is_error ? sanitize(String(message.result ?? 'Claude failed')) : null, usage: claudeUsage(message.usage, message.total_cost_usd), ...(modelEffective ? { modelEffective } : {}), ...(apiKeySource ? { apiKeySource } : {}) }
-          if (pending.size && !message.is_error) deferred = result
+          if (pending.size && !message.is_error) { deferred = result; armIdle() }
           else finish(result)
         }
       })
