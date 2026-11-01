@@ -16,6 +16,7 @@
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "dist": "pnpm --filter @agentboard/desktop dist",
-    "notices": "node scripts/third-party-notices.mjs"
+    "notices": "node scripts/third-party-notices.mjs",
+    "codex:types": "node scripts/generate-codex-types.mjs"
   }
 }
