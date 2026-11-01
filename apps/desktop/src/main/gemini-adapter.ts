@@ -44,7 +44,7 @@ export class GeminiCliAdapter implements AgentAdapter {
     if (!options.planning && options.mode === 'manual' && options.requestPermission) return runGeminiAcp(this.processes, options)
     // Com as ferramentas do AgentBoard ligadas, o planejamento roda no modo padrão (leitura livre; escrita e shell negados) e confia só no servidor do AgentBoard.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
-    const approval = options.planning ? (readOnlyPlanning ? 'default' : 'plan') : geminiApprovalMode[options.mode ?? 'auto']
+    const approval = options.planning ? (readOnlyPlanning ? 'default' : 'plan') : geminiApprovalMode[options.mode ?? 'manual']
     if (!approval) throw new Error(tm().adapters.unsupportedGeminiMode(String(options.mode)))
     const args = ['--output-format', 'stream-json', '--approval-mode', approval, '--skip-trust']
     if (options.model) args.push('--model', options.model)

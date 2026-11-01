@@ -122,9 +122,9 @@ export const permissionModes: Record<'claude' | 'codex' | 'gemini', PermissionMo
   ],
   gemini: [
     { id: 'plan', label: 'Plano', description: 'Só lê e planeja; não altera arquivos.', purposes: ['planning'], recommended: true },
-    { id: 'manual', label: 'Padrão', description: 'Pergunta antes de agir: cada ação pendente aparece no chat para você aprovar ou negar (Gemini CLI em modo ACP).', purposes: ['execution', 'test'] },
+    { id: 'manual', label: 'Padrão', description: 'Pergunta antes de agir: cada ação pendente aparece no chat para você aprovar ou negar (Gemini CLI em modo ACP).', purposes: ['execution', 'test'], recommended: true },
     { id: 'accept_edits', label: 'Aceitar edições', description: 'Edita arquivos sem perguntar; comandos de shell são negados.', purposes: ['execution', 'test'] },
-    { id: 'auto', label: 'Automático (yolo)', description: 'Aprova tudo sozinho, inclusive comandos. O Gemini CLI não pede confirmação; use com a worktree do card.', purposes: ['execution', 'test'], recommended: true, dangerous: true }
+    { id: 'auto', label: 'Automático (yolo)', description: 'Aprova tudo sozinho, inclusive comandos. O Gemini CLI não pede confirmação; use com a worktree do card.', purposes: ['execution', 'test'], dangerous: true }
   ],
   codex: [
     { id: 'plan', label: 'Plano', description: 'Somente leitura, só planeja.', purposes: ['planning'], recommended: true },
@@ -136,7 +136,7 @@ export const permissionModes: Record<'claude' | 'codex' | 'gemini', PermissionMo
 }
 export const agentPermissionSchema = z.object({ id: uuid, runId: uuid, chatId: uuid, provider: z.enum(['claude', 'codex', 'gemini']), kind: z.string(), details: z.record(z.string(), z.unknown()) })
 export type AgentPermission = z.infer<typeof agentPermissionSchema>
-export const defaultPermissionMode = (provider: 'claude' | 'codex' | 'gemini', purpose: z.infer<typeof agentPurposeSchema>): PermissionMode => (purpose === 'planning' ? 'plan' : provider === 'claude' ? 'accept_edits' : 'auto')
+export const defaultPermissionMode = (provider: 'claude' | 'codex' | 'gemini', purpose: z.infer<typeof agentPurposeSchema>): PermissionMode => (purpose === 'planning' ? 'plan' : provider === 'claude' ? 'accept_edits' : provider === 'gemini' ? 'manual' : 'auto')
 
 export const skillScopeSchema = z.enum(['global', 'project'])
 export const skillProviderStateSchema = z.enum(['ready', 'none', 'converting'])
