@@ -183,7 +183,6 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   useEffect(() => { chatRef.current = chat }, [chat])
   // Chat aberto com a run já em andamento (saiu e voltou): adota a run para voltar a receber o stream.
   useEffect(() => { if (!runId.current && card.run.runId && card.run.purpose === mode && (card.run.state === 'running' || card.run.state === 'planning')) runId.current = card.run.runId }, [card.run.runId, card.run.state, card.run.purpose, mode])
-  useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }) }, [messages, live])
   useStickToBottom(log)
   useEffect(() => { void Promise.all([window.agentboard.invoke('skills:list', { scope: 'global' }), window.agentboard.invoke('skills:list', { scope: 'project', projectId: project.id })]).then(([global, local]) => setSkills([...local, ...global])).catch(() => undefined) }, [project.id])
   useEffect(() => { setSkill(chat?.skill ?? null) }, [chat?.id, chat?.skill])

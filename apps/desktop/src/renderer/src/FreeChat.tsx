@@ -96,7 +96,6 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
       if (converted.current) onConverted(converted.current)
     }
   }), [load, changed, onConverted])
-  useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }) }, [messages, live])
   useStickToBottom(log)
   const deliver = async (prompt: string, queuedFiles?: string[]): Promise<void> => {
     const files = queuedFiles ?? attach.take()
