@@ -29,7 +29,7 @@ import { refreshGit } from './gitConfigCache'
 import type { FileChange } from './changes'
 import { hasAttachmentTarget, hasCommentTarget, queueContextFile, queueContextText } from './Attachments'
 
-const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true }
+const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true, fotosGravatar: false }
 /** Último projeto aberto na janela principal (localStorage: só uma preferência local). */
 const lastProjectKey = 'agentboard.lastProject'
 

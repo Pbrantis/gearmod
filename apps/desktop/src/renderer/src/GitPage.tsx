@@ -20,6 +20,7 @@ import { FileContextMenu, type FileMenuItem } from './FileContextMenu'
 import { useAsk } from './useAsk'
 import { useEscape } from './useEscape'
 import { useT } from './i18n'
+import { gravatarEnabled } from './gravatarSetting'
 import { branchNameProblem } from './branchName'
 
 const I = (children: React.ReactNode): React.JSX.Element => <svg viewBox="0 0 24 24" aria-hidden="true">{children}</svg>
@@ -115,7 +116,11 @@ function gravatarUrl(email: string): Promise<string | null> {
 }
 function useGravatar(email: string): string | null {
   const [url, setUrl] = useState<string | null>(null)
-  useEffect(() => { let alive = true; setUrl(null); void gravatarUrl(email).then((value) => { if (alive) setUrl(value) }); return () => { alive = false } }, [email])
+  useEffect(() => {
+    let alive = true; setUrl(null)
+    void gravatarEnabled().then((enabled) => enabled ? gravatarUrl(email) : null).then((value) => { if (alive) setUrl(value) })
+    return () => { alive = false }
+  }, [email])
   return url
 }
 

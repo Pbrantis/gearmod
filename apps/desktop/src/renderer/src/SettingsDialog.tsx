@@ -15,6 +15,7 @@ import { Select } from './Select'
 import { useEscape } from './useEscape'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Switch } from './Switch'
+import { setGravatarEnabled } from './gravatarSetting'
 import { DefaultCardTypes } from './CardTypes'
 
 export const themes: ReadonlyArray<{ value: AppTheme; mode: 'dark' | 'light'; swatches: [string, string, string] }> = [
@@ -196,6 +197,8 @@ export function SettingsDialog({ profiles, settings, close, changed, settingsCha
         <p className="hint">{td.notificationsHint}</p>
         <Switch style={{ marginRight: 0 }} checked={settings.retomarSozinho} onChange={(value) => void save({ retomarSozinho: value })}>{td.autoResume}</Switch>
         <p className="hint">{td.autoResumeHint}</p>
+        <Switch style={{ marginRight: 0 }} checked={settings.fotosGravatar} onChange={(value) => { setGravatarEnabled(value); void save({ fotosGravatar: value }) }}>{td.gitPhotos}</Switch>
+        <p className="hint">{td.gitPhotosHint}</p>
         <DefaultCardTypes />
         <div className="f"><span>{td.voice}</span><Select label={td.voice} options={[...voices]} value={settings.voz} onChange={(value) => void save({ voz: value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })} /></div>
         {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">{td.voiceModelHint}</p>}

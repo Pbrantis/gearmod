@@ -66,8 +66,8 @@ export const languageSchema = z.enum(['pt-BR', 'en'])
 export const voiceModelSchema = z.enum(['small', 'large-v3-turbo', 'groq'])
 /** `retomarSozinho`: quando o limite de uso acaba no meio de uma execução, retoma de onde parou assim que ele volta. */
 /** `idioma`: idioma da interface e do que os agentes escrevem. */
-export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema, notificacoes: z.boolean(), retomarSozinho: z.boolean() })
-export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional(), notificacoes: z.boolean().optional(), retomarSozinho: z.boolean().optional() }).strict()
+export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema, notificacoes: z.boolean(), retomarSozinho: z.boolean(), fotosGravatar: z.boolean() })
+export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional(), notificacoes: z.boolean().optional(), retomarSozinho: z.boolean().optional(), fotosGravatar: z.boolean().optional() }).strict()
 export const voiceStatusSchema = z.object({ model: voiceModelSchema, cloud: z.boolean(), modelInstalled: z.boolean(), engineInstalled: z.boolean(), canInstallEngine: z.boolean(), sizeMb: z.number(), downloading: z.object({ item: z.enum(['programa', 'modelo']), received: z.number(), total: z.number().nullable() }).nullable() })
 export type VoiceModel = z.infer<typeof voiceModelSchema>
 export type VoiceStatus = z.infer<typeof voiceStatusSchema>

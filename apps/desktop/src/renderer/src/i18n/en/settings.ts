@@ -54,6 +54,8 @@ export const settings: typeof source = {
     spacingWide: 'Wide',
     notifications: 'System notifications',
     notificationsHint: 'Notifies you when a card finishes, the plan is ready or something needs you, while AgentBoard is in the background. Clicking the notification opens the card chat.',
+    gitPhotos: 'Show author photos on the Git page (Gravatar)',
+    gitPhotosHint: 'Off by default. When on, the app sends gravatar.com a hash of each author email to fetch the photo.',
     autoResume: 'Resume automatically when the usage limit resets',
     autoResumeHint: 'If the session (or weekly) limit runs out in the middle of an execution, AgentBoard schedules the resume for when it resets (one minute later), checks that it really did and continues where it stopped. The chat shows the time.',
     voice: 'Voice dictation',

@@ -53,6 +53,8 @@ export const settings = {
     spacingWide: 'Amplo',
     notifications: 'Notificações do sistema',
     notificationsHint: 'Avisa quando um card termina, o plano fica pronto ou algo precisa de você, com o AgentBoard em segundo plano. Tocar na notificação abre o chat do card.',
+    gitPhotos: 'Mostrar fotos dos autores na página Git (Gravatar)',
+    gitPhotosHint: 'Desligado por padrão. Ligado, o app envia ao gravatar.com um hash do e-mail de cada autor para buscar a foto.',
     autoResume: 'Retomar sozinho quando o limite de uso voltar',
     autoResumeHint: 'Se o limite da sessão (ou da semana) acabar no meio de uma execução, o AgentBoard agenda a retomada para quando ele voltar (um minuto depois), confere se voltou mesmo e continua de onde parou. O chat avisa o horário.',
     voice: 'Ditado por voz',
