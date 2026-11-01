@@ -117,6 +117,13 @@ export class GitManager {
       ORDER BY c.title, m.path`).all(...(cardId ? [projectId, cardId] : [projectId])) as Member[]
   }
 
+  /** Como `target`, para quem altera arquivos: com um card, recusa enquanto um agente roda nessa pasta (D1). */
+  private async busyTarget(source: Source, cardId: string | null): Promise<Target> {
+    const target = await this.target(source, cardId)
+    if (cardId) this.assertIdle(source.id, target.dir)
+    return target
+  }
+
   private async target(source: Source, cardId: string | null): Promise<Target> {
     if (!cardId) return { dir: source.path, branch: null, baseRef: null }
     const member = this.members(source.projectId, cardId).find((item) => same(item.repoPath, source.path))
@@ -398,6 +405,7 @@ export class GitManager {
   async filePath(sourceId: string, cardId: string | null, path: string): Promise<{ projectId: string; path: string }> { return { projectId: this.source(sourceId).projectId, path: await this.inside(sourceId, cardId, path) } }
 
   async writeFileText(sourceId: string, cardId: string | null, path: string, content: string): Promise<void> {
+    if (cardId) this.assertIdle(sourceId, (await this.target(this.source(sourceId), cardId)).dir)
     await writeFile(await this.inside(sourceId, cardId, path), content, 'utf8')
   }
 
@@ -413,7 +421,7 @@ export class GitManager {
   }
 
   async discardUnstaged(sourceId: string, cardId: string | null, paths: string[]): Promise<GitChanges> {
-    const target = await this.target(this.source(sourceId), cardId)
+    const target = await this.busyTarget(this.source(sourceId), cardId)
     const available = new Set((await this.listChanges(target.dir)).filter((file) => !file.staged).map((file) => file.path))
     for (const path of paths) {
       if (!available.has(path)) throw new Error(tm().git.noUnstagedChangesFor(path))
@@ -428,7 +436,7 @@ export class GitManager {
   }
 
   async stashFile(sourceId: string, cardId: string | null, path: string): Promise<GitChanges> {
-    const target = await this.target(this.source(sourceId), cardId)
+    const target = await this.busyTarget(this.source(sourceId), cardId)
     await this.inside(sourceId, cardId, path)
     if (!(await this.listChanges(target.dir)).some((file) => file.path === path)) throw new Error(tm().git.fileHasNoChanges)
     await this.run(target.dir, ['stash', 'push', '--include-untracked', '--', `:(literal)${path}`])
@@ -479,7 +487,7 @@ export class GitManager {
   }
 
   async sync(sourceId: string, cardId: string | null, action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull: 'ff' | 'ff-only' | 'rebase' = 'ff-only', force = false): Promise<{ output: string; conflicts?: number }> {
-    const source = this.source(sourceId), target = await this.target(source, cardId)
+    const source = this.source(sourceId), target = await (action === 'fetch' || action === 'push' ? this.target(source, cardId) : this.busyTarget(source, cardId))
     if (action === 'stash') {
       // Guarda também os não rastreados (-u): eles saem da pasta, então a mensagem diz quantos foram junto.
       if (!(await this.run(target.dir, ['status', '--porcelain'])).trim()) return { output: tm().git.nothingToStash }
@@ -605,7 +613,7 @@ export class GitManager {
 
   /** Atualiza a branch escolhida somente por fast-forward antes de abri-la. */
   async checkoutRemote(sourceId: string, cardId: string | null, name: string): Promise<{ output: string }> {
-    const dir = (await this.target(this.source(sourceId), cardId)).dir, slash = name.indexOf('/')
+    const dir = (await this.busyTarget(this.source(sourceId), cardId)).dir, slash = name.indexOf('/')
     const remote = name.slice(0, slash), local = name.slice(slash + 1)
     if (slash <= 0 || !local || local === 'HEAD' || name.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', name]) === null) throw new Error(tm().git.invalidRemoteBranch)
     if (!(await this.tryRun(dir, ['remote']))?.split(/\r?\n/).includes(remote)) throw new Error(tm().git.remoteDoesNotExist(remote))
@@ -632,7 +640,7 @@ export class GitManager {
 
   /** Ações do menu de uma branch na pasta principal do repositório. Merge e rebase com conflito são desfeitos, para não deixar a pasta no meio do caminho. */
   async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }): Promise<{ output: string }> {
-    const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir, { action, name } = input
+    const dir = (await (input.action === 'push' || input.action === 'delete-remote' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))).dir, { action, name } = input
     const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(tm().git.invalidBranchName(ref)) }
     await valid(name)
     const current = (await this.run(dir, ['branch', '--show-current'])).trim(), isHead = current === name
@@ -704,7 +712,7 @@ export class GitManager {
 
   /** Ações do menu de um commit na pasta principal. Cherry-pick, revert e rebase com conflito ficam abertos para a tela de conflitos, ou são desfeitos se não houver conflito. */
   async commitAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'rebase' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }): Promise<{ output: string }> {
-    const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir, { action, hash } = input
+    const dir = (await (action_ => action_ === 'branch' || action_ === 'tag' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))(input.action)).dir, { action, hash } = input
     if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
     const name = input.name?.trim() ?? ''
     if (action === 'branch' || action === 'tag') {
@@ -753,9 +761,9 @@ export class GitManager {
   }
 
   /** Pasta onde o conflito vive: o repositório do projeto ou, com `cardId`, a worktree do card nesse repositório. */
-  private async conflictDir(sourceId: string, cardId?: string | null): Promise<string> { return (await this.target(this.source(sourceId), cardId ?? null)).dir }
+  private async conflictDir(sourceId: string, cardId?: string | null, write = true): Promise<string> { return (await (write ? this.busyTarget : this.target).call(this, this.source(sourceId), cardId ?? null)).dir }
 
-  async conflicts(sourceId: string, cardId?: string | null): Promise<{ operation: ConflictOperation | null; files: string[] }> { return this.conflictState(await this.conflictDir(sourceId, cardId)) }
+  async conflicts(sourceId: string, cardId?: string | null): Promise<{ operation: ConflictOperation | null; files: string[] }> { return this.conflictState(await this.conflictDir(sourceId, cardId, false)) }
 
   /** Repositórios (e worktrees de card) do projeto com merge/rebase/cherry-pick/revert em andamento, para marcar a lista da página Git. */
   async conflictsAll(projectId: string): Promise<Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: ConflictOperation; files: string[] }>> {
@@ -776,7 +784,7 @@ export class GitManager {
 
   /** Conteúdo do arquivo em conflito, com os marcadores do Git. */
   async conflictFile(sourceId: string, path: string, cardId?: string | null): Promise<string> {
-    const dir = await this.conflictDir(sourceId, cardId)
+    const dir = await this.conflictDir(sourceId, cardId, false)
     if (!(await this.conflictState(dir)).files.includes(path)) throw new Error(tm().git.fileNotInConflict)
     return (await readFile(join(dir, path), 'utf8').catch(() => '')).slice(0, 400_000)
   }
@@ -831,7 +839,7 @@ export class GitManager {
   }
 
   async stashAction(sourceId: string, input: { cardId?: string | null; action: 'apply' | 'pop' | 'drop'; ref: string }): Promise<{ output: string; conflicts?: number }> {
-    const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir
+    const dir = (await (input.action === 'drop' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))).dir
     if (!/^stash@\{\d+\}$/.test(input.ref)) throw new Error(tm().git.invalidStash)
     if (input.action === 'drop') { await this.run(dir, ['stash', 'drop', input.ref]); return { output: tm().git.stashDropped } }
     return this.applyStash(dir, ['stash', input.action, input.ref], input.action === 'pop' ? tm().git.stashAppliedRemoved : tm().git.stashApplied)

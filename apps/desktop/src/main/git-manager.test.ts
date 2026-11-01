@@ -285,6 +285,22 @@ describe('apagar worktree do card', () => {
   })
 })
 
+describe('trava de agente nas ações da página Git (D1)', () => {
+  it('com um agente rodando no card, ações que mexem em arquivos são recusadas; leitura e fetch continuam', async () => {
+    const { manager, database, sourceId, cardId, wt, chatId, profileId, branch } = await setup()
+    await writeFile(join(wt, 'novo.txt'), 'x')
+    database.db.prepare(`INSERT INTO runs(id, card_id, chat_id, profile_id, status, started_at) VALUES ('11111111-1111-4111-8111-111111111111', ?, ?, ?, 'running', ?)`).run(cardId, chatId, profileId, new Date().toISOString())
+    await expect(manager.discardUnstaged(sourceId, cardId, ['novo.txt'])).rejects.toThrow(/agente/i)
+    await expect(manager.writeFileText(sourceId, cardId, 'novo.txt', 'y')).rejects.toThrow(/agente/i)
+    await expect(manager.commitAction(sourceId, { cardId, action: 'reset-hard', hash: 'a'.repeat(40) })).rejects.toThrow(/agente/i)
+    await expect(manager.branchAction(sourceId, { cardId, action: 'merge', name: 'main' })).rejects.toThrow(/agente/i)
+    await expect(manager.stashAction(sourceId, { cardId, action: 'pop', ref: 'stash@{0}' })).rejects.toThrow(/agente/i)
+    expect(await readFile(join(wt, 'novo.txt'), 'utf8')).toBe('x')
+    expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toContain('novo.txt')
+    expect(branch).toBeTruthy()
+  })
+})
+
 describe('commit do agente', () => {
   it('nunca: recusa e explica; fora disso segue a regra da branch', async () => {
     const { manager, projectId, cardId, chatId, wt, branch } = await setup()
