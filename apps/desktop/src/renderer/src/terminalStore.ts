@@ -80,6 +80,8 @@ export const terminal = {
     if (id) for (const line of command.split(/\r?\n/).filter((item) => item.trim())) await terminal.send(id, line)
   },
   close(id: string): void {
+    // Fechar a aba mata o processo dela: se ainda está rodando, confirma antes.
+    if (state.tabs.some((tab) => tab.id === id && !tab.exited) && !window.confirm(tr().files.terminal.closeRunningConfirm)) return
     void window.agentboard.invoke('terminal:kill', { id }).catch(() => undefined)
     const tabs = state.tabs.filter((tab) => tab.id !== id)
     set({ tabs, active: state.active === id ? tabs.at(-1)?.id ?? null : state.active, open: tabs.length > 0 && state.open })
