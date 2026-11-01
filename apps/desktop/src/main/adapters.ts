@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { delimiter, dirname, extname, isAbsolute, join } from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { resolveCommand } from './agents'
 import type { AgentProfile, Effort, ModelOption, PermissionMode } from '@agentboard/contracts'
@@ -261,7 +261,14 @@ export class ClaudeCliAdapter implements AgentAdapter {
     if (options.effort) args.push('--effort', options.effort)
     if (readOnlyPlanning) args.push('--tools', 'Read,Grep,Glob,WebSearch,WebFetch')
     if (options.pluginDir) args.push('--plugin-dir', options.pluginDir)
-    if (options.mcp || options.mcpServers?.length) args.push('--mcp-config', JSON.stringify({ mcpServers: { ...claudeMcpServers(options.mcpServers ?? []), ...(options.mcp ? { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } : {}) } }))
+    // A config do MCP leva env e headers (segredos): vai por arquivo temporário e não pela linha de comando, que aparece na lista de processos.
+    let mcpConfigDir: string | null = null
+    if (options.mcp || options.mcpServers?.length) {
+      mcpConfigDir = mkdtempSync(join(tmpdir(), 'agentboard-mcp-'))
+      const file = join(mcpConfigDir, 'mcp.json')
+      writeFileSync(file, JSON.stringify({ mcpServers: { ...claudeMcpServers(options.mcpServers ?? []), ...(options.mcp ? { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } : {}) } }), { mode: 0o600 })
+      args.push('--mcp-config', file)
+    }
     if (options.mcp) args.push('--allowedTools', 'mcp__agentboard')
     if (options.sessionId) args.push('--resume', options.sessionId)
     // Anexos fora da pasta do projeto: libera a leitura da pasta de cada um.
@@ -315,7 +322,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
       child.on('exit', (code) => { if (deferred && !options.signal?.aborted) { finish(deferred); return } if (options.signal?.aborted) resolve({ sessionId, turnId: null, text, status: 'interrupted', error: 'Interrompido pelo usuário' }); else reject(new Error(`Claude encerrou sem resultado (${code}): ${sanitize(stderr)}`)) })
       if (interactive) child.stdin.write(`${JSON.stringify({ type: 'user', session_id: '', message: { role: 'user', content: options.prompt }, parent_tool_use_id: null })}\n`)
       if (options.signal?.aborted) abort()
-    }).finally(() => { approvals.close(); options.signal?.removeEventListener('abort', abort); if (!child.killed) child.kill() })
+    }).finally(() => { approvals.close(); options.signal?.removeEventListener('abort', abort); if (!child.killed) child.kill(); if (mcpConfigDir) rmSync(mcpConfigDir, { recursive: true, force: true }) })
   }
 }
 

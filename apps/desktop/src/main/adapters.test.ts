@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
+import { existsSync, readFileSync } from 'node:fs'
 import { ClaudeCliAdapter, CodexAppServerAdapter, codexAccess, listCodexModels, type ProcessFactory } from './adapters'
 import type { AgentProfile } from '@agentboard/contracts'
 
@@ -84,11 +85,15 @@ describe('real provider protocol adapters', () => {
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
     expect(args).not.toContain('--mcp-config')
 
-    const withMcp: ProcessFactory = { start(_command, received) { args = received; child = fakeProcess(); queueMicrotask(() => send(child, { type: 'result', session_id: 's', result: 'ok' })); return child } }
+    let mcpFile = ''
+    const withMcp: ProcessFactory = { start(_command, received) { args = received; if (received.includes('--mcp-config')) mcpFile = readFileSync(received[received.indexOf('--mcp-config') + 1]!, 'utf8'); child = fakeProcess(); queueMicrotask(() => send(child, { type: 'result', session_id: 's', result: 'ok' })); return child } }
     const mcp = { command: 'node', args: ['server.mjs'], env: { AGENTBOARD_TOKEN: 't' } }
     await new ClaudeCliAdapter(withMcp).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: true, profile: profile('claude'), mcp, onEvent: () => undefined })
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('default'); expect(args[args.indexOf('--tools') + 1]).not.toMatch(/Edit|Write|Bash/)
-    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__agentboard'); expect(JSON.parse(args[args.indexOf('--mcp-config') + 1]!).mcpServers.agentboard.env.AGENTBOARD_TOKEN).toBe('t')
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__agentboard'); 
+    // S2: o segredo não vai na linha de comando; vai por arquivo, que é apagado no fim da run
+    expect(args.join(' ')).not.toContain('AGENTBOARD_TOKEN')
+    expect(args[args.indexOf('--mcp-config') + 1]).toMatch(/mcp\.json$/); expect(JSON.parse(mcpFile).mcpServers.agentboard.env.AGENTBOARD_TOKEN).toBe('t'); expect(existsSync(args[args.indexOf('--mcp-config') + 1]!)).toBe(false)
     await new ClaudeCliAdapter(withMcp).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('claude'), mcp, onEvent: () => undefined })
     expect(args).not.toContain('--tools')
   })

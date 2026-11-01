@@ -50,20 +50,20 @@ describe('buildEnv (função pura)', () => {
   })
 })
 
-describe('applyEnvPolicy (modo observe por padrão)', () => {
+describe('applyEnvPolicy (enforce por padrão)', () => {
   afterEach(() => { delete process.env.AGENTBOARD_ENV_POLICY_MODE; vi.restoreAllMocks() })
-  it('sem a variável de ambiente, fica em observe: devolve o ambiente completo e loga o que removeria', () => {
+  it('sem a variável de ambiente, fica em enforce: remove o que a política manda', () => {
+    expect(envPolicyMode()).toBe('enforce')
+    const env = applyEnvPolicy({ envPassthrough: [] }, base)
+    expect(env.ANTHROPIC_API_KEY).toBeUndefined(); expect(env.PATH).toBe(base.PATH)
+  })
+  it('com AGENTBOARD_ENV_POLICY_MODE=observe, devolve o ambiente completo e loga o que removeria', () => {
+    process.env.AGENTBOARD_ENV_POLICY_MODE = 'observe'
     expect(envPolicyMode()).toBe('observe')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const env = applyEnvPolicy({ envPassthrough: [] }, base)
     expect(env).toEqual(base)
     expect(warn).toHaveBeenCalledOnce()
-  })
-  it('com AGENTBOARD_ENV_POLICY_MODE=enforce, remove de verdade', () => {
-    process.env.AGENTBOARD_ENV_POLICY_MODE = 'enforce'
-    expect(envPolicyMode()).toBe('enforce')
-    const env = applyEnvPolicy({ envPassthrough: [] }, base)
-    expect(env.ANTHROPIC_API_KEY).toBeUndefined(); expect(env.PATH).toBe(base.PATH)
   })
 })
 

@@ -7,8 +7,8 @@
  * sem estar nessa lista declarada — mesmo que o nome bata com a allowlist fixa. As variáveis do Docker Engine nunca passam,
  * declaradas ou não, para o shell do agente não herdar acesso ao Engine por acidente.
  *
- * Modo `observe` (padrão, 1 ciclo): não remove nada, só devolve o que teria sido removido, para quem chamar logar.
- * Modo `enforce`: aplica de verdade.
+ * Modo `observe` (só diagnóstico, via variável de ambiente): não remove nada, só devolve o que teria sido removido, para quem chamar logar.
+ * Modo `enforce` (padrão): aplica de verdade.
  */
 export type EnvPolicyMode = 'observe' | 'enforce'
 
@@ -36,7 +36,7 @@ export interface EnvPolicyResult { env: NodeJS.ProcessEnv; removed: string[] }
  * Função pura: nunca lê nem grava nada fora dos parâmetros. Em `observe`, `env` é uma cópia integral de `base` (comportamento
  * de hoje) e `removed` lista o que a política teria tirado; em `enforce`, `env` já reflete a política.
  */
-export function buildEnv(profile: { envPassthrough?: readonly string[] | null }, base: NodeJS.ProcessEnv, mode: EnvPolicyMode = 'observe'): EnvPolicyResult {
+export function buildEnv(profile: { envPassthrough?: readonly string[] | null }, base: NodeJS.ProcessEnv, mode: EnvPolicyMode = 'enforce'): EnvPolicyResult {
   const declared = new Set((profile.envPassthrough ?? []).map((name) => name.toUpperCase()))
   const removed: string[] = []
   const kept: NodeJS.ProcessEnv = {}
@@ -49,12 +49,12 @@ export function buildEnv(profile: { envPassthrough?: readonly string[] | null },
   return { env: mode === 'enforce' ? kept : { ...base }, removed }
 }
 
-/** Modo atual (padrão `observe` por 1 ciclo; `AGENTBOARD_ENV_POLICY_MODE=enforce` liga de verdade). */
-export function envPolicyMode(): EnvPolicyMode { return process.env.AGENTBOARD_ENV_POLICY_MODE === 'enforce' ? 'enforce' : 'observe' }
+/** Modo atual: `enforce` por padrão; `AGENTBOARD_ENV_POLICY_MODE=observe` volta ao ambiente completo (só para diagnóstico). */
+export function envPolicyMode(): EnvPolicyMode { return process.env.AGENTBOARD_ENV_POLICY_MODE === 'observe' ? 'observe' : 'enforce' }
 
 /** Impuro: lê o modo do processo e, em `observe`, loga o que seria removido. Para os pontos reais de disparo de CLI. */
 export function applyEnvPolicy(profile: { envPassthrough?: readonly string[] | null }, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const mode = envPolicyMode(), { env, removed } = buildEnv(profile, base, mode)
-  if (mode === 'observe' && removed.length) console.warn(`[env-policy] observe: removeria ${removed.length} variável(is) (${removed.slice(0, 10).join(', ')}${removed.length > 10 ? '…' : ''}); nada foi removido (AGENTBOARD_ENV_POLICY_MODE != enforce)`)
+  if (mode === 'observe' && removed.length) console.warn(`[env-policy] observe: removeria ${removed.length} variável(is) (${removed.slice(0, 10).join(', ')}${removed.length > 10 ? '…' : ''}); nada foi removido (AGENTBOARD_ENV_POLICY_MODE=observe)`)
   return env
 }
