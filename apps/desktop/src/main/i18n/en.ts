@@ -381,6 +381,7 @@ export const en: typeof ptBR = {
     downloadInProgress: 'A download is already in progress',
     installWhisper: 'Install whisper.cpp (the whisper-cli command) and keep it on PATH; then download the model here.',
     whisperCliMissing: 'The downloaded package did not include whisper-cli.exe (only the obsolete main.exe). Install whisper.cpp manually.',
+    checksumMismatch: (item: string) => `The downloaded ${item} failed the integrity check (SHA-256) and was discarded`,
     downloadFailed: (item: string, status: number) => `Could not download ${item} (HTTP ${status})`,
     transcriberNotInstalled: 'The transcription program is not installed',
     voiceModelNotDownloaded: 'The voice model has not been downloaded yet',

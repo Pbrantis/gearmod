@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createWriteStream, existsSync } from 'node:fs'
 import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
@@ -10,15 +11,15 @@ import { tm } from './i18n'
 
 const execFileAsync = promisify(execFile)
 type LocalVoiceModel = Exclude<VoiceModel, 'groq'>
-export const voiceModels: Record<LocalVoiceModel, { file: string; label: string; sizeMb: number }> = {
-  small: { file: 'ggml-small.bin', label: 'Small', sizeMb: 466 },
-  'large-v3-turbo': { file: 'ggml-large-v3-turbo.bin', label: 'Large v3 Turbo', sizeMb: 1624 }
+export const voiceModels: Record<LocalVoiceModel, { file: string; label: string; sizeMb: number; sha256: string }> = {
+  small: { file: 'ggml-small.bin', label: 'Small', sizeMb: 466, sha256: '1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b' },
+  'large-v3-turbo': { file: 'ggml-large-v3-turbo.bin', label: 'Large v3 Turbo', sizeMb: 1624, sha256: '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69' }
 }
 const groqUrl = 'https://api.groq.com/openai/v1/audio/transcriptions'
 const modelBase = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
 const engineAsset = 'https://github.com/ggml-org/whisper.cpp/releases'
-/** "latest" muda de nome de pacote entre versões e já devolveu 404; as versões fixas são o plano B. */
-const windowsEngineUrls = [`${engineAsset}/latest/download/whisper-bin-x64.zip`, `${engineAsset}/download/v1.7.6/whisper-bin-x64.zip`, `${engineAsset}/download/v1.7.5/whisper-bin-x64.zip`]
+/** Versão e SHA-256 fixos: o executável baixado roda na máquina do usuário, então só é aceito o arquivo exato que foi conferido. */
+const windowsEngine = { url: `${engineAsset}/download/v1.7.6/whisper-bin-x64.zip`, sha256: '0d2eca299c248f965bd0341bcb219db4b433c7f0c0ce2200d4df85765e8156a9' }
 /** Termos em inglês que aparecem no meio do português; ajudam o Whisper a não "traduzir" worktree, commit etc. */
 export const supportVocabulary = 'worktree, commit, branch, pull request, merge, rebase, lint, typecheck, deploy, backend, frontend, Kanban, backlog, To do, Doing, Test, Done, Claude, Codex, AgentBoard, Markdown, SQLite, Electron, React, TypeScript, skill, prompt'
 
@@ -30,6 +31,8 @@ export interface VoiceDeps {
   pathEnv?: string
   emit?: (type: string, payload: Record<string, unknown>) => void
   modelUrl?: (model: VoiceModel) => string
+  /** SHA-256 esperado quando as URLs são injetadas (testes); com as URLs padrão vale sempre o checksum fixo no código. */
+  expectedSha256?: Partial<Record<'engine' | LocalVoiceModel, string>>
   engineUrl?: string
   /** Guarda a chave do Groq fora do banco (no app, cifrada pelo sistema operacional). */
   secrets?: { read(): Promise<string | null>; write(value: string | null): Promise<void> }
@@ -99,7 +102,7 @@ export class VoiceService {
         if (this.platform !== 'win32') throw new Error(tm().voice.installWhisper)
         await this.installEngine()
       }
-      if (!await this.hasModel(model)) await this.download(this.deps.modelUrl?.(model) ?? `${modelBase}/${voiceModels[model].file}`, this.modelPath(model), 'modelo')
+      if (!await this.hasModel(model)) await this.download(this.deps.modelUrl?.(model) ?? `${modelBase}/${voiceModels[model].file}`, this.modelPath(model), 'modelo', this.deps.modelUrl ? this.deps.expectedSha256?.[model] : voiceModels[model].sha256)
     } finally { this.downloading = null; this.deps.emit?.('voice/progress', { item: null }) }
     return this.status(model)
   }
@@ -107,18 +110,16 @@ export class VoiceService {
   private async installEngine(): Promise<void> {
     await mkdir(this.binDir, { recursive: true })
     const zip = join(this.binDir, 'whisper-bin.zip')
-    let failure: unknown
-    for (const url of this.deps.engineUrl ? [this.deps.engineUrl] : windowsEngineUrls) {
-      try { await this.download(url, zip, 'programa'); failure = undefined; break } catch (error) { failure = error }
-    }
-    if (failure) throw failure
+    // URL injetada (testes) não tem checksum conhecido; a padrão sempre é conferida.
+    if (this.deps.engineUrl) await this.download(this.deps.engineUrl, zip, 'programa', this.deps.expectedSha256?.engine)
+    else await this.download(windowsEngine.url, zip, 'programa', windowsEngine.sha256)
     await (this.deps.run ?? defaultRun)('tar', ['-xf', zip, '-C', this.binDir], 120_000)
     await rm(zip, { force: true })
     const found = await findFile(this.binDir, this.engineNames())
     if (!found) throw new Error(tm().voice.whisperCliMissing)
   }
 
-  private async download(url: string, target: string, item: 'programa' | 'modelo'): Promise<void> {
+  private async download(url: string, target: string, item: 'programa' | 'modelo', sha256?: string): Promise<void> {
     await mkdir(join(target, '..'), { recursive: true })
     const response = await (this.deps.fetchImpl ?? fetch)(url, { redirect: 'follow' })
     if (!response.ok || !response.body) throw new Error(tm().voice.downloadFailed(item, response.status))
@@ -126,9 +127,13 @@ export class VoiceService {
     let received = 0
     const partial = `${target}.part`
     this.downloading = { item, received: 0, total }
-    const source = Readable.fromWeb(response.body as never)
-    source.on('data', (chunk: Buffer) => { received += chunk.length; this.downloading = { item, received, total }; this.deps.emit?.('voice/progress', { item, received, total }) })
-    try { await pipeline(source, createWriteStream(partial)); await rename(partial, target) } catch (error) { await rm(partial, { force: true }); throw error }
+    const source = Readable.fromWeb(response.body as never), hash = createHash('sha256')
+    source.on('data', (chunk: Buffer) => { hash.update(chunk); received += chunk.length; this.downloading = { item, received, total }; this.deps.emit?.('voice/progress', { item, received, total }) })
+    try {
+      await pipeline(source, createWriteStream(partial))
+      if (sha256 && hash.digest('hex') !== sha256) throw new Error(tm().voice.checksumMismatch(item))
+      await rename(partial, target)
+    } catch (error) { await rm(partial, { force: true }); throw error }
   }
 
   /** Transcreve um WAV (16 kHz, mono, 16 bits). O texto volta para o campo do chat; ditado não gasta token dos agentes. */

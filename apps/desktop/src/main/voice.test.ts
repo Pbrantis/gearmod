@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createServer, type Server } from 'node:http'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -40,6 +41,18 @@ describe('VoiceService', () => {
     await expect(new VoiceService({ dataDir, platform: 'linux', pathEnv: binDir, modelUrl: () => 'http://127.0.0.1:1/none' }).install('small')).rejects.toThrow()
     expect(existsSync(join(dataDir, 'whisper', 'models', 'ggml-small.bin.part'))).toBe(false)
     expect((await missing.status('small')).downloading).toBeNull()
+  })
+
+  it('discards the download when the SHA-256 does not match, and accepts it when it does', async () => {
+    const dataDir = await tmp(), binDir = await tmp()
+    await writeFile(join(binDir, 'whisper-cli'), '')
+    const body = Buffer.alloc(12 * 1024 * 1024, 7), url = await serve(body)
+    const bad = new VoiceService({ dataDir, platform: 'linux', pathEnv: binDir, modelUrl: () => url, expectedSha256: { small: 'a'.repeat(64) } })
+    await expect(bad.install('small')).rejects.toThrow(/SHA-256/)
+    expect(existsSync(join(dataDir, 'whisper', 'models', 'ggml-small.bin'))).toBe(false)
+    expect(existsSync(join(dataDir, 'whisper', 'models', 'ggml-small.bin.part'))).toBe(false)
+    const good = new VoiceService({ dataDir, platform: 'linux', pathEnv: binDir, modelUrl: () => url, expectedSha256: { small: createHash('sha256').update(body).digest('hex') } })
+    expect(await good.install('small')).toMatchObject({ modelInstalled: true })
   })
 
   it('asks for whisper-cli outside Windows and explains it', async () => {

@@ -380,6 +380,7 @@ export const ptBR = {
     downloadInProgress: 'Já existe um download em andamento',
     installWhisper: 'Instale o whisper.cpp (comando whisper-cli) e deixe no PATH; depois baixe o modelo aqui.',
     whisperCliMissing: 'O pacote baixado não trouxe o whisper-cli.exe (só o main.exe obsoleto). Instale o whisper.cpp manualmente.',
+    checksumMismatch: (item: string) => `O ${item} baixado não passou na conferência de integridade (SHA-256) e foi descartado`,
     downloadFailed: (item: string, status: number) => `Não foi possível baixar o ${item} (HTTP ${status})`,
     transcriberNotInstalled: 'O programa de transcrição não está instalado',
     voiceModelNotDownloaded: 'O modelo de voz ainda não foi baixado',
