@@ -54,6 +54,19 @@ describe('WorktreeService', () => {
     const accented = board.create({ projectId: project.id, columnId: column.id, title: 'Botão de reset', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const stale = join(data, 'worktrees', 'antiga'), branch = `agentboard/botao-de-reset-${accented.id.slice(0, 8)}`
     await exec('git', ['-C', repo, 'worktree', 'add', '-b', branch, stale, 'dev'])
+    // D5: branch velha sem commits próprios é recriada na base de agora; com commits próprios é reaproveitada.
+    const oldTip = (await exec('git', ['-C', repo, 'rev-parse', 'dev'])).stdout.trim()
+    const parked = board.create({ projectId: project.id, columnId: column.id, title: 'Parada', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const kept = board.create({ projectId: project.id, columnId: column.id, title: 'Com trabalho', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const parkedBranch = `agentboard/parada-${parked.id.slice(0, 8)}`, keptBranch = `agentboard/com-trabalho-${kept.id.slice(0, 8)}`
+    await exec('git', ['-C', repo, 'branch', parkedBranch, oldTip]); await exec('git', ['-C', repo, 'branch', keptBranch, oldTip])
+    await exec('git', ['-C', repo, 'worktree', 'add', join(data, 'tmp-kept'), keptBranch]); await writeFile(join(data, 'tmp-kept', 'meu.txt'), 'x')
+    await exec('git', ['-C', join(data, 'tmp-kept'), 'add', '.']); await exec('git', ['-C', join(data, 'tmp-kept'), 'commit', '-m', 'trabalho antigo']); await exec('git', ['-C', repo, 'worktree', 'remove', '--force', join(data, 'tmp-kept')])
+    await writeFile(join(repo, 'novo.txt'), 'n'); await exec('git', ['-C', repo, 'add', '.']); await exec('git', ['-C', repo, 'commit', '-m', 'avanca a dev'])
+    const newTip = (await exec('git', ['-C', repo, 'rev-parse', 'dev'])).stdout.trim()
+    await service.prepare(parked.id); await service.prepare(kept.id)
+    expect((await exec('git', ['-C', repo, 'rev-parse', parkedBranch])).stdout.trim()).toBe(newTip)
+    expect((await exec('git', ['-C', repo, 'log', '--format=%s', keptBranch])).stdout).toContain('trabalho antigo')
     const recovered = await service.prepare(accented.id)
     expect(recovered.branch).toBe(branch)
     expect((await exec('git', ['-C', repo, 'worktree', 'list'])).stdout).not.toContain('antiga')

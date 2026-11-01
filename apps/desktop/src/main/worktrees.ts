@@ -124,7 +124,10 @@ export class WorktreeService {
         catch (error) {
           const branches = await this.git.run(['-C', source.repoPath, 'branch', '--list', branch])
           if (!branches.stdout.trim()) throw error
-          await this.git.run(['-c', 'core.longpaths=true', '-C', source.repoPath, 'worktree', 'add', memberPath, branch])
+          // Branch que já existe: com commits próprios (trabalho de uma worktree apagada) é reaproveitada como está; sem nenhum commit que a base
+          // não tenha, só estaria parada num ponto velho, então é recriada em cima da base de agora.
+          const unique = Number((await this.git.run(['-C', source.repoPath, 'rev-list', '--count', `${baseRef}..${branch}`])).stdout.trim()) || 0
+          await this.git.run(['-c', 'core.longpaths=true', '-C', source.repoPath, 'worktree', 'add', ...(unique === 0 ? ['-B', branch, memberPath, baseRef] : [memberPath, branch])])
         }
       } catch (error) {
         // Uma worktree criada pela metade prende a branch e impede a próxima tentativa: desfaz antes de avisar.
