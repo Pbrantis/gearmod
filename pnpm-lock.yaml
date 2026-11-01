@@ -70,6 +70,9 @@ importers:
       '@lezer/highlight':
         specifier: ^1.2.5
         version: 1.2.5
+      '@vscode/tree-sitter-wasm':
+        specifier: 0.3.1
+        version: 0.3.1
       '@xterm/addon-fit':
         specifier: ^0.11.0
         version: 0.11.0
@@ -1152,6 +1155,9 @@ packages:
 
   '@vitest/utils@4.1.12':
     resolution: {integrity: sha512-Q3awXrwOfEV+qc3WmO5ONyE0yO7Q1gQ9/oyHxGLZ/pl7N3NO/ZztqQwKLuwMkV+CA1JYSIeO3gkHnRDIo4AVaA==}
+
+  '@vscode/tree-sitter-wasm@0.3.1':
+    resolution: {integrity: sha512-RJFoomET6FajjG511fmQxeBQfU6M24a0aFZPqpid+ttIxanWf1VGytBG0UmsGjt07qmIPJS8U31D+aecuCucsQ==}
 
   '@xmldom/xmldom@0.8.15':
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
@@ -3733,6 +3739,8 @@ snapshots:
       '@vitest/pretty-format': 4.1.12
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
+
+  '@vscode/tree-sitter-wasm@0.3.1': {}
 
   '@xmldom/xmldom@0.8.15': {}
 

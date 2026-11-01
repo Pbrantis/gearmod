@@ -17,6 +17,7 @@ import type { ApprovalService } from './approvals'
 import type { PolicyEngine } from './policy'
 import type { SddResolver } from './sdd/sdd-resolver'
 import type { SddWriter } from './sdd/sdd-writer'
+import type { CodeIndexService } from './code-index/service'
 import { findCardType } from '@agentboard/contracts'
 import { assessmentTriggerSchema, complexityDimensions, decisionKindSchema, dimensionScoresSchema, evidenceSchema, levelLabels, workflowKindSchema, workflowLabels, type Evidence, type WorkflowKind } from '@agentboard/contracts'
 
@@ -49,7 +50,7 @@ export class McpBridge {
   private readonly dir: string
   readonly socketPath: string
 
-  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; approvals?: ApprovalService; policy?: PolicyEngine; sddResolver?: Pick<SddResolver, 'constitution' | 'locate'>; sddWriter?: Pick<SddWriter, 'write'>; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }>; agentMoveApproval?: boolean }) {
+  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; approvals?: ApprovalService; policy?: PolicyEngine; sddResolver?: Pick<SddResolver, 'constitution' | 'locate'>; sddWriter?: Pick<SddWriter, 'write'>; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }>; agentMoveApproval?: boolean; codeIndex?: Pick<CodeIndexService, 'tool' | 'isTool' | 'prewarm'>; codeRoots?: (run: { cardId: string | null; chatId: string }) => string[] }) {
     const id = randomBytes(6).toString('hex')
     this.dir = join(tmpdir(), `agentboard-${id}`)
     this.socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\agentboard-${id}` : join(this.dir, 'mcp.sock')
@@ -82,6 +83,8 @@ export class McpBridge {
   register(runId: string, cardId: string | null, notify: (change: CardChange) => void, chat: { id: string; purpose: ChatPurpose } = { id: '', purpose: 'execution' }): McpEndpoint {
     const token = randomBytes(24).toString('hex')
     this.runs.set(token, { runId, cardId, chatId: chat.id, purpose: chat.purpose, written: new Set(), pendingMove: null, notify })
+    // o índice de código das pastas desta conversa começa a ficar pronto enquanto o agente sobe
+    if (chat.purpose !== 'constitution') { try { this.deps.codeIndex?.prewarm(this.deps.codeRoots?.({ cardId, chatId: chat.id }) ?? []) } catch { /* sem pastas ainda */ } }
     return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', AGENTBOARD_SOCKET: this.socketPath, AGENTBOARD_TOKEN: token, AGENTBOARD_PURPOSE: chat.purpose } }
   }
 
@@ -127,6 +130,8 @@ export class McpBridge {
         return { ok: true, text: constitutionChat ? `Card "${card.title}" created in ${column.label}. Send the complete text with agentboard_escrever_constituicao for review and approval on the card.` : `Card "${card.title}" created in ${column.label}. This chat is now its planning chat: load agentboard-planejamento with agentboard_ler_skill, follow the skill, save the Specification, Plan and Tasks with agentboard_escrever_documento and call agentboard_concluir_planejamento when done.` }
       }
       if (tool === 'agentboard_ler_constituicao' || tool === 'agentboard_escrever_constituicao' || tool === 'agentboard_propor_constituicao') return this.constitution(run, tool, args)
+      // índice de código: só leitura, nas pastas desta conversa (worktree do card ou pastas do projeto); vale também no chat livre
+      if (tool.startsWith('agentboard_code_')) return this.codeTool(run, tool, args)
       if (!run.cardId) return { ok: false, error: 'This conversation has no card yet. If the user asks to plan something, call agentboard_criar_card first.' }
       if (tool === 'agentboard_pedir_commit') return this.requestCommit(run, args)
       if (historyTools.has(tool)) return this.history(run, tool, args)
@@ -220,6 +225,13 @@ export class McpBridge {
   }
 
   /** Repositórios do card: só eles ganham worktree. Na execução, o repositório novo é preparado na hora (os outros continuam como estão). */
+  private async codeTool(run: RunState, tool: string, args: Record<string, unknown>): Promise<Reply> {
+    const { codeIndex, codeRoots } = this.deps
+    if (!codeIndex || !codeRoots || !codeIndex.isTool(tool)) return { ok: false, error: `Unknown tool: ${tool}` }
+    if (run.purpose === 'constitution') return { ok: false, error: 'The code tools are not available in the Constitution chat.' }
+    return { ok: true, text: await codeIndex.tool(tool, args, codeRoots({ cardId: run.cardId, chatId: run.chatId })) }
+  }
+
   private async setRepositories(run: RunState, args: Record<string, unknown>): Promise<Reply> {
     if (!run.cardId) return { ok: false, error: 'This conversation has no card yet.' }
     if (!Array.isArray(args.repositorios) || args.repositorios.some((item) => typeof item !== 'string')) return { ok: false, error: 'repositorios must be a list of names' }

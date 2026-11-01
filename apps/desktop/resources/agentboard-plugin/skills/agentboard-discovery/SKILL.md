@@ -17,9 +17,10 @@ Goal: turn an informal conversation into requirements clear enough to plan or im
 
 ## 2. Explore the code (cheap and read-only)
 
-- Start with searches (Grep/Glob, `rg`, symbol names) and read only the relevant parts. Do not read the whole workspace and do not push large files into the context.
 - If the context already carries a "Exploração do código" (code exploration) section that is valid for the current version, reuse it. Explore again only when it is marked DESATUALIZADA (outdated) or the request changed.
-- Use an exploration subagent (e.g. Claude Code's Explore) only when the search is truly broad; the extra cost has to pay off.
+- Start with the code index: `agentboard_code_explore` with the request in your own words plus any symbol or file names you already know. In one call it returns the relevant code, the call path, what depends on it and the tests; treat that code as already read and do not open those files again.
+- Use `agentboard_code_impact` to see everything a change touches (callers with the line of each call, mentions in strings/mocks, tests to run) and `agentboard_code_node` for one symbol or file. Use Grep/Glob only for plain text (messages, config keys) or when the index has no answer. Read only the relevant parts; never the whole workspace.
+- For a truly broad exploration, delegate it to the `agentboard-explorer` subagent when it is available (it uses the same index and returns a short report); the extra cost has to pay off.
 - Look for: affected modules and repositories, similar implementations, contracts/APIs, dependencies and existing tests.
 - Record the result with `agentboard_registrar_exploracao` (compact summary + evidence with path and line). The app stores the code version alongside it.
 

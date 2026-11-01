@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, utilityProcess, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -57,6 +57,7 @@ import { PolicyEngine } from './policy'
 import { SddResolver } from './sdd/sdd-resolver'
 import { SddWriter } from './sdd/sdd-writer'
 import { onMainLocaleChange, setMainLocale, tm } from './i18n'
+import { CodeIndexService, type HostProcess } from './code-index/service'
 
 // Perfil separado (ex.: AGENTBOARD_PROFILE=teste): outra pasta de dados e outro lock de instância única, para rodar junto da versão homologada.
 const profileName = (process.env.AGENTBOARD_PROFILE ?? '').replace(/[^\w-]/g, '')
@@ -77,6 +78,19 @@ const conversations = new ConversationRepository(database)
 const constitution = new ConstitutionRepository(database)
 const checklists = new ChecklistRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
+// Índice de código (grafo de símbolos) para as ferramentas agentboard_code_*: roda num processo utilitário, aberto no primeiro uso.
+const codeIndex = new CodeIndexService({ dataDir, fork: () => utilityProcess.fork(join(__dirname, 'codeIndexHost.js'), [], { serviceName: 'AgentBoard code index', stdio: 'ignore' }) as unknown as HostProcess })
+/** Pastas que o índice cobre numa conversa: os repositórios da worktree do card, senão as fontes do projeto. */
+const codeRoots = ({ cardId, chatId }: { cardId: string | null; chatId: string }): string[] => {
+  const worktree = cardId ? worktrees.get(cardId) : null
+  if (cardId && worktree && existsSync(worktree.path)) {
+    const members = worktrees.repositories(cardId).filter((repo) => repo.status === 'active').map((repo) => repo.path)
+    return members.length ? members : [worktree.path]
+  }
+  const project = projects.get(cardId ? board.card(cardId).projectId : conversations.projectOf(chatId))
+  const sources = [...new Set(project.sources.map((source) => source.localPath))]
+  return sources.length ? sources : [project.localPath]
+}
 const quality = new QualityService(database, worktrees)
 const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
 const approvals = new ApprovalService(database)
@@ -109,7 +123,7 @@ const appIcon = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 
 const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
 const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/card-updated', payload: { cardId, type: 'document' } })))
 // S05, atrás da flag (padrão off até soak, Q-05): movimento imediato do agente vira pedido pendente de aprovação.
-const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.AGENTBOARD_AGENT_MOVE_APPROVAL === '1' })
+const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.AGENTBOARD_AGENT_MOVE_APPROVAL === '1', codeIndex, codeRoots })
 const writeback = new AgentWriteback(board, mcpBridge)
 const shownNotifications = new Set<Notification>()
 const notifier = new Notifier({
@@ -396,4 +410,4 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // não salvo ainda pode cancelar a saída (veja `will-prevent-unload`).
 app.on('before-quit', () => { quitting = true })
 // Só depois que todas as janelas fecharam (ninguém cancelou) é que agentes, terminais, bandeja e banco são encerrados.
-app.on('will-quit', () => { orchestrator.shutdown(); autoResume.stop(); terminals.dispose(); fileWatch.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); void dbSessions.closeAll(); database.close() })
+app.on('will-quit', () => { orchestrator.shutdown(); autoResume.stop(); terminals.dispose(); fileWatch.dispose(); codeIndex.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); void dbSessions.closeAll(); database.close() })
