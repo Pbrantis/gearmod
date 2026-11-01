@@ -170,6 +170,19 @@ export const settings = {
     allowAgents: 'Liberar agentes'
   },
 
+  codeIndex: {
+    title: 'Índice de código',
+    hint: 'Mapa das funções, classes e chamadas do projeto, guardado só neste computador. Os agentes consultam o índice antes de abrir arquivos, o que gasta menos tokens, e o editor usa para Ctrl+T, F12 e Shift+F12.',
+    toggle: 'Ligado neste projeto',
+    off: 'Desligado: os agentes usam só Grep e leitura de arquivos, e o editor não tem ir para símbolo nem definição.',
+    notIndexed: 'Ainda não indexado. Indexa sozinho quando um agente começa ou quando você abre um arquivo.',
+    summary: (files: number, symbols: number) => `${files.toLocaleString('pt-BR')} arquivos · ${symbols.toLocaleString('pt-BR')} símbolos`,
+    indexedAgo: (ago: string | null, seconds: string | null) => `indexado ${ago ? `há ${ago}` : 'agora'}${seconds ? ` (${seconds} s)` : ''}`,
+    reindex: 'Indexar agora',
+    reindexing: 'Indexando…',
+    loading: 'Carregando o estado do índice…'
+  },
+
   cardTypes: {
     title: 'Tipos de card',
     defaultHint: 'Lista padrão: vale para os projetos que não têm lista própria, inclusive os novos.',

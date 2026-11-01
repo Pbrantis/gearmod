@@ -100,6 +100,7 @@ interface Services {
   /** Índice de código para o editor (ir para símbolo, estrutura, definição, quem usa) e as pastas que ele cobre. */
   codeIndex?: EditorCodeIndex
   codeRoots?(context: { projectId: string; cardId: string | null }): string[]
+  codeIndexSettings?: { enabled(projectId: string): boolean; setEnabled(projectId: string, enabled: boolean): void }
   openPath(path: string): Promise<void>
   terminals: TerminalService
   openWindow(target: PopoutTarget, placement: WindowPlacement, point?: { x: number; y: number }): void
@@ -129,7 +130,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     return [...new Set([project.localPath, ...project.sources.map((source) => source.localPath)])]
   }
   // workspaceRoots confere que o card é do projeto antes de o índice abrir qualquer pasta
-  const code = editorCodeQueries(services.codeIndex, (context) => { const roots = workspaceRoots(context); return services.codeRoots?.(context) ?? roots })
+  const code = editorCodeQueries(services.codeIndex, (context) => { const roots = workspaceRoots(context); return services.codeRoots?.(context) ?? roots }, services.codeIndexSettings)
   const applyingConstitution = new Set<string>()
   /** Estado do Spec Kit de um card para o chat: permissão escolhida, cartões pendentes e os artefatos REAIS da feature do card. */
   const specKitState = (cardId: string): SpecKitState => {
@@ -400,6 +401,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'code-index:definition': (input: { projectId: string; cardId: string | null; name: string; path?: string }) => code.definition(input),
     'code-index:references': (input: { projectId: string; cardId: string | null; name: string; path?: string }) => code.references(input),
     'code-index:status': (input: { projectId: string; cardId: string | null }) => code.status(input),
+    'code-index:set-enabled': (input: { projectId: string; enabled: boolean }) => code.setEnabled(input),
+    'code-index:reindex': (input: { projectId: string }) => code.reindex(input),
     'files:read': (input: { chatId: string; path: string }) => {
       const context = services.conversations.context(input.chatId), worktree = context.cardId ? services.worktrees.get(context.cardId) : null
       // Card com worktree: a pasta dela e a de cada repositório dela (é onde o agente trabalha), mesmo que o estado esteja desatualizado.

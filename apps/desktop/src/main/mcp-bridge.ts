@@ -50,7 +50,7 @@ export class McpBridge {
   private readonly dir: string
   readonly socketPath: string
 
-  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; approvals?: ApprovalService; policy?: PolicyEngine; sddResolver?: Pick<SddResolver, 'constitution' | 'locate'>; sddWriter?: Pick<SddWriter, 'write'>; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }>; agentMoveApproval?: boolean; codeIndex?: Pick<CodeIndexService, 'tool' | 'isTool' | 'prewarm'>; codeRoots?: (run: { cardId: string | null; chatId: string }) => string[] }) {
+  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; approvals?: ApprovalService; policy?: PolicyEngine; sddResolver?: Pick<SddResolver, 'constitution' | 'locate'>; sddWriter?: Pick<SddWriter, 'write'>; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }>; agentMoveApproval?: boolean; codeIndex?: Pick<CodeIndexService, 'tool' | 'isTool' | 'prewarm'>; codeRoots?: (run: { cardId: string | null; chatId: string }) => string[]; codeEnabled?: (run: { cardId: string | null; chatId: string }) => boolean }) {
     const id = randomBytes(6).toString('hex')
     this.dir = join(tmpdir(), `agentboard-${id}`)
     this.socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\agentboard-${id}` : join(this.dir, 'mcp.sock')
@@ -83,9 +83,10 @@ export class McpBridge {
   register(runId: string, cardId: string | null, notify: (change: CardChange) => void, chat: { id: string; purpose: ChatPurpose } = { id: '', purpose: 'execution' }): McpEndpoint {
     const token = randomBytes(24).toString('hex')
     this.runs.set(token, { runId, cardId, chatId: chat.id, purpose: chat.purpose, written: new Set(), pendingMove: null, notify })
-    // o índice de código das pastas desta conversa começa a ficar pronto enquanto o agente sobe
-    if (chat.purpose !== 'constitution') { try { this.deps.codeIndex?.prewarm(this.deps.codeRoots?.({ cardId, chatId: chat.id }) ?? []) } catch { /* sem pastas ainda */ } }
-    return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', AGENTBOARD_SOCKET: this.socketPath, AGENTBOARD_TOKEN: token, AGENTBOARD_PURPOSE: chat.purpose } }
+    // o índice de código das pastas desta conversa começa a ficar pronto enquanto o agente sobe; desligado no projeto, as ferramentas somem
+    const codeOn = this.codeOn({ cardId, chatId: chat.id })
+    if (codeOn && chat.purpose !== 'constitution') { try { this.deps.codeIndex?.prewarm(this.deps.codeRoots?.({ cardId, chatId: chat.id }) ?? []) } catch { /* sem pastas ainda */ } }
+    return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', AGENTBOARD_SOCKET: this.socketPath, AGENTBOARD_TOKEN: token, AGENTBOARD_PURPOSE: chat.purpose, AGENTBOARD_CODE_INDEX: codeOn ? '1' : '0' } }
   }
 
   finish(runId: string): RunReport {
@@ -229,7 +230,14 @@ export class McpBridge {
     const { codeIndex, codeRoots } = this.deps
     if (!codeIndex || !codeRoots || !codeIndex.isTool(tool)) return { ok: false, error: `Unknown tool: ${tool}` }
     if (run.purpose === 'constitution') return { ok: false, error: 'The code tools are not available in the Constitution chat.' }
+    // pode ter sido desligado com o agente já rodando
+    if (!this.codeOn(run)) return { ok: false, error: 'The code index is turned off for this project. Use Grep and Read instead.' }
     return { ok: true, text: await codeIndex.tool(tool, args, codeRoots({ cardId: run.cardId, chatId: run.chatId })) }
+  }
+
+  private codeOn(run: { cardId: string | null; chatId: string }): boolean {
+    if (!this.deps.codeIndex) return false
+    try { return this.deps.codeEnabled?.(run) ?? true } catch { return true }
   }
 
   private async setRepositories(run: RunState, args: Record<string, unknown>): Promise<Reply> {

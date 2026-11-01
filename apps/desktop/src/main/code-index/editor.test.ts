@@ -28,7 +28,7 @@ function fakeHost(): HostProcess {
   return host
 }
 
-async function setup(enabled = true) {
+async function setup(enabled = true, settings?: { enabled(projectId: string): boolean; setEnabled(projectId: string, enabled: boolean): void }) {
   const api = await temp(), web = await temp(), data = await temp()
   await mkdir(join(api, 'src')); await mkdir(join(web, 'src'))
   await writeFile(join(api, 'src', 'paths.ts'), 'export class PathGuard {\n  allowed(path: string): boolean {\n    return path.length > 0\n  }\n}\nexport function allowedPath(roots: string[], requested: string): string {\n  return requested\n}\n')
@@ -37,7 +37,7 @@ async function setup(enabled = true) {
   const service = new CodeIndexService({ dataDir: data, fork: fakeHost, enabled: () => enabled })
   closers.push(() => service.dispose())
   const context = { projectId: 'p', cardId: null }
-  return { api, web, context, code: editorCodeQueries(service, () => [api, web]) }
+  return { api, web, context, code: editorCodeQueries(service, () => [api, web], settings) }
 }
 
 describe('consultas do índice de código para o editor', () => {
@@ -79,5 +79,22 @@ describe('consultas do índice de código para o editor', () => {
     const off = await setup(false)
     expect(await off.code.symbols({ ...off.context, query: 'readFile' })).toEqual([])
     expect(await off.code.status(off.context)).toEqual({ enabled: false, roots: [] })
+  })
+
+  it('desliga e religa por projeto; indexar de novo devolve o estado de cada pasta', async () => {
+    const disabled = new Set<string>()
+    const settings = { enabled: (projectId: string) => !disabled.has(projectId), setEnabled: (projectId: string, on: boolean) => { if (on) disabled.delete(projectId); else disabled.add(projectId) } }
+    const { context, code } = await setup(true, settings)
+    expect(await code.symbols({ ...context, query: 'readFile' })).not.toEqual([])
+    expect(await code.setEnabled({ projectId: 'p', enabled: false })).toEqual({ enabled: false, roots: [] })
+    expect(disabled.has('p')).toBe(true)
+    expect(await code.symbols({ ...context, query: 'readFile' })).toEqual([])
+    expect(await code.reindex({ projectId: 'p' })).toEqual({ enabled: false, roots: [] })
+    const on = await code.setEnabled({ projectId: 'p', enabled: true })
+    expect(on.enabled).toBe(true)
+    expect(on.roots.map((root) => [root.files, root.indexedAt !== null])).toEqual([[2, true], [1, true]])
+    const again = await code.reindex({ projectId: 'p' })
+    expect(again.roots.map((root) => root.files)).toEqual([2, 1])
+    expect(await code.symbols({ ...context, query: 'readFile' })).not.toEqual([])
   })
 })

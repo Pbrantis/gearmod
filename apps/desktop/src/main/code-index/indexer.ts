@@ -139,8 +139,9 @@ export async function indexRoot(db: Db, root: string, { exclude = [] }: { exclud
   const linkerOk = db.prepare(`select value from meta where key = 'linker'`).pluck().get() === String(LINKER_VERSION)
   const same = linkerOk && before.size === final.size && [...final].every(([path, sha]) => before.get(path) === sha) && db.prepare('select 1 from edges where root = ? limit 1').get(root) !== undefined
   if (same) {
-    db.prepare('update roots set indexed_at = ? where root = ?').run(Date.now(), root)
-    return { files: final.size, parsed: 0, reused: final.size, errors, edges: null, unchanged: true, ms: Date.now() - started }
+    const ms = Date.now() - started
+    db.prepare('update roots set indexed_at = ?, ms = ? where root = ?').run(Date.now(), ms, root)
+    return { files: final.size, parsed: 0, reused: final.size, errors, edges: null, unchanged: true, ms }
   }
   db.transaction(() => {
     db.prepare('delete from trees where root = ?').run(root)

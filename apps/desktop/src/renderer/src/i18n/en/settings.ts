@@ -171,6 +171,19 @@ export const settings: typeof source = {
     allowAgents: 'Enable agents'
   },
 
+  codeIndex: {
+    title: 'Code index',
+    hint: 'A map of the project\'s functions, classes and calls, stored only on this computer. Agents query it before opening files, which uses fewer tokens, and the editor uses it for Ctrl+T, F12 and Shift+F12.',
+    toggle: 'On for this project',
+    off: 'Off: agents use only Grep and file reads, and the editor has no go to symbol or definition.',
+    notIndexed: 'Not indexed yet. It indexes on its own when an agent starts or when you open a file.',
+    summary: (files: number, symbols: number) => `${files.toLocaleString('en')} files · ${symbols.toLocaleString('en')} symbols`,
+    indexedAgo: (ago: string | null, seconds: string | null) => `indexed ${ago ? `${ago} ago` : 'just now'}${seconds ? ` (${seconds} s)` : ''}`,
+    reindex: 'Index now',
+    reindexing: 'Indexing…',
+    loading: 'Loading the index status…'
+  },
+
   cardTypes: {
     title: 'Card types',
     defaultHint: 'Default list: applies to projects without a list of their own, including new ones.',

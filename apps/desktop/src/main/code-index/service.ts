@@ -93,6 +93,13 @@ export class CodeIndexService {
   async definitions(root: string, name: string, from?: string): Promise<SymbolHit[]> { await this.ensure(root); return this.send({ op: 'definitions', root, name, from }) }
   async references(root: string, name: string, from?: string): Promise<Array<{ path: string; line: number; caller: string }>> { await this.ensure(root); return this.send({ op: 'references', root, name, from }) }
 
+  /** Indexa de novo agora (botão da tela do projeto); aproveita o que não mudou, então costuma ser rápido. */
+  async reindex(root: string): Promise<RootStatus> {
+    this.ready.delete(root)
+    await this.ensure(root)
+    return this.status(root)
+  }
+
   /** A pasta saiu (worktree removida): para de observar e apaga o que só ela usava. */
   async forget(root: string): Promise<void> {
     this.ready.delete(root)

@@ -84,6 +84,8 @@ const purposeTools = {
   test: [...always, ...codeRead, 'agentboard_code_affected_tests', 'agentboard_contexto_do_card', 'agentboard_escrever_documento', 'agentboard_marcar_task', 'agentboard_atualizar_card', 'agentboard_mover_card', 'agentboard_checklist_teste', 'agentboard_definir_repositorios', 'agentboard_ler_constituicao', 'agentboard_propor_constituicao', 'agentboard_propor_mudanca', 'agentboard_perguntar_ao_planejador', 'agentboard_registrar_entendimento', 'agentboard_registrar_exploracao', 'agentboard_avaliar_complexidade', 'agentboard_escolher_fluxo', 'agentboard_registrar_decisao']
 }
 const allowedNames = new Set(purposeTools[process.env.AGENTBOARD_PURPOSE] ?? tools.map((tool) => tool.name))
+// Índice de código desligado no projeto: as ferramentas agentboard_code_* nem aparecem para o agente.
+if (process.env.AGENTBOARD_CODE_INDEX === '0') for (const tool of codeTools) allowedNames.delete(tool.name)
 const toolsForPurpose = tools.filter((tool) => allowedNames.has(tool.name))
 
 async function handle(message) {

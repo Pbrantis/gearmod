@@ -47,7 +47,7 @@ function mcpClient(endpoint: { command: string; args: string[]; env: Record<stri
   return { call, names }
 }
 
-async function setup() {
+async function setup(on: { value: boolean } = { value: true }) {
   const root = await temp(), data = await temp()
   await mkdir(join(root, 'src'))
   await writeFile(join(root, 'src', 'paths.ts'), 'export function allowedPath(roots: string[], requested: string): string { return requested }\n')
@@ -58,7 +58,7 @@ async function setup() {
   const card = board.create({ projectId: project.id, columnId: board.get(project.id).columns[1]!.id, title: 'Card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
   const codeIndex = new CodeIndexService({ dataDir: data, fork: fakeHost })
   const asked: Array<{ cardId: string | null; chatId: string }> = []
-  const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), null), serverScript, runtime: process.execPath, codeIndex, codeRoots: (run) => { asked.push(run); return [root] } })
+  const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), null), serverScript, runtime: process.execPath, codeIndex, codeRoots: (run) => { asked.push(run); return [root] }, codeEnabled: () => on.value })
   await bridge.listen()
   closers.push(async () => { await bridge.close(); codeIndex.dispose(); database.close() })
   return { bridge, card, asked }
@@ -91,5 +91,20 @@ describe('ferramentas agentboard_code_* pelo servidor MCP', () => {
     expect(missing).toMatchObject({ isError: true })
     const constitution = mcpClient(bridge.register('r3', null, () => undefined, { id: 'c3', purpose: 'constitution' }))
     expect(await constitution.call('agentboard_code_search', { consulta: 'x' })).toMatchObject({ isError: true })
+  })
+
+  it('com o índice desligado no projeto as ferramentas somem, e quem já rodava recebe recusa', async () => {
+    const on = { value: false }
+    const { bridge, card, asked } = await setup(on)
+    const off = mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' }))
+    expect((await off.names()).some((tool) => tool.name.startsWith('agentboard_code_'))).toBe(false)
+    expect(asked).toEqual([]) // nada de indexação antecipada
+    on.value = true
+    const running = mcpClient(bridge.register('r2', card.id, () => undefined, { id: 'c2', purpose: 'execution' }))
+    expect((await running.names()).some((tool) => tool.name === 'agentboard_code_explore')).toBe(true)
+    on.value = false
+    const refused = await running.call('agentboard_code_search', { consulta: 'readFile' })
+    expect(refused.isError).toBe(true)
+    expect(refused.content[0]!.text).toContain('turned off')
   })
 })

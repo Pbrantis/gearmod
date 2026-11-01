@@ -58,6 +58,7 @@ import { SddResolver } from './sdd/sdd-resolver'
 import { SddWriter } from './sdd/sdd-writer'
 import { onMainLocaleChange, setMainLocale, tm } from './i18n'
 import { CodeIndexService, type HostProcess } from './code-index/service'
+import { CodeIndexSettings } from './code-index/project-setting'
 
 // Perfil separado (ex.: AGENTBOARD_PROFILE=teste): outra pasta de dados e outro lock de instância única, para rodar junto da versão homologada.
 const profileName = (process.env.AGENTBOARD_PROFILE ?? '').replace(/[^\w-]/g, '')
@@ -91,7 +92,10 @@ const projectCodeRoots = ({ projectId, cardId }: { projectId: string; cardId: st
   const sources = [...new Set(project.sources.map((source) => source.localPath))]
   return sources.length ? sources : [project.localPath]
 }
-const codeRoots = ({ cardId, chatId }: { cardId: string | null; chatId: string }): string[] => projectCodeRoots({ projectId: cardId ? board.card(cardId).projectId : conversations.projectOf(chatId), cardId })
+const runProject = ({ cardId, chatId }: { cardId: string | null; chatId: string }): string => cardId ? board.card(cardId).projectId : conversations.projectOf(chatId)
+const codeRoots = (run: { cardId: string | null; chatId: string }): string[] => projectCodeRoots({ projectId: runProject(run), cardId: run.cardId })
+const codeIndexSettings = new CodeIndexSettings(database)
+const codeEnabled = (run: { cardId: string | null; chatId: string }): boolean => codeIndexSettings.enabled(runProject(run))
 const quality = new QualityService(database, worktrees)
 const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
 const approvals = new ApprovalService(database)
@@ -124,7 +128,7 @@ const appIcon = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 
 const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
 const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/card-updated', payload: { cardId, type: 'document' } })))
 // S05, atrás da flag (padrão off até soak, Q-05): movimento imediato do agente vira pedido pendente de aprovação.
-const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.AGENTBOARD_AGENT_MOVE_APPROVAL === '1', codeIndex, codeRoots })
+const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.AGENTBOARD_AGENT_MOVE_APPROVAL === '1', codeIndex, codeRoots, codeEnabled })
 const writeback = new AgentWriteback(board, mcpBridge)
 const shownNotifications = new Set<Notification>()
 const notifier = new Notifier({
@@ -389,7 +393,7 @@ app.whenReady().then(async () => {
   await openDatabase()
   setMainLocale(settings.get().idioma)  // só depois de abrir o banco: antes disso as configurações não podem ser lidas
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, codeIndexSettings, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
   Menu.setApplicationMenu(null)  // sem File/Edit/View/Window/Help: a faixa de cima é do app
   createTray()
   await createWindow()

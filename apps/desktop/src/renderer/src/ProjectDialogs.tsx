@@ -18,6 +18,7 @@ import { Checkbox } from './Checkbox'
 import { plainError } from './NoticeDialog'
 import { useEscape } from './useEscape'
 import { ProjectCardTypes } from './CardTypes'
+import { ProjectCodeIndex } from './ProjectCodeIndex'
 
 /** Novo projeto: escolher ou arrastar a pasta (protótipo: `.sourcePick`). */
 export function ProjectDialog({ close, created }: { close(): void; created(project: Project): void }): React.JSX.Element {
@@ -141,6 +142,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
       <div className="stack pcfg-general"><section className="cx-wfcard"><ThemePicker project value={ownTheme} onChange={(value) => { setOwnTheme(value); setProjectTheme(project.id, value) }} /></section>
         <section className="cx-wfcard"><AgentTeam profiles={profiles} allowed={allowed} setAllowed={changeAllowed} probes={probes} /></section>
         <section className="cx-wfcard"><ProjectCardTypes project={project} /></section>
+        <section className="cx-wfcard"><ProjectCodeIndex project={project} /></section>
         </div>
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>
       : tab === 'git' ? <GitPolicyPanel projectId={project.id} />
