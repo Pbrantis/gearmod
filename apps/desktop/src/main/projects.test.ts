@@ -175,4 +175,13 @@ describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () =>
     const second = profiles.create({ provider: 'claude', label: 'Claude 2', scope: 'x' })
     expect(first.configDir).not.toBe(second.configDir)
   })
+  it('Gemini desativado: não cria perfil e some da lista', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-gemini-off-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root)
+    expect(() => profiles.create({ provider: 'gemini', label: 'G', scope: 'x' })).toThrow(/Gemini/)
+    database.db.prepare(`INSERT INTO agent_profiles(id, provider, label, scope, color, config_dir, enabled, created_at, updated_at) VALUES ('11111111-1111-4111-8111-111111111111', 'gemini', 'Antigo', 'x', '#aeb9ff', ?, 1, ?, ?)`).run(root, new Date().toISOString(), new Date().toISOString())
+    expect(profiles.list().some((item) => item.provider === 'gemini')).toBe(false)
+    database.close()
+  })
 })

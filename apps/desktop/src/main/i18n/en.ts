@@ -286,6 +286,7 @@ export const en: typeof ptBR = {
     skillExists: (target: string) => `The skill already exists at ${target}; nothing was overwritten.`,
   },
   projects: {
+    geminiDisabled: 'Gemini CLI is disabled in this version.',
     projectFolderMissing: 'The project folder does not exist',
     folderNotGitRepo: 'The selected folder is not an accessible Git repository',
     baseBranchMissing: (branch: string) => `The base branch “${branch}” does not exist in the repository`,

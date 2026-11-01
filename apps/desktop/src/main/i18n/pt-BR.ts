@@ -285,6 +285,7 @@ export const ptBR = {
     skillExists: (target: string) => `A skill já existe em ${target}; nada foi sobrescrito.`,
   },
   projects: {
+    geminiDisabled: 'O Gemini CLI está desativado nesta versão.',
     projectFolderMissing: 'A pasta do projeto não existe',
     folderNotGitRepo: 'A pasta selecionada não é um repositório Git acessível',
     baseBranchMissing: (branch: string) => `A branch base “${branch}” não existe no repositório`,

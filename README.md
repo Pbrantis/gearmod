@@ -1,6 +1,6 @@
 # AgentBoard
 
-A local-first desktop app that organizes work as cards on a kanban board and runs coding agents (Claude Code, Codex, Gemini CLI) on each card, every one in its own isolated Git worktree.
+A local-first desktop app that organizes work as cards on a kanban board and runs coding agents (Claude Code and Codex; Gemini CLI support is disabled for now) on each card, every one in its own isolated Git worktree.
 
 > **License:** source-available under the [PolyForm Shield License 1.0.0](LICENSE). You can read, use, modify and redistribute the code, except to build a product that competes with AgentBoard. This is **not** an OSI-approved open source license.
 
@@ -19,7 +19,7 @@ A local-first desktop app that organizes work as cards on a kanban board and run
 
 - Windows 10 or 11, x64 (the only supported platform for now)
 - [Git](https://git-scm.com/)
-- At least one agent CLI, installed and logged in: [Claude Code](https://docs.claude.com/en/docs/claude-code), [Codex](https://github.com/openai/codex) or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- At least one agent CLI, installed and logged in: [Claude Code](https://docs.claude.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex)
 
 To build from source you also need Node.js 22+ and pnpm 11+.
 

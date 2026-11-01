@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process'
 import { readdir, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { defaultAgentColor, type CardRunState, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
+import { defaultAgentColor, geminiEnabled, type CardRunState, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { DocumentRepository } from './documents'
 import { countTasks } from './tasks'
@@ -105,6 +105,7 @@ export class ProfileRepository {
    * login (`profiles:login` + `profiles:probe` autenticado), o perfil fica inutilizável ("login pendente").
    */
   create(input: { provider: 'codex' | 'claude' | 'gemini'; label: string; scope: string; color?: string }): AgentProfile {
+    if (input.provider === 'gemini' && !geminiEnabled) throw new Error(tm().projects.geminiDisabled)
     const id = randomUUID()
     const configDir = join(this.homeDir, '.agentboard', 'profiles', id)
     const now = new Date().toISOString()
@@ -155,6 +156,7 @@ export class ProfileRepository {
     return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
       executable_path AS executablePath, enabled, billing_mode AS billingMode, api_key_source_hint AS apiKeySourceHint, env_passthrough AS envPassthroughRaw FROM agent_profiles WHERE enabled = 1 AND removed_at IS NULL ORDER BY created_at`).all()
       .map((row) => ({ ...parseEnvPassthrough(row as Record<string, unknown>), enabled: Boolean((row as { enabled: number }).enabled) } as AgentProfile))
+      .filter((profile) => geminiEnabled || profile.provider !== 'gemini')
   }
 
   get(id: string): AgentProfile {

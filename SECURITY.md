@@ -11,7 +11,7 @@
 
 ## What AgentBoard does not promise
 
-- **It is not a sandbox.** An agent runs with your user's permissions and can read and write anything your account can, within the permission mode you chose. Modes such as "Ignore permissions" and Gemini's "Automatic (yolo)" approve everything; use them only in a disposable environment. The app does not isolate agents from each other or from your system.
+- **It is not a sandbox.** An agent runs with your user's permissions and can read and write anything your account can, within the permission mode you chose. Modes such as "Ignore permissions" approve everything; use them only in a disposable environment. The app does not isolate agents from each other or from your system.
 - **It does not scan for secrets** in what an agent writes or commits. Review diffs before you push.
 - **The code is not audited.** Treat third-party MCP servers, skills and agent CLIs as code you are choosing to trust.
 - **Optional features reach the network when you turn them on:** Groq dictation (sends audio to Groq with your key), author photos from Gravatar (sends a hash of commit e-mails; off by default), the update check for agent CLIs, and whatever MCP servers or agents you configure.
@@ -20,9 +20,12 @@
 
 Please report vulnerabilities privately, not in a public issue.
 
-Use GitHub's **private vulnerability reporting** on the repository (Security tab → "Report a vulnerability"). Include the version, steps to reproduce and the impact you see.
+Use either of these:
 
-<!-- TODO(maintainer): confirm that private vulnerability reporting is enabled on the published repository, or add a contact e-mail here. -->
+- GitHub's **private vulnerability reporting** on the repository (Security tab → "Report a vulnerability").
+- E-mail **sena.franciscolucas@gmail.com**.
+
+Include the version, steps to reproduce and the impact you see.
 
 You can expect an acknowledgement within a few days. Fixes ship in the next release; please give us a reasonable time to fix a problem before disclosing it.
 

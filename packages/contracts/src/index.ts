@@ -54,6 +54,8 @@ export const findCardType = <T extends { id: string; name: string }>(types: read
 export const cardPrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
 export const semanticStateSchema = z.enum(['backlog', 'todo', 'doing', 'test', 'done'])
 
+/** Gemini fica desligado por enquanto: o código do adaptador continua no repositório, mas nenhum perfil Gemini aparece nem pode ser criado. */
+export const geminiEnabled = false
 export const agentProviderSchema = z.enum(['codex', 'claude', 'gemini'])
 export const agentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 /** Cores de personalidade oferecidas ao cadastrar um agente; a cor é independente do tema do sistema. */
