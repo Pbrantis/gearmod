@@ -637,14 +637,8 @@ export const migrations: readonly Migration[] = [
     checksum: 'sha256:agentboard-env-passthrough-v37-2026-10-29',
     up(db) {
       db.exec(`ALTER TABLE agent_profiles ADD COLUMN env_passthrough TEXT NOT NULL DEFAULT '[]';`)
-      // S07: perfil existente que já rodava com a chave de API no ambiente do processo continua funcionando quando o modo
-      // enforce for ligado — a migração só sugere (declara por ele), nunca grava modalidade nem lê o valor da chave.
-      const detected: Array<{ provider: string; envVar: string }> = []
-      if (process.env.ANTHROPIC_API_KEY) detected.push({ provider: 'claude', envVar: 'ANTHROPIC_API_KEY' })
-      if (process.env.OPENAI_API_KEY) detected.push({ provider: 'codex', envVar: 'OPENAI_API_KEY' })
-      if (detected.length) for (const { provider, envVar } of detected) {
-        db.prepare(`UPDATE agent_profiles SET env_passthrough = ? WHERE provider = ? AND env_passthrough = '[]'`).run(JSON.stringify([envVar]), provider)
-      }
+      // O resultado da migração não pode depender do ambiente da máquina na hora do upgrade: ela não lê variáveis de ambiente.
+      // Quem usa chave de API no ambiente declara a variável no perfil do agente (envPassthrough).
     }
   },
   {
