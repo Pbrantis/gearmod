@@ -3,7 +3,7 @@ import type { GitRow } from '@agentboard/contracts'
 import { agoLabel, ghostChip, graphEdges, initials, refChips, shortAgo, splitPath } from './gitView'
 
 const now = Date.parse('2026-10-22T12:00:00Z')
-const row = (hash: string, lane: number, parents: string[], extra: Partial<GitRow> = {}): GitRow => ({ hash, short: hash, parents, lane, author: 'Francisco Sena', email: '', date: '2026-10-22T11:00:00Z', subject: hash, refs: [], cardId: null, agentProfileId: null, wip: null, ...extra })
+const row = (hash: string, lane: number, parents: string[], extra: Partial<GitRow> = {}): GitRow => ({ hash, short: hash, parents, lane, author: 'Ana Souza', email: '', date: '2026-10-22T11:00:00Z', subject: hash, refs: [], cardId: null, agentProfileId: null, wip: null, ...extra })
 
 describe('etiquetas de data', () => {
   it('agrupa por semana e passa para meses e anos', () => {
@@ -55,7 +55,7 @@ describe('grafo', () => {
 
 describe('nomes', () => {
   it('iniciais e caminho', () => {
-    expect(initials('Francisco Sena')).toBe('FS'); expect(initials('ana')).toBe('AN'); expect(initials('')).toBe('?')
+    expect(initials('Ana Souza')).toBe('AS'); expect(initials('ana')).toBe('AN'); expect(initials('')).toBe('?')
     expect(splitPath('a/b/c.ts')).toEqual({ dir: 'a/b/', name: 'c.ts' }); expect(splitPath('c.ts')).toEqual({ dir: '', name: 'c.ts' })
   })
 })
