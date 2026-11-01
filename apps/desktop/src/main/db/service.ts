@@ -136,11 +136,10 @@ export class DbService {
       catch (error) { this.audit(id, 'count', query.text, start, 0, 'error'); throw error }
     } finally { this.pending.delete(key); this.cancelled.delete(key) }
   }
-  /** Com escrita liberada, comando destrutivo só roda com a confirmação da tela: o nome do banco em produção/externo, qualquer valor nos demais. */
+  /** Com escrita liberada, comando destrutivo só roda com a confirmação da tela: o nome do banco, em qualquer ambiente (um texto qualquer não basta). */
   private checkDestructive(config: { allowWrite: boolean; klass: string; database: string }, sql: string, confirmation: string | undefined): void {
     if (!config.allowWrite || !destructiveStatements(sql).length) return
-    const strong = config.klass === 'prod' || config.klass === 'external'
-    if (strong ? confirmation !== config.database : !confirmation) throw new Error(tm().db.destructiveNeedsConfirm)
+    if (confirmation !== config.database) throw new Error(tm().db.destructiveNeedsConfirm)
   }
   async query(id: string, request: { requestId: string; sql: string; limit: number; confirmDestructive?: string }) {
     this.checkDestructive(this.connections.get(id), request.sql, request.confirmDestructive)

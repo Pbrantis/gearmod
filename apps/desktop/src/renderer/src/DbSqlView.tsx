@@ -29,7 +29,7 @@ export function DbSqlView({ connectionId, databases, setConnection, allowWrite, 
     if (found.length) { setTyped(''); setDanger({ text, found }); return }
     await execSql(text)
   }
-  const confirmDanger = (): void => { if (!danger) return; const text = danger.text; setDanger(undefined); void execSql(text, production ? typed : 'yes') }
+  const confirmDanger = (): void => { if (!danger) return; const text = danger.text; setDanger(undefined); void execSql(text, production ? typed : database) }
   execute.current = () => { if (!req.busy && sql.trim()) void run() }
   cancel.current = req.cancel
   const startDrag = (event: React.PointerEvent): void => {

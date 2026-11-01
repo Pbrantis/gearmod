@@ -33,14 +33,15 @@ it('seleciona modo da conexão e não expõe mensagens SQL com dados sensíveis'
   await expect(service.query('c', { requestId: 'c', sql: 'x', limit: 10 })).rejects.toThrow('SQLSTATE 42601')
 })
 
-it('com escrita liberada, comando destrutivo só roda com confirmação (nome do banco em produção)', async () => {
+it('com escrita liberada, comando destrutivo só roda com o nome do banco como confirmação, em qualquer ambiente (D9)', async () => {
   const write = vi.fn(async () => ({ columns: [], rows: [], truncated: false, durationMs: 1, commands: [{ command: 'DROP TABLE', rowCount: null }] }))
   let config = { allowWrite: true, klass: 'dev', database: 'app' }
   const connections = { get: () => config } as unknown as DbConnections
   const service = new DbService(connections, { open: async () => ({ write }) } as unknown as ConnectionManager)
   await expect(service.query('c', { requestId: 'a', sql: 'DROP TABLE t', limit: 10 })).rejects.toThrow(/destrutivo|destructive/)
   expect(write).not.toHaveBeenCalled()
-  await service.query('c', { requestId: 'b', sql: 'DROP TABLE t', limit: 10, confirmDestructive: 'yes' })
+  await expect(service.query('c', { requestId: 'b0', sql: 'DROP TABLE t', limit: 10, confirmDestructive: 'yes' })).rejects.toThrow(/destrutivo|destructive/)
+  await service.query('c', { requestId: 'b', sql: 'DROP TABLE t', limit: 10, confirmDestructive: 'app' })
   expect(write).toHaveBeenCalledTimes(1)
   config = { allowWrite: true, klass: 'prod', database: 'app' }
   await expect(service.query('c', { requestId: 'c', sql: 'TRUNCATE t', limit: 10, confirmDestructive: 'yes' })).rejects.toThrow(/destrutivo|destructive/)
