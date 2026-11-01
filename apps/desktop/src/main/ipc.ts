@@ -120,6 +120,22 @@ interface Services {
 
 type Handler = (input: never) => unknown | Promise<unknown>
 
+/**
+ * Só o renderer do próprio app (arquivo local empacotado ou o servidor de dev) pode chamar os canais. Eventos sem `senderFrame` não vêm do
+ * Electron (testes); com a chave presente e vazia (frame destruído) ou de outra origem, recusa.
+ */
+export function isTrustedSender(event: unknown, devUrl: string | undefined = process.env.ELECTRON_RENDERER_URL): boolean {
+  if (!event || typeof event !== 'object' || !('senderFrame' in event)) return true
+  const url = (event as { senderFrame?: { url?: string } | null }).senderFrame?.url
+  if (typeof url !== 'string') return false
+  if (url.startsWith('file://')) return true
+  if (!devUrl) return false
+  try { return new URL(url).origin === new URL(devUrl).origin } catch { return false }
+}
+
+/** Caminhos de rede (UNC) e de dispositivo disparam autenticação SMB e vazam hash; a pré-visualização só lê disco local. */
+export const isLocalAbsolutePath = (path: string): boolean => isAbsolute(path) && !/^[\/]{2}/.test(path)
+
 export function registerIpc(ipcMain: IpcMainLike, services: Services): () => void {
   const db = (): DbService => { if (!services.dbManager) throw new Error(tm().ipc.dbUnavailable); return services.dbManager }
   const workspaceRoots = ({ projectId, cardId }: { projectId: string; cardId: string | null }): string[] => {
@@ -417,7 +433,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     },
     'files:preview': (input: { path: string }) => {
       const mime = imageMime[extname(input.path).toLowerCase()]
-      try { return mime && isAbsolute(input.path) && statSync(input.path).size < 8_000_000 ? `data:${mime};base64,${readFileSync(input.path).toString('base64')}` : null } catch { return null }
+      try { return mime && isLocalAbsolutePath(input.path) && statSync(input.path).size < 8_000_000 ? `data:${mime};base64,${readFileSync(input.path).toString('base64')}` : null } catch { return null }
     },
     // Arquivo colado do clipboard (print, imagem copiada) não tem caminho: vai para a pasta de anexos do app e o agente lê dali.
     'files:save-pasted': (input: { name: string; base64: string }) => {
@@ -492,9 +508,6 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'chats:list': (input: { projectId: string; cardId?: string | null }) => services.conversations.listChats(input.projectId, input.cardId)
     , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: AgentPurpose; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }
     , 'messages:list': (input: { chatId: string }) => services.conversations.listMessages(input.chatId)
-    , 'messages:add': (input: { chatId: string; role: string; body: string; status: string }) => services.conversations.addMessage(input)
-    , 'runs:create': (input: { cardId: string; chatId: string; profileId: string }) => services.conversations.createRun(input)
-    , 'runs:event': (input: { runId: string; eventType: string; payload: Record<string, unknown> }) => services.conversations.appendEvent(input.runId, input.eventType, input.payload)
     , 'agents:start': (input: { chatId: string; prompt: string; planning: boolean; attachments?: string[]; choice?: { model?: string | null; effort?: Effort | null; mode?: PermissionMode } }) => {
       try { return services.orchestrator.start(input) } catch (error) {
         // Pediu implementação no planejamento do Spec Kit: o bloqueio vale, e o app oferece mover o card (aprovação do usuário).
@@ -560,7 +573,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
   }
   const channels = Object.keys(ipcContracts) as IpcChannel[]
   for (const channel of channels) {
-    ipcMain.handle(channel, async (_event, rawInput) => {
+    ipcMain.handle(channel, async (event, rawInput) => {
+      if (!isTrustedSender(event)) throw new Error(tm().ipc.untrustedSender)
       const contract = ipcContracts[channel]
       const input = contract.input.parse(rawInput)
       const output = await handlers[channel](input as never)
