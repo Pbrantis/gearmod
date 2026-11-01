@@ -279,11 +279,28 @@ export class Queries {
     return out
   }
 
+  /** Arquivos que a branch atual mudou desde o ponto em que saiu de uma branch principal (origin/HEAD, main, master, dev ou develop). */
+  private committedSinceBase(): string[] {
+    const git = (...args: string[]): string => execFileSync('git', ['-C', this.root, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    let head = ''
+    try { head = git('rev-parse', 'HEAD') } catch { return [] }
+    for (const candidate of ['origin/HEAD', 'main', 'master', 'dev', 'develop', 'origin/main', 'origin/master', 'origin/dev', 'origin/develop']) {
+      try {
+        const base = git('merge-base', 'HEAD', candidate)
+        if (!base || base === head) continue
+        return git('diff', '--name-only', '--no-renames', `${base}..HEAD`).split(/\r?\n/).filter(Boolean)
+      } catch { /* candidata inexistente */ }
+    }
+    return []
+  }
+
   /** Testes que dependem dos arquivos alterados (padrão: o que mudou no Git desde o HEAD). */
   affected({ files }: { files?: string[] } = {}): string {
     let changed = files ?? []
     if (!changed.length) {
+      // Alterações não commitadas (status) e as já commitadas na branch desde que ela saiu da principal: depois de um commit o status fica vazio, mas os testes continuam valendo.
       try { changed = execFileSync('git', ['-C', this.root, 'status', '--porcelain', '-uall'], { encoding: 'utf8', windowsHide: true }).split('\n').filter(Boolean).map((line) => line.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, '')) } catch { changed = [] }
+      changed = [...new Set([...changed, ...this.committedSinceBase()])]
     }
     if (!changed.length) return 'Nothing changed.'
     changed = changed.map((file) => this.resolvePath(file) ?? file)
