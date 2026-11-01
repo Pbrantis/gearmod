@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { Review, TestRun } from '@agentboard/contracts'
+import { errorCodeOf, withoutErrorCode, type Review, type TestRun } from '@agentboard/contracts'
 import { parseChanges, type FileChange } from './changes'
 import { CheckIcon, DiffIcon, ExpandIcon, RefreshIcon } from './icons'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -27,7 +27,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
       setFiles(snapshot.exists ? parseChanges(snapshot) : []); setTest(quality.test); setReview(quality.review); setError(''); setNoWorktree(false)
     } catch (reason) {
       // Card sem worktree (ainda não executou, ou o trabalho foi feito na de outro card): não é erro, só oferece vincular.
-      if (/Worktree ainda não foi criada/i.test(String(reason))) { setFiles([]); setNoWorktree(true); setError('') } else setError(plainError(reason))
+      if (errorCodeOf(plainError(reason)) === 'no-worktree') { setFiles([]); setNoWorktree(true); setError('') } else setError(withoutErrorCode(plainError(reason)))
     } finally { setWorking('') }
   }, [cardId])
   // Recarrega ao abrir e quando o agente termina um turno (é aí que os arquivos mudam).

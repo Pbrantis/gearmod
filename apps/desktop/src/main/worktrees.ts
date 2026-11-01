@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import type { GitSnapshot, Worktree } from '@agentboard/contracts'
+import { withErrorCode, type GitSnapshot, type Worktree } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { tm } from './i18n'
 
@@ -202,7 +202,7 @@ export class WorktreeService {
 
   async snapshot(cardId: string): Promise<GitSnapshot> {
     const worktree = this.get(cardId)
-    if (!worktree) throw new Error('Worktree ainda não foi criada') // fixo em português: o ChangesCard.tsx do renderer detecta /Worktree ainda não foi criada/
+    if (!worktree) throw new Error(withErrorCode('no-worktree', tm().worktrees.notCreatedYet))
     if (!await exists(worktree.path)) {
       this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(worktree.id)
       return { worktreeId: worktree.id, status: '', diff: '', exists: false }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AgentProfile, GitChange, GitCommitFile, GitGraph, GitRepo, GitRow, ProjectBoard } from '@agentboard/contracts'
+import { errorCodeOf, withoutErrorCode, type AgentProfile, type GitChange, type GitCommitFile, type GitGraph, type GitRepo, type GitRow, type ProjectBoard } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
 import { GitSide } from './GitSide'
 import { PrPanel } from './PrPanel'
@@ -374,7 +374,7 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
     try { const out = await window.agentboard.invoke('git:sync', { sourceId: graph.repo.sourceId, cardId: worktree, action, pull, force }); if (out.conflicts) report(action, 'warn', out.output, t.stashConflictTitle); else report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? t.done); await load() } catch (reason) {
       const text = plainError(reason)
       // Push recusado (ex.: depois de um amend): em vez de só avisar o erro, oferece Pull ou Forçar push.
-      if (action === 'push' && !force && /^O servidor recusou/.test(text)) setPushRejected(true); else report(action, false, text)
+      if (action === 'push' && !force && errorCodeOf(text) === 'git-push-rejected') setPushRejected(true); else report(action, false, withoutErrorCode(text))
     } finally { setBusy('') }
   }
   const [picked, setPicked] = useState<string>(), [menu, setMenu] = useState<{ x: number; y: number; kind: 'local' | 'remote' | 'commit' | 'stash'; name: string }>(), [wtMenu, setWtMenu] = useState<{ x: number; y: number; cardId: string; branch: string }>(), [wtDelete, setWtDelete] = useState<{ cardId: string; sourceId?: string }>(), [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: string; names: string[] }>(), [allConflicts, setAllConflicts] = useState<Array<ConflictTarget & { operation: keyof typeof operationLabel; files: string[] }>>([]), [resolveTarget, setResolveTarget] = useState<ConflictTarget>(), [ask, setAsk] = useState<{ kind: 'create' | 'delete' | 'delete-folder' | 'delete-remote' | 'commit-branch' | 'commit-tag' | 'reset-hard'; name: string; names?: string[] }>(), [newName, setNewName] = useState(''), [createError, setCreateError] = useState(''), [creating, setCreating] = useState(false)

@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 import { mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { defaultGitPolicy, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule, type GitWorktreeInfo } from '@agentboard/contracts'
+import { defaultGitPolicy, withErrorCode, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule, type GitWorktreeInfo } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { nativeGit, type GitRunner } from './worktrees'
 import { ApprovalService } from './approvals'
@@ -62,7 +62,7 @@ export function friendlyError(error: unknown): string {
   if (/Please tell me who you are|unable to auto-detect email|empty ident/i.test(text)) return tm().git.gitIdentityMissing
   if (/nothing (added )?to commit|no changes added/i.test(text)) return tm().git.friendlyNothingStaged
   if (/Authentication failed|could not read Username|Permission denied \(publickey\)|terminal prompts disabled/i.test(text)) return tm().git.gitAuthFailed
-  if (/non-fast-forward|\[rejected\]|fetch first|failed to push some refs/i.test(text)) return 'O servidor recusou: a branch remota tem commits que esta ainda não tem. Faça Pull antes de publicar.' // fixo em português: o GitPage.tsx do renderer detecta /^O servidor recusou/
+  if (/non-fast-forward|\[rejected\]|fetch first|failed to push some refs/i.test(text)) return withErrorCode('git-push-rejected', tm().git.pushRejected)
   const busy = /'([^']+)' is already (?:used by worktree|checked out) at '([^']+)'/i.exec(text)
   if (busy) return tm().git.branchOpenElsewhere(busy[1]!, busy[2]!)
   if (/Not possible to fast-forward|divergent branches/i.test(text)) return tm().git.cannotFastForward

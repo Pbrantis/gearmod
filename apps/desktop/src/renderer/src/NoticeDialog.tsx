@@ -14,7 +14,7 @@ export function NoticeDialog({ eyebrow, title, text, ok, close }: { eyebrow: str
 export const plainError = (reason: unknown): string => {
   let message = String(reason)
   for (let index = 0; index < 3; index += 1) message = message.replace(/^Error:\s*/i, '').replace(/^Error invoking remote method ['"][^'"]+['"]:\s*/i, '')
-  return zodText(message) ?? (message || tr().shell.notice.operationFailed)
+  return zodText(message) ?? (message || tr().shell.notice.operationFailed)  // o código `[[...]]` fica: quem precisa dele lê com errorCodeOf e a tela tira com withoutErrorCode
 }
 
 /** Erro de validação do contrato (lista JSON do Zod) vira texto: "campo: o que falta", um por linha. */

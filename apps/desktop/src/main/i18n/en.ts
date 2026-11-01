@@ -198,6 +198,7 @@ export const en: typeof ptBR = {
     projectDefault: 'project default',
     branchException: (pattern: string) => `exception for branch ${pattern}`,
     gitIdentityMissing: 'Git does not know who you are. Set your name and email (git config --global user.name "Your name" and user.email "you@example.com") and try again.',
+    pushRejected: 'The server refused the push: the remote branch has commits this one does not. Pull before publishing.',
     friendlyNothingStaged: 'There is nothing staged to commit.',
     gitAuthFailed: 'Git could not sign in to the server (login or key). Sign in once through the terminal or your credential manager and try again.',
     branchOpenElsewhere: (branch: string, path: string) => `The branch ${branch} is already checked out in another working folder (${path}), usually a card's worktree. Git does not allow the same branch to be checked out in two places: use the card's worktree or remove it first.`,
@@ -398,6 +399,7 @@ export const en: typeof ptBR = {
     searchFailed: 'Search failed',
   },
   worktrees: {
+    notCreatedYet: 'The worktree has not been created yet',
     cardCannotUseOwn: 'A card cannot use its own worktree as if it were another card\'s',
     otherCardNoWorktree: 'That card has no active worktree in this project',
     cardHasOwnWorktree: 'This card already has its own worktree. Remove it before using another card\'s.',

@@ -197,6 +197,7 @@ export const ptBR = {
     projectDefault: 'padrão do projeto',
     branchException: (pattern: string) => `exceção da branch ${pattern}`,
     gitIdentityMissing: 'O Git não sabe quem você é. Configure o nome e o e-mail (git config --global user.name "Seu nome" e user.email "voce@exemplo.com") e tente de novo.',
+    pushRejected: 'O servidor recusou: a branch remota tem commits que esta ainda não tem. Faça Pull antes de publicar.',
     friendlyNothingStaged: 'Não há nada preparado para commitar.',
     gitAuthFailed: 'O Git não conseguiu entrar no servidor (login ou chave). Entre uma vez pelo terminal ou pelo seu gerenciador de credenciais e tente de novo.',
     branchOpenElsewhere: (branch: string, path: string) => `A branch ${branch} já está aberta em outra pasta de trabalho (${path}), geralmente a worktree de um card. O Git não deixa a mesma branch aberta em dois lugares: use a worktree do card ou remova-a antes.`,
@@ -397,6 +398,7 @@ export const ptBR = {
     searchFailed: 'Falha ao pesquisar',
   },
   worktrees: {
+    notCreatedYet: 'Worktree ainda não foi criada',
     cardCannotUseOwn: 'Um card não pode usar a própria worktree como se fosse de outro',
     otherCardNoWorktree: 'Esse card não tem uma worktree ativa neste projeto',
     cardHasOwnWorktree: 'Este card já tem uma worktree própria. Remova-a antes de usar a de outro card.',

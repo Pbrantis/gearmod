@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defaultGitPolicy } from '@agentboard/contracts'
+import { defaultGitPolicy, errorCodeOf } from '@agentboard/contracts'
 import { ConversationRepository } from './conversations'
 import { AppDatabase } from './database'
 import { assignLanes, friendlyError, GitManager, resolveRule } from './git-manager'
@@ -86,6 +86,7 @@ describe('regra de commit do agente', () => {
   })
 
   it('traduz erros comuns do Git', () => {
+    expect(errorCodeOf(friendlyError(new Error('! [rejected] main -> main (non-fast-forward)')))).toBe('git-push-rejected')
     expect(friendlyError(new Error('fatal: unable to auto-detect email address'))).toContain('não sabe quem você é')
     expect(friendlyError(Object.assign(new Error('x'), { stderr: '! [rejected] main -> main (non-fast-forward)' }))).toContain('Faça Pull')
   })
