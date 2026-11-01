@@ -448,7 +448,16 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:checklist': (input: { cardId: string }) => services.checklists.get(input.cardId),
     'cards:checklist-toggle': (input: { cardId: string; line: number; text: string; checked: boolean }) => services.checklists.toggle(input.cardId, input.line, input.text, input.checked),
     'cards:delete': async (input: { cardId: string; deleteArtifacts?: boolean }) => {
-      services.board.card(input.cardId)
+      const card = services.board.card(input.cardId)
+      // D8: a worktree e a branch do card não ficam para trás. Com alteração sem commit a exclusão é recusada (nada é perdido em silêncio);
+      // branch com commits que não estão em outra branch fica no Git (`branch -d`).
+      const ownsWorktree = services.database.db.prepare(`SELECT 1 FROM worktrees WHERE card_id = ? AND cleanup_state != 'removed'`).get(input.cardId)
+      const shared = services.database.db.prepare('SELECT 1 FROM cards WHERE worktree_card_id = ? AND id <> ? LIMIT 1').get(input.cardId, input.cardId)
+      if (ownsWorktree && !shared) {
+        const info = await services.gitManager.worktreeInfo(card.projectId, input.cardId).catch(() => null)
+        if (info?.repos.some((repo) => repo.exists && repo.files > 0)) throw new Error(tm().ipc.deleteCardUncommitted)
+        if (info) await services.gitManager.deleteWorktree(card.projectId, input.cardId, true)
+      }
       if (input.deleteArtifacts) {
         const path = resolve(services.history.artifactsDir(input.cardId))
         const others = services.database.db.prepare('SELECT id FROM cards WHERE substr(id, 1, 8) = ? AND id <> ?').pluck().all(input.cardId.slice(0, 8), input.cardId) as string[]
