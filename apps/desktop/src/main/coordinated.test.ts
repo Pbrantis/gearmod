@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -191,36 +192,60 @@ describe('Harness', () => {
 })
 
 describe('Playwright CLI', () => {
-  it('detecta, instala só localmente com os passos certos, não sobrescreve skill e entrega a sessão do card', async () => {
-    const { database, ws, project, card, sources, data } = await workspace()
-    const history = new CardHistoryService(database, data)
-    const front = join(ws, 'frontend'), binPath = join(front, 'node_modules', '.bin', process.platform === 'win32' ? 'playwright-cli.cmd' : 'playwright-cli')
-    const calls: string[] = []
-    const runner: CommandRunner = { run: async (command, args) => {
-      calls.push([command, ...args].join(' '))
-      if (command === 'node') return 'v22.1.0'
-      if (command === 'where' || command === 'which') throw new Error('not found')
-      if (args[0] === 'install' && args.includes('--no-save')) { mkdirSync(join(front, 'node_modules', '.bin'), { recursive: true }); writeFileSync(binPath, ''); mkdirSync(join(front, 'node_modules', '@playwright', 'cli'), { recursive: true }); writeFileSync(join(front, 'node_modules', '@playwright', 'cli', 'package.json'), '{"version":"0.1.5"}') }
+  it('instala numa pasta do app, com várias versões, escolha por projeto e Node portátil conferido', async () => {
+    const { database, project, card, data } = await workspace()
+    const history = new CardHistoryService(database, data), tools = join(data, 'tools')
+    const zip = Buffer.from('zip-do-node'), sha256 = createHash('sha256').update(zip).digest('hex')
+    const calls: Array<{ line: string; extra?: { env?: Record<string, string>; path?: string } | undefined }> = []
+    let systemNode = false
+    const runner: CommandRunner = { run: async (command, args, cwd, _timeout, extra) => {
+      calls.push({ line: [command, ...args].join(' '), extra })
+      if (command === 'node') { if (!systemNode) throw new Error('not found'); return 'v22.1.0' }
+      if (command === 'tar') { mkdirSync(join(tools, 'node', 'node-v1.0.0-win-x64'), { recursive: true }); writeFileSync(join(tools, 'node', 'node-v1.0.0-win-x64', 'node.exe'), ''); return '' }
+      if (args[0] === 'view') return '0.1.9\n'
+      if (args[0] === 'install' && args.some((arg) => arg.startsWith('@playwright/cli@'))) { mkdirSync(join(cwd, 'node_modules', '.bin'), { recursive: true }); writeFileSync(join(cwd, 'node_modules', '.bin', process.platform === 'win32' ? 'playwright-cli.cmd' : 'playwright-cli'), ''); return 'ok' }
       return 'ok'
     } }
-    const service = new PlaywrightCliService(database, history, runner)
-    expect((await service.status(project.id)).installs).toEqual([])
+    const fetchImpl = (async () => new Response(zip)) as unknown as typeof fetch
+    const service = new PlaywrightCliService(database, history, runner, tools, { fetchImpl, node: { version: '1.0.0', url: 'http://example.invalid/node.zip', sha256 } })
+    expect((await service.status(project.id)).versions).toEqual([])
     expect(service.forCard(card.id)).toBeNull()
-    const noPackage = await service.install({ projectId: project.id, sourceId: sources.frontend!.id, browser: true, skills: ['claude'] })
-    expect(noPackage.error).toMatch(/package.json/)
-    writeFileSync(join(front, 'package.json'), '{"name":"front"}')
-    mkdirSync(join(front, '.claude', 'skills', 'playwright-cli'), { recursive: true })
-    const installed = await service.install({ projectId: project.id, sourceId: sources.frontend!.id, browser: true, skills: ['claude'] })
-    expect(installed.error).toBeNull()
-    expect(installed.installs).toEqual([{ sourceId: sources.frontend!.id, repo: 'frontend', path: expect.stringContaining('playwright-cli'), origin: 'local', version: '0.1.5' }])
-    expect(calls.some((call) => call.includes('install --no-save --no-package-lock @playwright/cli@0.1.23'))).toBe(true)
-    expect(calls.some((call) => / -D|@latest/.test(call))).toBe(false)
-    expect(calls.some((call) => call.endsWith('install-browser'))).toBe(true)
-    expect(calls.some((call) => call.includes('--skills'))).toBe(false)
-    expect(installed.log).toContain('nada foi sobrescrito')
-    expect(calls.some((call) => / -g\b|--global/.test(call))).toBe(false)
-    expect(installed.enabled).toBe(true)
-    expect(service.forCard(card.id)).toMatchObject({ comando: installed.installs[0]!.path, sessao: `ab-${card.id.slice(0, 8)}` })
-    expect(existsSync(binPath)).toBe(true)
+
+    const first = await service.install({ projectId: project.id, version: '0.1.5', browser: true, skills: [] })
+    expect(first.error).toBeNull()
+    expect(first.versions.map((item) => item.version)).toEqual(['0.1.5']); expect(first.selected).toBe('0.1.5'); expect(first.enabled).toBe(true)
+    expect(first.node.managed).toBe('1.0.0')
+    const wrapper = readFileSync(first.versions[0]!.path, 'utf8')
+    expect(wrapper).toContain(join(tools, 'node', 'node-v1.0.0-win-x64')); expect(wrapper).toContain(`PLAYWRIGHT_BROWSERS_PATH=${join(tools, 'playwright-browsers')}`)
+    expect(first.versions[0]!.path.startsWith(tools)).toBe(true)
+    const npm = calls.find((call) => call.line.includes('@playwright/cli@0.1.5'))!
+    expect(npm.extra?.path).toBe(join(tools, 'node', 'node-v1.0.0-win-x64')); expect(npm.line).not.toMatch(/ -g\b|--global| -D\b/)
+    expect(calls.find((call) => call.line.endsWith('install-browser'))?.extra?.env?.PLAYWRIGHT_BROWSERS_PATH).toBe(join(tools, 'playwright-browsers'))
+
+    const second = await service.install({ projectId: project.id, version: 'latest', browser: false, skills: [] })
+    expect(second.versions.map((item) => item.version)).toEqual(['0.1.9', '0.1.5']); expect(second.selected).toBe('0.1.9')
+    expect(service.forCard(card.id)).toMatchObject({ comando: second.versions[0]!.path, sessao: `ab-${card.id.slice(0, 8)}` })
+    expect((await service.select({ projectId: project.id, version: '0.1.5' })).selected).toBe('0.1.5')
+    expect(service.forCard(card.id)?.comando).toBe(second.versions[1]!.path)
+    await expect(service.select({ projectId: project.id, version: '9.9.9' })).rejects.toThrow(/9\.9\.9/)
+    expect((await service.remove({ projectId: project.id, version: '0.1.5' })).selected).toBe('0.1.9')
+    expect(existsSync(join(tools, 'playwright-cli', '0.1.5'))).toBe(false)
+    expect((await service.install({ projectId: project.id, version: '../x', browser: false, skills: [] })).error).toMatch(/versão|version/i)
+
+    systemNode = true
+    const other = new PlaywrightCliService(database, history, runner, join(data, 'tools-b'), { fetchImpl, node: { version: '1.0.0', url: 'http://example.invalid/node.zip', sha256: 'f'.repeat(64) } })
+    const withSystem = await other.install({ projectId: project.id, version: '0.1.5', browser: false, skills: [] })
+    expect(withSystem.error).toBeNull(); expect(withSystem.node.managed).toBeNull()
+    expect(readFileSync(withSystem.versions[0]!.path, 'utf8')).not.toContain('node-v1.0.0')
+  })
+
+  it('recusa o Node baixado quando o SHA-256 não confere', async () => {
+    const { database, project, data } = await workspace()
+    const history = new CardHistoryService(database, data), tools = join(data, 'tools-sha')
+    const runner: CommandRunner = { run: async (command) => { if (command === 'node') throw new Error('not found'); return 'ok' } }
+    const fetchImpl = (async () => new Response(Buffer.from('outro conteudo'))) as unknown as typeof fetch
+    const service = new PlaywrightCliService(database, history, runner, tools, { fetchImpl, node: { version: '1.0.0', url: 'http://example.invalid/node.zip', sha256: 'a'.repeat(64) } })
+    const result = await service.install({ projectId: project.id, version: '0.1.5', browser: false, skills: [] })
+    expect(result.error).toMatch(/SHA-256/); expect(result.versions).toEqual([])
   })
 })

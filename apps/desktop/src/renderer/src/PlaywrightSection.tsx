@@ -8,17 +8,20 @@ import { tasks, useTasks } from './backgroundTasks'
 import { Select } from './Select'
 import { Checkbox } from './Checkbox'
 import { useT } from './i18n'
+import { TrashIcon } from './icons'
 
-/** Playwright CLI opcional: mostra o que existe e instala localmente num repositório, só com confirmação. */
+/** Playwright CLI: ferramenta do app, em pasta própria, com várias versões e uma escolhida por projeto. */
 export function PlaywrightSection({ projectId, enabled, toggle, latest }: { projectId: string; enabled: boolean; toggle(value: boolean): void; latest?: string | null }): React.JSX.Element {
   const t = useT(), tw = t.settings.playwright
-  const [status, setStatus] = useState<PlaywrightStatus>(), [sources, setSources] = useState<Array<{ id: string; name: string; node: boolean }>>([]), [sourceId, setSourceId] = useState(''), [browser, setBrowser] = useState(true), [downloading, setDownloading] = useState(false), [skills, setSkills] = useState<Array<'claude' | 'agents'>>([]), [processId, setProcessId] = useState<string>(), [processOpen, setProcessOpen] = useState(false), [confirming, setConfirming] = useState(false), [error, setError] = useState('')
+  const [status, setStatus] = useState<PlaywrightStatus>(), [sources, setSources] = useState<Array<{ id: string; name: string; node: boolean }>>([]), [sourceId, setSourceId] = useState('')
+  const [version, setVersion] = useState(''), [browser, setBrowser] = useState(true), [skills, setSkills] = useState<Array<'claude' | 'agents'>>([])
+  const [confirming, setConfirming] = useState(false), [removing, setRemoving] = useState<string>(), [downloading, setDownloading] = useState(false), [error, setError] = useState('')
+  const [processId, setProcessId] = useState<string>(), [processOpen, setProcessOpen] = useState(false)
   useEffect(() => {
     void window.agentboard.invoke('playwright:status', { projectId }).then(setStatus).catch((reason) => setError(plainError(reason)))
-    void window.agentboard.invoke('playwright:sources', { projectId }).then((found) => { setSources(found); setSourceId((current) => current || (found.find((item) => item.node) ?? found[0])?.id || '') }).catch(() => undefined)
+    void window.agentboard.invoke('playwright:sources', { projectId }).then((found) => { setSources(found); setSourceId((current) => current || found[0]?.id || '') }).catch(() => undefined)
   }, [projectId])
-  const downloadBrowser = async (): Promise<void> => { const local = status?.installs.find((item) => item.origin === 'local' && item.sourceId); if (!local?.sourceId) return; setDownloading(true); setError(''); try { setStatus(await window.agentboard.invoke('playwright:install-browser', { projectId, sourceId: local.sourceId })) } catch (reason) { setError(plainError(reason)) } finally { setDownloading(false) } }
-  const chosenSource = sources.find((item) => item.id === sourceId)
+  useEffect(() => { setVersion((current) => current || latest || 'latest') }, [latest])
   const busy = useTasks().some((item) => item.key === `playwright:${projectId}` && item.state === 'running')
   // O diálogo mostra o andamento ao vivo (o log do processo principal) e pode ser minimizado: a instalação continua em segundo plano.
   useEffect(() => {
@@ -26,11 +29,13 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
     const timer = window.setInterval(() => { void window.agentboard.invoke('playwright:status', { projectId }).then(setStatus).catch(() => undefined) }, 1500)
     return () => window.clearInterval(timer)
   }, [busy, projectId])
-  /** Instala (ou atualiza) no repositório: o mesmo `playwright:install`, em segundo plano e com o log ao vivo. */
-  const runInstall = (target: string, withBrowser: boolean, withSkills: Array<'claude' | 'agents'>): void => {
+  const act = async (call: () => Promise<PlaywrightStatus>): Promise<void> => { setError(''); try { setStatus(await call()) } catch (reason) { setError(plainError(reason)) } }
+  const downloadBrowser = async (): Promise<void> => { setDownloading(true); await act(() => window.agentboard.invoke('playwright:install-browser', { projectId })); setDownloading(false) }
+  const runInstall = (): void => {
     setConfirming(false); setError('')
-    const { id, promise } = tasks.track({ key: `playwright:${projectId}`, title: tw.taskTitle, detail: sources.find((item) => item.id === target)?.name ?? '' }, async () => {
-      const result = await window.agentboard.invoke('playwright:install', { projectId, sourceId: target, browser: withBrowser, skills: withSkills })
+    const wanted = version.trim() || 'latest'
+    const { id, promise } = tasks.track({ key: `playwright:${projectId}`, title: tw.taskTitle, detail: wanted }, async () => {
+      const result = await window.agentboard.invoke('playwright:install', { projectId, version: wanted, browser, skills, ...(skills.length && sourceId ? { sourceId } : {}) })
       setStatus(result)
       if (result.error) throw new Error(result.error)
       return result
@@ -38,38 +43,47 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
     setProcessId(id); setProcessOpen(true)
     void promise.catch(() => undefined)
   }
-  const install = (): void => runInstall(sourceId, browser, skills)
-  const local = status?.installs.find((item) => item.origin === 'local' && item.sourceId), outdated = Boolean(local && latest && isOutdated(local.version, latest))
-  const repo = sources.find((item) => item.id === sourceId)?.name ?? ''
+  const nodeChip = status ? (status.node.system ? tw.nodeSystem(status.node.system.replace(/^v/, '')) : status.node.managed ? tw.nodeManaged(status.node.managed) : null) : null
+  const newerThanInstalled = Boolean(latest && status && !status.versions.some((item) => item.version === latest) && (status.versions.length === 0 || isOutdated(status.versions[0]!.version, latest)))
   return <div className="cx-wfpanel">
     <section className="cx-wfcard">
     <h4>{tw.title}</h4>
     <p className="cx-muted">{tw.description}</p>
-    <div className="pw-badges"><span>{tw.badgeLocal}</span><span>{tw.badgeNoGlobal}</span><span>{tw.badgeConfirm}</span></div>
+    <div className="pw-badges"><span>{tw.badgeApp}</span><span>{tw.badgeVersions}</span><span>{tw.badgeConfirm}</span></div>
     {status ? <>
       <div className="pw-chips">
-        <span className={`pw-chip ${status.node ? '' : 'warn'}`} data-tip={tw.nodeTip}>{status.node ? `Node.js ${status.node}` : tw.nodeMissing}</span>
-        {status.installs.length ? status.installs.map((item) => <span key={item.path} className="pw-chip ok" data-tip={item.path}><i aria-hidden="true" />{tw.installedChip(item.origin === 'global' ? tw.global : item.repo ?? '', item.version ?? '')}</span>) : <span className="pw-chip muted" data-tip={tw.notFoundTip}>{tw.notInstalledChip}</span>}
-        {status.installs.some((item) => item.origin === 'local') && <span className={`pw-chip ${status.browserReady ? 'ok' : 'warn'}`}>{status.browserReady ? <><i aria-hidden="true" />{tw.browserDownloaded}</> : tw.browserPending}</span>}
+        <span className={`pw-chip ${nodeChip ? '' : 'warn'}`} data-tip={tw.nodeTip}>{nodeChip ?? tw.nodeWillDownload}</span>
+        <span className={`pw-chip ${status.browserReady ? 'ok' : 'warn'}`}>{status.browserReady ? <><i aria-hidden="true" />{tw.browserDownloaded}</> : tw.browserPending}</span>
+        <span className="pw-chip" data-tip={status.toolsDir}>{tw.folderChip}</span>
       </div>
-      {outdated && local?.sourceId && <div className="cx-note warn cx-browserrow"><span>{tw.updateAvailable(local.version ?? '', latest ?? '')}</span><button type="button" className="mini" disabled={busy} onClick={() => runInstall(local.sourceId!, true, [])}>{busy ? tw.updating : tw.update}</button></div>}
-      {status.installs.some((item) => item.origin === 'local') && !status.browserReady && <div className="cx-note warn cx-browserrow"><span>{tw.browserMissing}</span><button type="button" className="mini" disabled={downloading} onClick={() => void downloadBrowser()}>{downloading ? tw.downloading : tw.downloadBrowser}</button></div>}
+      {status.versions.length > 0 && !status.browserReady && <div className="cx-note warn cx-browserrow"><span>{tw.browserMissing}</span><button type="button" className="mini" disabled={downloading || busy} onClick={() => void downloadBrowser()}>{downloading ? tw.downloading : tw.downloadBrowser}</button></div>}
+      <h5 className="pw-subtitle">{tw.versionsTitle}</h5>
+      {status.versions.length ? <ul className="pw-versions">{status.versions.map((item) => <li key={item.version} className={item.version === status.selected ? 'on' : ''}>
+        <code data-tip={item.path}>v{item.version}</code>
+        {item.version === status.selected ? <span className="pw-chip ok"><i aria-hidden="true" />{tw.inUse}</span> : <button type="button" className="mini secondary" disabled={busy} onClick={() => void act(() => window.agentboard.invoke('playwright:select', { projectId, version: item.version }))}>{tw.use}</button>}
+        <span className="ch-spacer" />
+        <button type="button" className="ibtn tip danger" data-tip={tw.removeVersion(item.version)} aria-label={tw.removeVersion(item.version)} disabled={busy} onClick={() => setRemoving(item.version)}><TrashIcon /></button>
+      </li>)}</ul> : <p className="cx-muted">{tw.noVersions}</p>}
       <div className="cx-offerrow">
-      <label className="ck-line"><Checkbox checked={enabled} disabled={!status.installs.some((item) => item.origin === 'local')} onChange={toggle} /> {tw.offer}</label>
-        <button type="button" className="mini secondary" disabled={busy || !sourceId} onClick={() => setConfirming(true)}>{busy ? tw.installing : tw.installLocal}</button>
+        <label className="ck-line"><Checkbox checked={enabled} disabled={status.versions.length === 0} onChange={toggle} /> {tw.offer}</label>
       </div>
+      <h5 className="pw-subtitle">{tw.installNew}</h5>
+      <div className="pw-install-row">
+        <label className="f"><span>{tw.versionLabel}</span><input className="in" value={version} placeholder={tw.versionPlaceholder} onChange={(event) => setVersion(event.target.value)} /></label>
+        <button type="button" className="mini secondary" disabled={busy || !version.trim()} onClick={() => setConfirming(true)}>{busy ? tw.installing : tw.install}</button>
+      </div>
+      {newerThanInstalled && latest && <p className="cx-muted">{tw.latestHint(latest)}</p>}
       {status.error && <div className="cx-error">{status.error}</div>}
     </> : <p className="cx-muted">{tw.checking}</p>}
     </section>
     {error && <div className="cx-error">{error}</div>}
     {confirming && <ConfirmDialog eyebrow="Playwright CLI" title={tw.confirmTitle} text={tw.confirmText} extra={<div className="pw-install">
-      <label className="f"><span>{tw.installInRepo}</span><Select label={tw.installInRepo} value={sourceId} options={sources.map((item) => ({ value: item.id, label: item.node ? item.name : tw.noPackageJson(item.name), disabled: false }))} onChange={setSourceId} /></label>
-      {chosenSource && !chosenSource.node && <p className="pw-warn" role="alert">{tw.noPackageJsonWarn(chosenSource.name)}</p>}
-      <div className="pw-plan"><span className="pw-planlabel">{tw.command}</span><code>npm install -D @playwright/cli@latest</code><small>{tw.changesFiles()[0]}<b>{repo}</b>{tw.changesFiles()[1]}</small></div>
+      <div className="pw-plan"><span className="pw-planlabel">{tw.command}</span><code>npm install @playwright/cli@{version.trim() || 'latest'}</code><small>{tw.installIn(status?.toolsDir ?? '')}</small></div>
       <label className="ck-line"><Checkbox checked={browser} onChange={setBrowser} /><span className="t">{tw.downloadBrowserOption}<small>{tw.downloadBrowserHint}</small></span></label>
       <label className="f"><span>{tw.agentSkill}</span><MultiSelect label={tw.agentSkill} empty={tw.noSkill} value={skills} options={[{ value: 'claude', label: tw.optionClaude }, { value: 'agents', label: tw.optionCodex }]} onChange={(value) => setSkills(value as Array<'claude' | 'agents'>)} /></label>
-      {skills.length > 0 && <div className="pw-skillnote">{skills.length > 1 ? tw.skillCreatedPlural : tw.skillCreatedOne}{skills.map((item, index) => <React.Fragment key={item}>{index > 0 && tw.and}<code>{item === 'claude' ? '.claude/skills' : '.agents/skills'}</code></React.Fragment>)}{tw.noOverwrite}</div>}
-    </div>} ok={tw.install} okDisabled={!chosenSource?.node} cancel={() => setConfirming(false)} confirm={install} />}
+      {skills.length > 0 && <><label className="f"><span>{tw.skillRepo}</span><Select label={tw.skillRepo} value={sourceId} options={sources.map((item) => ({ value: item.id, label: item.name, disabled: false }))} onChange={setSourceId} /></label><div className="pw-skillnote">{tw.skillNote}</div></>}
+    </div>} ok={tw.install} okDisabled={skills.length > 0 && !sourceId} cancel={() => setConfirming(false)} confirm={runInstall} />}
+    {removing && <ConfirmDialog eyebrow="Playwright CLI" title={tw.removeTitle(removing)} text={tw.removeText} ok={tw.remove} danger cancel={() => setRemoving(undefined)} confirm={() => { const target = removing; setRemoving(undefined); void act(() => window.agentboard.invoke('playwright:remove', { projectId, version: target })) }} />}
     {processOpen && processId && <ProcessDialog taskId={processId} title={tw.processTitle} log={status?.log} background={() => setProcessOpen(false)} close={() => setProcessOpen(false)} />}
   </div>
 }

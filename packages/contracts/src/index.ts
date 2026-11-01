@@ -228,11 +228,12 @@ export const reviewSchema = z.object({ id: uuid, cardId: uuid, provider: z.enum(
 /** Métricas de uma execução, só com o que o provedor informa: custo `reported` vem do próprio agente; sem isso fica `unavailable` (nunca estimado em silêncio). */
 export const runMetricSchema = z.object({ runId: uuid, purpose: z.string().nullable(), provider: z.string().nullable(), model: z.string().nullable(), modelEffective: z.string().nullable(), effort: z.string().nullable(), status: z.string(), startedAt: isoDate, endedAt: isoDate.nullable(), durationMs: z.number().int().nullable(), input: z.number().int(), cached: z.number().int(), output: z.number().int(), costUsd: z.number().nullable(), costSource: z.enum(['reported', 'unavailable']), promptChars: z.number().int().nullable(), usedPlaywrightCli: z.boolean() })
 export type RunMetric = z.output<typeof runMetricSchema>
-/** Playwright CLI (@playwright/cli, comando playwright-cli): opcional, só instalação local por repositório e com confirmação. */
+/** Playwright CLI (@playwright/cli, comando playwright-cli): ferramenta do próprio app, em pasta dele, com várias versões e uma escolhida por projeto. */
 export const playwrightStatusSchema = z.object({
-  node: z.string().nullable(), enabled: z.boolean(),
-  installs: z.array(z.object({ sourceId: uuid.nullable(), repo: z.string(), path: z.string(), origin: z.enum(['local', 'global']), version: z.string().nullable() })),
-  browserReady: z.boolean(), log: z.string(), error: z.string().nullable()
+  node: z.object({ system: z.string().nullable(), managed: z.string().nullable() }),
+  enabled: z.boolean(), selected: z.string().nullable(),
+  versions: z.array(z.object({ version: z.string(), path: z.string() })),
+  browserReady: z.boolean(), toolsDir: z.string(), log: z.string(), error: z.string().nullable()
 })
 export type PlaywrightStatus = z.output<typeof playwrightStatusSchema>
 export const toolsStatusSchema = z.object({
@@ -529,8 +530,10 @@ export const ipcContracts = {
   , 'git:open-pr': { input: z.object({ cardId: uuid, url: z.string().url().max(2000) }).strict(), output: z.object({ opened: z.literal(true) }) }
   , 'playwright:sources': { input: projectIdInput, output: z.array(z.object({ id: uuid, name: z.string(), node: z.boolean() })) }
   , 'playwright:status': { input: projectIdInput, output: playwrightStatusSchema }
-  , 'playwright:install-browser': { input: z.object({ projectId: uuid, sourceId: uuid }).strict(), output: playwrightStatusSchema }
-  , 'playwright:install': { input: z.object({ projectId: uuid, sourceId: uuid, browser: z.boolean(), skills: z.array(z.enum(['claude', 'agents'])).max(2) }).strict(), output: playwrightStatusSchema }
+  , 'playwright:install-browser': { input: projectIdInput, output: playwrightStatusSchema }
+  , 'playwright:install': { input: z.object({ projectId: uuid, version: z.string().trim().min(1).max(40), browser: z.boolean(), skills: z.array(z.enum(['claude', 'agents'])).max(2), sourceId: uuid.optional() }).strict(), output: playwrightStatusSchema }
+  , 'playwright:select': { input: z.object({ projectId: uuid, version: z.string().trim().min(1).max(40) }).strict(), output: playwrightStatusSchema }
+  , 'playwright:remove': { input: z.object({ projectId: uuid, version: z.string().trim().min(1).max(40) }).strict(), output: playwrightStatusSchema }
   , 'history:get': { input: cardIdInput, output: cardHistorySchema }
   , 'history:contest': { input: contestAssessmentInputSchema, output: cardHistorySchema }
   , 'history:select-workflow': { input: z.object({ cardId: uuid, workflow: workflowKindSchema, method: cardSddMethodSchema.optional(), reason: z.string().trim().max(4000).optional() }).strict(), output: cardHistorySchema }
@@ -598,6 +601,9 @@ export const ipcContracts = {
   , 'git:checkout-remote': { input: z.object({ ...gitTarget, name: z.string().min(1).max(250) }).strict(), output: z.object({ output: z.string() }) }
   , 'git:commit-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'cherry-pick', 'revert', 'rebase', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:stash-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['apply', 'pop', 'drop']), ref: z.string().regex(/^stash@\{\d+\}$/) }).strict(), output: z.object({ output: z.string(), conflicts: z.number().int().nonnegative().optional() }) }
+  , 'git:undo-state': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional() }).strict(), output: z.object({ undo: z.object({ label: z.string() }).nullable(), redo: z.object({ label: z.string() }).nullable() }) }
+  , 'git:undo': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional() }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:redo': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:stash-detail': { input: z.object({ ...gitTarget, ref: z.string().regex(/^stash@\{\d+\}$/), commit: z.string().regex(/^[0-9a-f]{40,64}$/) }).strict(), output: z.object({ files: z.array(gitCommitFileSchema) }) }
   , 'git:stash-rename': { input: z.object({ ...gitTarget, ref: z.string().regex(/^stash@\{\d+\}$/), commit: z.string().regex(/^[0-9a-f]{40,64}$/), message: z.string().trim().min(1).max(500) }).strict(), output: z.object({ ref: z.string(), commit: z.string() }) }
   , 'git:conflicts': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional() }).strict(), output: z.object({ operation: z.enum(['merge', 'rebase', 'cherry-pick', 'revert']).nullable(), files: z.array(z.string()) }) }

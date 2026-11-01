@@ -84,7 +84,7 @@ export type SddConfig = z.output<typeof sddConfigSchema>
 export const workflowConfigSchema = z.object({
   weights: dimensionWeightsSchema, limits: z.object({ simpleMax: z.number().int().min(0).max(100), mediumMax: z.number().int().min(0).max(100) }).strict().refine((value) => value.simpleMax < value.mediumMax, 'O limite de simples precisa ser menor que o de média'),
   complexMethod: sddMethodSchema, sddPath: z.string().trim().max(2048).nullable(), artifactsDir: z.string().trim().max(2048).nullable(), customManifest: z.string().trim().max(2048).nullable(),
-  harness: harnessConfigSchema, playwrightCli: z.boolean(), policy: policyConfigSchema, exportUsage: z.boolean().default(false),
+  harness: harnessConfigSchema, playwrightCli: z.boolean(), playwrightVersion: z.string().max(40).nullable().optional(), policy: policyConfigSchema, exportUsage: z.boolean().default(false),
   sdd: sddConfigSchema.default(defaultSddConfig),
   /** Só preenchido na leitura, quando `complexMethod` guardado era `openspec`/`custom` (não existem mais na escrita). */
   legacyMethod: z.enum(['openspec', 'custom']).nullable().default(null)

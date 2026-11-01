@@ -32,6 +32,16 @@ export const git = {
     chipTag: 'Tag',
     chipWorktree: (title: string, path: string) => `Worktree: ${title} (${path})`,
     commitBy: (label: string) => `Commit feito por ${label}`,
+    // Desfazer e refazer (botões, atalhos e aviso nas confirmações)
+    undo: 'Desfazer',
+    redo: 'Refazer',
+    undoTip: (label: string) => `Desfazer: ${label} (Ctrl+Z)`,
+    redoTip: (label: string) => `Refazer: ${label} (Ctrl+Shift+Z)`,
+    nothingToUndo: 'Nada para desfazer',
+    nothingToRedo: 'Nada para refazer',
+    undoFailed: 'Não foi possível desfazer',
+    redoFailed: 'Não foi possível refazer',
+    undoHint: 'Dá para desfazer com Ctrl+Z enquanto o app estiver aberto.',
     // Formulário do WIP
     ignoreAdded: 'Regra adicionada ao .gitignore. Arquivos já rastreados continuam rastreados.',
     unstageFile: 'Retirar arquivo do preparo',
