@@ -284,6 +284,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'backups:list': () => services.backups.list(),
     'backups:create': () => services.backups.create(services.database.db, 'manual'),
     'backups:restore': async (input: { backupId: string }) => {
+      // Fechar o banco debaixo de um agente em execução corromperia a run e o MCP dele: espera terminarem.
+      if ((services.database.db.prepare(`SELECT COUNT(*) FROM runs WHERE status IN ('queued', 'running')`).pluck().get() as number) > 0) throw new Error(tm().ipc.restoreAgentsRunning)
       services.database.close()
       await services.backups.restore(input.backupId, services.database.path)
       await services.reopen()

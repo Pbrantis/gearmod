@@ -70,16 +70,26 @@ export class BackupService {
     const oldDb = `${databasePath}.before-restore`
     await rm(restoreDb, { force: true })
     await cp(backupDb, restoreDb, { force: false })
+    // Anexos: a cópia nova é preparada ao lado; os atuais só saem do lugar depois que ela está inteira, e voltam se algo falhar.
+    const newAttachments = `${this.attachmentsDir}.restore`, oldAttachments = `${this.attachmentsDir}.before-restore`
+    await rm(newAttachments, { recursive: true, force: true })
+    await rm(oldAttachments, { recursive: true, force: true })
+    await cp(join(source, manifest.attachmentsDirectory), newAttachments, { recursive: true })
     const currentExists = await stat(databasePath).then(() => true, () => false)
+    const attachmentsExist = await stat(this.attachmentsDir).then(() => true, () => false)
     if (currentExists) await rename(databasePath, oldDb)
+    if (attachmentsExist) await rename(this.attachmentsDir, oldAttachments)
     try {
       await rename(restoreDb, databasePath)
-      await rm(join(this.attachmentsDir), { recursive: true, force: true })
-      await cp(join(source, manifest.attachmentsDirectory), this.attachmentsDir, { recursive: true })
+      await rename(newAttachments, this.attachmentsDir)
       await rm(oldDb, { force: true })
+      await rm(oldAttachments, { recursive: true, force: true })
     } catch (error) {
       await rm(databasePath, { force: true })
+      await rm(this.attachmentsDir, { recursive: true, force: true })
       if (currentExists) await rename(oldDb, databasePath)
+      if (attachmentsExist) await rename(oldAttachments, this.attachmentsDir)
+      await rm(newAttachments, { recursive: true, force: true })
       throw error
     }
   }

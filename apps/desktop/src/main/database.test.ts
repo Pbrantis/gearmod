@@ -81,6 +81,22 @@ describe('BackupService', () => {
     restored.close()
   })
 
+  it('se a cópia dos anexos falhar, o banco e os anexos atuais ficam como estavam (D2)', async () => {
+    const root = await tempRoot(); const path = join(root, 'agentboard.sqlite')
+    const database = new AppDatabase(path, '0.1.0'); await database.open()
+    const notes = new NoteRepository(database), backups = new BackupService(root, '0.1.0')
+    await mkdir(join(root, 'attachments'), { recursive: true }); await writeFile(join(root, 'attachments', 'a.txt'), 'atual')
+    const backup = await backups.create(database.db, 'test')
+    const atual = notes.create('valor atual')
+    await rm(join(root, 'backups', backup.id, 'attachments'), { recursive: true, force: true })
+    database.close()
+    await expect(backups.restore(backup.id, path)).rejects.toThrow()
+    expect(await readFile(join(root, 'attachments', 'a.txt'), 'utf8')).toBe('atual')
+    const reopened = new AppDatabase(path, '0.1.0'); await reopened.open()
+    expect(new NoteRepository(reopened).list()).toContainEqual(atual)
+    reopened.close()
+  })
+
   it('rejects a database whose backup checksum was changed', async () => {
     const root = await tempRoot(); const path = join(root, 'agentboard.sqlite')
     const database = new AppDatabase(path, '0.1.0'); await database.open()

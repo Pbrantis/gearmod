@@ -244,6 +244,7 @@ export const ptBR = {
     worktreeAlreadyCreated: 'A worktree já foi criada; a branch base não pode ser alterada.',
     baseBranchNotFound: 'Branch base não encontrada no repositório.',
     documentGeneratedBySystem: 'Este documento é gerado pelo sistema',
+    restoreAgentsRunning: 'Não dá para restaurar um backup com agentes em execução. Espere terminarem ou cancele antes.',
     untrustedSender: 'Pedido recusado: não veio da janela do AgentBoard',
     linkNotAllowed: 'Link não permitido',
     artifactsSharedCannotDelete: 'A pasta de artefatos é compartilhada com outro card e não pode ser excluída automaticamente.',
