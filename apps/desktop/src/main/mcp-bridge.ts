@@ -211,8 +211,8 @@ export class McpBridge {
         if (!column) return { ok: false, error: `Column not found: ${args.coluna}` }
         if (args.quando === 'ao_terminar') { run.pendingMove = column.id; return { ok: true, text: `The card will move to ${column.label} when this run ends.` } }
         const movePolicyDenied = this.policyDenied(run, 'move'); if (movePolicyDenied) return { ok: false, error: movePolicyDenied }
-        // S05 (atrás da flag): o movimento imediato vira pedido pendente; a Done continua sujeita ao gate quando o usuário aprovar.
-        if (this.deps.agentMoveApproval && this.deps.approvals) {
+        // S05 (atrás da flag, ou quando a política do projeto manda perguntar): o movimento imediato vira pedido pendente; a Done continua sujeita ao gate quando o usuário aprovar.
+        if ((this.deps.agentMoveApproval || this.policyDecision(run, 'move') === 'ask') && this.deps.approvals) {
           const card = board.card(run.cardId)
           const approval = this.deps.approvals.request({ kind: 'agent-move', subjectRef: run.cardId, payload: { columnId: column.id, columnLabel: column.label }, requestedActor: 'agent', runId: run.runId, cardId: run.cardId, projectId: card.projectId })
           run.notify({ type: 'card' })
@@ -388,13 +388,23 @@ export class McpBridge {
     return this.deps.board.get(card.projectId).columns.find((column) => column.id === name || normalize(column.label) === wanted || column.semanticState === wanted)
   }
 
-  /** S11: consulta o `PolicyEngine` (regras do projeto); `deny` devolve o motivo e não faz nada. Sem motor, nunca bloqueia. */
-  private policyDenied(run: RunState, action: 'commit' | 'move' | 'choose-workflow'): string | null {
-    if (!this.deps.policy || !run.cardId) return null
+  /**
+   * S11: consulta o `PolicyEngine` (regras do projeto). Sem regra para a ação, nada muda (libera); `deny` bloqueia; `ask` explícito
+   * também não executa sozinho: devolve ao agente que a ação depende do usuário (ou, no movimento, vira pedido de aprovação).
+   */
+  private policyDecision(run: RunState, action: 'commit' | 'move' | 'choose-workflow'): 'allow' | 'ask' | 'deny' {
+    if (!this.deps.policy || !run.cardId) return 'allow'
     const card = this.deps.board.card(run.cardId)
     const rules = this.deps.history?.config(card.projectId).policy.rules ?? []
     const decision = this.deps.policy.decide(rules, action, { cardId: run.cardId, projectId: card.projectId, actor: 'agent' })
-    return decision === 'deny' ? `Blocked by the project policy (${action}).` : null
+    return decision === 'ask' && !rules.some((rule) => rule.action === action) ? 'allow' : decision
+  }
+  private policyDenied(run: RunState, action: 'commit' | 'move' | 'choose-workflow'): string | null {
+    const decision = this.policyDecision(run, action)
+    if (decision === 'deny') return `Blocked by the project policy (${action}).`
+    // choose-workflow e move já passam por aprovação do usuário; só o commit precisa ser barrado aqui.
+    if (decision === 'ask' && action === 'commit') return 'The project policy requires the user to approve commits: ask the user to commit from the Git page.'
+    return null
   }
 }
 

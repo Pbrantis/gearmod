@@ -151,6 +151,29 @@ describe('AgentBoard MCP server', () => {
     expect(events.map((event) => JSON.parse(event.json))).toContainEqual({ action: 'move', decision: 'deny' })
   })
 
+  it('S9: regra ask explícita não libera sozinha: o movimento vira pedido de aprovação', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
+    const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
+    const columns = board.get(project.id).columns
+    const card = board.create({ projectId: project.id, columnId: columns[1]!.id, title: 'MCP', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const context = new AgentContextService(board, new SettingsRepository(database), null)
+    const history = new CardHistoryService(database, root)
+    history.setConfig(project.id, { ...defaultWorkflowConfig, policy: { rules: [{ action: 'move', decision: 'ask' }] } })
+    const approvals = new ApprovalService(database), policy = new PolicyEngine(database)
+    const bridge = new McpBridge({ board, context, serverScript, runtime: process.execPath, approvals, policy, history }); await bridge.listen()
+    closers.push(async () => { await bridge.close(); database.close() })
+    const client = mcpClient(bridge.register('run-1', card.id, () => undefined))
+    await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
+    const moved = await client.call('agentboard_mover_card', { coluna: 'Doing', quando: 'agora' })
+    expect(moved.isError).toBeFalsy(); expect(moved.content[0]!.text).toContain('awaiting')
+    expect(board.card(card.id).columnId).toBe(columns[1]!.id)
+    expect(approvals.list(card.id)).toHaveLength(1)
+    const events = database.db.prepare("SELECT json FROM card_events WHERE card_id = ? AND type = 'policy.decided'").all(card.id) as Array<{ json: string }>
+    expect(events.map((event) => JSON.parse(event.json))).toContainEqual({ action: 'move', decision: 'ask' })
+  })
+
   it('S05 atrás da flag: movimento imediato vira pedido pendente, só aplicado após aprovação', async () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
