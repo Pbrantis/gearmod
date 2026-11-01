@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { migrations, latestSchemaVersion, type Migration } from './migrations'
+import { tm } from './i18n'
 
 export class SchemaTooNewError extends Error {}
 
@@ -66,7 +67,7 @@ export class AppDatabase {
       }
       if (rebuilds) {
         const broken = this.db.pragma('foreign_key_check') as unknown[]
-        if (broken.length) throw new Error(`Migração deixou chaves estrangeiras inválidas (${broken.length})`)
+        if (broken.length) throw new Error(tm().database.migrationBrokeForeignKeys(broken.length))
       }
     })
     try { migrate() } finally { if (rebuilds) this.db.pragma('foreign_keys = ON') }

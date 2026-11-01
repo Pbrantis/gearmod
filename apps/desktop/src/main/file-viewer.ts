@@ -1,5 +1,6 @@
 import { mkdir, open, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { tm } from './i18n'
 
 export interface ProjectFile { path: string; relative: string; content: string; truncated: boolean; size: number; binary: boolean }
 
@@ -9,14 +10,14 @@ const inside = (root: string, target: string): boolean => { const rel = relative
 
 /** Resolve caminhos reais antes de listar ou gravar, inclusive quando há junctions no Windows. */
 export async function allowedPath(roots: string[], requested: string): Promise<string> {
-  if (requested.includes('\0')) throw new Error('Caminho inválido')
+  if (requested.includes('\0')) throw new Error(tm().fileViewer.invalidPath)
   for (const root of roots) {
     const base = await realpath(root).catch(() => null)
     if (!base) continue
     const target = await realpath(resolve(base, requested)).catch(() => null)
     if (target && inside(base, target)) return target
   }
-  throw new Error('Caminho fora das pastas deste projeto')
+  throw new Error(tm().fileViewer.pathOutsideProject)
 }
 
 export async function listProjectDirectory(roots: string[], path: string): Promise<Array<{ path: string; name: string; directory: boolean }>> {
@@ -85,17 +86,17 @@ export async function resolveProjectReferences(roots: string[], targets: string[
 
 /** Só grava texto completo e exige a versão lida: uma edição do agente nunca é sobrescrita silenciosamente. */
 export async function writeProjectFile(roots: string[], path: string, content: string, expected: string): Promise<ProjectFile> {
-  if (Buffer.byteLength(content) > maxBytes) throw new Error('Edição limitada a arquivos de até 1 MB')
+  if (Buffer.byteLength(content) > maxBytes) throw new Error(tm().fileViewer.editLimit)
   const target = await allowedPath(roots, path), handle = await open(target, 'r+')
   try {
     const info = await handle.stat()
-    if (!info.isFile() || info.size > maxBytes) throw new Error('Este arquivo não pode ser editado')
+    if (!info.isFile() || info.size > maxBytes) throw new Error(tm().fileViewer.cannotEdit)
     const bytes = await handle.readFile()
-    if (bytes.includes(0)) throw new Error('Arquivo binário não pode ser editado')
-    if (bytes.toString('utf8') !== expected) throw new Error('O arquivo mudou no disco. Reabra a versão atual antes de salvar; sua edição continua nesta aba.')
+    if (bytes.includes(0)) throw new Error(tm().fileViewer.binaryCannotEdit)
+    if (bytes.toString('utf8') !== expected) throw new Error(tm().fileViewer.changedOnDisk)
     const next = Buffer.from(content)
     let offset = 0
-    while (offset < next.length) { const { bytesWritten } = await handle.write(next, offset, next.length - offset, offset); if (!bytesWritten) throw new Error('Não foi possível completar a gravação'); offset += bytesWritten }
+    while (offset < next.length) { const { bytesWritten } = await handle.write(next, offset, next.length - offset, offset); if (!bytesWritten) throw new Error(tm().fileViewer.writeIncomplete); offset += bytesWritten }
     await handle.truncate(next.length)
   } finally { await handle.close() }
   return { path: target, relative: basename(target), content, truncated: false, size: Buffer.byteLength(content), binary: false }
@@ -107,7 +108,7 @@ export async function writeProjectFile(roots: string[], path: string, content: s
  */
 export async function readProjectFile(roots: string[], requested: string, exact = false): Promise<ProjectFile> {
   const clean = exact ? requested : requested.trim().replace(/^file:\/+/i, '').replace(/[?#].*$/, '').replace(/:\d+(?::\d+)?$/, '')
-  if (!clean || clean.includes('\0')) throw new Error('Caminho de arquivo inválido')
+  if (!clean || clean.includes('\0')) throw new Error(tm().fileViewer.invalidFilePath)
   for (const root of roots) {
     let base: string
     try { base = await realpath(root) } catch { continue }
@@ -131,44 +132,45 @@ export async function readProjectFile(roots: string[], requested: string, exact 
     const found = paths.filter((path) => path.split(sep).join('/').toLocaleLowerCase().endsWith(tail)).sort((first, second) => first.length - second.length)[0]
     if (found) return readProjectFile(roots, found, true)
   }
-  throw new Error('Arquivo não encontrado neste projeto')
+  throw new Error(tm().fileViewer.fileNotFound)
 }
 
 const reserved = /[\\/:*?"<>|\0]/
-/** Uma parte de caminho (nome de arquivo ou pasta): sem caracteres proibidos no Windows, sem `.`/`..`, sem ponto ou espaço no fim. */
+/** Uma parte de caminho (nome de arquivo ou pasta): sem caracteres proibidos no Windows, sem `.`/`..`, sem espaço nas pontas nem ponto no fim. */
 export function validateName(name: string): string {
   const clean = name.trim()
-  if (!clean || clean === '.' || clean === '..') throw new Error('Informe um nome válido')
-  if (clean.length > 255) throw new Error('O nome pode ter no máximo 255 caracteres')
-  if (reserved.test(clean) || /[. ]$/.test(clean)) throw new Error('O nome não pode ter \\ / : * ? " < > | nem terminar com ponto ou espaço')
+  if (!clean || clean === '.' || clean === '..') throw new Error(tm().fileViewer.enterValidName)
+  if (clean.length > 255) throw new Error(tm().fileViewer.nameTooLong)
+  // Espaço nas pontas é recusado, não aparado: o Windows cortaria em silêncio.
+  if (reserved.test(clean) || clean !== name || clean.endsWith('.')) throw new Error(tm().fileViewer.nameForbiddenChars)
   return clean
 }
 
 /** A raiz em si (ou algo que a contenha) nunca é renomeada nem excluída. */
 async function ensureNotRoot(roots: string[], target: string): Promise<void> {
-  for (const root of roots) { const base = await realpath(root).catch(() => null); if (!base) continue; const rel = relative(target, base); if (!rel.startsWith('..') && !isAbsolute(rel)) throw new Error('Não é possível alterar a pasta raiz do projeto') }
+  for (const root of roots) { const base = await realpath(root).catch(() => null); if (!base) continue; const rel = relative(target, base); if (!rel.startsWith('..') && !isAbsolute(rel)) throw new Error(tm().fileViewer.cannotChangeRootFolder) }
 }
 
 /** Cria arquivo ou pasta dentro de `parent`; `pasta/arquivo.ts` cria as pastas do meio. Nunca sobrescreve. */
 export async function createProjectItem(roots: string[], parent: string, name: string, kind: 'file' | 'folder'): Promise<{ path: string }> {
   const folder = await allowedPath(roots, parent)
-  if (!(await stat(folder)).isDirectory()) throw new Error('Escolha uma pasta para criar o item')
-  const parts = name.trim().split('/').map(validateName)
+  if (!(await stat(folder)).isDirectory()) throw new Error(tm().fileViewer.chooseFolderToCreate)
+  const parts = name.split('/').map(validateName)
   let current = folder
   for (const [index, part] of parts.entries()) {
     const next = join(current, part), last = index === parts.length - 1
     const existing = await stat(next).catch(() => null)
     if (last) {
-      if (existing) throw new Error('Já existe um item com esse nome')
+      if (existing) throw new Error(tm().fileViewer.itemExists)
       if (kind === 'folder') await mkdir(next)
       else { const handle = await open(next, 'wx'); await handle.close() }
       return { path: next }
     }
-    if (existing && !existing.isDirectory()) throw new Error('Já existe um arquivo com o nome de uma das pastas')
+    if (existing && !existing.isDirectory()) throw new Error(tm().fileViewer.fileWithFolderNameExists)
     if (!existing) await mkdir(next)
     current = await allowedPath(roots, next)
   }
-  throw new Error('Informe um nome válido')
+  throw new Error(tm().fileViewer.enterValidName)
 }
 
 /** Troca só o nome do item, dentro da mesma pasta. */
@@ -176,7 +178,7 @@ export async function renameProjectItem(roots: string[], path: string, name: str
   const target = await allowedPath(roots, path), clean = validateName(name)
   await ensureNotRoot(roots, target)
   const next = join(dirname(target), clean)
-  if (next !== target && await stat(next).then(() => true, () => false) && next.toLowerCase() !== target.toLowerCase()) throw new Error('Já existe um item com esse nome')
+  if (next !== target && await stat(next).then(() => true, () => false) && next.toLowerCase() !== target.toLowerCase()) throw new Error(tm().fileViewer.itemExists)
   await rename(target, next)
   return { path: next }
 }
@@ -194,10 +196,10 @@ const stamp = (date: Date): string => { const two = (value: number): string => S
 /** Grava uma imagem colada numa subpasta `imagens/` ao lado do `.md` (`imagem-AAAAMMDD-HHMMSS.png`, com `-2`, `-3`... se já existir). */
 export async function saveMarkdownImage(roots: string[], markdownPath: string, data: string, mime: string, now = new Date()): Promise<{ path: string; relative: string }> {
   const extension = imageExtension[mime]
-  if (!extension) throw new Error('Tipo de imagem não suportado')
+  if (!extension) throw new Error(tm().fileViewer.imageTypeUnsupported)
   const bytes = Buffer.from(data, 'base64')
-  if (!bytes.length) throw new Error('Imagem vazia')
-  if (bytes.length > 10_000_000) throw new Error('A imagem passa de 10 MB')
+  if (!bytes.length) throw new Error(tm().fileViewer.imageEmpty)
+  if (bytes.length > 10_000_000) throw new Error(tm().fileViewer.imageTooLarge)
   const file = await allowedPath(roots, markdownPath), folder = join(dirname(file), 'imagens')
   await mkdir(folder, { recursive: true })
   await allowedPath(roots, folder)
@@ -206,5 +208,5 @@ export async function saveMarkdownImage(roots: string[], markdownPath: string, d
     const name = `${base}${attempt > 1 ? `-${attempt}` : ''}.${extension}`, target = join(folder, name)
     try { await writeFile(target, bytes, { flag: 'wx' }); return { path: target, relative: `imagens/${name}` } } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error }
   }
-  throw new Error('Não foi possível escolher um nome para a imagem')
+  throw new Error(tm().fileViewer.imageNameUnavailable)
 }

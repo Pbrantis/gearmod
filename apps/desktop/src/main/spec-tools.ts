@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import type { ToolsStatus } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { nativeCommands, type CommandRunner } from './playwright-cli'
+import { tm } from './i18n'
 
 /** Primeira versão `x.y.z` de uma saída de `--version`; `null` se não houver. */
 const versionOf = (output: string): string | null => /(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?)/.exec(output)?.[1] ?? null
@@ -25,6 +26,28 @@ export function specKitIntegrations(repo: string): string[] {
   } catch { /* sem o arquivo: cai para os rastros */ }
   for (const trace of integrationTraces) { try { if (readdirSync(join(repo, trace.folder)).some((name) => trace.pattern.test(name))) found.add(trace.id) } catch { /* pasta ausente */ } }
   return [...found]
+}
+
+export type SpecKitStage = 'specify' | 'clarify' | 'plan' | 'checklist' | 'tasks' | 'analyze' | 'implement'
+
+/** Pedido de `speckit-implement` no chat de planejamento: o controle de execução recusa e a tela oferece mover o card. */
+export class SpecKitImplementBlocked extends Error {
+  constructor() { super(tm().speckit.implementBlocked) }
+}
+
+/** Bloqueia a invocação explícita da skill de implementação no planejamento.
+ * Isto não restringe outras ferramentas nem impede outras edições de arquivos. */
+export function isSpecKitImplementRequest(prompt: string, skill?: { name: string; path: string } | null): boolean {
+  return /(?:^|[\s/\\$])speckit[-.]implement(?:\b|$)/i.test(prompt) ||
+    Boolean(skill && /(?:^|[\s/\\$])speckit[-.]implement(?:\b|$)/i.test(`${skill.name} ${skill.path}`))
+}
+
+/** Confere a skill concreta, não apenas os rastros ou o manifesto de integração. Não instala nem altera arquivos. */
+export function specKitSkill(repo: string, provider: 'codex' | 'claude' | 'gemini', stage: SpecKitStage): string | null {
+  if (!existsSync(join(repo, '.specify'))) return null
+  const folder = provider === 'codex' ? join('.agents', 'skills') : join('.claude', 'skills')
+  const skill = join(repo, folder, `speckit-${stage}`, 'SKILL.md')
+  try { return readFileSync(skill, 'utf8').trim() ? skill : null } catch { return null }
 }
 
 /**

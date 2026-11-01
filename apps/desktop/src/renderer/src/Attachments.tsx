@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { PlusIcon } from './icons'
+import { toast } from './toasts'
+import { plainError } from './NoticeDialog'
+import { tr, useT } from './i18n'
 
 const fileName = (path: string): string => path.split(/[\\/]/).pop() || path
 type ContextTarget = { projectId: string; cardId: string | null }
@@ -42,7 +45,7 @@ export function useAttachments(target?: ContextTarget): { files: string[]; add(p
   }, [target?.projectId, target?.cardId, add])
   const remove = (path: string): void => update(ref.current.filter((item) => item !== path))
   const take = (): string[] => { const taken = ref.current; update([]); return taken }
-  const choose = async (): Promise<void> => { try { add(await window.agentboard.invoke('files:choose', undefined)) } catch { /* diálogo cancelado ou indisponível */ } }
+  const choose = async (): Promise<void> => { try { add(await window.agentboard.invoke('files:choose', undefined)) } catch (reason) { toast.error(tr().chat.attachments.attachFailed, plainError(reason)) } }
   // Ctrl+V: arquivos copiados no Explorer entram pelo caminho; imagens coladas (prints) são salvas na pasta de anexos do app.
   const paste = async (files: File[]): Promise<void> => {
     const paths: string[] = []
@@ -73,12 +76,14 @@ export function useAttachments(target?: ContextTarget): { files: string[]; add(p
 }
 
 export function AttachButton({ onClick, disabled }: { onClick(): void; disabled?: boolean }): React.JSX.Element {
-  return <button type="button" className="attachbtn tip" data-tip="Anexar arquivos (ou arraste ou cole com Ctrl+V)" aria-label="Anexar arquivos" disabled={disabled} onClick={onClick}><PlusIcon /></button>
+  const t = useT().chat.attachments
+  return <button type="button" className="attachbtn tip" data-tip={t.attachTip} aria-label={t.attach} disabled={disabled} onClick={onClick}><PlusIcon /></button>
 }
 
-const extLabel = (path: string): string => (path.split('.').pop() || 'arquivo').slice(0, 5).toUpperCase()
+const extLabel = (path: string): string => (path.split('.').pop() || tr().chat.attachments.fileExt).slice(0, 5).toUpperCase()
 
 function AttachmentCard({ path, remove }: { path: string; remove?(path: string): void }): React.JSX.Element {
+  const t = useT().chat.attachments
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
@@ -87,13 +92,14 @@ function AttachmentCard({ path, remove }: { path: string; remove?(path: string):
   }, [path])
   return <div className={`attcard tip ${src ? 'image' : 'file'}`} data-tip={path}>
     {src ? <img src={src} alt={fileName(path)} /> : <><span className="attcard-name">{fileName(path)}</span><span className="attcard-ext">{extLabel(path)}</span></>}
-    {remove && <button type="button" className="attcard-x" aria-label={`Remover ${fileName(path)}`} onClick={() => remove(path)}>×</button>}
+    {remove && <button type="button" className="attcard-x" aria-label={t.remove(fileName(path))} onClick={() => remove(path)}>×</button>}
   </div>
 }
 
 export function AttachmentChips({ files, remove }: { files: string[]; remove?(path: string): void }): React.JSX.Element | null {
+  const t = useT().chat.attachments
   if (!files.length) return null
-  return <div className="attachments" aria-label="Arquivos anexados">{files.map((path) => <AttachmentCard key={path} path={path} remove={remove} />)}</div>
+  return <div className="attachments" aria-label={t.attachedFiles}>{files.map((path) => <AttachmentCard key={path} path={path} remove={remove} />)}</div>
 }
 
 const noteMarker = 'Arquivos anexados (leia antes de responder; são contexto deste pedido):'

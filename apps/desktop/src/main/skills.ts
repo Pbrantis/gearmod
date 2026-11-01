@@ -5,9 +5,12 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import type { AgentProfile, SkillEntry, SkillProviderState, SkillScope } from '@agentboard/contracts'
 import type { AgentAdapter } from './adapters'
 import type { ProfileRepository, ProjectRepository } from './projects'
+import { tm } from './i18n'
 
-type Provider = 'claude' | 'codex'
-const providers: Provider[] = ['claude', 'codex']
+type Provider = 'claude' | 'codex' | 'gemini'
+const providers: Provider[] = ['claude', 'codex', 'gemini']
+const globalFolder: Record<Provider, string> = { claude: '.claude', codex: '.codex', gemini: '.gemini' }
+const projectFolder: Record<Provider, string> = { claude: '.claude', codex: '.agents', gemini: '.gemini' }
 const nameRule = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 /** Cabeçalho `name` e `description` de um SKILL.md (subconjunto de YAML suficiente para skills). */
@@ -34,9 +37,8 @@ export function parseSkillMd(text: string): { name: string | null; description: 
 export function convertSkillMd(text: string, from: Provider, to: Provider): string {
   const parsed = parseSkillMd(text), name = parsed.name ?? 'skill'
   const description = parsed.description.replace(/"/g, '\\"')
-  const swaps: Array<[RegExp, string]> = to === 'codex'
-    ? [[/CLAUDE\.md/g, 'AGENTS.md'], [/\.claude\/skills/g, '.agents/skills'], [/Claude Code/g, 'Codex']]
-    : [[/AGENTS\.md/g, 'CLAUDE.md'], [/\.agents\/skills/g, '.claude/skills'], [/Codex/g, 'Claude Code']]
+  const target = { claude: { memory: 'CLAUDE.md', skills: '.claude/skills', name: 'Claude Code' }, codex: { memory: 'AGENTS.md', skills: '.agents/skills', name: 'Codex' }, gemini: { memory: 'GEMINI.md', skills: '.gemini/skills', name: 'Gemini CLI' } }[to]
+  const swaps: Array<[RegExp, string]> = [[/CLAUDE\.md|AGENTS\.md|GEMINI\.md/g, target.memory], [/\.claude\/skills|\.agents\/skills|\.gemini\/skills/g, target.skills], [/Claude Code|Gemini CLI|Codex/g, target.name]]
   const body = swaps.reduce((current, [pattern, value]) => current.replace(pattern, value), parsed.body)
   return `---\nname: ${name}\ndescription: "${description}"\n---\n${body.startsWith('\n') ? body : `\n${body}`}`
 }
@@ -82,24 +84,29 @@ export type SkillReviewer = { adapters: Record<Provider, AgentAdapter>; profile(
 /** Skills globais (pastas dos agentes) e do projeto (`.claude/skills`, `.agents/skills`): detecção, importação e conversão com revisão por agente. */
 export class SkillService {
   private readonly converting = new Map<string, 'convert' | 'review'>()  // chave: escopo|projeto|nome|destino
-  constructor(private readonly profiles: ProfileRepository, private readonly projects: ProjectRepository, private readonly reviewer?: SkillReviewer, private readonly home: string = homedir(), private readonly emit: (type: string, payload: Record<string, unknown>) => void = () => undefined) {}
+  constructor(private readonly profiles: ProfileRepository, private readonly projects: ProjectRepository, private readonly reviewer?: SkillReviewer, private readonly home: string = homedir(), private readonly emit: (type: string, payload: Record<string, unknown>) => void = () => undefined, private readonly ledger?: { recordAuxiliary(profile: AgentProfile, source: 'skill-review', usage?: { input: number; cached: number; output: number; costUsd?: number }): void }) {}
 
+  /**
+   * Skills "global" ficam numa pasta fixa do app (não é segredo, é só Markdown de instrução), compartilhada por todos os
+   * perfis do provedor — mesmo depois do S07/S16 isolarem a pasta de configuração (credenciais) de cada perfil. É por isso
+   * que o primeiro item é sempre a pasta fixa: quem grava (`import`/`convert`) usa `globalBases(provider)[0]`.
+   */
   private globalBases(provider: Provider): string[] {
-    const dirs = this.profiles.list().filter((profile) => profile.provider === provider).map((profile) => join(profile.configDir, 'skills'))
-    dirs.push(join(this.home, provider === 'claude' ? '.claude' : '.codex', 'skills'))
+    const dirs = [join(this.home, globalFolder[provider], 'skills')]
+    dirs.push(...this.profiles.list().filter((profile) => profile.provider === provider).map((profile) => join(profile.configDir, 'skills')))
     return [...new Set(dirs)]
   }
 
   private projectBase(projectId: string, provider: Provider): string {
     const source = this.projects.get(projectId).sources[0]
-    if (!source) throw new Error('Projeto sem pasta')
-    return join(source.localPath, provider === 'claude' ? '.claude' : '.agents', 'skills')
+    if (!source) throw new Error(tm().skills.projectHasNoFolder)
+    return join(source.localPath, projectFolder[provider], 'skills')
   }
 
   private bases(scope: SkillScope, provider: Provider, projectId?: string): string[] {
     if (scope === 'global') return this.globalBases(provider)
-    if (!projectId) throw new Error('Informe o projeto')
-    const roots = this.projects.get(projectId).sources.map((source) => join(source.localPath, provider === 'claude' ? '.claude' : '.agents', 'skills'))
+    if (!projectId) throw new Error(tm().skills.enterProject)
+    const roots = this.projects.get(projectId).sources.map((source) => join(source.localPath, projectFolder[provider], 'skills'))
     return [...new Set(roots)]
   }
 
@@ -110,7 +117,7 @@ export class SkillService {
       for (const provider of providers) for (const base of this.globalBases(provider)) for (const skill of await scanSkills(base, provider)) result.push({ ...skill, origin: `${relative(this.home, skill.dir).split(sep).join('/')}`.replace(/^(?!\.\.)/, '~/') })
       return result
     }
-    if (!projectId) throw new Error('Informe o projeto')
+    if (!projectId) throw new Error(tm().skills.enterProject)
     const project = this.projects.get(projectId), roots = [...new Set([project.localPath, ...project.sources.map((source) => source.localPath)])]
     const seen = new Set<string>(), budget = { left: 6000 }
     for (const root of roots) for (const skill of await discoverSkills(root, 5, budget)) {
@@ -125,7 +132,7 @@ export class SkillService {
   async list(scope: SkillScope, projectId?: string): Promise<SkillEntry[]> {
     const merged = new Map<string, SkillEntry>()
     for (const skill of await this.collect(scope, projectId)) {
-      const entry = merged.get(skill.name) ?? { id: `${scope}:${skill.name}`, name: skill.name, description: skill.description, scope, detected: scope === 'project', providers: { claude: 'none', codex: 'none' }, paths: { claude: null, codex: null }, origin: skill.origin }
+      const entry = merged.get(skill.name) ?? { id: `${scope}:${skill.name}`, name: skill.name, description: skill.description, scope, detected: scope === 'project', providers: { claude: 'none', codex: 'none', gemini: 'none' }, paths: { claude: null, codex: null, gemini: null }, origin: skill.origin }
       entry.providers[skill.provider] = 'ready'; entry.paths[skill.provider] = skill.dir
       if (!entry.description) entry.description = skill.description
       merged.set(skill.name, entry)
@@ -141,7 +148,7 @@ export class SkillService {
   /** Exclui a skill (de um agente ou de todos). Só apaga pastas que a própria detecção encontrou, nunca um caminho qualquer. */
   async delete(input: { scope: SkillScope; projectId?: string; name: string; provider?: Provider }): Promise<SkillEntry[]> {
     const targets = (await this.collect(input.scope, input.projectId)).filter((skill) => skill.name === input.name && (!input.provider || skill.provider === input.provider))
-    if (!targets.length) throw new Error('Skill não encontrada')
+    if (!targets.length) throw new Error(tm().skills.skillNotFound)
     for (const skill of targets) await rm(skill.dir, { recursive: true, force: true })
     return this.list(input.scope, input.projectId)
   }
@@ -149,7 +156,7 @@ export class SkillService {
   /** Importa de uma vez todas as skills (pastas com SKILL.md) de uma pasta escolhida; as que já existem ficam de fora. */
   async importFolder(input: { scope: SkillScope; projectId?: string; folderPath: string; provider: Provider }): Promise<{ imported: string[]; skipped: string[]; skills: SkillEntry[] }> {
     const found = await discoverSkills(resolve(input.folderPath))
-    if (!found.length) throw new Error('Nenhuma skill (pasta com SKILL.md) encontrada nessa pasta')
+    if (!found.length) throw new Error(tm().skills.noSkillInFolder)
     const imported: string[] = [], skipped: string[] = []
     for (const skill of found) {
       const name = skill.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
@@ -160,18 +167,18 @@ export class SkillService {
   }
 
   async import(input: { scope: SkillScope; projectId?: string; sourcePath: string; name: string; provider: Provider }): Promise<SkillEntry[]> {
-    if (!nameRule.test(input.name)) throw new Error('O nome da skill deve ter letras minúsculas, números e hífens (até 64 caracteres)')
+    if (!nameRule.test(input.name)) throw new Error(tm().skills.invalidSkillName)
     const source = resolve(input.sourcePath), info = await stat(source).catch(() => null)
-    if (!info) throw new Error('Arquivo ou pasta não encontrado')
+    if (!info) throw new Error(tm().skills.fileOrFolderNotFound)
     const base = input.scope === 'global' ? this.globalBases(input.provider)[0]! : this.projectBase(input.projectId ?? '', input.provider)
     const target = join(base, input.name)
-    if (existsSync(target)) throw new Error(`Já existe uma skill chamada ${input.name} para ${input.provider === 'claude' ? 'Claude' : 'Codex'}`)
+    if (existsSync(target)) throw new Error(tm().skills.alreadyExists(input.name, input.provider === 'claude' ? 'Claude' : input.provider === 'gemini' ? 'Gemini' : 'Codex'))
     await mkdir(target, { recursive: true })
     if (info.isDirectory()) {
-      if (!existsSync(join(source, 'SKILL.md'))) throw new Error('A pasta escolhida não tem SKILL.md')
+      if (!existsSync(join(source, 'SKILL.md'))) throw new Error(tm().skills.folderHasNoSkillMd)
       await cp(source, target, { recursive: true })
     } else {
-      if (basename(source).toLowerCase() !== 'skill.md') throw new Error('Escolha uma pasta de skill ou um arquivo SKILL.md')
+      if (basename(source).toLowerCase() !== 'skill.md') throw new Error(tm().skills.chooseSkillFolderOrFile)
       await cp(source, join(target, 'SKILL.md'))
       const extras = dirname(source)
       for (const entry of await readdir(extras, { withFileTypes: true })) if (entry.isDirectory() && ['templates', 'references', 'scripts', 'assets'].includes(entry.name)) await cp(join(extras, entry.name), join(target, entry.name), { recursive: true })
@@ -183,11 +190,11 @@ export class SkillService {
 
   /** Converte por regra e devolve na hora; a revisão pelo agente escolhido roda em segundo plano. */
   async convert(input: { scope: SkillScope; projectId?: string; name: string; from: Provider; to: Provider; reviewProfileId?: string; model?: string | null }): Promise<{ converted: true; reviewing: boolean }> {
-    if (input.from === input.to) throw new Error('Escolha o outro agente')
+    if (input.from === input.to) throw new Error(tm().skills.chooseOtherAgent)
     const entry = (await this.list(input.scope, input.projectId)).find((item) => item.name === input.name)
     const sourceDir = entry?.paths[input.from]
-    if (!entry || !sourceDir) throw new Error(`A skill ${input.name} não existe para ${input.from === 'claude' ? 'Claude' : 'Codex'}`)
-    if (entry.providers[input.to] !== 'none') throw new Error('Esta skill já existe para o outro agente')
+    if (!entry || !sourceDir) throw new Error(tm().skills.notFoundFor(input.name, input.from === 'claude' ? 'Claude' : input.from === 'gemini' ? 'Gemini' : 'Codex'))
+    if (entry.providers[input.to] !== 'none') throw new Error(tm().skills.skillAlreadyExistsForOther)
     const base = input.scope === 'global' ? this.globalBases(input.to)[0]! : this.projectBase(input.projectId ?? '', input.to)
     const targetDir = join(base, input.name), key = `${input.scope}|${input.projectId ?? ''}|${input.name}|${input.to}`
     this.converting.set(key, 'convert')
@@ -208,9 +215,10 @@ export class SkillService {
     this.emit('skills/review-started', { name: input.name })
     try {
       const profile = this.reviewer!.profile(input.reviewProfileId!)
-      const names = { claude: 'Claude Code', codex: 'Codex' }
+      const names = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI' }
       const prompt = `Esta skill "${input.name}" foi convertida automaticamente de ${names[input.from]} para ${names[input.to]}. Revise só os arquivos desta pasta: confirme que o SKILL.md tem "name" e "description" válidos para ${names[input.to]}, troque referências a ferramentas, caminhos e convenções de ${names[input.from]} pelas de ${names[input.to]} e corrija o que ficou faltando. Não crie nem altere nada fora desta pasta. Responda com um resumo curto do que mudou.`
-      await this.reviewer!.adapters[profile.provider].run({ cwd: targetDir, prompt, sessionId: null, planning: false, profile, model: input.model ?? null, mode: profile.provider === 'claude' ? 'accept_edits' : 'auto', onEvent: () => undefined })
+      const result = await this.reviewer!.adapters[profile.provider].run({ cwd: targetDir, prompt, sessionId: null, planning: false, profile, model: input.model ?? null, mode: profile.provider === 'claude' ? 'accept_edits' : 'auto', onEvent: () => undefined })
+      try { this.ledger?.recordAuxiliary(profile, 'skill-review', result.usage) } catch { /* métricas nunca bloqueiam a revisão */ }
       this.emit('skills/review-finished', { name: input.name })
     } catch (error) {
       this.emit('skills/review-failed', { name: input.name, error: error instanceof Error ? error.message : String(error) })
@@ -220,7 +228,7 @@ export class SkillService {
   /** Só aceita skills que a própria detecção conhece (globais ou do projeto), nunca um caminho qualquer. */
   async assertKnown(skill: { name: string; path: string }, projectId: string): Promise<void> {
     const known = [...await this.list('global'), ...await this.list('project', projectId)].some((entry) => entry.name === skill.name && Object.values(entry.paths).includes(skill.path))
-    if (!known) throw new Error('Skill desconhecida')
+    if (!known) throw new Error(tm().skills.unknownSkill)
   }
 
   /** Conteúdo de uma skill para o provedor (usado para injetar a skill escolhida no chat do Codex). */

@@ -1,4 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react'
+import { useAsk } from './useAsk'
+import { useT } from './i18n'
 
 const viewerMin = 320
 const stored = (): number => { try { return Number(localStorage.getItem('agentboard.viewerWidth')) || 520 } catch { return 520 } }
@@ -11,15 +13,16 @@ const clampViewer = (value: number, chatWidth: number): number => Math.max(viewe
  * largura atual do chat, que o divisor também ajusta.
  */
 export function useFileViewer(chatWidth: number, setChatWidth: (value: number) => void): {
-  request: { path: string; at: number } | null; requested: string | null; open(path: string): void; close(): void; setDirty(value: boolean): void
+  request: { path: string; at: number } | null; requested: string | null; dialog: React.ReactNode; open(path: string): void; close(): void; setDirty(value: boolean): void
   width: number; dragging: boolean; startResize(event: React.PointerEvent<HTMLDivElement>): void; startSplit(event: React.PointerEvent<HTMLDivElement>): void; expand(): void; restore(): void
 } {
   const [request, setRequest] = useState<{ path: string; at: number } | null>(null), dirty = useRef(false)
+  const { ask, dialog } = useAsk(), t = useT()
   const [width, setWidthState] = useState(() => viewerState.width), [dragging, setDragging] = useState(false)
-  const open = useCallback((path: string) => {
-    if (dirty.current && !window.confirm('Descartar as alterações do arquivo aberto?')) return
+  const open = useCallback(async (path: string) => {
+    if (dirty.current && !(await ask({ eyebrow: t.files.viewer.openFile, title: t.files.workspace.discardTitle, text: t.files.viewer.discardText, ok: t.files.workspace.discard, danger: true }))) return
     setRequest({ path, at: Date.now() })
-  }, [])
+  }, [ask, t])
   const close = useCallback(() => setRequest(null), [])
   const setDirty = useCallback((value: boolean) => { dirty.current = value }, [])
   const drag = (apply: (x: number) => void, finish?: () => void) => (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -38,17 +41,17 @@ export function useFileViewer(chatWidth: number, setChatWidth: (value: number) =
   const place = (value: number): void => { const next = clampViewer(value, chatWidth); viewerState.width = next; setWidthState(next); remember() }
   const expand = (): void => { setChatWidth(440); place(window.innerWidth - 440 - 260) }
   const restore = (): void => place(520)
-  return { request, requested: request?.path ?? null, open, close, setDirty, width, dragging, startResize, startSplit, expand, restore }
+  return { request, requested: request?.path ?? null, dialog, open, close, setDirty, width, dragging, startResize, startSplit, expand, restore }
 }
 
 /** Divisor entre o chat e o painel ao lado (arquivo ou diff): alça larga para arrastar e botões de expandir/restaurar. */
 export function ViewGrip({ viewer }: { viewer: ReturnType<typeof useFileViewer> }): React.JSX.Element {
-  const stop = (event: React.PointerEvent): void => event.stopPropagation()
-  return <div className="viewgrip" role="separator" aria-orientation="vertical" aria-label="Dividir espaço entre o painel e o chat" onPointerDown={viewer.startSplit} onDoubleClick={viewer.restore}>
+  const t = useT(), stop = (event: React.PointerEvent): void => event.stopPropagation()
+  return <div className="viewgrip" role="separator" aria-orientation="vertical" aria-label={t.files.viewer.gripLabel} onPointerDown={viewer.startSplit} onDoubleClick={viewer.restore}>
     <span className="viewgrip-handle" aria-hidden="true" />
     <span className="viewgrip-btns" onPointerDown={stop}>
-      <button type="button" className="tip" data-tip="Expandir painel" aria-label="Expandir painel" onClick={viewer.expand}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 5-5 5 5 5" /></svg></button>
-      <button type="button" className="tip" data-tip="Restaurar largura" aria-label="Restaurar largura" onClick={viewer.restore}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 5 5 5-5 5" /></svg></button>
+      <button type="button" className="tip" data-tip={t.files.viewer.expand} aria-label={t.files.viewer.expand} onClick={viewer.expand}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m12 5-5 5 5 5" /></svg></button>
+      <button type="button" className="tip" data-tip={t.files.viewer.restoreWidth} aria-label={t.files.viewer.restoreWidth} onClick={viewer.restore}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m8 5 5 5-5 5" /></svg></button>
     </span>
   </div>
 }

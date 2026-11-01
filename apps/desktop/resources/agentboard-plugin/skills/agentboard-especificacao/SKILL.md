@@ -1,44 +1,44 @@
 ---
 name: agentboard-especificacao
-description: Escreve o documento Especificação de um card do AgentBoard no estilo SDD (histórias de usuário com prioridade, cenários de aceite Dado/Quando/Então, requisitos funcionais numerados e critérios de sucesso mensuráveis), sem dizer como implementar.
+description: Writes the Specification document of an AgentBoard card in SDD style (user stories with priority, Given/When/Then acceptance scenarios, numbered functional requirements and measurable success criteria), without saying how to implement.
 ---
 
-# Documento: Especificação
+# Document: Specification
 
-A Especificação diz **o que** o card entrega e **como saber que está certo**. O **como implementar** fica no Plano. A estrutura segue o modelo de especificação do GitHub Spec Kit, enxuta para um card.
+The Specification says **what** the card delivers and **how to know it is right**. **How to implement** goes in the Plan. The structure follows GitHub Spec Kit's specification template, lean for one card.
 
-## Idioma
+## Language
 
-Escreva no idioma informado em `idioma`. Use `templates/<idioma>.md`; se não houver, traduza `templates/pt-BR.md`, incluindo títulos, rótulos (Dado/Quando/Então) e prefixos de ID (RF, CS).
+Write everything you produce for the user (headings, labels, descriptive IDs, text) in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language. Use `templates/<idioma>.md`; if there is none, translate `templates/pt-BR.md` (the fallback the app uses), including headings, labels (Given/When/Then) and ID prefixes (FR, SC). The names below (Given/When/Then, FR, SC, the clarification marker) are the English forms; use the `idioma` equivalents shown in the template (in pt-BR: Dado/Quando/Então, RF, CS, `[PRECISA ESCLARECER: ...]`).
 
-## Seções (nesta ordem)
+## Sections (in this order)
 
-1. **Objetivo.** Uma frase, do ponto de vista de quem usa.
-2. **Histórias de usuário** (obrigatória). Cada história:
-   - título `História N: <nome curto> (Prioridade: P1|P2|P3)`; P1 é o mínimo que já entrega valor sozinho (MVP);
-   - uma frase "Como <papel>, quero <ação>, para <benefício>";
-   - **Por que esta prioridade:** uma frase;
-   - **Teste independente:** como verificar esta história sozinha;
-   - **Cenários de aceite:** lista numerada no formato **Dado** <estado>, **Quando** <ação>, **Então** <resultado observável>.
-3. **Casos de borda.** Perguntas sobre limites e erros ("O que acontece quando ...?"). Remova se não houver.
-4. **Requisitos funcionais** (obrigatória). IDs `RF-001`, `RF-002`... Um requisito por linha, verificável:
-   - "O sistema DEVE <capacidade>." ou "O usuário DEVE conseguir <interação>."
-   - para gatilhos, use a forma "QUANDO <evento>, o sistema DEVE <resposta>."
-   - dúvida que muda o resultado vira `[PRECISA ESCLARECER: <pergunta>]` no próprio requisito. No máximo 3 marcas; o planejamento pergunta ao usuário e remove as marcas.
-5. **Entidades-chave.** Só se o card mexe com dados: nome, o que representa e relações, sem tipos nem tabelas.
-6. **Critérios de sucesso** (obrigatória). IDs `CS-001`... Mensuráveis e independentes de tecnologia ("o usuário cria o card em até 3 cliques", "nenhum card muda de coluna sem pedido").
-7. **Premissas e fora de escopo.** O que se assumiu e o que este card não faz.
+1. **Goal.** One sentence, from the point of view of whoever uses it.
+2. **User stories** (required). Each story:
+   - title `Story N: <short name> (Priority: P1|P2|P3)`; P1 is the minimum that already delivers value on its own (MVP);
+   - one sentence "As a <role>, I want <action>, so that <benefit>";
+   - **Why this priority:** one sentence;
+   - **Independent test:** how to verify this story on its own;
+   - **Acceptance scenarios:** numbered list in the format **Given** <state>, **When** <action>, **Then** <observable result>.
+3. **Edge cases.** Questions about limits and errors ("What happens when ...?"). Remove if there are none.
+4. **Functional requirements** (required). IDs `FR-001`, `FR-002`... One requirement per line, verifiable:
+   - "The system MUST <capability>." or "The user MUST be able to <interaction>."
+   - for triggers, use the form "WHEN <event>, the system MUST <response>."
+   - a doubt that changes the outcome becomes `[NEEDS CLARIFICATION: <question>]` in the requirement itself. At most 3 markers; planning asks the user and removes the markers.
+5. **Key entities.** Only if the card touches data: name, what it represents and relations, with no types or tables.
+6. **Success criteria** (required). IDs `SC-001`... Measurable and technology-independent ("the user creates the card in up to 3 clicks", "no card changes column without a request").
+7. **Assumptions and out of scope.** What was assumed and what this card does not do.
 
-## Cards do tipo bug
+## Bug cards
 
-Troque as histórias por: **Como reproduzir** (passos numerados), **Comportamento atual** e **Comportamento esperado**. Mantenha Requisitos funcionais (o que a correção garante) e Critérios de sucesso (incluindo "o bug não volta": um teste que falhava passa).
+Replace the stories with: **How to reproduce** (numbered steps), **Current behavior** and **Expected behavior**. Keep Functional requirements (what the fix guarantees) and Success criteria (including "the bug does not come back": a test that failed now passes).
 
-## Regras
+## Rules
 
-- Nada de arquivos, funções, bibliotecas ou tabelas: isso é do Plano.
-- Escreva para quem decide o produto entender sem ler código.
-- Não deixe seção vazia nem "N/A": remova a seção opcional.
+- No files, functions, libraries or tables: those belong to the Plan.
+- Write so that whoever decides the product can understand it without reading code.
+- Leave no section empty or "N/A": remove the optional section.
 
-## Entrega
+## Delivery
 
-Envie com `tipo` = `especificacao` (ferramenta `agentboard_escrever_documento` ou marcadores, conforme `agentboard-planejamento`).
+Send with `tipo` = `especificacao` (the `agentboard_escrever_documento` tool or markers, as in `agentboard-planejamento`).

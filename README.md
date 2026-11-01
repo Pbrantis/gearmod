@@ -19,4 +19,16 @@ pnpm test
 pnpm build
 ```
 
+## Empacotamento Windows
+
+```powershell
+# Executável para teste rápido (sem instalador)
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+# Instalador NSIS para distribuição
+powershell -ExecutionPolicy Bypass -File .\installer.ps1
+```
+
+O executável de teste fica em `apps/desktop/dist/win-unpacked/AgentBoard.exe`; o instalador fica em `apps/desktop/dist/AgentBoard-Setup-<versão>-x64.exe`.
+
 Os dados são gravados em `app.getPath('userData')/data`, nunca na instalação. Em desenvolvimento, defina `AGENTBOARD_DATA_DIR` para usar uma pasta isolada.

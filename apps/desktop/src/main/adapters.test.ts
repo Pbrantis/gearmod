@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { ClaudeCliAdapter, CodexAppServerAdapter, codexAccess, listCodexModels, type ProcessFactory } from './adapters'
 import type { AgentProfile } from '@agentboard/contracts'
 
-const profile = (provider: 'codex' | 'claude'): AgentProfile => ({ id: '10000000-0000-4000-8000-000000000001', provider, label: provider, scope: 'work', color: '#aeb9ff', configDir: 'C:\\profiles\\work', executablePath: null, enabled: true })
+const profile = (provider: 'codex' | 'claude'): AgentProfile => ({ id: '10000000-0000-4000-8000-000000000001', provider, label: provider, scope: 'work', color: '#aeb9ff', configDir: 'C:\\profiles\\work', executablePath: null, enabled: true, billingMode: 'unknown', envPassthrough: [] })
 
 function fakeProcess(onInput?: (value: Record<string, unknown>, child: ChildProcessWithoutNullStreams) => void): ChildProcessWithoutNullStreams {
   const emitter = new EventEmitter() as EventEmitter & Partial<ChildProcessWithoutNullStreams>
@@ -24,13 +24,13 @@ describe('real provider protocol adapters', () => {
     const factory: ProcessFactory = { start() { return fakeProcess((request, child) => {
       methods.push(String(request.method)); const id = request.id
       if (request.method === 'initialize') send(child, { id, result: {} })
-      if (request.method === 'thread/start') send(child, { id, result: { thread: { id: 'thread-1' } } })
+      if (request.method === 'thread/start') send(child, { id, result: { thread: { id: 'thread-1' }, model: 'gpt-6.1-effective' } })
       if (request.method === 'turn/start') { send(child, { id, result: { turn: { id: 'turn-1' } } }); send(child, { method: 'item/agentMessage/delta', params: { delta: 'Olá', threadId: 'thread-1', turnId: 'turn-1', itemId: 'i' } }); send(child, { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed', error: null } } }) }
     }) } }
     const events: string[] = []
     const result = await new CodexAppServerAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'planeje', sessionId: null, planning: true, profile: profile('codex'), onEvent: (event) => events.push(event.type) })
     expect(methods).toEqual(['initialize', 'initialized', 'thread/start', 'turn/start'])
-    expect(result).toMatchObject({ sessionId: 'thread-1', turnId: 'turn-1', text: 'Olá', status: 'completed' })
+    expect(result).toMatchObject({ sessionId: 'thread-1', turnId: 'turn-1', text: 'Olá', status: 'completed', modelEffective: 'gpt-6.1-effective' })
     expect(events).toContain('item/agentMessage/delta')
   })
 
@@ -39,6 +39,29 @@ describe('real provider protocol adapters', () => {
     const factory: ProcessFactory = { start() { child = fakeProcess(); queueMicrotask(() => { send(child, { type: 'system', session_id: 'session-1' }); send(child, { type: 'stream_event', session_id: 'session-1', event: { delta: { type: 'text_delta', text: 'Plano' } } }); send(child, { type: 'result', session_id: 'session-1', is_error: false }) }); return child } }
     const result = await new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'planeje', sessionId: null, planning: true, profile: profile('claude'), onEvent: () => undefined })
     expect(result).toMatchObject({ sessionId: 'session-1', text: 'Plano', status: 'completed' })
+  })
+
+  it('continues Claude execution after a large attachment read event', async () => {
+    const content = 'x'.repeat(120_000)
+    const events: unknown[] = []
+    const factory: ProcessFactory = { start() {
+      const child = fakeProcess()
+      queueMicrotask(() => {
+        send(child, { type: 'user', message: { content: [{ type: 'tool_result', content }] }, session_id: 'session-large' })
+        send(child, { type: 'result', session_id: 'session-large', result: 'Arquivo lido', is_error: false })
+      })
+      return child
+    } }
+    const result = await new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'leia o anexo', sessionId: null, planning: true, profile: profile('claude'), onEvent: (event) => events.push(event) })
+    expect(events[0]).toEqual({ type: 'claude/user', payload: { type: 'user', message: { content: [{ type: 'tool_result', content: 'x'.repeat(100_000) }] }, session_id: 'session-large' } })
+    expect(result).toMatchObject({ sessionId: 'session-large', text: 'Arquivo lido', status: 'completed' })
+  })
+
+  it('captures apiKeySource do evento system/init do Claude, sem gravar modalidade sozinho', async () => {
+    let child: ChildProcessWithoutNullStreams
+    const factory: ProcessFactory = { start() { child = fakeProcess(); queueMicrotask(() => { send(child, { type: 'system', subtype: 'init', session_id: 'session-2', apiKeySource: 'ANTHROPIC_API_KEY' }); send(child, { type: 'result', session_id: 'session-2', is_error: false }) }); return child } }
+    const result = await new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'planeje', sessionId: null, planning: true, profile: profile('claude'), onEvent: () => undefined })
+    expect(result).toMatchObject({ sessionId: 'session-2', status: 'completed', apiKeySource: 'ANTHROPIC_API_KEY' })
   })
 
   it('passes the system skills to Codex as developerInstructions and to Claude as --plugin-dir', async () => {

@@ -5,6 +5,7 @@ import { CheckIcon, DiffIcon, ExpandIcon, RefreshIcon } from './icons'
 import { ConfirmDialog } from './ConfirmDialog'
 import { plainError } from './NoticeDialog'
 import { LinkWorktreeDialog } from './LinkWorktreeDialog'
+import { useT } from './i18n'
 
 const commandKey = (projectId: string): string => `agentboard.testCommand.${projectId}`
 const readCommand = (projectId: string): string => { try { return localStorage.getItem(commandKey(projectId)) ?? '' } catch { return '' } }
@@ -14,6 +15,7 @@ const readCommand = (projectId: string): string => { try { return localStorage.g
  * Fica flutuando à esquerda do chat; os dois chips (Testes automatizados e Revisar) são os botões e pedem confirmação.
  */
 export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: string; projectId: string; busy: boolean; shared?: string | null }): React.JSX.Element {
+  const { board: tb, common } = useT(), t = tb.changesCard
   const [picking, setPicking] = useState(false), [noWorktree, setNoWorktree] = useState(false)
   const [files, setFiles] = useState<FileChange[]>(), [test, setTest] = useState<TestRun | null>(null), [review, setReview] = useState<Review | null>(null)
   const [command, setCommand] = useState(() => readCommand(projectId)), [draftCommand, setDraftCommand] = useState(() => readCommand(projectId))
@@ -57,30 +59,30 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
     setCommand(next); try { localStorage.setItem(commandKey(projectId), next) } catch { /* só conveniência */ }
     const action = configuring; setConfiguring(''); if (action === 'run') void runTest(next)
   }
-  return <aside className="changes" aria-label="Alterações do card">
+  return <aside className="changes" aria-label={t.cardChanges}>
     <div className="ch-head">
-      <span className="ch-title">Alterações</span>
-      <button type="button" className="ch-icon tip" data-tip="Ver alterações em tela ampla" aria-label="Ver alterações em tela ampla" disabled={!files?.length} onClick={showAll}><ExpandIcon /></button>
-      <button type="button" className="ch-icon tip" data-tip="Atualizar" aria-label="Atualizar alterações" disabled={Boolean(working)} onClick={() => void refresh()}>{working === 'refresh' ? <span className="spin sm" /> : <RefreshIcon />}</button>
+      <span className="ch-title">{t.title}</span>
+      <button type="button" className="ch-icon tip" data-tip={t.viewWide} aria-label={t.viewWide} disabled={!files?.length} onClick={showAll}><ExpandIcon /></button>
+      <button type="button" className="ch-icon tip" data-tip={common.refresh} aria-label={t.refreshChanges} disabled={Boolean(working)} onClick={() => void refresh()}>{working === 'refresh' ? <span className="spin sm" /> : <RefreshIcon />}</button>
     </div>
-    <button type="button" className="ch-row ch-rowbtn" disabled={!files?.length} title="Ver os arquivos alterados no explorador" aria-label="Ver os arquivos alterados no explorador" onClick={showAll}>
+    <button type="button" className="ch-row ch-rowbtn" disabled={!files?.length} data-tip={t.viewFiles} aria-label={t.viewFiles} onClick={showAll}>
       <DiffIcon />
-      {files === undefined ? <span className="ch-muted">Carregando…</span>
-        : files.length ? <><span className="ch-add">+{added}</span><span className="ch-del">−{removed}</span><span className="ch-muted">{files.length} {files.length === 1 ? 'arquivo' : 'arquivos'}</span><span className="chev" aria-hidden="true">›</span></>
-          : <span className="ch-muted">Nenhuma alteração ainda</span>}
+      {files === undefined ? <span className="ch-muted">{common.loading}</span>
+        : files.length ? <><span className="ch-add">+{added}</span><span className="ch-del">−{removed}</span><span className="ch-muted">{t.fileCount(files.length)}</span><span className="chev" aria-hidden="true">›</span></>
+          : <span className="ch-muted">{t.noChangesYet}</span>}
     </button>
-    {shared && <p className="ch-muted ch-shared">Usando a worktree de <b>{shared}</b> · <button type="button" className="linklike" onClick={() => void window.agentboard.invoke('worktrees:link', { cardId, fromCardId: null }).then(() => { window.dispatchEvent(new Event('agentboard:board-changed')); void refresh() })}>Desvincular</button></p>}
-    {!shared && noWorktree && <button type="button" className="mini secondary ch-link" onClick={() => setPicking(true)}>Usar worktree de outro card…</button>}
+    {shared && <p className="ch-muted ch-shared">{t.usingWorktreeOf(shared)} · <button type="button" className="linklike" onClick={() => void window.agentboard.invoke('worktrees:link', { cardId, fromCardId: null }).then(() => { window.dispatchEvent(new Event('agentboard:board-changed')); void refresh() })}>{t.unlink}</button></p>}
+    {!shared && noWorktree && <button type="button" className="mini secondary ch-link" onClick={() => setPicking(true)}>{t.useOtherWorktree}</button>}
     {picking && <LinkWorktreeDialog cardId={cardId} close={() => setPicking(false)} linked={() => { setPicking(false); void refresh() }} />}
     <div className="ch-steps">
-      <button type="button" className={`ch-step ${passed ? 'ok' : test?.status === 'failed' ? 'bad' : ''}`} title="Roda o comando de teste do projeto nesta worktree. É diferente do checklist manual do chat de Teste." disabled={Boolean(working) || busy} onClick={() => command.trim() ? setAsk('test') : configure('run')}>{working === 'test' ? <span className="spin sm" /> : passed ? '✓' : test?.status === 'failed' ? '✕' : '○'} Testes automatizados{test?.status === 'failed' ? ' falharam' : passed ? ' passaram' : ''}</button>
-      <button type="button" className={`ch-step ${approved ? 'ok' : ''}`} title="Sua aprovação das alterações; libera depois que os testes passam" disabled={Boolean(working) || busy || !passed || approved} onClick={() => setAsk('review')}>{working === 'review' ? <span className="spin sm" /> : approved ? '✓' : '○'} Revisar{approved ? ' · aprovada' : ''}</button>
-      <button type="button" className={`ch-step ch-command ${command.trim() ? '' : 'bad'}`} title={command.trim() ? `Comando atual: ${command}` : 'Defina qual comando executa os testes deste projeto'} onClick={() => configure('save')}>{command.trim() ? `⌘ ${command}` : '⌘ Configurar comando'}</button>
-      {passed && approved && <span className="ch-ready"><CheckIcon />Pronto para Done</span>}
+      <button type="button" className={`ch-step ${passed ? 'ok' : test?.status === 'failed' ? 'bad' : ''}`} data-tip={t.autoTestsTip} disabled={Boolean(working) || busy} onClick={() => command.trim() ? setAsk('test') : configure('run')}>{working === 'test' ? <span className="spin sm" /> : passed ? '✓' : test?.status === 'failed' ? '✕' : '○'} {test?.status === 'failed' ? t.autoTestsFailed : passed ? t.autoTestsPassed : t.autoTests}</button>
+      <button type="button" className={`ch-step ${approved ? 'ok' : ''}`} data-tip={t.reviewTip} disabled={Boolean(working) || busy || !passed || approved} onClick={() => setAsk('review')}>{working === 'review' ? <span className="spin sm" /> : approved ? '✓' : '○'} {approved ? t.reviewApproved : t.review}</button>
+      <button type="button" className={`ch-step ch-command ${command.trim() ? '' : 'bad'}`} data-tip={command.trim() ? t.currentCommand(command) : t.defineCommandTip} onClick={() => configure('save')}>{command.trim() ? `⌘ ${command}` : t.configureCommand}</button>
+      {passed && approved && <span className="ch-ready"><CheckIcon />{t.readyForDone}</span>}
     </div>
     {error && <p className="ch-error">{error}</p>}
-    {ask === 'test' && <ConfirmDialog eyebrow="Testes automatizados" title={test?.status === 'failed' ? 'Rodar os testes de novo?' : 'Rodar os testes?'} text={command.trim() ? `Vai rodar "${command.trim()}" na worktree deste card. Para ir para Done, os testes precisam passar e a revisão ser aprovada.` : 'Vai rodar o comando de teste do projeto na worktree deste card. Você ainda precisa informar o comando (ex.: pytest, npm test).'} ok="Rodar testes" cancel={() => setAsk('')} confirm={() => { setAsk(''); void runTest() }} />}
-    {ask === 'review' && <ConfirmDialog eyebrow="Revisão" title="Aprovar as alterações?" text={`Você confirma que revisou as ${files?.length ?? 0} ${files?.length === 1 ? 'alteração' : 'alterações'} (+${added} −${removed}) e aprova este card. Depois disso ele fica pronto para Done.`} ok="Aprovar" cancel={() => setAsk('')} confirm={() => { setAsk(''); void approve() }} />}
-    {configuring && <ConfirmDialog eyebrow="Testes automatizados" title="Comando de teste do projeto" text="Informe o comando que deve passar para liberar este card para Done. O checklist do chat de Teste é separado desta execução automatizada." ok={configuring === 'run' ? 'Salvar e rodar' : 'Salvar comando'} okDisabled={!draftCommand.trim()} extra={<label className="ch-cmd">Comando<input className="in" autoFocus value={draftCommand} placeholder="ex.: pnpm test, npm test, pytest" spellCheck={false} onChange={(event) => setDraftCommand(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && draftCommand.trim()) saveConfiguredCommand() }} /></label>} cancel={() => setConfiguring('')} confirm={saveConfiguredCommand} />}
+    {ask === 'test' && <ConfirmDialog eyebrow={t.autoTests} title={test?.status === 'failed' ? t.runAgainTitle : t.runTestsTitle} text={command.trim() ? t.runTestsText(command.trim()) : t.runTestsNoCommand} ok={t.runTests} cancel={() => setAsk('')} confirm={() => { setAsk(''); void runTest() }} />}
+    {ask === 'review' && <ConfirmDialog eyebrow={t.reviewEyebrow} title={t.approveTitle} text={t.approveText(files?.length ?? 0, added, removed)} ok={t.approve} cancel={() => setAsk('')} confirm={() => { setAsk(''); void approve() }} />}
+    {configuring && <ConfirmDialog eyebrow={t.autoTests} title={t.commandTitle} text={t.commandText} ok={configuring === 'run' ? t.saveAndRun : t.saveCommand} okDisabled={!draftCommand.trim()} extra={<label className="ch-cmd">{t.command}<input className="in" autoFocus value={draftCommand} placeholder={t.commandPlaceholder} spellCheck={false} onChange={(event) => setDraftCommand(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && draftCommand.trim()) saveConfiguredCommand() }} /></label>} cancel={() => setConfiguring('')} confirm={saveConfiguredCommand} />}
   </aside>
 }

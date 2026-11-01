@@ -3,6 +3,7 @@ import { keymap, type Command, type KeyBinding } from '@codemirror/view'
 import { copyLineDown, copyLineUp, deleteLine, indentLess, indentMore, insertBlankLine, moveLineDown, moveLineUp, selectLine, toggleBlockComment, toggleComment } from '@codemirror/commands'
 import { foldCode, unfoldCode } from '@codemirror/language'
 import { selectNextOccurrence, selectSelectionMatches } from '@codemirror/search'
+import { tr } from '../i18n'
 
 export interface EditorActions { save(): void; find(): void; replace(): void; goto(): void }
 
@@ -17,15 +18,18 @@ export const insertLineAbove: Command = ({ state, dispatch }) => {
   return true
 }
 
-/** Atalho e descrição (em português) mostrados no menu de configurações do editor. */
-export const shortcutList: Array<{ keys: string; label: string }> = [
-  { keys: 'Ctrl+S', label: 'Salvar' }, { keys: 'Ctrl+F', label: 'Localizar' }, { keys: 'Ctrl+H', label: 'Substituir' }, { keys: 'Ctrl+G', label: 'Ir para linha' },
-  { keys: 'Ctrl+Z / Ctrl+Y', label: 'Desfazer / refazer' }, { keys: 'Alt+↑ / Alt+↓', label: 'Mover linha' }, { keys: 'Shift+Alt+↑ / ↓', label: 'Duplicar linha' },
-  { keys: 'Ctrl+Shift+K', label: 'Excluir linha' }, { keys: 'Ctrl+Enter', label: 'Linha nova abaixo' }, { keys: 'Ctrl+Shift+Enter', label: 'Linha nova acima' },
-  { keys: 'Tab / Shift+Tab', label: 'Aumentar / diminuir recuo' }, { keys: 'Ctrl+] / Ctrl+[', label: 'Aumentar / diminuir recuo' }, { keys: 'Ctrl+/', label: 'Comentar linha' },
-  { keys: 'Shift+Alt+A', label: 'Comentar bloco' }, { keys: 'Ctrl+D', label: 'Selecionar próxima ocorrência' }, { keys: 'Ctrl+Shift+L', label: 'Selecionar todas as ocorrências' },
-  { keys: 'Alt+clique', label: 'Adicionar cursor' }, { keys: 'Ctrl+L', label: 'Selecionar linha' }, { keys: 'Ctrl+Shift+[ / ]', label: 'Recolher / expandir trecho' }
-]
+/** Atalho e descrição (no idioma da interface) mostrados no menu de configurações do editor. */
+export const shortcutList = (): Array<{ keys: string; label: string }> => {
+  const s = tr().files.editor.shortcuts
+  return [
+    { keys: 'Ctrl+S', label: s.save }, { keys: 'Ctrl+F', label: s.find }, { keys: 'Ctrl+H', label: s.replace }, { keys: 'Ctrl+G', label: s.goto },
+    { keys: 'Ctrl+Z / Ctrl+Y', label: s.undoRedo }, { keys: 'Alt+↑ / Alt+↓', label: s.moveLine }, { keys: 'Shift+Alt+↑ / ↓', label: s.duplicateLine },
+    { keys: 'Ctrl+Shift+K', label: s.deleteLine }, { keys: 'Ctrl+Enter', label: s.lineBelow }, { keys: 'Ctrl+Shift+Enter', label: s.lineAbove },
+    { keys: 'Tab / Shift+Tab', label: s.indent }, { keys: 'Ctrl+] / Ctrl+[', label: s.indent }, { keys: 'Ctrl+/', label: s.commentLine },
+    { keys: 'Shift+Alt+A', label: s.commentBlock }, { keys: 'Ctrl+D', label: s.selectNext }, { keys: 'Ctrl+Shift+L', label: s.selectAll },
+    { keys: s.altClick, label: s.addCursor }, { keys: 'Ctrl+L', label: s.selectLine }, { keys: 'Ctrl+Shift+[ / ]', label: s.fold }
+  ]
+}
 
 const ran = (action: () => void): Command => () => { action(); return true }
 /** Atalhos do editor, com prioridade sobre os padrões do CodeMirror (que abririam o painel de busca nativo). */

@@ -1,56 +1,58 @@
 ---
 name: agentboard-discovery
-description: Discovery de uma demanda no AgentBoard (discovery-intake). Use no começo do chat livre ou do planejamento de um card para entender o pedido, explorar o código só com leitura, registrar o entendimento, avaliar a complexidade em seis dimensões e recomendar o fluxo (curto, spec leve ou SDD).
+description: Discovery of a request in AgentBoard (discovery-intake). Use at the start of the free chat or of a card's planning to understand the request, explore the code read-only, record the understanding, assess complexity on six dimensions and recommend the flow (short, light spec or SDD).
 ---
 
-# Discovery da demanda (AgentBoard)
+# Request discovery (AgentBoard)
 
-Objetivo: transformar uma conversa informal em requisitos claros o bastante para planejar ou implementar, sem perder decisões e sem gerar documentação antes da hora. Não é um formulário: converse.
+Write everything you produce for the user (documents, headings, labels, descriptive IDs, questions and chat replies) in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language. Any example phrasing below must be said in `idioma`.
 
-## 1. Entender
+Goal: turn an informal conversation into requirements clear enough to plan or implement, without losing decisions and without generating documentation too early. It is not a form: have a conversation.
 
-- Identifique o objetivo, o problema/motivação, o que entra e o que fica fora, restrições e requisitos implícitos (segurança, desempenho, compatibilidade, dados existentes).
-- Pergunte só o que muda o resultado: até 3 perguntas por mensagem, com o bloco `agentboard-perguntas` quando houver opções.
-- Não suponha detalhes técnicos que o código responde: explore antes de perguntar.
+## 1. Understand
 
-## 2. Explorar o código (barato e só leitura)
+- Identify the goal, the problem/motivation, what is in and what is out, constraints and implicit requirements (security, performance, compatibility, existing data).
+- Ask only what changes the outcome: up to 3 questions per message, using the `agentboard-perguntas` block when there are options.
+- Do not assume technical details the code can answer: explore before asking.
 
-- Comece por buscas (Grep/Glob, `rg`, nomes de símbolos) e leia só os trechos relevantes. Não leia o workspace inteiro e não mande arquivos grandes para o contexto.
-- Se o contexto já trouxer uma "Exploração do código" válida para a versão atual, reaproveite. Explore de novo só quando ela estiver DESATUALIZADA ou a demanda mudar.
-- Use um subagente explorador (ex.: Explore do Claude Code) só quando a busca for ampla de verdade; o custo extra precisa compensar.
-- Procure: módulos e repositórios afetados, implementações parecidas, contratos/APIs, dependências e testes existentes.
-- Registre o resultado com `agentboard_registrar_exploracao` (resumo compacto + evidências com caminho e linha). O app guarda a versão do código junto.
+## 2. Explore the code (cheap and read-only)
 
-## 3. Registrar o entendimento
+- Start with searches (Grep/Glob, `rg`, symbol names) and read only the relevant parts. Do not read the whole workspace and do not push large files into the context.
+- If the context already carries a "Exploração do código" (code exploration) section that is valid for the current version, reuse it. Explore again only when it is marked DESATUALIZADA (outdated) or the request changed.
+- Use an exploration subagent (e.g. Claude Code's Explore) only when the search is truly broad; the extra cost has to pay off.
+- Look for: affected modules and repositories, similar implementations, contracts/APIs, dependencies and existing tests.
+- Record the result with `agentboard_registrar_exploracao` (compact summary + evidence with path and line). The app stores the code version alongside it.
 
-Chame `agentboard_registrar_entendimento` com objetivo, motivação, escopo, exclusões, critérios de aceite, pendências, contexto técnico (caminhos reais) e `prontidao` (`pronto` ou `precisa_esclarecer`). Chame de novo só quando algo relevante mudar.
+## 3. Record the understanding
 
-Decisões que o usuário tomar no chat: `agentboard_registrar_decisao` com `origem: "usuario"`. Recomendações suas: `origem: "agente"` (o usuário aprova no card). Para trocar uma decisão, use `substitui`.
+Call `agentboard_registrar_entendimento` with goal, motivation, scope, exclusions, acceptance criteria, open items, technical context (real paths) and `prontidao` (`pronto` or `precisa_esclarecer`; "ready" or "needs clarification"). Call it again only when something relevant changes.
 
-## 4. Avaliar a complexidade
+Decisions the user makes in the chat: `agentboard_registrar_decisao` with `origem: "usuario"`. Your own recommendations: `origem: "agente"` (the user approves them on the card). To replace a decision, use `substitui`.
 
-Chame `agentboard_avaliar_complexidade` com uma nota de 0 a 3 por dimensão e uma justificativa objetiva (fato verificável, não raciocínio interno):
+## 4. Assess complexity
 
-| Dimensão | 0 | 1 | 2 | 3 |
+Call `agentboard_avaliar_complexidade` with a score from 0 to 3 per dimension and an objective justification (a verifiable fact, not internal reasoning). The dimension names are the keys the app expects; keep them as written (the English gloss is in parentheses):
+
+| Dimension | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
-| escopo | 1 arquivo | poucos arquivos de um módulo | vários módulos | vários repositórios ou sistema todo |
-| acoplamento | isolado | 1 dependência | contratos compartilhados | muda contratos públicos/dados |
-| incerteza | tudo claro | 1 detalhe aberto | requisitos parciais | objetivo ainda vago |
-| risco | nenhum | regressão local | dados, segurança ou dinheiro tocados | perda de dados, segurança ou produção |
-| novidade | padrão do projeto | variação conhecida | tecnologia nova para o projeto | sem precedente |
-| validacao | teste óbvio | teste unitário | integração/E2E | difícil reproduzir |
+| escopo (scope) | 1 file | a few files of one module | several modules | several repositories or the whole system |
+| acoplamento (coupling) | isolated | 1 dependency | shared contracts | changes public contracts/data |
+| incerteza (uncertainty) | everything clear | 1 open detail | partial requirements | goal still vague |
+| risco (risk) | none | local regression | data, security or money touched | loss of data, security or production |
+| novidade (novelty) | project standard | known variation | technology new to the project | no precedent |
+| validacao (validation) | obvious test | unit test | integration/E2E | hard to reproduce |
 
-- Sem evidências ainda (antes de explorar), marque `preliminar: true` e `confianca: "baixa"`.
-- Liste `riscos_criticos` à parte da nota; risco 3 nunca vai para o fluxo curto.
-- Informe evidências (`file`, `commit`, `message`, `test`, `api`...) com caminho/linha.
-- Reavalie só com `gatilho` real (`requirements-changed`, `new-dependency`, `risk`, `architecture`, `scope`, `failures`). O app recusa avaliações iguais à atual.
+- With no evidence yet (before exploring), set `preliminar: true` and `confianca: "baixa"` (low).
+- List `riscos_criticos` separately from the score; risk 3 never goes to the short flow.
+- Provide evidence (`file`, `commit`, `message`, `test`, `api`...) with path/line.
+- Reassess only with a real `gatilho` (`requirements-changed`, `new-dependency`, `risk`, `architecture`, `scope`, `failures`). The app rejects assessments identical to the current one.
 
-## 5. Recomendar o fluxo
+## 5. Recommend the flow
 
-O app devolve a pontuação e o fluxo recomendado. Apresente em uma ou duas frases (pontos, nível, principal motivo) e pergunte ao usuário, com botões, se segue o recomendado ou outro:
+The app returns the score and the recommended flow. Present it in one or two sentences (points, level, main reason) and ask the user, with buttons, whether to follow the recommendation or another flow:
 
-- `light` (simples): tarefa pequena; implementar e validar, sem Especificação/Plano/Tasks.
-- `spec` (média): Especificação objetiva, Plano e Tasks do AgentBoard.
-- `sdd` (complexa): método configurado do projeto (SDD do AgentBoard, Spec Kit, OpenSpec ou personalizado), descrito no contexto.
+- `light` (simple): short workflow; a single agent implements and validates, with no Specification/Plan/Tasks. It is a workflow, not a card type.
+- `spec` (medium): concise Specification, Plan and Tasks from AgentBoard.
+- `sdd` (complex): for this card, recommend either AgentBoard's SDD or GitHub Spec Kit, explaining the reason in the context of the task. Consider AgentBoard for evolving existing features and Spec Kit for new work, as suggestions, not fixed rules. The final choice is the user's.
 
-Depois da resposta, chame `agentboard_escolher_fluxo` com `confirmado_pelo_usuario: true`. Se o usuário corrigir alguma premissa, registre a decisão e reavalie com o gatilho certo; a avaliação anterior continua no histórico.
+Call `agentboard_escolher_fluxo` to propose the flow; for SDD provide `metodo` and `motivo`. Wait for the user's approval. If they correct a premise, record the decision and reassess with the right trigger; the previous assessment stays in the history.

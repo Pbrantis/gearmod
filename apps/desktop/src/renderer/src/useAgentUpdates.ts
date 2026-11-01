@@ -9,5 +9,5 @@ export function useAgentUpdatesPending(profiles: AgentProfile[]): boolean {
     const load = (): void => { void window.agentboard.invoke('profiles:probe-all', undefined).then((all) => setVersions(Object.fromEntries(all.map((probe) => [probe.profileId, { installed: probe.installed, version: probe.version ?? null }])))).catch(() => undefined) }
     load(); window.addEventListener('focus', load); return () => window.removeEventListener('focus', load)
   }, [profiles])
-  return profiles.some((profile) => { const probe = versions[profile.id], last = latest?.versions[profile.provider as 'claude' | 'codex']; return Boolean(probe?.installed && last && isOutdated(probe.version, last)) })
+  return profiles.some((profile) => { const probe = versions[profile.id], last = latest?.versions[profile.provider as 'claude' | 'codex' | 'gemini']; return Boolean(probe?.installed && last && isOutdated(probe.version, last)) })
 }

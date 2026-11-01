@@ -6,6 +6,7 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
 import type { VoiceModel, VoiceStatus } from '@agentboard/contracts'
+import { tm } from './i18n'
 
 const execFileAsync = promisify(execFile)
 type LocalVoiceModel = Exclude<VoiceModel, 'groq'>
@@ -66,7 +67,7 @@ export class VoiceService {
   private async groqKey(): Promise<string | null> { return (await this.deps.secrets?.read().catch(() => null)) || null }
 
   async setGroqKey(key: string, model: VoiceModel): Promise<VoiceStatus> {
-    if (!this.deps.secrets) throw new Error('Não é possível guardar a chave neste computador')
+    if (!this.deps.secrets) throw new Error(tm().voice.cannotStoreKey)
     // Remove quebras de linha e caracteres invisíveis que costumam vir junto ao colar.
     const value = key.replace(/[^\x21-\x7e]/g, '')
     if (value) await this.checkGroqKey(value)
@@ -76,12 +77,12 @@ export class VoiceService {
 
   /** Testa a chave antes de guardar: Groq (groq.com, chave gsk_…) é fácil de confundir com o Grok da xAI (chave xai-…). */
   private async checkGroqKey(key: string): Promise<void> {
-    if (/^xai-/i.test(key)) throw new Error('Essa é uma chave do Grok (xAI). O ditado usa o Groq, com "q": crie a chave em console.groq.com/keys (começa com gsk_).')
+    if (/^xai-/i.test(key)) throw new Error(tm().voice.grokKeyMistake)
     const modelsUrl = (this.deps.groqUrl ?? groqUrl).replace(/\/audio\/transcriptions$/, '/models')
     let response: Response
-    try { response = await (this.deps.fetchImpl ?? fetch)(modelsUrl, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) }) } catch { throw new Error('Não consegui falar com o Groq para conferir a chave. Verifique a internet.') }
-    if (response.status === 401 || response.status === 403) throw new Error(`O Groq recusou essa chave${await groqReason(response)}. Copie a chave inteira ao criá-la em console.groq.com/keys (começa com gsk_).`)
-    if (!response.ok) throw new Error(`Não consegui conferir a chave no Groq (HTTP ${response.status})`)
+    try { response = await (this.deps.fetchImpl ?? fetch)(modelsUrl, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) }) } catch { throw new Error(tm().voice.groqUnreachable) }
+    if (response.status === 401 || response.status === 403) throw new Error(tm().voice.groqRejectedKey(await groqReason(response)))
+    if (!response.ok) throw new Error(tm().voice.groqKeyCheckFailed(response.status))
   }
 
   private async hasModel(model: LocalVoiceModel): Promise<boolean> {
@@ -91,11 +92,11 @@ export class VoiceService {
 
   /** Baixa o modelo (e, no Windows, o executável) com progresso; nada é baixado sem o usuário pedir. */
   async install(model: VoiceModel): Promise<VoiceStatus> {
-    if (model === 'groq') throw new Error('Cadastre a chave do Groq em Configurações › Aparência')
-    if (this.downloading) throw new Error('Já existe um download em andamento')
+    if (model === 'groq') throw new Error(tm().voice.registerGroqKey)
+    if (this.downloading) throw new Error(tm().voice.downloadInProgress)
     try {
       if (!await this.findEngine()) {
-        if (this.platform !== 'win32') throw new Error('Instale o whisper.cpp (comando whisper-cli) e deixe no PATH; depois baixe o modelo aqui.')
+        if (this.platform !== 'win32') throw new Error(tm().voice.installWhisper)
         await this.installEngine()
       }
       if (!await this.hasModel(model)) await this.download(this.deps.modelUrl?.(model) ?? `${modelBase}/${voiceModels[model].file}`, this.modelPath(model), 'modelo')
@@ -114,13 +115,13 @@ export class VoiceService {
     await (this.deps.run ?? defaultRun)('tar', ['-xf', zip, '-C', this.binDir], 120_000)
     await rm(zip, { force: true })
     const found = await findFile(this.binDir, this.engineNames())
-    if (!found) throw new Error('O pacote baixado não trouxe o whisper-cli.exe (só o main.exe obsoleto). Instale o whisper.cpp manualmente.')
+    if (!found) throw new Error(tm().voice.whisperCliMissing)
   }
 
   private async download(url: string, target: string, item: 'programa' | 'modelo'): Promise<void> {
     await mkdir(join(target, '..'), { recursive: true })
     const response = await (this.deps.fetchImpl ?? fetch)(url, { redirect: 'follow' })
-    if (!response.ok || !response.body) throw new Error(`Não foi possível baixar o ${item} (HTTP ${response.status})`)
+    if (!response.ok || !response.body) throw new Error(tm().voice.downloadFailed(item, response.status))
     const total = Number(response.headers.get('content-length')) || null
     let received = 0
     const partial = `${target}.part`
@@ -134,8 +135,8 @@ export class VoiceService {
   async transcribe(input: { wav: Uint8Array; model: VoiceModel; language: string; prompt?: string }): Promise<string> {
     if (input.model === 'groq') return this.transcribeGroq(input)
     const engine = await this.findEngine()
-    if (!engine) throw new Error('O programa de transcrição não está instalado')
-    if (!await this.hasModel(input.model)) throw new Error('O modelo de voz ainda não foi baixado')
+    if (!engine) throw new Error(tm().voice.transcriberNotInstalled)
+    if (!await this.hasModel(input.model)) throw new Error(tm().voice.voiceModelNotDownloaded)
     if (input.wav.byteLength < 2000) return ''
     const temp = join(this.deps.dataDir, 'whisper', `ditado-${Date.now()}-${Math.random().toString(16).slice(2)}.wav`)
     await mkdir(join(this.deps.dataDir, 'whisper'), { recursive: true })
@@ -150,7 +151,7 @@ export class VoiceService {
 
   private async transcribeGroq(input: { wav: Uint8Array; language: string; prompt?: string }): Promise<string> {
     const key = await this.groqKey()
-    if (!key) throw new Error('Cadastre a chave do Groq em Configurações › Aparência')
+    if (!key) throw new Error(tm().voice.registerGroqKey)
     if (input.wav.byteLength < 2000) return ''
     const form = new FormData()
     form.append('file', new Blob([Buffer.from(input.wav)],{ type: 'audio/wav' }), 'ditado.wav')
@@ -161,9 +162,9 @@ export class VoiceService {
     // O Groq aceita até 224 tokens de prompt.
     form.append('prompt', [supportVocabulary, input.prompt].filter(Boolean).join(', ').slice(0, 600))
     const response = await (this.deps.fetchImpl ?? fetch)(this.deps.groqUrl ?? groqUrl, { method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(60_000) })
-    if (response.status === 401) throw new Error(`O Groq recusou a chave salva${await groqReason(response)}. Troque em Configurações › Aparência.`)
-    if (response.status === 429) throw new Error('Limite do Groq atingido. Espere um pouco ou volte para o modelo local.')
-    if (!response.ok) throw new Error(`O Groq não transcreveu o áudio${await groqReason(response)} (HTTP ${response.status})`)
+    if (response.status === 401) throw new Error(tm().voice.groqRejectedSavedKey(await groqReason(response)))
+    if (response.status === 429) throw new Error(tm().voice.groqRateLimit)
+    if (!response.ok) throw new Error(tm().voice.groqNoTranscription(await groqReason(response), response.status))
     const { text } = await response.json() as { text?: string }
     return (text ?? '').replace(/\s+/g, ' ').trim()
   }

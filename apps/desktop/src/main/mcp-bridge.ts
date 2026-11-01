@@ -13,6 +13,11 @@ import type { ConversationRepository } from './conversations'
 import type { BoardRepository } from './projects'
 import type { GitManager } from './git-manager'
 import type { CardHistoryService } from './history'
+import type { ApprovalService } from './approvals'
+import type { PolicyEngine } from './policy'
+import type { SddResolver } from './sdd/sdd-resolver'
+import type { SddWriter } from './sdd/sdd-writer'
+import { findCardType } from '@agentboard/contracts'
 import { assessmentTriggerSchema, complexityDimensions, decisionKindSchema, dimensionScoresSchema, evidenceSchema, levelLabels, workflowKindSchema, workflowLabels, type Evidence, type WorkflowKind } from '@agentboard/contracts'
 
 export interface McpEndpoint { command: string; args: string[]; env: Record<string, string> }
@@ -24,17 +29,12 @@ type Reply = { ok: true; text: string } | { ok: false; error: string }
 const historyTools = new Set(['agentboard_avaliar_complexidade', 'agentboard_escolher_fluxo', 'agentboard_registrar_decisao', 'agentboard_registrar_entendimento', 'agentboard_registrar_exploracao'])
 /** O que o planejador faz depois de cada fluxo escolhido. */
 const workflowNext: Record<WorkflowKind, string> = {
-  light: 'O card virou tarefa pequena: escreva a descrição do que fazer com agentboard_atualizar_card e chame agentboard_concluir_planejamento.',
-  spec: 'Siga a skill agentboard-planejamento: Especificação objetiva, Plano e Tasks; depois agentboard_concluir_planejamento.',
-  sdd: 'Siga o método configurado do projeto (vem no contexto em "metodo") e grave Especificação, Plano e Tasks no card; depois agentboard_concluir_planejamento.'
+  light: 'The card is now in the short workflow: write the description of what to do with agentboard_atualizar_card (descricao) and call agentboard_concluir_planejamento.',
+  spec: 'Follow the agentboard-planejamento skill: an objective Specification, Plan and Tasks; then agentboard_concluir_planejamento.',
+  sdd: 'Follow the project\'s configured method (it comes in the context under "metodo") and save the Specification, Plan and Tasks on the card; then agentboard_concluir_planejamento.'
 }
 
-/** Fluxo curto reaproveita a tarefa pequena (minor) que já existe; sair dele volta o card para task. */
-export function applyWorkflowType(board: BoardRepository, cardId: string, workflow: WorkflowKind): void {
-  const card = board.card(cardId), type = workflow === 'light' ? 'minor' : card.type === 'minor' ? 'task' : card.type
-  if (type === card.type || !card.title.trim()) return
-  board.update({ cardId, type, title: card.title, description: card.description, priority: card.priority, acceptanceCriteria: card.acceptanceCriteria.map(({ body, checked }) => ({ body, checked })) })
-}
+const cardTypeError = (types: Array<{ id: string; name: string }>): string => `tipo must be one of the project's card types: ${types.map((item) => `${item.id} (${item.name})`).join(', ')}. The short workflow is not a type: choose it with agentboard_escolher_fluxo (fluxo light).`
 
 const normalize = (value: string): string => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
@@ -43,12 +43,13 @@ const normalize = (value: string): string => value.normalize('NFD').replace(/[̀
  * e cada execução tem um token próprio, válido só enquanto ela roda. Toda escrita passa pelas mesmas validações do IPC.
  */
 export class McpBridge {
+  usesSpecKit(cardId: string): boolean { return this.deps.history?.sddMethod(cardId) === 'speckit' }
   private server?: Server
   private readonly runs = new Map<string, RunState>()
   private readonly dir: string
   readonly socketPath: string
 
-  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }> }) {
+  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; approvals?: ApprovalService; policy?: PolicyEngine; sddResolver?: Pick<SddResolver, 'constitution' | 'locate'>; sddWriter?: Pick<SddWriter, 'write'>; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }>; agentMoveApproval?: boolean }) {
     const id = randomBytes(6).toString('hex')
     this.dir = join(tmpdir(), `agentboard-${id}`)
     this.socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\agentboard-${id}` : join(this.dir, 'mcp.sock')
@@ -81,7 +82,7 @@ export class McpBridge {
   register(runId: string, cardId: string | null, notify: (change: CardChange) => void, chat: { id: string; purpose: ChatPurpose } = { id: '', purpose: 'execution' }): McpEndpoint {
     const token = randomBytes(24).toString('hex')
     this.runs.set(token, { runId, cardId, chatId: chat.id, purpose: chat.purpose, written: new Set(), pendingMove: null, notify })
-    return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', AGENTBOARD_SOCKET: this.socketPath, AGENTBOARD_TOKEN: token } }
+    return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', AGENTBOARD_SOCKET: this.socketPath, AGENTBOARD_TOKEN: token, AGENTBOARD_PURPOSE: chat.purpose } }
   }
 
   finish(runId: string): RunReport {
@@ -95,139 +96,156 @@ export class McpBridge {
 
   private handle(token: string, tool: string, args: Record<string, unknown>): Reply | Promise<Reply> {
     const run = this.runs.get(token)
-    if (!run) return { ok: false, error: 'Execução desconhecida ou já encerrada.' }
+    if (!run) return { ok: false, error: 'Unknown run, or it has already ended.' }
     const { board, context } = this.deps
     try {
       if (tool === 'agentboard_ler_skill') {
-        if (typeof args.nome !== 'string' || !args.nome.trim()) return { ok: false, error: 'nome deve ser uma skill do catálogo' }
+        if (typeof args.nome !== 'string' || !args.nome.trim()) return { ok: false, error: 'nome must be a skill from the catalog' }
         const instructions = context.skillInstructions(args.nome.trim())
-        return instructions ? { ok: true, text: instructions } : { ok: false, error: `Skill desconhecida: ${args.nome}` }
+        return instructions ? { ok: true, text: instructions } : { ok: false, error: `Unknown skill: ${args.nome}` }
       }
       if (tool === 'agentboard_criar_card') {
-        if (run.purpose !== 'free' || run.cardId) return { ok: false, error: 'Esta conversa já tem card.' }
-        if (!this.deps.conversations) return { ok: false, error: 'O chat livre não está disponível' }
-        const title = args.titulo, type = args.tipo ?? 'task', priority = args.prioridade ?? 'medium', summary = args.resumo ?? ''
-        if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo deve ser um texto de 1 a 240 caracteres' }
-        if (!['feature', 'bug', 'improvement', 'task', 'minor'].includes(String(type))) return { ok: false, error: 'tipo deve ser feature, bug, improvement, task ou minor' }
-        if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade deve ser low, medium, high ou urgent' }
-        if (typeof summary !== 'string') return { ok: false, error: 'resumo deve ser um texto' }
-        const projectId = this.deps.conversations.projectOf(run.chatId), columns = board.get(projectId).columns
+        // Chat da Constituição também pode criar um card (ex.: para gravar uma mudança de verdade, G09); a conversa passa a ser a dele.
+        if ((run.purpose !== 'free' && run.purpose !== 'constitution') || run.cardId) return { ok: false, error: 'This conversation already has a card.' }
+        if (!this.deps.conversations) return { ok: false, error: 'Free chat is not available' }
+        const constitutionChat = run.purpose === 'constitution'
+        const title = args.titulo, priority = args.prioridade ?? 'medium', summary = args.resumo ?? ''
+        if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo must be a text of 1 to 240 characters' }
+        if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade must be low, medium, high or urgent' }
+        if (typeof summary !== 'string') return { ok: false, error: 'resumo must be a text' }
+        const projectId = this.deps.conversations.projectOf(run.chatId), types = board.cardTypes(projectId)
+        // Sem tipo: o primeiro da lista do projeto. Com tipo: id ou nome de um dos tipos do projeto.
+        const type = args.tipo === undefined ? types[0]!.id : findCardType(types, String(args.tipo))?.id
+        if (!type) return { ok: false, error: cardTypeError(types) }
+        const columns = board.get(projectId).columns
         const column = columns.find((item) => item.semanticState === 'backlog') ?? columns[0]
-        if (!column) return { ok: false, error: 'O projeto não tem colunas' }
+        if (!column) return { ok: false, error: 'The project has no columns' }
         const card = board.create({ projectId, columnId: column.id, type: String(type), title: title.trim(), description: summary, priority: String(priority), acceptanceCriteria: [] })
         this.deps.conversations.convertToPlanning(run.chatId, card.id)
         run.cardId = card.id; run.purpose = 'planning'
         run.notify({ type: 'converted', cardId: card.id, chatId: run.chatId })
-        return { ok: true, text: `Card "${card.title}" criado no ${column.label}. Este chat agora é o chat de planejamento dele: carregue agentboard-planejamento com agentboard_ler_skill, siga a skill, grave Especificação, Plano e Tasks com agentboard_escrever_documento e chame agentboard_concluir_planejamento quando terminar.` }
+        return { ok: true, text: constitutionChat ? `Card "${card.title}" created in ${column.label}. Send the complete text with agentboard_escrever_constituicao for review and approval on the card.` : `Card "${card.title}" created in ${column.label}. This chat is now its planning chat: load agentboard-planejamento with agentboard_ler_skill, follow the skill, save the Specification, Plan and Tasks with agentboard_escrever_documento and call agentboard_concluir_planejamento when done.` }
       }
       if (tool === 'agentboard_ler_constituicao' || tool === 'agentboard_escrever_constituicao' || tool === 'agentboard_propor_constituicao') return this.constitution(run, tool, args)
-      if (!run.cardId) return { ok: false, error: 'Esta conversa ainda não tem card. Se o usuário pedir para planejar algo, chame agentboard_criar_card primeiro.' }
+      if (!run.cardId) return { ok: false, error: 'This conversation has no card yet. If the user asks to plan something, call agentboard_criar_card first.' }
       if (tool === 'agentboard_pedir_commit') return this.requestCommit(run, args)
       if (historyTools.has(tool)) return this.history(run, tool, args)
       if (tool === 'agentboard_definir_repositorios') return this.setRepositories(run, args)
-      if (tool === 'agentboard_contexto_do_card') return { ok: true, text: context.block(run.cardId) }
+      if (tool === 'agentboard_contexto_do_card') return context.block(run.cardId, run.purpose === 'planning').then((text) => ({ ok: true as const, text }))
       if (tool === 'agentboard_escrever_documento') {
         const kind = args.tipo, markdown = args.markdown
-        if (typeof kind !== 'string' || !(cardDocumentKinds as readonly string[]).includes(kind) || (systemDocumentKinds as readonly string[]).includes(kind)) return { ok: false, error: `tipo deve ser um destes: ${cardDocumentKinds.filter((item) => !(systemDocumentKinds as readonly string[]).includes(item)).join(', ')}` }
-        if (typeof markdown !== 'string' || markdown.length > 200_000) return { ok: false, error: 'markdown deve ser um texto de até 200.000 caracteres' }
+        if (this.deps.history?.sddMethod(run.cardId) === 'speckit' && (kind === 'especificacao' || kind === 'plano' || kind === 'tasks')) return { ok: false, error: 'Spec Kit artifacts must be created by the native skills (speckit-specify, speckit-plan, speckit-tasks) in the card worktree; do not use this tool.' }
+        if (typeof kind !== 'string' || !(cardDocumentKinds as readonly string[]).includes(kind) || (systemDocumentKinds as readonly string[]).includes(kind)) return { ok: false, error: `tipo must be one of: ${cardDocumentKinds.filter((item) => !(systemDocumentKinds as readonly string[]).includes(item)).join(', ')}` }
+        if (typeof markdown !== 'string' || markdown.length > 200_000) return { ok: false, error: 'markdown must be a text of up to 200,000 characters' }
         board.documents.write(run.cardId, kind as CardDocumentKind, markdown, 'agent')
         run.written.add(kind as CardDocumentKind); run.notify({ type: 'document', kind: kind as CardDocumentKind })
-        return { ok: true, text: `Documento ${kind} gravado.` }
+        return { ok: true, text: `Document ${kind} saved.` }
       }
       if (tool === 'agentboard_checklist_teste') {
-        if (run.purpose !== 'test') return { ok: false, error: 'Esta ferramenta é do testador.' }
-        if (!this.deps.checklists) return { ok: false, error: 'O checklist do teste não está disponível' }
-        if (typeof args.markdown !== 'string' || args.markdown.length > 50_000) return { ok: false, error: 'markdown deve ser o checklist completo (até 50.000 caracteres)' }
+        if (run.purpose !== 'test') return { ok: false, error: 'This tool is for the tester.' }
+        if (!this.deps.checklists) return { ok: false, error: 'The test checklist is not available' }
+        if (typeof args.markdown !== 'string' || args.markdown.length > 50_000) return { ok: false, error: 'markdown must be the complete checklist (up to 50,000 characters)' }
         this.deps.checklists.write(run.cardId, args.markdown); run.notify({ type: 'checklist' })
-        return { ok: true, text: 'Checklist do teste gravado.' }
+        return { ok: true, text: 'Test checklist saved.' }
       }
       if (tool === 'agentboard_concluir_planejamento') {
-        if (run.purpose !== 'planning') return { ok: false, error: 'Esta ferramenta é do planejador.' }
+        if (run.purpose !== 'planning') return { ok: false, error: 'This tool is for the planner.' }
+        if (this.deps.history?.sddMethod(run.cardId) === 'speckit') return { ok: false, error: 'In Spec Kit, planning is ready when the specification, plan and tasks of the card feature exist in the worktree; AgentBoard checks this on its own after each stage.' }
         const missing = board.markPlanReady(run.cardId)
-        if (missing.length) return { ok: false, error: `Ainda faltam documentos escritos: ${missing.join(', ')}. Grave-os e chame de novo.` }
+        if (missing.length) return { ok: false, error: `Documents still missing: ${missing.join(', ')}. Save them and call again.` }
         run.notify({ type: 'card' })
         // Artefatos do plano (pasta do card e, no fluxo SDD, a pasta central do método) são gravados pelo app, nunca pelo planejador.
         let notices: string[] = []; try { notices = this.deps.planReady?.(run.cardId).notices ?? [] } catch (error) { notices = [error instanceof Error ? error.message : String(error)] }
-        return { ok: true, text: `Planejamento concluído; o card agora aparece como "Plano pronto".${notices.length ? ` Avisos: ${notices.join(' ')}` : ''}` }
+        return { ok: true, text: `Planning concluded; the card now shows as "Plan ready".${notices.length ? ` Notices: ${notices.join(' ')}` : ''}` }
       }
       if (tool === 'agentboard_marcar_task') {
-        if (!Number.isInteger(args.linha) || (args.linha as number) < 1 || typeof args.feito !== 'boolean') return { ok: false, error: 'linha deve ser um inteiro a partir de 1 e feito um booleano' }
+        if (!Number.isInteger(args.linha) || (args.linha as number) < 1 || typeof args.feito !== 'boolean') return { ok: false, error: 'linha must be an integer from 1 and feito a boolean' }
         board.documents.setTask(run.cardId, (args.linha as number) - 1, args.feito, 'agent'); run.notify({ type: 'task' })
-        return { ok: true, text: `Linha ${String(args.linha)} ${args.feito ? 'marcada' : 'desmarcada'}.` }
+        return { ok: true, text: `Line ${String(args.linha)} ${args.feito ? 'checked' : 'unchecked'}.` }
       }
       if (tool === 'agentboard_atualizar_card') {
         const current = board.card(run.cardId)
         const title = args.titulo === undefined ? current.title : args.titulo, type = args.tipo === undefined ? current.type : args.tipo, priority = args.prioridade === undefined ? current.priority : args.prioridade
-        if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo deve ser um texto de 1 a 240 caracteres' }
-        if (!['feature', 'bug', 'improvement', 'task', 'minor'].includes(String(type))) return { ok: false, error: 'tipo deve ser feature, bug, improvement, task ou minor' }
-        if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade deve ser low, medium, high ou urgent' }
-        if (args.descricao !== undefined && (typeof args.descricao !== 'string' || args.descricao.length > 20_000)) return { ok: false, error: 'descricao deve ser um texto de até 20.000 caracteres' }
-        board.update({ cardId: run.cardId, type: String(type), title: title.trim(), description: typeof args.descricao === 'string' ? args.descricao.trim() : current.description, priority: String(priority), acceptanceCriteria: current.acceptanceCriteria.map(({ body, checked }) => ({ body, checked })) })
+        if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo must be a text of 1 to 240 characters' }
+        // Tipo novo precisa ser um dos tipos do projeto; o atual (mesmo que tenha saído da lista) continua aceito.
+        const resolvedType = args.tipo === undefined || args.tipo === current.type ? current.type : findCardType(board.cardTypes(current.projectId), String(type))?.id
+        if (!resolvedType) return { ok: false, error: cardTypeError(board.cardTypes(current.projectId)) }
+        if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade must be low, medium, high or urgent' }
+        if (args.descricao !== undefined && (typeof args.descricao !== 'string' || args.descricao.length > 20_000)) return { ok: false, error: 'descricao must be a text of up to 20,000 characters' }
+        board.update({ cardId: run.cardId, type: resolvedType, title: title.trim(), description: typeof args.descricao === 'string' ? args.descricao.trim() : current.description, priority: String(priority), acceptanceCriteria: current.acceptanceCriteria.map(({ body, checked }) => ({ body, checked })) })
         run.notify({ type: 'card' })
-        return { ok: true, text: `Card atualizado: ${title.trim()} (${String(type)}, ${String(priority)}).` }
+        return { ok: true, text: `Card updated: ${title.trim()} (${resolvedType}, ${String(priority)}).` }
       }
       if (tool === 'agentboard_propor_mudanca' || tool === 'agentboard_perguntar_ao_planejador') {
-        if (!this.deps.collab) return { ok: false, error: 'A colaboração entre etapas não está disponível' }
-        if (run.purpose !== 'execution' && run.purpose !== 'test') return { ok: false, error: 'Esta ferramenta é do desenvolvedor e do testador; o planejador altera os documentos direto.' }
+        if (!this.deps.collab) return { ok: false, error: 'Collaboration between stages is not available' }
+        if (run.purpose !== 'execution' && run.purpose !== 'test') return { ok: false, error: 'This tool is for the developer and the tester; the planner changes the documents directly.' }
         if (tool === 'agentboard_perguntar_ao_planejador') {
-          if (typeof args.pergunta !== 'string' || !args.pergunta.trim()) return { ok: false, error: 'informe a pergunta' }
+          if (typeof args.pergunta !== 'string' || !args.pergunta.trim()) return { ok: false, error: 'provide the pergunta' }
           const question = this.deps.collab.askQuestion({ cardId: run.cardId, chatId: run.chatId, purpose: run.purpose, question: args.pergunta })
           run.notify({ type: 'card' })
-          return { ok: true, text: `Dúvida D${String(question.number).padStart(3, '0')} registrada. Continue só com o que não depende dela e TERMINE esta execução: o app leva a dúvida ao planejador e te retoma com a resposta.` }
+          return { ok: true, text: `Question D${String(question.number).padStart(3, '0')} registered. Continue only with what does not depend on it and END this run: the app takes the question to the planner and resumes you with the answer.` }
         }
-        if (![args.titulo, args.o_que_muda, args.motivo].every((value) => typeof value === 'string' && value.trim())) return { ok: false, error: 'informe titulo, o_que_muda e motivo' }
+        if (![args.titulo, args.o_que_muda, args.motivo].every((value) => typeof value === 'string' && value.trim())) return { ok: false, error: 'provide titulo, o_que_muda and motivo' }
         const change = this.deps.collab.proposeChange({ cardId: run.cardId, chatId: run.chatId, purpose: run.purpose, title: args.titulo as string, details: args.o_que_muda as string, reason: args.motivo as string })
         run.notify({ type: 'card' })
-        return { ok: true, text: `Proposta M${String(change.number).padStart(3, '0')} registrada e aguardando a autorização do usuário. NÃO implemente essa mudança. Continue só com o que está nos documentos e termine esta execução; o app te retoma quando houver decisão.` }
+        return { ok: true, text: `Proposal M${String(change.number).padStart(3, '0')} registered and awaiting the user's authorization. Do NOT implement this change. Continue only with what is in the documents and end this run; the app resumes you when there is a decision.` }
       }
       if (tool === 'agentboard_responder_duvida' || tool === 'agentboard_pedir_ao_usuario') {
-        if (!this.deps.collab) return { ok: false, error: 'A colaboração entre etapas não está disponível' }
-        if (run.purpose !== 'planning') return { ok: false, error: 'Esta ferramenta é do planejador.' }
-        if (!Number.isInteger(args.numero) || typeof (tool === 'agentboard_responder_duvida' ? args.resposta : args.pergunta) !== 'string') return { ok: false, error: 'informe numero (inteiro) e ' + (tool === 'agentboard_responder_duvida' ? 'resposta' : 'pergunta') }
+        if (!this.deps.collab) return { ok: false, error: 'Collaboration between stages is not available' }
+        if (run.purpose !== 'planning') return { ok: false, error: 'This tool is for the planner.' }
+        if (!Number.isInteger(args.numero) || typeof (tool === 'agentboard_responder_duvida' ? args.resposta : args.pergunta) !== 'string') return { ok: false, error: 'provide numero (integer) and ' + (tool === 'agentboard_responder_duvida' ? 'resposta' : 'pergunta') }
         if (tool === 'agentboard_responder_duvida') this.deps.collab.answerFromPlanner(run.cardId, args.numero as number, args.resposta as string)
         else this.deps.collab.escalateToUser(run.cardId, args.numero as number, args.pergunta as string)
         run.notify({ type: 'card' })
-        return { ok: true, text: tool === 'agentboard_responder_duvida' ? `Dúvida ${String(args.numero)} respondida; o app devolve a resposta a quem perguntou.` : `Dúvida ${String(args.numero)} enviada ao usuário; o app retoma quem perguntou quando ele responder.` }
+        return { ok: true, text: tool === 'agentboard_responder_duvida' ? `Question ${String(args.numero)} answered; the app returns the answer to whoever asked.` : `Question ${String(args.numero)} sent to the user; the app resumes whoever asked when the user answers.` }
       }
       if (tool === 'agentboard_mover_card') {
-        if (typeof args.coluna !== 'string' || (args.quando !== 'agora' && args.quando !== 'ao_terminar')) return { ok: false, error: 'informe coluna e quando ("agora" ou "ao_terminar")' }
+        if (typeof args.coluna !== 'string' || (args.quando !== 'agora' && args.quando !== 'ao_terminar')) return { ok: false, error: 'provide coluna and quando ("agora" or "ao_terminar")' }
         const column = this.findColumn(run.cardId, args.coluna)
-        if (!column) return { ok: false, error: `Coluna não encontrada: ${args.coluna}` }
-        if (args.quando === 'ao_terminar') { run.pendingMove = column.id; return { ok: true, text: `O card vai para ${column.label} quando esta execução terminar.` } }
+        if (!column) return { ok: false, error: `Column not found: ${args.coluna}` }
+        if (args.quando === 'ao_terminar') { run.pendingMove = column.id; return { ok: true, text: `The card will move to ${column.label} when this run ends.` } }
+        const movePolicyDenied = this.policyDenied(run, 'move'); if (movePolicyDenied) return { ok: false, error: movePolicyDenied }
+        // S05 (atrás da flag): o movimento imediato vira pedido pendente; a Done continua sujeita ao gate quando o usuário aprovar.
+        if (this.deps.agentMoveApproval && this.deps.approvals) {
+          const card = board.card(run.cardId)
+          const approval = this.deps.approvals.request({ kind: 'agent-move', subjectRef: run.cardId, payload: { columnId: column.id, columnLabel: column.label }, requestedActor: 'agent', runId: run.runId, cardId: run.cardId, projectId: card.projectId })
+          run.notify({ type: 'card' })
+          return { ok: true, text: `Request to move to ${column.label} registered (${approval.id}), awaiting the user's approval on the card.` }
+        }
         board.move(run.cardId, column.id, null, 'agent'); run.notify({ type: 'moved', column: column.label })
-        return { ok: true, text: `Card movido para ${column.label}.` }
+        return { ok: true, text: `Card moved to ${column.label}.` }
       }
-      return { ok: false, error: `Ferramenta desconhecida: ${tool}` }
+      return { ok: false, error: `Unknown tool: ${tool}` }
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) } }
   }
 
   /** Repositórios do card: só eles ganham worktree. Na execução, o repositório novo é preparado na hora (os outros continuam como estão). */
   private async setRepositories(run: RunState, args: Record<string, unknown>): Promise<Reply> {
-    if (!run.cardId) return { ok: false, error: 'Esta conversa ainda não tem card.' }
-    if (!Array.isArray(args.repositorios) || args.repositorios.some((item) => typeof item !== 'string')) return { ok: false, error: 'repositorios deve ser uma lista de nomes' }
+    if (!run.cardId) return { ok: false, error: 'This conversation has no card yet.' }
+    if (!Array.isArray(args.repositorios) || args.repositorios.some((item) => typeof item !== 'string')) return { ok: false, error: 'repositorios must be a list of names' }
     const { board } = this.deps, card = board.card(run.cardId)
     const sources = board.get(card.projectId).project.sources.filter((source) => source.isGitRepository)
     const names = (args.repositorios as string[]).map((name) => name.trim()).filter(Boolean)
     const chosen = names.map((name) => sources.find((source) => normalize(source.name) === normalize(name)))
     const missing = names.filter((_, index) => !chosen[index])
-    if (missing.length) return { ok: false, error: `Repositório desconhecido: ${missing.join(', ')}. Disponíveis: ${sources.map((source) => source.name).join(', ')}` }
+    if (missing.length) return { ok: false, error: `Unknown repository: ${missing.join(', ')}. Available: ${sources.map((source) => source.name).join(', ')}` }
     board.setRepos(run.cardId, chosen.length ? chosen.map((source) => source!.id) : null)
     try { this.deps.history?.decide(run.cardId, { kind: 'scope', statement: `Repositórios do card: ${chosen.length ? chosen.map((source) => source!.name).join(', ') : 'todos'}`, rationale: typeof args.motivo === 'string' ? args.motivo : '', actor: 'agent', source: { actor: 'agent', runId: run.runId, chatId: run.chatId } }) } catch { /* decisão é registro, não bloqueia */ }
     let prepared = ''
     if (run.purpose === 'execution' || run.purpose === 'test') {
-      const worktree = await this.deps.prepareWorktree?.(run.cardId).catch((error: unknown) => { prepared = ` Não foi possível preparar: ${error instanceof Error ? error.message : String(error)}`; return null })
-      if (worktree) prepared = ` Worktree atualizada; pastas: ${(this.deps.repositories?.(run.cardId) ?? []).map((repo) => `${repo.path} (${repo.status})`).join(', ')}.`
+      const worktree = await this.deps.prepareWorktree?.(run.cardId).catch((error: unknown) => { prepared = ` Could not prepare: ${error instanceof Error ? error.message : String(error)}`; return null })
+      if (worktree) prepared = ` Worktree updated; folders: ${(this.deps.repositories?.(run.cardId) ?? []).map((repo) => `${repo.path} (${repo.status})`).join(', ')}.`
     }
     run.notify({ type: 'card' })
-    return { ok: true, text: `O card trabalha em: ${chosen.length ? chosen.map((source) => source!.name).join(', ') : 'todos os repositórios'}.${prepared}` }
+    return { ok: true, text: `The card works in: ${chosen.length ? chosen.map((source) => source!.name).join(', ') : 'all repositories'}.${prepared}` }
   }
 
   /** Complexity Engine, decisões, entendimento e exploração: tudo vira evento versionado do card (docs/09). */
   private history(run: RunState, tool: string, args: Record<string, unknown>): Reply {
     const history = this.deps.history
     const cardId = run.cardId
-    if (!cardId) return { ok: false, error: 'Esta conversa ainda não tem card.' }
-    if (!history) return { ok: false, error: 'O histórico do card não está disponível' }
+    if (!cardId) return { ok: false, error: 'This conversation has no card yet.' }
+    if (!history) return { ok: false, error: 'The card history is not available' }
     const source = { actor: 'agent' as const, runId: run.runId, chatId: run.chatId }
     const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()) : []
     const evidence = (value: unknown): Evidence[] => (Array.isArray(value) ? value : []).map((item: Record<string, unknown>) => evidenceSchema.parse({ kind: item?.tipo, ref: item?.referencia, detail: typeof item?.detalhe === 'string' ? item.detalhe : '', line: Number.isInteger(item?.linha) ? item.linha : null, commit: typeof item?.commit === 'string' ? item.commit : null }))
@@ -235,61 +253,69 @@ export class McpBridge {
       if (tool === 'agentboard_avaliar_complexidade') {
         const notes = (args.notas ?? {}) as Record<string, unknown>
         const scores = dimensionScoresSchema.safeParse(Object.fromEntries(complexityDimensions.map((dimension) => [dimension, notes[dimension]])))
-        if (!scores.success) return { ok: false, error: `notas deve ter ${complexityDimensions.join(', ')}, cada uma de 0 a 3` }
+        if (!scores.success) return { ok: false, error: `notas must have ${complexityDimensions.join(', ')}, each from 0 to 3` }
         const confidence = ({ baixa: 'low', media: 'medium', alta: 'high' } as const)[String(args.confianca) as 'baixa']
-        if (!confidence) return { ok: false, error: 'confianca deve ser baixa, media ou alta' }
+        if (!confidence) return { ok: false, error: 'confianca must be baixa, media or alta' }
         const trigger = assessmentTriggerSchema.safeParse(args.gatilho ?? 'initial')
-        if (!trigger.success) return { ok: false, error: `gatilho deve ser um destes: ${assessmentTriggerSchema.options.filter((item) => item !== 'user-correction').join(', ')}` }
-        if (trigger.data === 'user-correction') return { ok: false, error: 'Correção do usuário é feita por ele, na tela de avaliação do card.' }
-        if (typeof args.motivo !== 'string' || !args.motivo.trim()) return { ok: false, error: 'informe o motivo (por que avaliar agora)' }
+        if (!trigger.success) return { ok: false, error: `gatilho must be one of: ${assessmentTriggerSchema.options.filter((item) => item !== 'user-correction').join(', ')}` }
+        if (trigger.data === 'user-correction') return { ok: false, error: 'The user\'s correction is made by the user, on the card assessment screen.' }
+        if (typeof args.motivo !== 'string' || !args.motivo.trim()) return { ok: false, error: 'provide the motivo (why assess now)' }
         const justifications = Object.fromEntries(Object.entries((args.justificativas ?? {}) as Record<string, unknown>).filter(([key, value]) => (complexityDimensions as readonly string[]).includes(key) && typeof value === 'string').map(([key, value]) => [key, (value as string).trim()]))
         const { assessment, previous } = history.assess({ cardId: cardId, scores: scores.data, justifications, confidence, preliminary: args.preliminar === true, criticalRisks: strings(args.riscos_criticos), evidence: evidence(args.evidencias), trigger: trigger.data, reason: args.motivo, source })
         run.notify({ type: 'card' })
-        const delta = previous ? ` (antes ${previous.total}; ${assessment.total - previous.total >= 0 ? '+' : ''}${assessment.total - previous.total})` : ''
-        return { ok: true, text: `Avaliação v${assessment.version} registrada: ${assessment.total} pontos${delta}, tarefa ${levelLabels[assessment.level]}${assessment.preliminary ? ' (preliminar)' : ''}. Fluxo recomendado: ${workflowLabels[assessment.workflow]}. Apresente a recomendação ao usuário; quando ele confirmar (ou escolher outro), chame agentboard_escolher_fluxo.` }
+        const delta = previous ? ` (before ${previous.total}; ${assessment.total - previous.total >= 0 ? '+' : ''}${assessment.total - previous.total})` : ''
+        return { ok: true, text: `Assessment v${assessment.version} registered: ${assessment.total} points${delta}, ${levelLabels[assessment.level]} task${assessment.preliminary ? ' (preliminary)' : ''}. Recommended workflow: ${workflowLabels[assessment.workflow]}. Present the recommendation to the user; when they confirm (or choose another), call agentboard_escolher_fluxo.` }
       }
       if (tool === 'agentboard_escolher_fluxo') {
         const workflow = workflowKindSchema.safeParse(args.fluxo)
-        if (!workflow.success) return { ok: false, error: 'fluxo deve ser light, spec ou sdd' }
-        if (args.confirmado_pelo_usuario !== true) return { ok: false, error: 'Só registre o fluxo depois que o usuário confirmar. Pergunte a ele primeiro.' }
-        history.selectWorkflow(cardId, workflow.data, source, typeof args.motivo === 'string' ? args.motivo : '', 'user')
-        applyWorkflowType(this.deps.board, cardId, workflow.data)
+        if (!workflow.success) return { ok: false, error: 'fluxo must be light, spec or sdd' }
+        const method = args.metodo === 'native' || args.metodo === 'speckit' ? args.metodo : undefined
+        if (workflow.data === 'sdd' && (!method || typeof args.motivo !== 'string' || !args.motivo.trim())) return { ok: false, error: 'For SDD, recommend metodo native or speckit and explain in motivo why it suits this card.' }
+        const flowPolicyDenied = this.policyDenied(run, 'choose-workflow'); if (flowPolicyDenied) return { ok: false, error: flowPolicyDenied }
+        if (!this.deps.approvals) return { ok: false, error: 'Approvals are not available' }
+        if (workflow.data === 'sdd' && method) history.recommendSddMethod(cardId, method, String(args.motivo), source)
+        const card = this.deps.board.card(cardId), approval = this.deps.approvals.request({ kind: 'workflow-choice', subjectRef: cardId, payload: { workflow: workflow.data, method: method ?? null, reason: typeof args.motivo === 'string' ? args.motivo : '' }, requestedActor: 'agent', runId: run.runId, cardId, projectId: card.projectId })
         run.notify({ type: 'card' })
-        return { ok: true, text: `Fluxo registrado: ${workflowLabels[workflow.data]}. ${workflowNext[workflow.data]}` }
+        return { ok: true, text: `Workflow proposal ${workflowLabels[workflow.data]}${method ? ` — ${method === 'native' ? 'AgentBoard SDD' : 'GitHub Spec Kit'}` : ''} registered for the user's approval (${approval.id}). Wait for the decision before continuing in the workflow.` }
       }
       if (tool === 'agentboard_registrar_decisao') {
         const kind = decisionKindSchema.safeParse(args.tipo ?? 'other')
-        if (!kind.success) return { ok: false, error: `tipo deve ser um destes: ${decisionKindSchema.options.join(', ')}` }
-        if (typeof args.decisao !== 'string' || !args.decisao.trim()) return { ok: false, error: 'informe a decisao' }
-        if (args.origem !== 'usuario' && args.origem !== 'agente') return { ok: false, error: 'origem deve ser "usuario" (o usuário decidiu no chat) ou "agente" (recomendação sua)' }
-        const decision = history.decide(cardId, { kind: kind.data, statement: args.decisao, rationale: typeof args.motivo === 'string' ? args.motivo : '', actor: args.origem === 'usuario' ? 'user' : 'agent', supersedes: Number.isInteger(args.substitui) ? args.substitui as number : null, source })
+        if (!kind.success) return { ok: false, error: `tipo must be one of: ${decisionKindSchema.options.join(', ')}` }
+        if (typeof args.decisao !== 'string' || !args.decisao.trim()) return { ok: false, error: 'provide the decisao' }
+        if (args.origem !== 'usuario' && args.origem !== 'agente') return { ok: false, error: 'origem must be "usuario" (the user decided in the chat) or "agente" (your recommendation)' }
+        const active = history.decisions(cardId).filter((item) => item.status !== 'superseded')
+        const reviewed = Array.isArray(args.decisoes_revisadas) ? args.decisoes_revisadas : []
+        if (!Array.isArray(args.decisoes_revisadas) || active.some((item) => !reviewed.includes(item.number))) return { ok: false, error: `Review the current decisions below before registering. If the new one replaces any, give its number in substitui; if it is equivalent, do not duplicate. Send all reviewed numbers in decisoes_revisadas (or [] if there are no decisions):\n${active.map((item) => `D${item.number} [${item.status}]: ${item.statement}`).join('\n') || '(none)'}` }
+        // A entrada MCP nunca é prova de uma ação humana; mesmo quando o agente alega que veio do usuário, fica como proposta.
+        const decision = history.decide(cardId, { kind: kind.data, statement: args.decisao, rationale: typeof args.motivo === 'string' ? args.motivo : '', actor: 'agent', supersedes: Number.isInteger(args.substitui) ? args.substitui as number : null, source })
         run.notify({ type: 'card' })
-        return { ok: true, text: `Decisão D${String(decision.number).padStart(3, '0')} registrada (${decision.status === 'approved' ? 'do usuário' : 'recomendação, aguardando o usuário'}).` }
+        return { ok: true, text: `Decision D${String(decision.number).padStart(3, '0')} registered as a proposal, awaiting the user${args.origem === 'usuario' ? ' (the origin declared by the agent was downgraded)' : ''}.` }
       }
       if (tool === 'agentboard_registrar_entendimento') {
         const readiness = args.prontidao === 'pronto' ? 'pronto' : args.prontidao === 'precisa_esclarecer' ? 'precisa-esclarecer' : null
-        if (!readiness || typeof args.objetivo !== 'string' || !args.objetivo.trim()) return { ok: false, error: 'informe objetivo e prontidao ("pronto" ou "precisa_esclarecer")' }
+        if (!readiness || typeof args.objetivo !== 'string' || !args.objetivo.trim()) return { ok: false, error: 'provide objetivo and prontidao ("pronto" or "precisa_esclarecer")' }
         history.recordDiscovery(cardId, { objetivo: args.objetivo.trim(), motivacao: typeof args.motivacao === 'string' ? args.motivacao : '', escopo: strings(args.escopo), exclusoes: strings(args.exclusoes), criterios: strings(args.criterios), pendencias: strings(args.pendencias), contextoTecnico: typeof args.contexto_tecnico === 'string' ? args.contexto_tecnico : '', prontidao: readiness }, source)
         run.notify({ type: 'card' })
-        return { ok: true, text: readiness === 'pronto' ? 'Entendimento registrado. Agora avalie a complexidade com agentboard_avaliar_complexidade.' : 'Entendimento registrado com pendências. Esclareça com o usuário antes de avaliar a complexidade (ou registre uma avaliação preliminar).' }
+        return { ok: true, text: readiness === 'pronto' ? 'Understanding registered. Now assess the complexity with agentboard_avaliar_complexidade.' : 'Understanding registered with open items. Clarify with the user before assessing the complexity (or register a preliminary assessment).' }
       }
       if (tool === 'agentboard_registrar_exploracao') {
-        if (typeof args.resumo !== 'string' || !args.resumo.trim()) return { ok: false, error: 'informe o resumo da exploração' }
+        if (typeof args.resumo !== 'string' || !args.resumo.trim()) return { ok: false, error: 'provide the resumo of the exploration' }
         const saved = history.recordExploration(cardId, { summary: args.resumo.trim().slice(0, 8000), modules: strings(args.modulos), repositories: strings(args.repositorios), evidence: evidence(args.evidencias) }, source)
         run.notify({ type: 'card' })
-        return { ok: true, text: `Exploração guardada para a versão atual do código (${Object.keys(saved.codeVersions).join(', ') || 'sem Git'}). Ela aparece no contexto dos próximos turnos; só explore de novo se o código ou a demanda mudarem.` }
+        return { ok: true, text: `Exploration saved for the current version of the code (${Object.keys(saved.codeVersions).join(', ') || 'no Git'}). It appears in the context of the next turns; only explore again if the code or the request changes.` }
       }
-      return { ok: false, error: `Ferramenta desconhecida: ${tool}` }
+      return { ok: false, error: `Unknown tool: ${tool}` }
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message.slice(0, 2000) : String(error) } }
   }
 
   /** Commit do agente: a regra da branch (nunca, pedir permissão ou automático) é aplicada pelo GitManager. */
   private async requestCommit(run: RunState, args: Record<string, unknown>): Promise<Reply> {
-    if (!this.deps.git) return { ok: false, error: 'O Git do AgentBoard não está disponível' }
-    if (run.purpose !== 'execution' || !run.cardId) return { ok: false, error: 'Esta ferramenta é do desenvolvedor (etapa de implementação).' }
-    if (typeof args.mensagem !== 'string') return { ok: false, error: 'informe a mensagem do commit' }
-    if (args.arquivos !== undefined && (!Array.isArray(args.arquivos) || args.arquivos.some((item) => typeof item !== 'string'))) return { ok: false, error: 'arquivos deve ser uma lista de caminhos' }
-    if (args.repositorio !== undefined && typeof args.repositorio !== 'string') return { ok: false, error: 'repositorio deve ser um texto' }
+    if (!this.deps.git) return { ok: false, error: 'AgentBoard Git is not available' }
+    if (run.purpose !== 'execution' || !run.cardId) return { ok: false, error: 'This tool is for the developer (implementation stage).' }
+    const denied = this.policyDenied(run, 'commit'); if (denied) return { ok: false, error: denied }
+    if (typeof args.mensagem !== 'string') return { ok: false, error: 'provide the commit mensagem' }
+    if (args.arquivos !== undefined && (!Array.isArray(args.arquivos) || args.arquivos.some((item) => typeof item !== 'string'))) return { ok: false, error: 'arquivos must be a list of paths' }
+    if (args.repositorio !== undefined && typeof args.repositorio !== 'string') return { ok: false, error: 'repositorio must be a text' }
     try {
       const result = await this.deps.git.agentCommit({ cardId: run.cardId, chatId: run.chatId, message: args.mensagem, files: args.arquivos as string[] | undefined, repo: args.repositorio as string | undefined })
       run.notify({ type: 'commit' })
@@ -297,32 +323,58 @@ export class McpBridge {
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) } }
   }
 
-  /** Constituição: todos leem; só o chat dela escreve; os outros chats propõem e o usuário aplica. */
-  private constitution(run: RunState, tool: string, args: Record<string, unknown>): Reply {
+  /**
+   * Constituição (G09): todos leem (pelo resolver file-first, com fallback no SQLite legado); só quem tem card grava — na
+   * worktree dele, pelo `SddWriter` — e os outros chats propõem (o usuário aplica). O chat da Constituição conversa e
+   * entende livremente, mas sem card não grava nada: a instrução (skill) é criar um card quando for de verdade gravar.
+   */
+  private async constitution(run: RunState, tool: string, args: Record<string, unknown>): Promise<Reply> {
     const { constitution, conversations } = this.deps
-    if (!constitution || !conversations) return { ok: false, error: 'A Constituição não está disponível' }
+    if (!conversations) return { ok: false, error: 'The Constitution is not available' }
     const projectId = conversations.projectOf(run.chatId)
     if (tool === 'agentboard_ler_constituicao') {
+      if (this.deps.sddResolver) {
+        try {
+          const view = await this.deps.sddResolver.constitution({ projectId, cardId: run.cardId ?? undefined })
+          if (view.content !== null) return { ok: true, text: `Project Constitution:\n\n${view.content}` }
+        } catch { /* repositório do SDD ainda não configurado ou indisponível: cai no legado abaixo */ }
+      }
+      if (!constitution) return { ok: false, error: 'The Constitution is not available' }
       const current = constitution.get(projectId)
-      return { ok: true, text: current.contentMd.trim() ? `Constituição do projeto (versão ${current.version}):\n\n${current.contentMd}` : 'O projeto ainda não tem Constituição.' }
+      return { ok: true, text: current.contentMd.trim() ? `Project Constitution (version ${current.version}, not yet migrated to file-first SDD):\n\n${current.contentMd}` : 'The project has no Constitution yet.' }
     }
     if (tool === 'agentboard_escrever_constituicao') {
-      if (run.purpose !== 'constitution') return { ok: false, error: 'Só o chat da Constituição a altera. Aqui, use agentboard_propor_constituicao.' }
-      if (typeof args.markdown !== 'string' || !args.markdown.trim() || args.markdown.length > 400_000) return { ok: false, error: 'markdown deve ser o texto completo da Constituição (até 400.000 caracteres)' }
-      const saved = constitution.write(projectId, args.markdown.trim(), 'agent')
+      if (!run.cardId) return { ok: false, error: 'This tool writes to a card worktree. Create a card (agentboard_criar_card) to make this change.' }
+      if (typeof args.markdown !== 'string' || !args.markdown.trim() || args.markdown.length > 400_000) return { ok: false, error: 'markdown must be the complete text of the Constitution (up to 400,000 characters)' }
+      if (!this.deps.sddResolver || !this.deps.approvals) return { ok: false, error: 'SDD approval is not available' }
+      const [view, location] = await Promise.all([
+        this.deps.sddResolver.constitution({ projectId, cardId: run.cardId }),
+        this.deps.sddResolver.locate({ projectId, cardId: run.cardId })
+      ])
+      this.deps.approvals.request({ kind: 'constitution-apply', subjectRef: view.path, cardId: run.cardId, projectId, runId: run.runId, requestedActor: 'agent', payload: { sourceId: location.sourceId, path: view.path, before: view.content, content: args.markdown, expectBlobSha: view.blobSha } })
       run.notify({ type: 'constitution' })
-      return { ok: true, text: `Constituição gravada (versão ${saved.version}).` }
+      return { ok: true, text: `Proposal registered for ${view.path}. Wait for the user's review and approval on the card; the file has not been changed yet.` }
     }
-    if (run.purpose === 'constitution') return { ok: false, error: 'Neste chat, altere direto com agentboard_escrever_constituicao.' }
-    if (![args.titulo, args.o_que_muda, args.motivo].every((value) => typeof value === 'string' && value.trim())) return { ok: false, error: 'informe titulo, o_que_muda e motivo' }
+    if (!constitution) return { ok: false, error: 'The Constitution is not available' }
+    if (run.purpose === 'constitution') return { ok: false, error: 'To actually write it, create a card (agentboard_criar_card) and save with agentboard_escrever_constituicao from it.' }
+    if (![args.titulo, args.o_que_muda, args.motivo].every((value) => typeof value === 'string' && value.trim())) return { ok: false, error: 'provide titulo, o_que_muda and motivo' }
     const proposal = constitution.propose({ projectId, cardId: run.cardId, chatId: run.chatId, title: args.titulo as string, details: args.o_que_muda as string, reason: args.motivo as string })
     run.notify({ type: 'constitution' })
-    return { ok: true, text: `Mudança C${String(proposal.number).padStart(3, '0')} registrada na aba Constituição do projeto, aguardando o usuário aplicar. Até lá, a Constituição atual continua valendo.` }
+    return { ok: true, text: `Change C${String(proposal.number).padStart(3, '0')} registered in the project Constitution tab, awaiting the user to apply it. Until then, the current Constitution remains in force.` }
   }
 
   private findColumn(cardId: string, name: string): { id: string; label: string } | undefined {
     const wanted = normalize(name), card = this.deps.board.card(cardId)
     return this.deps.board.get(card.projectId).columns.find((column) => column.id === name || normalize(column.label) === wanted || column.semanticState === wanted)
+  }
+
+  /** S11: consulta o `PolicyEngine` (regras do projeto); `deny` devolve o motivo e não faz nada. Sem motor, nunca bloqueia. */
+  private policyDenied(run: RunState, action: 'commit' | 'move' | 'choose-workflow'): string | null {
+    if (!this.deps.policy || !run.cardId) return null
+    const card = this.deps.board.card(run.cardId)
+    const rules = this.deps.history?.config(card.projectId).policy.rules ?? []
+    const decision = this.deps.policy.decide(rules, action, { cardId: run.cardId, projectId: card.projectId, actor: 'agent' })
+    return decision === 'deny' ? `Blocked by the project policy (${action}).` : null
   }
 }
 

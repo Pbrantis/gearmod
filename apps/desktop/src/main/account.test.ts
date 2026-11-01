@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { readAccountEmail } from './account'
+import { accountKey, accountKeyFromProvider, readAccountEmail } from './account'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
@@ -24,5 +24,18 @@ describe('readAccountEmail', () => {
     expect(readAccountEmail({ provider: 'codex', configDir: empty })).toBeNull()
     expect(readAccountEmail({ provider: 'codex', configDir: broken })).toBeNull()
     expect(readAccountEmail({ provider: 'claude', configDir: broken })).toBeNull()
+  })
+})
+
+describe('accountKey', () => {
+  it('produz uma chave opaca estável sem preservar a identidade', () => {
+    const key = accountKey('claude', 'Pessoa@Exemplo.com')!
+    expect(key).toMatch(/^acct_[a-f0-9]{32}$/)
+    expect(key).not.toContain('Pessoa')
+    expect(key).toBe(accountKey('claude', ' pessoa@exemplo.com '))
+  })
+  it('aceita apenas campos explícitos do provedor', () => {
+    expect(accountKeyFromProvider('codex', { account: { userId: 'u-1' } })).toBe(accountKey('codex', 'u-1'))
+    expect(accountKeyFromProvider('codex', { sessionPath: 'C:/secret' })).toBeNull()
   })
 })

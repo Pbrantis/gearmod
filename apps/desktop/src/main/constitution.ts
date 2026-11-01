@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Constitution, ConstitutionProposal, ConstitutionState } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { tm } from './i18n'
 
 type Actor = 'user' | 'agent' | 'system'
 /** Até este tamanho a Constituição vai inteira no contexto do agente; acima, vai só o índice e ele lê o resto pela ferramenta. */
@@ -47,7 +48,7 @@ export class ConstitutionRepository {
 
   setProposal(proposalId: string, status: 'applied' | 'dismissed'): string {
     const row = this.database.db.prepare('SELECT project_id AS projectId FROM constitution_proposals WHERE id = ?').get(proposalId) as { projectId: string } | undefined
-    if (!row) throw new Error('Proposta não encontrada')
+    if (!row) throw new Error(tm().common.proposalNotFound)
     this.database.db.prepare('UPDATE constitution_proposals SET status = ? WHERE id = ?').run(status, proposalId)
     return row.projectId
   }
@@ -60,7 +61,7 @@ export class ConstitutionRepository {
   /** Importa `.specify/memory/constitution.md` (Spec Kit) da pasta do projeto ou do primeiro repositório que tiver. */
   importSpecKit(projectId: string): ConstitutionState {
     const path = this.specKitPath(projectId)
-    if (!path) throw new Error('Nenhum .specify/memory/constitution.md encontrado nas pastas do projeto')
+    if (!path) throw new Error(tm().constitution.noConstitutionFile)
     this.write(projectId, readFileSync(path, 'utf8').trim(), 'user')
     return this.state(projectId)
   }

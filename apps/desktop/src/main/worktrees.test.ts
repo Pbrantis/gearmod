@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -85,6 +86,44 @@ describe('WorktreeService', () => {
     expect((await service.prepare(missing.id)).baseRef).toBe('dev')
     expect((await service.prepare(plain.id)).baseRef).toBe('dev')
     expect(board.baseBranch(chosen.id)).toBe('release')
+    database.close()
+  })
+
+  it('G07 ensureMember: adiciona um repositório fora de cards.repo_ids, é idempotente e resiste a duas chamadas concorrentes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-ensure-')); roots.push(root)
+    const workspace = join(root, 'ws'), app = join(workspace, 'app'), docs = join(workspace, 'docs'), data = join(root, 'data')
+    await mkdir(workspace, { recursive: true })
+    for (const dir of [app, docs]) {
+      await exec('git', ['init', '-b', 'main', dir])
+      await exec('git', ['-C', dir, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', dir, 'config', 'user.name', 'AgentBoard Test'])
+      await writeFile(join(dir, 'README.md'), '# fixture'); await exec('git', ['-C', dir, 'add', 'README.md']); await exec('git', ['-C', dir, 'commit', '-m', 'fixture'])
+    }
+    const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
+    const projects = new ProjectRepository(database, new GitService()), project = await projects.create({ localPath: workspace })
+    const board = new BoardRepository(database, projects), column = board.get(project.id).columns[0]!
+    const card = board.create({ projectId: project.id, columnId: column.id, title: 'Card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const sources = Object.fromEntries(board.get(project.id).project.sources.map((source) => [source.name, source]))
+    board.setRepos(card.id, [sources.app!.id]) // docs não entra pelo fluxo normal
+    const service = new WorktreeService(database, data), lower = (path: string): string => path.toLowerCase()
+    const worktree = await service.prepare(card.id)
+    expect(service.repositories(card.id).map((repo) => lower(repo.repoPath))).toEqual([lower(sources.app!.localPath)])
+    const added = await service.ensureMember(card.id, sources.docs!.id)
+    expect(added.status).toBe('active')
+    expect(existsSync(join(added.path, 'README.md'))).toBe(true)
+    expect(service.repositories(card.id).map((repo) => lower(repo.repoPath)).sort()).toEqual([lower(sources.app!.localPath), lower(sources.docs!.localPath)].sort())
+    // Idempotente: chamar de novo não recria nem move a pasta.
+    const again = await service.ensureMember(card.id, sources.docs!.id)
+    expect(again.path).toBe(added.path)
+    expect(database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(worktree.id)).toBe(2)
+    // Concorrência: duas chamadas ao mesmo tempo para um repositório novo não duplicam o membro nem corrompem a worktree.
+    const concurrent = board.create({ projectId: project.id, columnId: column.id, title: 'Outro card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    board.setRepos(concurrent.id, [sources.app!.id])
+    await service.prepare(concurrent.id)
+    const [a, b] = await Promise.all([service.ensureMember(concurrent.id, sources.docs!.id), service.ensureMember(concurrent.id, sources.docs!.id)])
+    expect(a.path).toBe(b.path); expect(a.status).toBe('active')
+    const concurrentWorktree = await service.prepare(concurrent.id)
+    expect(database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(concurrentWorktree.id)).toBe(2)
     database.close()
   })
 })

@@ -1,46 +1,46 @@
 ---
 name: agentboard-plano
-description: Escreve o documento Plano de um card do AgentBoard no estilo SDD (resumo técnico, contexto técnico, verificação dos princípios do projeto, decisões com alternativas, modelo de dados, contratos, áreas afetadas, riscos e validação), com base no código real do projeto.
+description: Writes the Plan document of an AgentBoard card in SDD style (technical summary, technical context, project principles check, decisions with alternatives, data model, contracts, affected areas, risks and validation), based on the project's real code.
 ---
 
-# Documento: Plano
+# Document: Plan
 
-O Plano diz **como** a Especificação vai ser implementada. É escrito depois de ler o código (só leitura) e é o que o agente de execução segue. A estrutura segue o modelo de plano do GitHub Spec Kit, enxuta para um card.
+The Plan says **how** the Specification will be implemented. It is written after reading the code (read-only) and it is what the execution agent follows. The structure follows the GitHub Spec Kit plan template, trimmed down for a card.
 
-## Idioma
+## Language
 
-Escreva no idioma informado em `idioma`. Use `templates/<idioma>.md`; se não houver, traduza `templates/pt-BR.md`, incluindo títulos das seções.
+Write everything you produce for the user — documents, headings, labels, descriptive IDs, questions and chat replies — in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language. Use `templates/<idioma>.md`; if there is none, translate `templates/pt-BR.md`, section headings included.
 
-## Seções (nesta ordem)
+## Sections (in this order)
 
-1. **Resumo.** O requisito principal e a abordagem técnica em 2 ou 3 frases.
-2. **Contexto técnico.** Só o que importa para este card, tirado do repositório: linguagem e versão, dependências principais, armazenamento, testes, plataforma, restrições. O que não souber, marque `[PRECISA ESCLARECER]` e resolva no chat.
-3. **Verificação de princípios.** Leia os princípios do projeto: primeiro a Constituição (texto completo com `agentboard_ler_constituicao`, se o contexto trouxer só o índice), depois `AGENTS.md`, `CLAUDE.md` e decisões em `docs/`. Liste os que se aplicam e diga se o plano respeita cada um (✅) ou não (⚠️). Um ⚠️ exige a seção Complexidade.
-4. **Decisões.** Cada uma no formato **Decisão** / **Motivo** / **Alternativas descartadas**.
-5. **Modelo de dados.** Só se o card muda dados: tabelas, campos, migração e o que acontece com dados existentes.
-6. **Contratos.** Só se o card muda uma interface (IPC, API, eventos, formato de arquivo): nome, entrada, saída e validação.
-7. **Áreas afetadas.** Caminhos reais do repositório (verifique que existem) e o que muda em cada um. Arquivo novo leva "(novo)". Não invente caminhos.
-8. **Riscos.** O que pode quebrar e como evitar. Remova se não houver risco real.
-9. **Como validar.** Comandos que o projeto já usa (testes, typecheck, lint) e o passo manual que prova cada história P1.
-10. **Complexidade.** Só se houver ⚠️ na verificação de princípios: tabela Violação / Por que é necessária / Alternativa mais simples descartada porque.
+1. **Summary.** The main requirement and the technical approach in 2 or 3 sentences.
+2. **Technical context.** Only what matters for this card, taken from the repository: language and version, main dependencies, storage, tests, platform, constraints. Mark anything you don't know as `[PRECISA ESCLARECER]` (needs clarification; use the equivalent marker from the template of `idioma`) and resolve it in the chat.
+3. **Principles check.** Read the project's principles: first the Constitution (full text with `agentboard_ler_constituicao` if the context carries only the index), then `AGENTS.md`, `CLAUDE.md` and decisions in `docs/`. List the ones that apply and say whether the plan respects each (✅) or not (⚠️). A ⚠️ requires the Complexity section.
+4. **Decisions.** Each one in the format **Decision** / **Reason** / **Alternatives rejected**.
+5. **Data model.** Only if the card changes data: tables, fields, migration and what happens to existing data.
+6. **Contracts.** Only if the card changes an interface (IPC, API, events, file format): name, input, output and validation.
+7. **Affected areas.** Real repository paths (check that they exist) and what changes in each. A new file gets "(new)". Do not invent paths.
+8. **Risks.** What can break and how to avoid it. Remove if there is no real risk.
+9. **How to validate.** Commands the project already uses (tests, typecheck, lint) and the manual step that proves each P1 story.
+10. **Complexity.** Only if the principles check has a ⚠️: table Violation / Why it is necessary / Simpler alternative rejected because.
 
-## Regras
+## Rules
 
-- Não repita a Especificação; cite os IDs (`RF-001`, `História 1`) quando ajudar.
-- Não liste tasks aqui; elas ficam no documento Tasks.
-- Mantenha o plano do tamanho do card. Remova seções opcionais vazias.
+- Do not repeat the Specification; cite its IDs (`RF-001`, Story 1) when it helps.
+- Do not list tasks here; they live in the Tasks document.
+- Keep the plan sized to the card. Remove empty optional sections.
 
-## Entrega
+## Delivery
 
-Envie com `tipo` = `plano` (ferramenta `agentboard_escrever_documento` ou marcadores, conforme `agentboard-planejamento`).
+Send it with `tipo` = `plano` (tool `agentboard_escrever_documento` or markers, as described in `agentboard-planejamento`).
 
-## Plano de testes
+## Test plan
 
-Inclua no Plano uma seção `## Plano de testes`. É o roteiro do testador e o lugar de tudo que é verificação (nada disso vira task):
+Include in the Plan a test plan section (heading `## Plano de testes` in pt-BR; use the equivalent heading in the language of `idioma`, e.g. `## Test plan`). It is the tester's script and the place for everything that is verification (none of it becomes a task):
 
-- **Por história:** o que testar, como (comando ou passos na tela) e o resultado esperado.
-- **Testes automatizados esperados:** quais testes o desenvolvedor escreve junto com as tasks (arquivo e o que cobrem), para o testador conferir se existem e se fazem sentido.
-- **Regressões:** o que já existe e não pode quebrar (ex.: "o botão de primeiro acesso continua funcionando").
-- **Comandos do projeto:** lint, type-check e suíte de testes que o testador roda inteiros.
+- **Per story:** what to test, how (command or steps on screen) and the expected result.
+- **Expected automated tests:** which tests the developer writes together with the tasks (file and what they cover), so the tester can check that they exist and make sense.
+- **Regressions:** what already exists and must not break (e.g. "the first-access button still works").
+- **Project commands:** lint, type-check and the test suite that the tester runs in full.
 
-O testador e o desenvolvedor usam essa seção; o que faltar nela vira dúvida ou proposta de mudança.
+The tester and the developer use this section; anything missing from it becomes a question or a change proposal.

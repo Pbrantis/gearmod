@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -142,5 +143,36 @@ describe('project board', () => {
     expect(conversations.context(chat.id).profile.enabled).toBe(false)
     expect(profiles.delete(clean!.id)).toEqual({ deleted: true, archived: false })
     database.close()
+  })
+})
+
+describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () => {
+  const roots: string[] = [], databases: AppDatabase[] = []
+  afterEach(async () => { while (databases.length) databases.pop()!.close(); while (roots.length) await rm(roots.pop()!, { recursive: true, force: true }) })
+
+  it('nunca lê a pasta padrão do CLI, mesmo com uma sessão já logada lá na máquina de teste', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-s16-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
+    const defaultCodexHome = join(root, '.codex'), defaultClaudeHome = join(root, '.claude')
+    await mkdir(defaultCodexHome, { recursive: true }); await mkdir(defaultClaudeHome, { recursive: true })
+    await writeFile(join(defaultCodexHome, 'auth.json'), '{"logged":"in"}')
+    await writeFile(join(defaultClaudeHome, 'credentials.json'), '{"logged":"in"}')
+    const profiles = new ProfileRepository(database, root)
+    const codex = profiles.create({ provider: 'codex', label: 'Codex', scope: 'x' })
+    const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x' })
+    expect(codex.configDir).not.toBe(defaultCodexHome); expect(claude.configDir).not.toBe(defaultClaudeHome)
+    expect(codex.configDir.startsWith(join(root, '.agentboard', 'profiles'))).toBe(true)
+    expect(claude.configDir.startsWith(join(root, '.agentboard', 'profiles'))).toBe(true)
+    expect(existsSync(join(codex.configDir, 'auth.json'))).toBe(false)
+    expect(existsSync(join(claude.configDir, 'credentials.json'))).toBe(false)
+  })
+
+  it('cada perfil novo ganha uma pasta isolada só dele, mesmo dois do mesmo provedor', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-s16-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
+    const profiles = new ProfileRepository(database, root)
+    const first = profiles.create({ provider: 'claude', label: 'Claude 1', scope: 'x' })
+    const second = profiles.create({ provider: 'claude', label: 'Claude 2', scope: 'x' })
+    expect(first.configDir).not.toBe(second.configDir)
   })
 })

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -10,8 +10,11 @@ import { FileWatchService } from './file-watch'
 import { SpecToolsService } from './spec-tools'
 import { ToolUpdateService } from './tool-updates'
 import { BackupService } from './backup'
-import { AppDatabase } from './database'
+import { AppDatabase, SchemaTooNewError } from './database'
 import { registerIpc } from './ipc'
+import { SpecKitRuntime } from './speckit'
+import { McpRegistry } from './mcp-registry'
+import { GeminiCliAdapter } from './gemini-adapter'
 import { NoteRepository } from './repository'
 import { SettingsRepository } from './settings'
 import { AgentContextService } from './agent-context'
@@ -28,18 +31,36 @@ import { AgentProbeService } from './agents'
 import { finishNotice, Notifier } from './notifier'
 import { hiddenNotice, quitPrompt, trayTooltip } from './background'
 import { ConversationRepository } from './conversations'
-import { ClaudeCliAdapter, CodexAppServerAdapter, listCodexModels, probeClaudeLimits } from './adapters'
+import { ClaudeCliAdapter, CodexAppServerAdapter, nodeProcesses, listCodexModels, probeClaudeLimits, readCodexQuota } from './adapters'
 import { AgentOrchestrator } from './orchestrator'
 import { WorktreeService } from './worktrees'
 import { GitManager } from './git-manager'
+import { PullRequestService } from './pull-requests'
 import { QualityService } from './quality'
 import { ConstitutionRepository } from './constitution'
 import { CardHistoryService } from './history'
-import { exportPlanArtifacts } from './workflows'
+import { exportPlanArtifacts, resolvedSddRoot } from './workflows'
 import { HarnessService } from './harness'
 import { PlaywrightCliService } from './playwright-cli'
 import { ChecklistRepository } from './checklists'
 import { AutoResumeRepository, AutoResumeService } from './auto-resume'
+import { UsageLedgerService } from './usage-ledger'
+import { CardUsageExport } from './card-usage-export'
+import { DbConnections } from './db/connections'
+import { PgDriver } from './db/pg-driver'
+import { ConnectionManager } from './db/connection-manager'
+import { DbService } from './db/service'
+import { DbAudit } from './db/audit'
+import { SecretStore } from './secrets'
+import { ApprovalService } from './approvals'
+import { PolicyEngine } from './policy'
+import { SddResolver } from './sdd/sdd-resolver'
+import { SddWriter } from './sdd/sdd-writer'
+import { onMainLocaleChange, setMainLocale, tm } from './i18n'
+
+// Perfil separado (ex.: AGENTBOARD_PROFILE=teste): outra pasta de dados e outro lock de instância única, para rodar junto da versão homologada.
+const profileName = (process.env.AGENTBOARD_PROFILE ?? '').replace(/[^\w-]/g, '')
+if (profileName) app.setPath('userData', join(app.getPath('appData'), `AgentBoard-${profileName}`))
 
 const appVersion = app.getVersion()
 const dataDir = process.env.AGENTBOARD_DATA_DIR || join(app.getPath('userData'), 'data')
@@ -58,8 +79,13 @@ const checklists = new ChecklistRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
 const quality = new QualityService(database, worktrees)
 const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
-const gitManager = new GitManager(database)
+const approvals = new ApprovalService(database)
+const policy = new PolicyEngine(database)
+const gitManager = new GitManager(database, undefined, undefined, approvals)
+const pullRequests = new PullRequestService(database)
 const history = new CardHistoryService(database, dataDir)
+const sddResolver = new SddResolver(history, board, projects, worktrees)
+const sddWriter = new SddWriter(worktrees)
 const playwright = new PlaywrightCliService(database, history)
 const specTools = new SpecToolsService(database)
 const toolUpdates = new ToolUpdateService(join(app.getPath('userData'), 'tool-versions.json'))
@@ -73,13 +99,17 @@ const agentContext = new AgentContextService(board, settings, existsSync(pluginD
   }) : undefined
   const playwrightCli = playwright.forCard(cardId)
   return { ...(repositorios ? { repositorios, regraRepositorios: 'Só os repositórios com noCard=true ganham worktree. Se precisar de outro, chame agentboard_definir_repositorios.' } : {}), ...(playwrightCli ? { playwrightCli } : {}) }
-})
+}, sddResolver)
 const agentConfigs = new AgentConfigRepository(database, board, profiles, (profileId) => listCodexModels(profiles.get(profileId)))
-const usage = new UsageService(database, profiles, (profile) => probeClaudeLimits(profile))
+const usageLedger = new UsageLedgerService(database)
+const cardUsageExport = new CardUsageExport(database, board, history, sddResolver, worktrees, sddWriter)
+board.setOnDone((cardId) => { void cardUsageExport.export(cardId).catch(() => console.error('Falha ao exportar consumo do card.')) })
+const usage = new UsageService(database, profiles, (profile) => probeClaudeLimits(profile), undefined, (profile) => readCodexQuota(profile), usageLedger)
 const appIcon = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'tray' : 'resources/tray', 'app.png')
 const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
 const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/card-updated', payload: { cardId, type: 'document' } })))
-const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId) })
+// S05, atrás da flag (padrão off até soak, Q-05): movimento imediato do agente vira pedido pendente de aprovação.
+const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.AGENTBOARD_AGENT_MOVE_APPROVAL === '1' })
 const writeback = new AgentWriteback(board, mcpBridge)
 const shownNotifications = new Set<Notification>()
 const notifier = new Notifier({
@@ -101,11 +131,14 @@ const notifier = new Notifier({
     window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/open-target', payload: target })
   }
 })
-const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, (event) => {
+const mcpRegistry = new McpRegistry(database, join(dataDir, 'mcp', 'secrets'), safeStorage)
+const speckit = new SpecKitRuntime({ history, board: Object.assign(Object.create(board), { documents: board.documents }) as typeof board, worktrees, approvals, root: (projectId) => resolvedSddRoot(history, board, projectId, 'speckit') })
+const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter(), gemini: new GeminiCliAdapter(nodeProcesses) }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
   // A contagem só baixa depois que a run sai da fila do orquestrador, por isso o pequeno atraso.
   if (event.eventType.startsWith('agentboard/run-')) setTimeout(updateTray, 100)
 }, worktrees, 2, agentContext, writeback, agentConfigs, usage, collab, (info) => {
+  if (info.cardId) void cardUsageExport.export(info.cardId).catch(() => console.error('Falha ao exportar consumo do card.'))
   // Evento do fim da execução (métricas e relatórios de implementação/verificação na pasta de artefatos do card).
   if (info.cardId && info.purpose !== 'free' && info.purpose !== 'constitution') { try { history.runFinished({ cardId: info.cardId, runId: info.runId, chatId: info.chatId, purpose: info.purpose, status: info.status }) } catch { /* artefato é best-effort */ } }
   // Notificação do sistema quando um agente termina (só com o app fora de foco); o clique abre o chat do card ou o chat livre.
@@ -115,7 +148,7 @@ const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppS
   if (notice) notifier.notify(notice, { projectId: card?.projectId ?? conversations.projectOf(info.chatId), cardId: info.cardId, chatId: info.chatId, purpose: info.purpose })
   // Parou por limite de uso: agenda a retomada para quando o limite voltar.
   void autoResume.onFinished({ ...info, profileId: conversations.context(info.chatId).profile.id }).catch(() => undefined)
-})
+}, usageLedger, profiles, speckit, mcpRegistry)
 const pushEvent = (eventType: string, payload: Record<string, unknown>): void => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType, payload }))
 const terminals = new TerminalService(pushEvent)
 const fileWatch = new FileWatchService(pushEvent)
@@ -125,25 +158,21 @@ const autoResume = new AutoResumeService({
   usage: async (profileId) => (await usage.refresh()).find((item) => item.profileId === profileId)?.windows ?? [],
   resume: (item) => {
     if (item.cardId && (item.purpose === 'execution' || item.purpose === 'test')) { executions.resume(item.cardId, item.purpose); return }
-    orchestrator.start({ chatId: item.chatId, prompt: 'O limite de uso voltou. Continue de onde parou.', planning: true, notice: '▶ O limite de uso voltou · retomando de onde parou', automatic: true })
+    orchestrator.start({ chatId: item.chatId, prompt: 'O limite de uso voltou. Continue de onde parou.', planning: true, notice: tm().autoResume.resumingNotice, automatic: true })
   },
   notify: (chatId, body) => { conversations.addMessage({ chatId, role: 'system', body, status: 'complete' }); pushEvent('agentboard/tool-activity', { chatId }) }
 })
-const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter() }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })))
+const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter(), gemini: new GeminiCliAdapter(nodeProcesses) }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })), usageLedger)
 collab.setStarter((action) => { orchestrator.start({ ...action, automatic: true }) })
 orchestrator.setHarness(new HarnessService(database, history, worktrees))
 /** Chave do Groq cifrada pelo sistema (DPAPI no Windows); nunca vai para o banco nem para o backup. */
 const groqKeyFile = join(dataDir, 'whisper', 'groq.key')
-const voiceSecrets = {
-  read: async (): Promise<string | null> => existsSync(groqKeyFile) && safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(await readFile(groqKeyFile)) : null,
-  write: async (value: string | null): Promise<void> => {
-    if (!value) { await rm(groqKeyFile, { force: true }); return }
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('O sistema não oferece armazenamento seguro para a chave')
-    await mkdir(join(dataDir, 'whisper'), { recursive: true }); await writeFile(groqKeyFile, safeStorage.encryptString(value))
-  }
-}
+const voiceSecrets = new SecretStore(groqKeyFile, safeStorage)
+const dbConnections = new DbConnections(database, join(dataDir, 'db', 'secrets'), safeStorage)
+const dbSessions = new ConnectionManager(dbConnections, new PgDriver())
+const dbManager = new DbService(dbConnections, dbSessions, new DbAudit(database, join(dataDir, 'db', 'history')))
 const voice = new VoiceService({ dataDir, secrets: voiceSecrets, emit: (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })) })
-const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs, git)
+const executions = new ExecutionService(board, conversations, orchestrator, agentConfigs, git, history, speckit)
 let disposeIpc: (() => void) | undefined
 
 async function openDatabase(): Promise<void> {
@@ -151,12 +180,16 @@ async function openDatabase(): Promise<void> {
     await backups.create(db, `schema-upgrade-${from}-to-${to}`)
   })
   conversations.reconcileInterrupted()
+  // Runs apagadas do SQLite ainda podem existir no histórico versionado do card; a chave (run_id, seq) torna a recuperação idempotente.
+  for (const project of projects.list()) for (const card of board.get(project.id).cards) {
+    try { usageLedger.importHistory(card.id, history.artifactsDir(card.id)) } catch { /* histórico em disco é opcional */ }
+  }
   // Eventos que não chegaram ao history.jsonl (app fechou no meio, pasta indisponível) são gravados agora.
   try { history.reconcile() } catch { /* tenta de novo na próxima abertura */ }
 }
 
 /** Altura da faixa de cima (a mesma `--titlebar` do CSS). */
-const titleBarHeight = 36
+const titleBarHeight = 44
 
 let mainWindow: BrowserWindow | undefined
 
@@ -196,6 +229,15 @@ async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Re
     if (quitting) return
     event.preventDefault(); window.hide()
     if (!toldHidden && Notification.isSupported()) { toldHidden = true; new Notification({ ...hiddenNotice, icon: appIcon }).show() }
+  })
+  // O editor cancela o `beforeunload` quando há arquivo não salvo; sem isso o Electron só ignoraria o fechamento (o X da janela de chat não fazia
+  // nada e "Sair" ficava parado). Aqui o usuário escolhe: descartar e seguir, ou cancelar — e, se cancelar uma saída, nada foi fechado ainda.
+  window.webContents.on('will-prevent-unload', (event) => {
+    if (!window.isVisible()) window.show()  // saindo pela bandeja, a janela pode estar escondida
+    window.focus()
+    const response = dialog.showMessageBoxSync(window, { type: 'warning', title: tm().app.unsavedTitle, message: tm().app.unsavedMessage, detail: tm().app.unsavedDetail, buttons: [quitting ? tm().app.discardAndQuit : tm().app.discardAndClose, tm().app.cancel], defaultId: 1, cancelId: 1, noLink: true })
+    if (response === 0) { event.preventDefault(); return }
+    quitting = false  // a saída foi cancelada: o X da janela principal volta a só esconder na bandeja
   })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())
@@ -251,7 +293,7 @@ const fileActions = {
 
 async function chooseDirectory(defaultPath?: string): Promise<string | null> {
   const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-  const options: OpenDialogOptions = { properties: ['openDirectory'], title: 'Selecione uma pasta', ...(defaultPath ? { defaultPath } : {}) }
+  const options: OpenDialogOptions = { properties: ['openDirectory'], title: tm().app.selectFolder, ...(defaultPath ? { defaultPath } : {}) }
   const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
   return result.canceled ? null : result.filePaths[0] ?? null
 }
@@ -259,14 +301,24 @@ async function chooseDirectory(defaultPath?: string): Promise<string | null> {
 /** Arquivos para anexar a uma mensagem do chat (viram contexto do agente). */
 async function chooseFiles(): Promise<string[]> {
   const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-  const options: OpenDialogOptions = { properties: ['openFile', 'multiSelections'], title: 'Anexar arquivos à mensagem' }
+  const options: OpenDialogOptions = { properties: ['openFile', 'multiSelections'], title: tm().app.attachFiles }
   const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
   return result.canceled ? [] : result.filePaths
 }
 
+/** Salva um texto (CSV de consumo) onde o usuário escolher; cancelar não grava nada. */
+async function saveTextFile(input: { content: string; defaultName: string }): Promise<{ saved: boolean; path: string | null }> {
+  const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+  const options = { title: tm().app.saveFile, defaultPath: input.defaultName, filters: [{ name: 'CSV', extensions: ['csv'] }] }
+  const result = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options)
+  if (result.canceled || !result.filePath) return { saved: false, path: null }
+  await writeFile(result.filePath, input.content, 'utf8')
+  return { saved: true, path: result.filePath }
+}
+
 async function chooseSkillSource(): Promise<string | null> {
   const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-  const options: OpenDialogOptions = { properties: ['openFile', 'openDirectory'], title: 'Escolha a pasta da skill ou o SKILL.md' }
+  const options: OpenDialogOptions = { properties: ['openFile', 'openDirectory'], title: tm().app.chooseSkillSource }
   const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options)
   return result.canceled ? null : result.filePaths[0] ?? null
 }
@@ -285,7 +337,7 @@ async function requestQuit(): Promise<void> {
   const prompt = quitPrompt(orchestrator.pendingCount())
   if (prompt) {
     const window = BrowserWindow.getAllWindows().find((item) => item.isVisible())
-    const options = { type: 'warning' as const, title: 'Sair do AgentBoard', message: prompt.message, detail: prompt.detail, buttons: [prompt.cancel, prompt.confirm], defaultId: 0, cancelId: 0, noLink: true }
+    const options = { type: 'warning' as const, title: tm().app.quitTitle, message: prompt.message, detail: prompt.detail, buttons: [prompt.cancel, prompt.confirm], defaultId: 0, cancelId: 0, noLink: true }
     const { response } = window ? await dialog.showMessageBox(window, options) : await dialog.showMessageBox(options)
     if (response !== 1) return
   }
@@ -298,10 +350,10 @@ function updateTray(): void {
   const running = orchestrator.pendingCount()
   tray.setToolTip(trayTooltip(running))
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Abrir AgentBoard', click: showWindow },
-    { label: running ? trayTooltip(running).replace('AgentBoard · ', '') : 'Nenhum agente trabalhando', enabled: false },
+    { label: tm().app.trayOpen, click: showWindow },
+    { label: running ? tm().background.agentsWorking(running) : tm().app.trayIdle, enabled: false },
     { type: 'separator' },
-    { label: 'Sair', click: () => void requestQuit() }
+    { label: tm().app.trayQuit, click: () => void requestQuit() }
   ]))
 }
 
@@ -309,6 +361,7 @@ function createTray(): void {
   const icon = nativeImage.createFromPath(join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'tray' : 'resources/tray', 'tray.png'))
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
   tray.on('click', showWindow)
+  onMainLocaleChange(() => updateTray())
   updateTray()
 }
 
@@ -319,8 +372,9 @@ app.on('second-instance', showWindow)
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.agentboard.desktop')  // necessário para as notificações do Windows
   await openDatabase()
+  setMainLocale(settings.get().idioma)  // só depois de abrir o banco: antes disso as configurações não podem ser lidas
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, fileWatch, terminals, returnFile, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
   Menu.setApplicationMenu(null)  // sem File/Edit/View/Window/Help: a faixa de cima é do app
   createTray()
   await createWindow()
@@ -328,9 +382,18 @@ app.whenReady().then(async () => {
   app.on('activate', showWindow)
 }).catch((error: unknown) => {
   console.error('AgentBoard startup failed', error)
+  // As configurações podem não ter sido lidas (banco fechado): usa o idioma salvo se der, senão o do sistema.
+  try { setMainLocale(settings.get().idioma) } catch { setMainLocale(app.getLocale().toLowerCase().startsWith('pt') ? 'pt-BR' : 'en') }
+  const detail = error instanceof Error ? error.message : String(error)
+  const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
+  const corrupt = /^SQLITE_(CORRUPT|NOTADB)/.test(code) || /integrity check failed|malformed|not a database/i.test(detail)
+  dialog.showErrorBox(tm().app.startupFailedTitle, error instanceof SchemaTooNewError ? tm().app.startupSchemaTooNew(dataDir) : corrupt ? tm().app.startupCorrupt(dataDir, detail) : tm().app.startupFailed(dataDir, detail))
   app.exit(1)
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-// Qualquer saída (bandeja, desligar o Windows, atualização) libera o fechamento da janela.
-app.on('before-quit', () => { quitting = true; orchestrator.shutdown(); autoResume.stop(); terminals.dispose(); fileWatch.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); database.close() })
+// Qualquer saída (bandeja, desligar o Windows, atualização) libera o fechamento da janela. Nada é encerrado aqui: uma janela com arquivo
+// não salvo ainda pode cancelar a saída (veja `will-prevent-unload`).
+app.on('before-quit', () => { quitting = true })
+// Só depois que todas as janelas fecharam (ninguém cancelou) é que agentes, terminais, bandeja e banco são encerrados.
+app.on('will-quit', () => { orchestrator.shutdown(); autoResume.stop(); terminals.dispose(); fileWatch.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); void dbSessions.closeAll(); database.close() })

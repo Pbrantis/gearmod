@@ -13,13 +13,15 @@ import { pop } from './popout'
 import { FileFind, type FindOptions } from './FileFind'
 import { terminalTheme } from './terminalTheme'
 import { nearestDockEdge } from './dockLayout'
+import { toast } from './toasts'
+import { plainError } from './NoticeDialog'
+import { tr, useT } from './i18n'
+import { findFileLinks, linkTarget } from './terminalLinks'
 
-/** Caminho com `:linha[:coluna]` na saída (erros do TypeScript, stack traces): vira link com Ctrl+clique. */
-const fileLine = /(?:[A-Za-z]:[\\/])?[\w@.~/\\-]+\.[A-Za-z0-9]{1,8}:\d+(?::\d+)?/g
-const absolute = (path: string): boolean => /^[A-Za-z]:[\\/]|^\//.test(path)
+const absolute = (path: string): boolean => /^[A-Za-z]:[\\/]|^[\\/]/.test(path)
 
 function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React.JSX.Element {
-  const box = useRef<HTMLDivElement>(null), screen = useRef<Terminal | null>(null), consumed = useRef(''), fit = useRef<FitAddon | null>(null), search = useRef<SearchAddon | null>(null), field = useRef<HTMLInputElement>(null)
+  const t = useT(), box = useRef<HTMLDivElement>(null), screen = useRef<Terminal | null>(null), consumed = useRef(''), fit = useRef<FitAddon | null>(null), search = useRef<SearchAddon | null>(null), field = useRef<HTMLInputElement>(null)
   const [finding, setFinding] = useState(false), [focusTick, setFocusTick] = useState(0), [needle, setNeedle] = useState(''), [options, setOptions] = useState<FindOptions>({ caseSensitive: false, wholeWord: false, regex: false }), [results, setResults] = useState({ index: -1, count: 0 }), [background, setBackground] = useState(() => terminalTheme().theme.background)
   const state = useRef({ needle, options }); state.current = { needle, options }
   const run = (forward: boolean, incremental = false): void => {
@@ -36,7 +38,7 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
     const container = box.current, colors = terminalTheme()
     const xterm = new Terminal({ cursorBlink: true, fontFamily: 'Consolas, monospace', fontSize: 13, scrollback: 10000, allowProposedApi: true, theme: colors.theme }), addon = new FitAddon(), finder = new SearchAddon()
     xterm.loadAddon(addon); xterm.loadAddon(finder)
-    xterm.loadAddon(new WebLinksAddon((event, uri) => { if (event.ctrlKey || event.metaKey) void window.agentboard.invoke('app:open-link', { url: uri }).catch(() => undefined) }, { hover: () => { container.title = 'Ctrl+clique para abrir' }, leave: () => { container.title = '' } }))
+    xterm.loadAddon(new WebLinksAddon((event, uri) => { if (event.ctrlKey || event.metaKey) void window.agentboard.invoke('app:open-link', { url: uri }).catch((reason: unknown) => toast.error(tr().files.terminal.openLinkFailed, plainError(reason))) }, { hover: () => { container.title = tr().files.terminal.linkHint }, leave: () => { container.title = '' } }))
     xterm.loadAddon(new Unicode11Addon()); xterm.open(container)
     xterm.unicode.activeVersion = '11'
     // Aceleração por placa de vídeo: se faltar suporte ou o contexto se perder, segue no renderizador padrão, sem aviso.
@@ -46,7 +48,8 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
     const files = xterm.registerLinkProvider({ provideLinks: (line, callback) => {
       const context = terminal.snapshot().context, text = xterm.buffer.active.getLine(line - 1)?.translateToString(true) ?? ''
       if (!context || !text) { callback(undefined); return }
-      callback([...text.matchAll(fileLine)].map((found) => ({ text: found[0], range: { start: { x: found.index + 1, y: line }, end: { x: found.index + found[0].length, y: line } }, activate: (event: MouseEvent, value: string) => { if (!(event.ctrlKey || event.metaKey)) return; const path = absolute(value) ? value : `${tab.cwd.replace(/[\\/]+$/, '')}/${value}`; window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path } })) } })))
+      // Caminho com `:linha[:coluna]` na saída (erros do TypeScript, stack traces): vira link com Ctrl+clique. Veja `terminalLinks.ts`.
+      callback(findFileLinks(text).map((found) => ({ text: found.text, range: { start: { x: found.start + 1, y: line }, end: { x: found.start + found.text.length, y: line } }, activate: (event: MouseEvent) => { if (!(event.ctrlKey || event.metaKey)) return; const value = linkTarget(found), path = absolute(value) ? value : `${tab.cwd.replace(/[\\/]+$/, '')}/${value}`; window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path } })) } })))
     } })
     xterm.attachCustomKeyEventHandler((event) => {
       if (event.ctrlKey && (event.shiftKey && event.code === 'KeyF' || event.code === 'Backquote' || event.key === '^')) return false
@@ -74,12 +77,12 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
   }
   return <div className="term-screen" style={{ display: visible ? undefined : 'none' }}>
     {finding && <div className="term-find" onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setFinding(false); screen.current?.focus() } }}><FileFind input={field} query={needle} setQuery={setNeedle} options={options} setOptions={setOptions} count={results.count} index={results.index} error="" previous={() => run(false)} next={() => run(true)} close={() => { setFinding(false); screen.current?.focus() }} /></div>}
-    <div ref={box} className="term-emulator" style={{ background }} onContextMenu={paste} aria-label={`${tab.shell} interativo`} />
+    <div ref={box} className="term-emulator" style={{ background }} onContextMenu={paste} aria-label={t.files.terminal.interactive(tab.shell)} />
   </div>
 }
 
 export function TerminalPanel({ standalone = false }: { standalone?: boolean } = {}): React.JSX.Element | null {
-  const { open, tabs, active, error, context } = useTerminal(), [position, setPosition] = useState<LayoutPosition>(() => { try { const saved = localStorage.getItem('agentboard.terminalPosition'); return saved === 'top' || saved === 'left' || saved === 'right' ? saved : 'bottom' } catch { return 'bottom' } }), [expanded, setExpanded] = useState(false), [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalHeight')) || 300 } catch { return 300 } }), [width, setWidth] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalWidth')) || Math.round(window.innerWidth * .48) } catch { return Math.round(window.innerWidth * .48) } }), [dragging, setDragging] = useState(false), [moveTarget, setMoveTarget] = useState<LayoutPosition>()
+  const t = useT(), { open, tabs, active, error, context } = useTerminal(), [position, setPosition] = useState<LayoutPosition>(() => { try { const saved = localStorage.getItem('agentboard.terminalPosition'); return saved === 'top' || saved === 'left' || saved === 'right' ? saved : 'bottom' } catch { return 'bottom' } }), [expanded, setExpanded] = useState(false), [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalHeight')) || 300 } catch { return 300 } }), [width, setWidth] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalWidth')) || Math.round(window.innerWidth * .48) } catch { return Math.round(window.innerWidth * .48) } }), [dragging, setDragging] = useState(false), [moveTarget, setMoveTarget] = useState<LayoutPosition>()
   const current = tabs.find((tab) => tab.id === active), panel = useRef<HTMLElement>(null)
   useEffect(() => {
     const root = document.documentElement.style
@@ -110,20 +113,22 @@ export function TerminalPanel({ standalone = false }: { standalone?: boolean } =
     header.addEventListener('pointermove', move); header.addEventListener('pointerup', end); header.addEventListener('pointercancel', cancel)
   }
   useEffect(() => { if (standalone && pop?.terminalId) { terminal.setContext({ projectId: pop.projectId, cardId: pop.cardId }); void terminal.attach(pop.terminalId) } }, [standalone])
-  const detach = async (point?: { x: number; y: number }): Promise<void> => { if (!current || !context) return; try { await window.agentboard.invoke('windows:open', { kind: 'terminal', projectId: context.projectId, cardId: context.cardId ?? undefined, terminalId: current.id, placement: 'new', ...point }); terminal.setOpen(false) } catch { /* a sessão permanece aberta */ } }
+  // Fechar a janela destacada não deixa processo órfão: as abas dela (inclusive as do "+") passam para a janela principal.
+  useEffect(() => { if (!standalone) return; const leave = (): void => terminal.handOff(); window.addEventListener('pagehide', leave); window.addEventListener('beforeunload', leave); return () => { window.removeEventListener('pagehide', leave); window.removeEventListener('beforeunload', leave) } }, [standalone])
+  const detach = async (point?: { x: number; y: number }): Promise<void> => { if (!current || !context) return; try { await window.agentboard.invoke('windows:open', { kind: 'terminal', projectId: context.projectId, cardId: context.cardId ?? undefined, terminalId: current.id, placement: 'new', ...point }); terminal.setOpen(false) } catch (reason) { toast.error(t.files.terminal.detachFailed, plainError(reason)) } }
   if (!open && !standalone) return null
   const size = position === 'top' || position === 'bottom' ? { height } : { width }
   const fill = (): void => { if (standalone) void window.agentboard.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded) }
-  return <section ref={panel} className={`term terminalpty ${standalone ? 'standalone' : expanded ? 'expanded' : position} ${dragging ? 'dragging' : ''}`} style={standalone || expanded ? undefined : size} aria-label="Terminal PowerShell">
-    {!standalone && !expanded && <div className={`term-grip ${position}`} role="separator" aria-orientation={position === 'top' || position === 'bottom' ? 'horizontal' : 'vertical'} aria-label={position === 'top' || position === 'bottom' ? 'Ajustar altura do terminal' : 'Ajustar largura do terminal'} onPointerDown={resize} />}
+  return <section ref={panel} className={`term terminalpty ${standalone ? 'standalone' : expanded ? 'expanded' : position} ${dragging ? 'dragging' : ''}`} style={standalone || expanded ? undefined : size} aria-label={t.files.terminal.panelLabel}>
+    {!standalone && !expanded && <div className={`term-grip ${position}`} role="separator" aria-orientation={position === 'top' || position === 'bottom' ? 'horizontal' : 'vertical'} aria-label={position === 'top' || position === 'bottom' ? t.files.terminal.resizeHeight : t.files.terminal.resizeWidth} onPointerDown={resize} />}
     {moveTarget && <div className={`term-move-preview ${moveTarget}`} aria-hidden="true" />}
-    <div className="term-tabs" onPointerDown={moveHeader}><span className="powershell-icon" aria-hidden="true">›_</span><div className="term-tablist">{tabs.map((tab) => <span key={tab.id} className={`term-tab ${tab.id === active ? 'on' : ''}`}><button type="button" onClick={() => terminal.select(tab.id)} title={tab.cwd}>{tab.title}{tab.exited ? ' · encerrado' : ''}</button><button type="button" className="x" aria-label={`Fechar ${tab.title}`} onClick={() => terminal.close(tab.id)}>×</button></span>)}</div>
-      <button type="button" className="ibtn" title="Novo PowerShell" aria-label="Novo terminal" onClick={() => void terminal.newTab()}>+</button><span className="term-header-drag" aria-hidden="true" />
-      {current && <button type="button" className="term-link" onClick={() => terminal.clear(current.id)}>Limpar</button>}
+    <div className="term-tabs" onPointerDown={moveHeader}><span className="powershell-icon" aria-hidden="true">›_</span><div className="term-tablist">{tabs.map((tab) => <span key={tab.id} className={`term-tab ${tab.id === active ? 'on' : ''}`}><button type="button" onClick={() => terminal.select(tab.id)} data-tip={tab.cwd}>{tab.exited ? t.files.terminal.tabExited(tab.title) : tab.title}</button><button type="button" className="x" aria-label={t.files.terminal.closeTab(tab.title)} onClick={() => terminal.close(tab.id)}>×</button></span>)}</div>
+      <button type="button" className="ibtn" data-tip={t.files.terminal.newTip} aria-label={t.files.terminal.newLabel} onClick={() => void terminal.newTab()}>+</button><span className="term-header-drag" aria-hidden="true" />
+      {current && <button type="button" className="term-link" onClick={() => terminal.clear(current.id)}>{t.common.clear}</button>}
       <WindowLayoutMenu move={(value) => { if (standalone) void window.agentboard.invoke('windows:place', { placement: value }); else moveTo(value) }} detach={!standalone ? () => void detach() : undefined} detachDisabled={!current || !context} />
-      {!standalone && <button type="button" className="ibtn" aria-label={expanded ? 'Restaurar terminal' : 'Expandir terminal'} onClick={fill}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button>}<button type="button" className="ibtn" aria-label="Ocultar terminal" onClick={() => { if (standalone) window.close(); else terminal.setOpen(false) }}><CloseIcon /></button>
+      {!standalone && <button type="button" className="ibtn" aria-label={expanded ? t.files.terminal.restore : t.files.terminal.expand} onClick={fill}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button>}<button type="button" className="ibtn" aria-label={t.files.terminal.hide} onClick={() => { if (standalone) window.close(); else terminal.setOpen(false) }}><CloseIcon /></button>
     </div>
     {error && <p className="term-error">{error}</p>}{tabs.map((tab) => <Screen key={tab.id} tab={tab} visible={active === tab.id} />)}
-    {!current && <div className="term-empty"><button type="button" onClick={() => void terminal.newTab()}>Abrir PowerShell</button></div>}
+    {!current && <div className="term-empty"><button type="button" onClick={() => void terminal.newTab()}>{t.files.terminal.openPowerShell}</button></div>}
   </section>
 }

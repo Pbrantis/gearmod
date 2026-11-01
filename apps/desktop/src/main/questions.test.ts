@@ -19,7 +19,7 @@ describe('question blocks', () => {
     expect(answersMessage(block, [[]])).toContain('(sem resposta)')
   })
   it('o exemplo ensinado aos agentes é um bloco válido', () => {
-    const sample = /```agentboard-perguntas com este JSON: (\{.*\})\. De 1 a 4/.exec(questionRule)![1]!
+    const sample = /```agentboard-perguntas block containing this JSON: (\{.*\})\. Write the question/.exec(questionRule)![1]!
     const parts = splitQuestionBlocks(`Antes:
 
 \`\`\`agentboard-perguntas

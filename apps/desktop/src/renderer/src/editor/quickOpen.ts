@@ -41,4 +41,6 @@ export function rankPaths(query: string, paths: string[], recents: string[] = []
 const key = (projectId: string): string => `agentboard.recentFiles.${projectId}`
 /** Arquivos abertos há pouco neste projeto (mais recente primeiro, até 30), guardados no navegador. */
 export function readRecents(projectId: string): string[] { try { const saved = JSON.parse(localStorage.getItem(key(projectId)) ?? '[]') as unknown; return Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string').slice(0, 30) : [] } catch { return [] } }
+/** Tira dos recentes os caminhos que já não existem no disco. */
+export function dropRecents(projectId: string, gone: string[]): void { if (!gone.length) return; try { localStorage.setItem(key(projectId), JSON.stringify(readRecents(projectId).filter((item) => !gone.includes(item)))) } catch { /* só vale nesta sessão */ } }
 export function pushRecent(projectId: string, path: string): void { try { localStorage.setItem(key(projectId), JSON.stringify([path, ...readRecents(projectId).filter((item) => item !== path)].slice(0, 30))) } catch { /* só vale nesta sessão */ } }

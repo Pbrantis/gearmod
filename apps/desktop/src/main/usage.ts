@@ -1,12 +1,17 @@
 import { existsSync } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { AgentProfile, UsageWindow } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import type { ProfileRepository } from './projects'
+import { accountKeyFromProvider } from './account'
+import type { UsageLedgerService } from './usage-ledger'
+import type { Approval, ApprovalService } from './approvals'
+import { tm } from './i18n'
 
-const windowLabels: Record<string, string> = { five_hour: 'Sessão de 5 horas', seven_day: 'Semana' }
-const labelFor = (id: string, minutes?: number): string => windowLabels[id] ?? (minutes ? (minutes >= 10_080 ? 'Semana' : minutes >= 1440 ? `${Math.round(minutes / 1440)} dias` : `${Math.round(minutes / 60)} horas`) : id)
+const windowLabel = (id: string): string | undefined => id === 'five_hour' ? tm().usage.fiveHourSession : id === 'seven_day' ? tm().usage.week : undefined
+const labelFor = (id: string, minutes?: number): string => windowLabel(id) ?? (minutes ? (minutes >= 10_080 ? tm().usage.week : minutes >= 1440 ? tm().usage.days(Math.round(minutes / 1440)) : tm().usage.hours(Math.round(minutes / 60))) : id)
 const iso = (seconds: number): string => new Date(seconds * 1000).toISOString()
 const periods: Record<string, number> = { five_hour: 5 * 3600_000, seven_day: 7 * 86_400_000 }
 
@@ -67,23 +72,50 @@ async function tail(path: string, bytes: number): Promise<string> {
 /** Uso das sessões: Codex lido de `<CODEX_HOME>/sessions/**\/*.jsonl`; Claude a partir do `rate_limit_event` que o Claude Code emite em cada execução. */
 export class UsageService {
   private readonly probing = new Set<string>()
-  constructor(private readonly database: AppDatabase, private readonly profiles: ProfileRepository, private readonly probeClaude?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly staleMs = 10 * 60_000) {}
+  constructor(private readonly database: AppDatabase, private readonly profiles: ProfileRepository, private readonly probeClaude?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly staleMs = 10 * 60_000, private readonly readCodex?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly ledger?: UsageLedgerService, private readonly writeLegacySnapshots = process.env.AGENTBOARD_LEGACY_USAGE_SNAPSHOTS === '1') {}
 
   recordClaude(profileId: string, payload: Record<string, unknown>): void {
     const info = (payload.rate_limit_info ?? {}) as { unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }> }
     const upsert = this.database.db.prepare(`INSERT INTO agent_usage_snapshots(profile_id, window, utilization, resets_at, captured_at) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(profile_id, window) DO UPDATE SET utilization = excluded.utilization, resets_at = excluded.resets_at, captured_at = excluded.captured_at`)
     const now = new Date().toISOString()
-    for (const [id, window] of Object.entries(info.unifiedWindows ?? {})) if (typeof window.utilization === 'number') upsert.run(profileId, id, window.utilization, typeof window.resetsAt === 'number' ? iso(window.resetsAt) : null, now)
+    const profile = this.profiles.get(profileId)
+    const storedAccountKey = this.profiles.accountKey(profileId), derivedAccountKey = accountKeyFromProvider(profile.provider, payload)
+    if (!storedAccountKey && derivedAccountKey) this.profiles.setAccountKey(profileId, derivedAccountKey)
+    const accountKey = storedAccountKey ?? derivedAccountKey
+    for (const [id, window] of Object.entries(info.unifiedWindows ?? {})) if (typeof window.utilization === 'number') {
+      const resetsAt = typeof window.resetsAt === 'number' ? iso(window.resetsAt) : null
+      if (this.writeLegacySnapshots) upsert.run(profileId, id, window.utilization, resetsAt, now)
+      // Keep the legacy current-state table for one rollout cycle, while the new table is append-only and sampled.
+      const previous = this.database.db.prepare(`SELECT used_percent AS usedPercent, resets_at AS resetsAt, captured_at AS capturedAt FROM quota_snapshots
+        WHERE provider = ? AND bucket = ? AND ${accountKey ? 'account_key = ?' : 'profile_id = ?'} ORDER BY captured_at DESC LIMIT 1`).get(profile.provider, id, accountKey ?? profileId) as { usedPercent: number; resetsAt: string | null; capturedAt: string } | undefined
+      const changed = !previous || previous.usedPercent !== Math.round(window.utilization * 100) || previous.resetsAt !== resetsAt || Date.parse(now) - Date.parse(previous.capturedAt) >= 15 * 60_000
+      if (changed) this.database.db.prepare(`INSERT INTO quota_snapshots(id,captured_at,provider,profile_id,account_key,bucket,window_id,used_percent,resets_at,window_duration_mins,reliability,source)
+        VALUES (?,?,?,?,?,?,?,?,?,?, 'reported','provider-event')`).run(randomUUID(), now, profile.provider, profileId, accountKey, id, id, Math.round(window.utilization * 100), resetsAt, null)
+    }
   }
 
   private claude(profile: AgentProfile): { windows: UsageWindow[]; capturedAt: string | null } {
-    const rows = this.database.db.prepare('SELECT window AS id, utilization, resets_at AS resetsAt, captured_at AS capturedAt FROM agent_usage_snapshots WHERE profile_id = ? ORDER BY window').all(profile.id) as Array<{ id: string; utilization: number; resetsAt: string | null; capturedAt: string }>
+    // v32 is the durable source. The legacy table remains as a rollout fallback for databases predating the first snapshot.
+    const accountKey = this.profiles.accountKey(profile.id)
+    let rows = this.database.db.prepare(`SELECT q.bucket AS id, q.used_percent / 100.0 AS utilization, q.resets_at AS resetsAt, q.captured_at AS capturedAt FROM quota_snapshots q
+      WHERE ${accountKey ? 'q.account_key = ?' : 'q.profile_id = ?'} AND q.captured_at = (SELECT MAX(q2.captured_at) FROM quota_snapshots q2 WHERE ${accountKey ? 'q2.account_key=q.account_key' : 'q2.profile_id=q.profile_id'} AND q2.bucket=q.bucket) ORDER BY q.bucket`).all(accountKey ?? profile.id) as Array<{ id: string; utilization: number; resetsAt: string | null; capturedAt: string }>
+    if (!rows.length) rows = this.database.db.prepare('SELECT window AS id, utilization, resets_at AS resetsAt, captured_at AS capturedAt FROM agent_usage_snapshots WHERE profile_id = ? ORDER BY window').all(profile.id) as typeof rows
     const windows = rows.map((row) => rollWindow({ id: row.id, label: labelFor(row.id), usedPercent: Math.round(row.utilization * 100), resetsAt: row.resetsAt }))
     return { windows, capturedAt: rows.map((row) => row.capturedAt).sort().at(-1) ?? null }
   }
 
   private async codex(profile: AgentProfile): Promise<{ windows: UsageWindow[]; capturedAt: string | null }> {
+    if (this.readCodex) {
+      try {
+        const result = await this.readCodex(profile), limits = result?.rateLimits as Record<string, unknown> | undefined
+        const windows = ([['primary', 'five_hour'], ['secondary', 'seven_day']] as const).flatMap(([key, id]) => {
+          const item = limits?.[key] as Record<string, unknown> | undefined
+          return item && typeof item.usedPercent === 'number' ? [{ id, label: labelFor(id, typeof item.windowDurationMins === 'number' ? item.windowDurationMins : undefined), usedPercent: Math.round(item.usedPercent), resetsAt: typeof item.resetsAt === 'number' ? iso(item.resetsAt) : null }] : []
+        })
+        if (windows.length) return { windows: windows.map((window) => rollWindow(window)), capturedAt: new Date().toISOString() }
+      } catch { /* fallback below */ }
+    }
     const dir = join(profile.configDir, 'sessions')
     if (!existsSync(dir)) return { windows: [], capturedAt: null }
     for (const file of await newestFiles(dir, 5)) {
@@ -100,22 +132,29 @@ export class UsageService {
    * O Claude só informa o limite quando roda. Para o painel não ficar vazio ou velho, faz uma chamada mínima (modelo barato)
    * por baixo dos panos e guarda o `rate_limit_event`. Só repete quando o dado tem mais de 10 minutos.
    */
-  async refresh(): Promise<Array<{ profileId: string; provider: 'claude' | 'codex'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {
-    if (this.probeClaude) {
+  async refresh(explicit = false): Promise<Array<{ profileId: string; provider: 'claude' | 'codex' | 'gemini'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {
+    if (explicit && this.probeClaude) {
       await Promise.all(this.profiles.list().filter((profile) => profile.provider === 'claude' && !this.probing.has(profile.id)).map(async (profile) => {
         const last = this.claude(profile).capturedAt
         if (last && Date.now() - Date.parse(last) < this.staleMs) return
         this.probing.add(profile.id)
-        try { const payload = await this.probeClaude!(profile); if (payload) this.recordClaude(profile.id, payload) } catch { /* sem rede ou sem login: mantém o último dado */ } finally { this.probing.delete(profile.id) }
+        try { const payload = await this.probeClaude!(profile); this.ledger?.recordAuxiliary(profile, 'probe'); if (payload) this.recordClaude(profile.id, payload) } catch { /* sem rede ou sem login: mantém o último dado */ } finally { this.probing.delete(profile.id) }
       }))
     }
     return this.list()
   }
 
-  async list(): Promise<Array<{ profileId: string; provider: 'claude' | 'codex'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {
+  async list(): Promise<Array<{ profileId: string; provider: 'claude' | 'codex' | 'gemini'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {
     return Promise.all(this.profiles.list().map(async (profile) => {
-      const data = profile.provider === 'claude' ? this.claude(profile) : await this.codex(profile)
-      return { profileId: profile.id, provider: profile.provider, ...data, source: profile.provider === 'claude' ? 'Última execução do Claude' : 'Sessões do Codex' }
+      // O Gemini CLI não informa limites de uso; o consumo de tokens de cada execução continua no histórico do card.
+      const data = profile.provider === 'claude' ? this.claude(profile) : profile.provider === 'gemini' ? { windows: [], capturedAt: null } : await this.codex(profile)
+      return { profileId: profile.id, provider: profile.provider, ...data, source: profile.provider === 'claude' ? tm().usage.sourceClaude : profile.provider === 'gemini' ? tm().usage.sourceGemini : tm().usage.sourceCodex }
     }))
   }
+
+  history(input: { granularity: 'day' | 'week' | 'month'; tz: string; groupBy: 'provider' | 'profile' | 'model' | 'project' | 'card' | 'purpose'; from?: string; to?: string }) { return this.requireLedger().history(input) }
+  exportCsv(range: { from?: string; to?: string }) { return this.requireLedger().exportCsv(range) }
+  requestPurge(approvals: ApprovalService, range: { from?: string; to?: string }): Approval { return this.requireLedger().requestPurge(approvals, range) }
+  purge(approvals: ApprovalService, range: { from?: string; to?: string }, approvalId: string): { deleted: number; csv: string } { return this.requireLedger().purge(range, approvalId, approvals) }
+  private requireLedger(): UsageLedgerService { if (!this.ledger) throw new Error(tm().usage.usageHistoryUnavailable); return this.ledger }
 }

@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { join, delimiter } from 'node:path'
 import { createRequire } from 'node:module'
 import type { IPty } from 'node-pty'
+import { tm } from './i18n'
 const require = createRequire(import.meta.url)
 
 export function shellCommand(platform: NodeJS.Platform, userShell?: string): { file: string; args: string[]; prelude: string } {
@@ -29,10 +30,10 @@ export class TerminalService {
     return id
   }
   info(id: string): { id: string; cwd: string; shell: string; text: string; seq: number; exited: boolean } {
-    const session = this.shells.get(id); if (!session) throw new Error('Terminal não encontrado')
+    const session = this.shells.get(id); if (!session) throw new Error(tm().terminals.terminalNotFound)
     return { id, cwd: session.cwd, shell: session.shell, text: session.text, seq: session.seq, exited: session.exited }
   }
-  write(id: string, data: string): void { const session = this.shells.get(id); if (!session || session.exited) throw new Error('Esse terminal já foi encerrado'); session.proc.write(data) }
+  write(id: string, data: string): void { const session = this.shells.get(id); if (!session || session.exited) throw new Error(tm().terminals.terminalEnded); session.proc.write(data) }
   resize(id: string, cols: number, rows: number): void { const session = this.shells.get(id); if (session && !session.exited) session.proc.resize(cols, rows) }
   kill(id: string): void {
     const session = this.shells.get(id); if (!session) return

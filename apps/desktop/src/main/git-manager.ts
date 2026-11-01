@@ -7,6 +7,8 @@ import { basename, extname, isAbsolute, join, relative, resolve } from 'node:pat
 import { defaultGitPolicy, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { nativeGit, type GitRunner } from './worktrees'
+import { ApprovalService } from './approvals'
+import { tm } from './i18n'
 
 interface Source { id: string; projectId: string; name: string; path: string }
 interface Member { cardId: string; title: string; branch: string; path: string; repoPath: string; baseRef: string; status: 'active' | 'failed'; error: string | null; prUrl: string | null }
@@ -15,7 +17,7 @@ export interface CliRunner { run(command: string, args: string[], cwd: string): 
 const execCli = promisify(execFile)
 export const nativeCli: CliRunner = { run: async (command, args, cwd) => (await execCli(command, args, { cwd, timeout: 120_000, windowsHide: true, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1' } })).stdout }
 interface Target { dir: string; branch: string | null; baseRef: string | null }
-interface RequestRow { id: string; cardId: string; sourceId: string; repoName: string; message: string; files: string; status: GitRequest['status']; profileId: string | null; hash: string | null; error: string | null; createdAt: string }
+interface RequestRow { id: string; cardId: string; sourceId: string; repoName: string; message: string; files: string; status: GitRequest['status']; profileId: string | null; hash: string | null; error: string | null; createdAt: string; approvalId: string | null }
 
 const same = (a: string, b: string): boolean => (process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b))
 /** Mesma pasta, resolvendo atalhos e nomes curtos do Windows (C:\Users\NOME~1) antes de comparar. */
@@ -50,27 +52,27 @@ const globToRegExp = (pattern: string): RegExp => new RegExp(`^${pattern.trim().
 /** Regra de commit do agente para uma branch: a primeira exceção que bater vence; senão vale o padrão do projeto. */
 export function resolveRule(policy: GitPolicy, branch: string): { rule: GitRule; why: string } {
   const found = policy.rules.find((item) => item.pattern.trim() && globToRegExp(item.pattern).test(branch))
-  return found ? { rule: found.rule, why: `exceção da branch ${found.pattern.trim()}` } : { rule: policy.def, why: 'padrão do projeto' }
+  return found ? { rule: found.rule, why: tm().git.branchException(found.pattern.trim()) } : { rule: policy.def, why: tm().git.projectDefault }
 }
 
 /** Mensagem curta em português para os erros mais comuns do Git. */
 export function friendlyError(error: unknown): string {
   const text = [(error as { stderr?: string })?.stderr, error instanceof Error ? error.message : String(error)].filter(Boolean).join('\n')
-  if (/Please tell me who you are|unable to auto-detect email|empty ident/i.test(text)) return 'O Git não sabe quem você é. Configure o nome e o e-mail (git config --global user.name "Seu nome" e user.email "voce@exemplo.com") e tente de novo.'
-  if (/nothing (added )?to commit|no changes added/i.test(text)) return 'Não há nada preparado para commitar.'
-  if (/Authentication failed|could not read Username|Permission denied \(publickey\)|terminal prompts disabled/i.test(text)) return 'O Git não conseguiu entrar no servidor (login ou chave). Entre uma vez pelo terminal ou pelo seu gerenciador de credenciais e tente de novo.'
-  if (/non-fast-forward|\[rejected\]|fetch first|failed to push some refs/i.test(text)) return 'O servidor recusou: a branch remota tem commits que esta ainda não tem. Faça Pull antes de publicar.'
+  if (/Please tell me who you are|unable to auto-detect email|empty ident/i.test(text)) return tm().git.gitIdentityMissing
+  if (/nothing (added )?to commit|no changes added/i.test(text)) return tm().git.friendlyNothingStaged
+  if (/Authentication failed|could not read Username|Permission denied \(publickey\)|terminal prompts disabled/i.test(text)) return tm().git.gitAuthFailed
+  if (/non-fast-forward|\[rejected\]|fetch first|failed to push some refs/i.test(text)) return 'O servidor recusou: a branch remota tem commits que esta ainda não tem. Faça Pull antes de publicar.' // fixo em português: o GitPage.tsx do renderer detecta /^O servidor recusou/
   const busy = /'([^']+)' is already (?:used by worktree|checked out) at '([^']+)'/i.exec(text)
-  if (busy) return `A branch ${busy[1]} já está aberta em outra pasta de trabalho (${busy[2]}), geralmente a worktree de um card. O Git não deixa a mesma branch aberta em dois lugares: use a worktree do card ou remova-a antes.`
-  if (/Not possible to fast-forward|divergent branches/i.test(text)) return 'A branch local e a remota seguiram caminhos diferentes; não dá para atualizar sozinho. Resolva pelo terminal (merge ou rebase).'
-  if (/no upstream|has no upstream branch/i.test(text)) return 'Esta branch ainda não foi publicada.'
-  if (/not a git repository/i.test(text)) return 'A pasta não é um repositório Git.'
+  if (busy) return tm().git.branchOpenElsewhere(busy[1]!, busy[2]!)
+  if (/Not possible to fast-forward|divergent branches/i.test(text)) return tm().git.cannotFastForward
+  if (/no upstream|has no upstream branch/i.test(text)) return tm().git.branchNotPublished
+  if (/not a git repository/i.test(text)) return tm().git.notAGitRepo
   const used = /cannot delete branch '([^']+)' (?:used by|checked out at) (?:worktree at )?'([^']+)'/i.exec(text)
-  if (used) return `A branch ${used[1]} está em uso por uma worktree (${used[2]}). Remova ou libere essa worktree antes de apagar a branch.`
+  if (used) return tm().git.branchUsedByWorktree(used[1]!, used[2]!)
   const unmerged = /The branch '([^']+)' is not fully merged/i.exec(text)
-  if (unmerged) return `A branch ${unmerged[1]} tem commits que ainda não estão em outra branch; por isso não foi apagada, para você não perder trabalho.`
+  if (unmerged) return tm().git.branchNotMerged(unmerged[1]!)
   const detail = text.split(/\r?\n/).map((line) => line.trim()).find((line) => /^(fatal|error):/i.test(line))
-  return detail ? detail.replace(/^(fatal|error):\s*/i, '') : text.trim().split(/\r?\n/)[0] || 'O Git não conseguiu concluir a operação.'
+  return detail ? detail.replace(/^(fatal|error):\s*/i, '') : text.trim().split(/\r?\n/)[0] || tm().git.gitOperationFailed
 }
 
 /**
@@ -85,8 +87,14 @@ const statusOf = (code: string): 'M' | 'A' | 'D' => (code === 'A' || code === '?
 const splitMessage = (message: string): { subject: string; body: string } => { const [subject = '', ...rest] = message.trim().split(/\r?\n/); return { subject: subject.trim(), body: rest.join('\n').trim() } }
 
 /** Gerenciador Git do projeto: grafo, status, commit, sincronização e a regra de commit do agente. Só usa o `git` instalado. */
+/** Operação que deixou conflitos; `stash` = apply/pop de stash (sem arquivo de estado no .git). */
+export type ConflictOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'stash'
+
 export class GitManager {
-  constructor(private readonly database: AppDatabase, private readonly git: GitRunner = nativeGit, private readonly cli: CliRunner = nativeCli) {}
+  private readonly approvals: ApprovalService
+  constructor(private readonly database: AppDatabase, private readonly git: GitRunner = nativeGit, private readonly cli: CliRunner = nativeCli, approvals?: ApprovalService) {
+    this.approvals = approvals ?? new ApprovalService(database)
+  }
 
   private async run(dir: string, args: string[]): Promise<string> {
     try { return (await this.git.run(['-c', 'core.quotepath=false', '-C', dir, ...args])).stdout } catch (error) { throw new Error(friendlyError(error)) }
@@ -98,7 +106,7 @@ export class GitManager {
   // ---------- repositórios e contexto ----------
   private source(sourceId: string): Source {
     const row = this.database.db.prepare('SELECT id, project_id AS projectId, name, local_path AS path FROM project_sources WHERE id = ?').get(sourceId) as Source | undefined
-    if (!row) throw new Error('Repositório não encontrado no projeto')
+    if (!row) throw new Error(tm().common.repoNotFoundInProject)
     return row
   }
 
@@ -112,7 +120,7 @@ export class GitManager {
   private async target(source: Source, cardId: string | null): Promise<Target> {
     if (!cardId) return { dir: source.path, branch: null, baseRef: null }
     const member = this.members(source.projectId, cardId).find((item) => same(item.repoPath, source.path))
-    if (!member || !await isDir(member.path)) throw new Error('A worktree deste card ainda não existe neste repositório')
+    if (!member || !await isDir(member.path)) throw new Error(tm().git.worktreeMissingInRepo)
     return { dir: member.path, branch: member.branch, baseRef: member.baseRef }
   }
 
@@ -141,7 +149,7 @@ export class GitManager {
   async detect(projectId: string): Promise<{ repos: GitRepo[]; changed: boolean }> {
     const rows = this.database.db.prepare('SELECT id, project_id AS projectId, name, local_path AS path, is_git_repository AS git, current_branch AS branch FROM project_sources WHERE project_id = ? ORDER BY sort_order').all(projectId) as Array<Source & { git: number; branch: string | null }>
     const project = this.database.db.prepare('SELECT local_path AS path FROM projects WHERE id = ?').get(projectId) as { path: string } | undefined
-    if (!project) throw new Error('Projeto não encontrado')
+    if (!project) throw new Error(tm().common.projectNotFound)
     const found = new Map<string, { root: string; branch: string }>()
     const look = async (dir: string): Promise<void> => {
       if (!await isDir(dir)) return
@@ -178,14 +186,14 @@ export class GitManager {
   /** Inicia o Git na pasta (sem mexer nos arquivos dela) ou vincula uma origin SSH/HTTPS; cria o repositório se a pasta ainda não tem. */
   async setup(input: { projectId: string; sourceId: string; mode: 'init' | 'origin'; url?: string | undefined }): Promise<GitRepo[]> {
     const source = this.source(input.sourceId)
-    if (source.projectId !== input.projectId) throw new Error('Essa pasta não pertence ao projeto')
-    if (!await isDir(source.path)) throw new Error('A pasta do projeto não existe mais')
+    if (source.projectId !== input.projectId) throw new Error(tm().git.folderNotInProject)
+    if (!await isDir(source.path)) throw new Error(tm().git.projectFolderGone)
     const url = (input.url ?? '').trim()
     if (input.mode === 'origin') {
-      if (!/^(https?:\/\/[^\s/]+\/\S+|ssh:\/\/[^\s/]+\/\S+|[\w.-]+@[\w.-]+:\S+)$/.test(url) || url.startsWith('-')) throw new Error('Informe um endereço SSH (git@host:usuario/repo.git) ou HTTPS (https://host/usuario/repo.git)')
+      if (!/^(https?:\/\/[^\s/]+\/\S+|ssh:\/\/[^\s/]+\/\S+|[\w.-]+@[\w.-]+:\S+)$/.test(url) || url.startsWith('-')) throw new Error(tm().git.invalidRemoteUrl)
     }
     let repo = await this.repositoryAt(source.path)
-    if (repo && !sameDir(repo.root, source.path)) throw new Error('Esta pasta está dentro de outro repositório Git; use o repositório da pasta de cima')
+    if (repo && !sameDir(repo.root, source.path)) throw new Error(tm().git.folderInsideOtherRepo)
     if (!repo) {
       await this.run(source.path, ['init', '-b', 'main']).catch(() => this.run(source.path, ['init']))
       repo = await this.repositoryAt(source.path)
@@ -201,7 +209,7 @@ export class GitManager {
   // ---------- regra de commit ----------
   policy(projectId: string): GitPolicy {
     const row = this.database.db.prepare('SELECT git_policy AS policy FROM projects WHERE id = ?').get(projectId) as { policy: string | null } | undefined
-    if (!row) throw new Error('Projeto não encontrado')
+    if (!row) throw new Error(tm().common.projectNotFound)
     if (!row.policy) return structuredClone(defaultGitPolicy)
     try { const parsed = gitPolicySchema.safeParse(JSON.parse(row.policy)); if (parsed.success) return parsed.data } catch { /* JSON ruim: volta ao padrão */ }
     return structuredClone(defaultGitPolicy)
@@ -209,7 +217,7 @@ export class GitManager {
 
   setPolicy(projectId: string, policy: GitPolicy): GitPolicy {
     const clean = gitPolicySchema.parse({ def: policy.def, rules: policy.rules.map((item) => ({ pattern: item.pattern.trim(), rule: item.rule })).filter((item) => item.pattern) })
-    if (!this.database.db.prepare('UPDATE projects SET git_policy = ? WHERE id = ?').run(JSON.stringify(clean), projectId).changes) throw new Error('Projeto não encontrado')
+    if (!this.database.db.prepare('UPDATE projects SET git_policy = ? WHERE id = ?').run(JSON.stringify(clean), projectId).changes) throw new Error(tm().common.projectNotFound)
     return clean
   }
 
@@ -221,9 +229,9 @@ export class GitManager {
     const wt = this.latestWorktree(cardId)
     if (!card || !wt) return null
     const { rule } = this.ruleFor(card.projectId, wt.branch)
-    if (rule === 'never') return `Não faça commit nesta branch (${wt.branch}): deixe as alterações na worktree, quem commita é o usuário. Não rode git commit.`
-    if (rule === 'auto') return 'Ao fechar cada task, faça o commit com a ferramenta agentboard_pedir_commit (mensagem curta em português, no imperativo). Não rode git commit direto.'
-    return 'Para commitar, peça com a ferramenta agentboard_pedir_commit (mensagem e arquivos): o usuário autoriza no card. Não rode git commit direto.'
+    if (rule === 'never') return `Do not commit on this branch (${wt.branch}): leave the changes in the worktree, the user does the committing. Do not run git commit.`
+    if (rule === 'auto') return 'When you close each task, commit with the agentboard_pedir_commit tool (short message in the language given in `idioma`, imperative mood). Do not run git commit directly.'
+    return 'To commit, ask with the agentboard_pedir_commit tool (message and files): the user authorizes it on the card. Do not run git commit directly.'
   }
 
   private latestWorktree(cardId: string): { id: string; branch: string } | undefined {
@@ -233,7 +241,7 @@ export class GitManager {
   // ---------- grafo ----------
   async graph(projectId: string, sourceId: string, limit = 300, cardId?: string | null): Promise<GitGraph> {
     const source = this.source(sourceId)
-    if (source.projectId !== projectId) throw new Error('Repositório não encontrado no projeto')
+    if (source.projectId !== projectId) throw new Error(tm().common.repoNotFoundInProject)
     const dir = (await this.target(source, cardId ?? null)).dir
     const baseRepo = (await this.repos(projectId)).find((item) => item.sourceId === sourceId)!
     const head = (await this.tryRun(dir, ['branch', '--show-current']))?.trim() || null
@@ -313,7 +321,7 @@ export class GitManager {
 
   async commitDetail(sourceId: string, hash: string): Promise<{ body: string; files: GitCommitFile[] }> {
     const dir = this.source(sourceId).path
-    if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error('Commit inválido')
+    if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
     const [body, parentsOut] = await Promise.all([this.run(dir, ['show', '-s', '--format=%B', hash]), this.run(dir, ['rev-list', '--parents', '-n', '1', hash])])
     const parent = parentsOut.trim().split(' ')[1]
     const [names, nums] = await Promise.all([
@@ -355,7 +363,7 @@ export class GitManager {
 
   /** Diff de um arquivo dentro de um commit já feito (contra o pai; no primeiro commit, contra o vazio). */
   async commitDiff(sourceId: string, hash: string, path: string): Promise<string> {
-    if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error('Commit inválido')
+    if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
     const out = await this.run(this.source(sourceId).path, ['show', '--format=', '--no-ext-diff', '--no-renames', '--first-parent', hash, '--', path])
     return out.slice(0, 400_000)
   }
@@ -365,6 +373,7 @@ export class GitManager {
     const out = await this.run(target.dir, ['diff', ...(staged ? ['--cached'] : []), '--no-ext-diff', '--', path])
     if (out.trim() || staged) return out.slice(0, 400_000)
     if (await this.tryRun(target.dir, ['ls-files', '--error-unmatch', '--', path]) !== null) return ''
+    // fixo em português: o parseDiff do renderer (gitDiff.tsx) depende do prefixo 'Arquivo novo: '
     const text = await readFile(join(target.dir, path), 'utf8').catch(() => '')
     return `Arquivo novo: ${path}\n${text.slice(0, 200_000).split(/\r?\n/).map((line) => `+${line}`).join('\n')}`
   }
@@ -372,16 +381,16 @@ export class GitManager {
   /** Caminho do arquivo dentro da pasta de trabalho (worktree do card ou repositório); nada fora dela. */
   private async inside(sourceId: string, cardId: string | null, path: string): Promise<string> {
     const target = await this.target(this.source(sourceId), cardId), full = resolve(target.dir, path), rel = relative(target.dir, full)
-    if (!path.trim() || !rel || rel.startsWith('..') || isAbsolute(rel)) throw new Error('Arquivo fora da pasta do projeto')
+    if (!path.trim() || !rel || rel.startsWith('..') || isAbsolute(rel)) throw new Error(tm().git.fileOutsideProject)
     return full
   }
 
   /** Texto atual do arquivo, para editar na mão. */
   async readFileText(sourceId: string, cardId: string | null, path: string): Promise<string> {
     const full = await this.inside(sourceId, cardId, path)
-    if ((await stat(full)).size > 2_000_000) throw new Error('Arquivo grande demais para editar aqui')
+    if ((await stat(full)).size > 2_000_000) throw new Error(tm().git.fileTooLargeToEdit)
     const buffer = await readFile(full)
-    if (buffer.subarray(0, 8000).includes(0)) throw new Error('Arquivo binário não pode ser editado aqui')
+    if (buffer.subarray(0, 8000).includes(0)) throw new Error(tm().git.binaryNotEditableHere)
     return buffer.toString('utf8')
   }
 
@@ -407,7 +416,7 @@ export class GitManager {
     const target = await this.target(this.source(sourceId), cardId)
     const available = new Set((await this.listChanges(target.dir)).filter((file) => !file.staged).map((file) => file.path))
     for (const path of paths) {
-      if (!available.has(path)) throw new Error(`O arquivo não tem alterações não preparadas: ${path}`)
+      if (!available.has(path)) throw new Error(tm().git.noUnstagedChangesFor(path))
       await this.inside(sourceId, cardId, path)
     }
     for (const path of paths) {
@@ -421,7 +430,7 @@ export class GitManager {
   async stashFile(sourceId: string, cardId: string | null, path: string): Promise<GitChanges> {
     const target = await this.target(this.source(sourceId), cardId)
     await this.inside(sourceId, cardId, path)
-    if (!(await this.listChanges(target.dir)).some((file) => file.path === path)) throw new Error('O arquivo não tem alterações')
+    if (!(await this.listChanges(target.dir)).some((file) => file.path === path)) throw new Error(tm().git.fileHasNoChanges)
     await this.run(target.dir, ['stash', 'push', '--include-untracked', '--', `:(literal)${path}`])
     return this.changes(sourceId, cardId)
   }
@@ -429,9 +438,9 @@ export class GitManager {
   async ignoreFile(sourceId: string, cardId: string | null, path: string, kind: 'file' | 'directory' | 'extension'): Promise<GitChanges> {
     const target = await this.target(this.source(sourceId), cardId)
     await this.inside(sourceId, cardId, path)
-    if (!(await this.listChanges(target.dir)).some((file) => file.path === path)) throw new Error('O arquivo não tem alterações')
+    if (!(await this.listChanges(target.dir)).some((file) => file.path === path)) throw new Error(tm().git.fileHasNoChanges)
     const slash = path.replace(/\\/g, '/'), directory = slash.includes('/') ? slash.slice(0, slash.lastIndexOf('/')) : '', extension = extname(slash)
-    if (/[\r\n]/.test(slash) || (kind === 'directory' && !directory) || (kind === 'extension' && !extension)) throw new Error('Não é possível criar essa regra para este arquivo')
+    if (/[\r\n]/.test(slash) || (kind === 'directory' && !directory) || (kind === 'extension' && !extension)) throw new Error(tm().git.cannotCreateIgnoreRule)
     const escape = (value: string): string => value.replace(/[\\*?[\] !#]/g, '\\$&')
     const pattern = kind === 'extension' ? `*${escape(extension)}` : `/${escape(kind === 'file' ? slash : directory)}${kind === 'directory' ? '/' : ''}`
     const ignorePath = join(target.dir, '.gitignore'), current = await readFile(ignorePath, 'utf8').catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return ''; throw error })
@@ -441,14 +450,14 @@ export class GitManager {
 
   private async commitAt(dir: string, input: { message: string; description?: string; amend?: boolean; paths?: string[] }): Promise<string> {
     const { subject, body } = splitMessage(input.message), description = [body, input.description?.trim()].filter(Boolean).join('\n\n')
-    if (!subject && !input.amend) throw new Error('Escreva o resumo do commit')
+    if (!subject && !input.amend) throw new Error(tm().git.writeCommitSummary)
     const paths = input.paths ?? []
     for (let i = 0; i < paths.length; i += 200) await this.run(dir, ['add', '-A', '--', ...paths.slice(i, i + 200)])
     const args = ['commit']
     if (subject) args.push('-m', subject, ...(description ? ['-m', description] : []))
     if (input.amend) args.push('--amend', ...(subject ? [] : ['--no-edit']))
     if (paths.length && paths.length <= 400) args.push('--only', '--', ...paths)
-    else if (!paths.length && !input.amend && !(await this.run(dir, ['diff', '--cached', '--name-only'])).trim()) throw new Error('Não há nada preparado para commitar. Coloque arquivos no Stage primeiro.')
+    else if (!paths.length && !input.amend && !(await this.run(dir, ['diff', '--cached', '--name-only'])).trim()) throw new Error(tm().git.nothingStaged)
     await this.run(dir, args)
     return (await this.run(dir, ['rev-parse', 'HEAD'])).trim()
   }
@@ -460,26 +469,32 @@ export class GitManager {
 
   async renameCommit(input: { sourceId: string; cardId: string | null; hash: string; message: string }): Promise<{ hash: string }> {
     const dir = (await this.target(this.source(input.sourceId), input.cardId)).dir
-    if (!/^[0-9a-f]{40,64}$/.test(input.hash) || (await this.run(dir, ['rev-parse', 'HEAD'])).trim() !== input.hash) throw new Error('Só é possível editar o último commit da branch atual.')
-    if (!(await this.tryRun(dir, ['symbolic-ref', '-q', 'HEAD']))?.trim()) throw new Error('Faça checkout de uma branch antes de editar a mensagem.')
+    if (!/^[0-9a-f]{40,64}$/.test(input.hash) || (await this.run(dir, ['rev-parse', 'HEAD'])).trim() !== input.hash) throw new Error(tm().git.onlyLastCommitEditable)
+    if (!(await this.tryRun(dir, ['symbolic-ref', '-q', 'HEAD']))?.trim()) throw new Error(tm().git.checkoutBranchFirstToEdit)
     const subject = input.message.trim()
-    if (!subject || /[\r\n]/.test(subject)) throw new Error('Informe um resumo em uma única linha.')
+    if (!subject || /[\r\n]/.test(subject)) throw new Error(tm().git.singleLineSummary)
     const body = (await this.run(dir, ['show', '-s', '--format=%b', input.hash])).trim()
     await this.run(dir, ['commit', '--amend', '--only', '-m', subject, ...(body ? ['-m', body] : [])])
     return { hash: (await this.run(dir, ['rev-parse', 'HEAD'])).trim() }
   }
 
-  async sync(sourceId: string, cardId: string | null, action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull: 'ff' | 'ff-only' | 'rebase' = 'ff-only', force = false): Promise<{ output: string }> {
+  async sync(sourceId: string, cardId: string | null, action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull: 'ff' | 'ff-only' | 'rebase' = 'ff-only', force = false): Promise<{ output: string; conflicts?: number }> {
     const source = this.source(sourceId), target = await this.target(source, cardId)
-    if (action === 'stash') return { output: (await this.run(target.dir, ['stash', 'push', '--include-untracked'])).trim() || 'Alterações guardadas no stash.' }
-    if (action === 'pop') return { output: (await this.run(target.dir, ['stash', 'pop'])).trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Stash aplicado.' }
-    if (!(await this.tryRun(source.path, ['remote']))?.trim()) throw new Error('Este repositório não tem remoto (origin). Adicione um com git remote add origin <endereço>.')
-    if (action === 'fetch') return { output: (await this.run(source.path, ['fetch', '--all', '--prune'])).trim() || 'Tudo atualizado.' }
-    if (action === 'pull') return { output: (await this.run(target.dir, ['pull', pull === 'rebase' ? '--rebase' : pull === 'ff' ? '--ff' : '--ff-only'])).trim() || 'Tudo atualizado.' }
+    if (action === 'stash') {
+      // Guarda também os não rastreados (-u): eles saem da pasta, então a mensagem diz quantos foram junto.
+      if (!(await this.run(target.dir, ['status', '--porcelain'])).trim()) return { output: tm().git.nothingToStash }
+      const untracked = (await this.run(target.dir, ['ls-files', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean).length
+      await this.run(target.dir, ['stash', 'push', '--include-untracked'])
+      return { output: untracked ? tm().git.stashSavedWithNew(untracked) : tm().git.stashSaved }
+    }
+    if (action === 'pop') return this.applyStash(target.dir, ['stash', 'pop'], tm().git.stashAppliedRemoved)
+    if (!(await this.tryRun(source.path, ['remote']))?.trim()) throw new Error(tm().git.noRemoteAddOrigin)
+    if (action === 'fetch') return { output: (await this.run(source.path, ['fetch', '--all', '--prune'])).trim() || tm().git.allUpToDate }
+    if (action === 'pull') return { output: (await this.run(target.dir, ['pull', pull === 'rebase' ? '--rebase' : pull === 'ff' ? '--ff' : '--ff-only'])).trim() || tm().git.allUpToDate }
     const branch = target.branch ?? (await this.run(target.dir, ['branch', '--show-current'])).trim()
-    if (!branch) throw new Error('A pasta está sem branch (HEAD solto); escolha uma branch antes de publicar.')
+    if (!branch) throw new Error(tm().git.detachedHeadBeforePublish)
     // Forçar usa --force-with-lease: só sobrescreve se o remoto ainda estiver como o último fetch (não atropela o que chegou depois).
-    return { output: (await this.run(target.dir, ['push', '-u', ...(force ? ['--force-with-lease'] : []), 'origin', branch])).trim() || `Branch ${branch} ${force ? 'publicada à força' : 'publicada'}.` }
+    return { output: (await this.run(target.dir, ['push', '-u', ...(force ? ['--force-with-lease'] : []), 'origin', branch])).trim() || (force ? tm().git.branchForcePublished(branch) : tm().git.branchPublished(branch)) }
   }
 
   /** Branch atual (da pasta principal ou da worktree do card), a remota que ela acompanha (null se nenhuma) e os remotos do repositório. */
@@ -495,12 +510,12 @@ export class GitManager {
   async setUpstream(input: { sourceId: string; cardId: string | null; remote: string; branch: string }): Promise<{ upstream: string }> {
     const source = this.source(input.sourceId), target = await this.target(source, input.cardId)
     const current = target.branch ?? (await this.run(target.dir, ['branch', '--show-current'])).trim()
-    if (!current) throw new Error('A pasta está sem branch (HEAD solto); escolha uma branch antes.')
+    if (!current) throw new Error(tm().git.detachedHeadPickBranch)
     const remote = input.remote.trim(), branch = input.branch.trim()
-    for (const ref of [remote, branch]) if (!ref || ref.startsWith('-') || await this.tryRun(source.path, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(`Nome inválido: ${ref || '(vazio)'}`)
-    if (!((await this.tryRun(source.path, ['remote'])) ?? '').split(/\r?\n/).map((item) => item.trim()).includes(remote)) throw new Error(`O remoto ${remote} não existe neste repositório.`)
+    for (const ref of [remote, branch]) if (!ref || ref.startsWith('-') || await this.tryRun(source.path, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(ref ? tm().git.invalidNameValue(ref) : tm().git.invalidNameEmpty)
+    if (!((await this.tryRun(source.path, ['remote'])) ?? '').split(/\r?\n/).map((item) => item.trim()).includes(remote)) throw new Error(tm().git.remoteNotInRepo(remote))
     try { await this.run(target.dir, ['fetch', remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`]) }
-    catch { throw new Error(`A branch ${branch} ainda não existe em ${remote}. Publique a branch com Push primeiro, ou escolha outra.`) }
+    catch { throw new Error(tm().git.branchNotOnRemote(branch, remote)) }
     await this.run(target.dir, ['branch', `--set-upstream-to=${remote}/${branch}`, current])
     return { upstream: `${remote}/${branch}` }
   }
@@ -512,7 +527,7 @@ export class GitManager {
     if (!owner) return
     const busy = this.database.db.prepare(`SELECT c.title FROM cards c WHERE (c.id = ? OR c.worktree_card_id = ?)
       AND EXISTS (SELECT 1 FROM runs r WHERE r.card_id = c.id AND r.status IN ('queued', 'running')) LIMIT 1`).pluck().get(owner.cardId, owner.cardId) as string | undefined
-    if (busy !== undefined) throw new Error(`O card "${busy || 'sem título'}" está com um agente rodando nessa pasta. Espere terminar para atualizar a branch.`)
+    if (busy !== undefined) throw new Error(tm().git.cardAgentBusy(busy || tm().common.untitled))
   }
 
   /** Pasta (worktree) onde a branch está aberta, se não for a pasta principal; `null` se não estiver aberta em lugar nenhum. */
@@ -529,132 +544,138 @@ export class GitManager {
   async checkoutRemote(sourceId: string, cardId: string | null, name: string): Promise<{ output: string }> {
     const dir = (await this.target(this.source(sourceId), cardId)).dir, slash = name.indexOf('/')
     const remote = name.slice(0, slash), local = name.slice(slash + 1)
-    if (slash <= 0 || !local || local === 'HEAD' || name.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', name]) === null) throw new Error('Branch remota inválida.')
-    if (!(await this.tryRun(dir, ['remote']))?.split(/\r?\n/).includes(remote)) throw new Error(`O remoto ${remote} não existe.`)
+    if (slash <= 0 || !local || local === 'HEAD' || name.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', name]) === null) throw new Error(tm().git.invalidRemoteBranch)
+    if (!(await this.tryRun(dir, ['remote']))?.split(/\r?\n/).includes(remote)) throw new Error(tm().git.remoteDoesNotExist(remote))
     await this.run(dir, ['fetch', remote])
     const remoteRef = `refs/remotes/${name}`, localRef = `refs/heads/${local}`
-    if (await this.tryRun(dir, ['show-ref', '--verify', '-q', remoteRef]) === null) throw new Error(`A branch remota ${name} não existe.`)
+    if (await this.tryRun(dir, ['show-ref', '--verify', '-q', remoteRef]) === null) throw new Error(tm().git.remoteBranchDoesNotExist(name))
     if (await this.tryRun(dir, ['show-ref', '--verify', '-q', localRef]) === null) {
       await this.run(dir, ['checkout', '--track', name])
-      return { output: `Branch ${local} criada e aberta a partir de ${name}.` }
+      return { output: tm().git.branchCreatedAndOpenedFrom(local, name) }
     }
     const upstream = (await this.tryRun(dir, ['rev-parse', '--abbrev-ref', `${local}@{upstream}`]))?.trim()
-    if (upstream && upstream !== name) throw new Error(`${local} acompanha ${upstream}, não ${name}.`)
+    if (upstream && upstream !== name) throw new Error(tm().git.tracksOther(local, upstream, name))
     const isBehind = await this.tryRun(dir, ['merge-base', '--is-ancestor', localRef, remoteRef]) !== null
     const isAhead = await this.tryRun(dir, ['merge-base', '--is-ancestor', remoteRef, localRef]) !== null
-    if (!isBehind && !isAhead) throw new Error(`As branches ${local} e ${name} divergiram; não é possível atualizar por fast-forward.`)
+    if (!isBehind && !isAhead) throw new Error(tm().git.branchesDiverged(local, name))
     const current = (await this.run(dir, ['branch', '--show-current'])).trim()
     if (isBehind && !isAhead) {
       if (current === local) await this.run(dir, ['merge', '--ff-only', remoteRef])
       else await this.run(dir, ['branch', '-f', local, remoteRef])
     }
     if (current !== local) await this.run(dir, ['checkout', local])
-    return { output: isBehind && !isAhead ? `Branch ${local} atualizada por fast-forward e aberta.` : `Branch ${local} aberta; já contém ${name}.` }
+    return { output: isBehind && !isAhead ? tm().git.branchFastForwardedOpened(local) : tm().git.branchOpenedContains(local, name) }
   }
 
   /** Ações do menu de uma branch na pasta principal do repositório. Merge e rebase com conflito são desfeitos, para não deixar a pasta no meio do caminho. */
   async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }): Promise<{ output: string }> {
     const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir, { action, name } = input
-    const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(`Nome de branch inválido: ${ref}`) }
+    const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(tm().git.invalidBranchName(ref)) }
     await valid(name)
     const current = (await this.run(dir, ['branch', '--show-current'])).trim(), isHead = current === name
     const last = (text: string, fallback: string): string => text.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? fallback
-    const needRemote = async (): Promise<void> => { if (!(await this.tryRun(dir, ['remote']))?.trim()) throw new Error('Este repositório não tem remoto (origin).') }
+    const needRemote = async (): Promise<void> => { if (!(await this.tryRun(dir, ['remote']))?.trim()) throw new Error(tm().git.noRemoteOrigin) }
     if (action === 'checkout') {
       const remote = await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${name}`]) === null && await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/remotes/${name}`]) !== null
-      if (!remote) { await this.run(dir, ['checkout', name]); return { output: `Agora em ${name}.` } }
+      if (!remote) { await this.run(dir, ['checkout', name]); return { output: tm().git.nowOn(name) } }
       // Branch remota: cria a local acompanhando a remota e muda para ela; se a local já existe, só muda para ela.
       const local = name.replace(/^[^/]+\//, '')
       const exists = await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${local}`]) !== null
       await this.run(dir, exists ? ['checkout', local] : ['checkout', '--track', name])
-      return { output: exists ? `Agora em ${local} (já existia aqui).` : `Branch ${local} criada a partir de ${name}. Agora em ${local}.` }
+      return { output: exists ? tm().git.nowOnExisting(local) : tm().git.branchCreatedFromNowOn(local, name, local) }
     }
     if (action === 'delete-remote') {
       // `name` vem como origem/branch (ex.: origin/feature/x). Apaga no servidor; nunca o HEAD nem a branch padrão do remoto.
       const slash = name.indexOf('/'), remoteName = name.slice(0, slash), branch = name.slice(slash + 1)
-      if (slash <= 0 || !branch) throw new Error('Informe a branch remota no formato origem/branch.')
+      if (slash <= 0 || !branch) throw new Error(tm().git.enterRemoteBranchFormat)
       await valid(remoteName); await valid(branch)
-      if (branch === 'HEAD') throw new Error('O HEAD do remoto não pode ser apagado.')
-      if (!(await this.tryRun(dir, ['remote']))?.split(/\r?\n/).includes(remoteName)) throw new Error(`O remoto ${remoteName} não existe neste repositório.`)
-      if (await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/remotes/${name}`]) === null) throw new Error(`A branch remota ${name} não existe.`)
-      if ((await this.tryRun(dir, ['symbolic-ref', '--short', `refs/remotes/${remoteName}/HEAD`]))?.trim() === name) throw new Error(`${branch} é a branch padrão do remoto e não pode ser apagada por aqui.`)
+      if (branch === 'HEAD') throw new Error(tm().git.cannotDeleteRemoteHead)
+      if (!(await this.tryRun(dir, ['remote']))?.split(/\r?\n/).includes(remoteName)) throw new Error(tm().git.remoteNotInRepo(remoteName))
+      if (await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/remotes/${name}`]) === null) throw new Error(tm().git.remoteBranchDoesNotExist(name))
+      if ((await this.tryRun(dir, ['symbolic-ref', '--short', `refs/remotes/${remoteName}/HEAD`]))?.trim() === name) throw new Error(tm().git.remoteDefaultBranch(branch))
       await this.run(dir, ['push', remoteName, '--delete', branch])
-      return { output: `Branch ${branch} apagada em ${remoteName}.` }
+      return { output: tm().git.branchDeletedOnRemote(branch, remoteName) }
     }
     if (action === 'pull') {
       await needRemote()
-      if (isHead) return { output: last(await this.run(dir, ['pull', '--ff-only']), 'Tudo atualizado.') }
+      if (isHead) return { output: last(await this.run(dir, ['pull', '--ff-only']), tm().git.allUpToDate) }
       // Branch aberta na worktree de um card: o Git não deixa atualizá-la de fora (fetch name:name), então o pull roda dentro dessa pasta.
       const inWorktree = await this.worktreeOf(dir, name)
-      if (inWorktree) { this.assertIdle(sourceId, inWorktree); return { output: last(await this.run(inWorktree, ['pull', '--ff-only']), 'Tudo atualizado.') } }
+      if (inWorktree) { this.assertIdle(sourceId, inWorktree); return { output: last(await this.run(inWorktree, ['pull', '--ff-only']), tm().git.allUpToDate) } }
       const remote = (await this.tryRun(dir, ['config', `branch.${name}.remote`]))?.trim() || 'origin'
-      return { output: last(await this.run(dir, ['fetch', remote, `${name}:${name}`]), 'Tudo atualizado.') }
+      return { output: last(await this.run(dir, ['fetch', remote, `${name}:${name}`]), tm().git.allUpToDate) }
     }
     if (action === 'pull-rebase') {
       await needRemote()
       const place = isHead ? dir : await this.worktreeOf(dir, name)
-      if (!place) throw new Error('Para puxar com rebase, faça checkout da branch primeiro.')
+      if (!place) throw new Error(tm().git.checkoutBeforeRebasePull)
       if (place !== dir) this.assertIdle(sourceId, place)
-      return { output: last(await this.run(place, ['pull', '--rebase']), 'Tudo atualizado.') }
+      return { output: last(await this.run(place, ['pull', '--rebase']), tm().git.allUpToDate) }
     }
-    if (action === 'push') { await needRemote(); return { output: last(await this.run(dir, ['push', '-u', 'origin', name]), `Branch ${name} publicada.`) } }
+    if (action === 'push') { await needRemote(); return { output: last(await this.run(dir, ['push', '-u', 'origin', name]), tm().git.branchPublished(name)) } }
     if (action === 'rebase-onto' || action === 'merge') {
-      if (!current) throw new Error('A pasta principal está sem branch (HEAD solto).')
-      if (isHead) throw new Error('Escolha outra branch: esta já é a atual.')
-      try { return { output: last(await this.run(dir, action === 'merge' ? ['merge', '--no-edit', name] : ['rebase', name]), 'Pronto.') } } catch (error) { throw await this.afterFailure(dir, action === 'merge' ? 'merge' : 'rebase', error) }
+      if (!current) throw new Error(tm().git.mainFolderDetached)
+      if (isHead) throw new Error(tm().git.pickOtherBranch)
+      try { return { output: last(await this.run(dir, action === 'merge' ? ['merge', '--no-edit', name] : ['rebase', name]), tm().git.done) } } catch (error) { throw await this.afterFailure(dir, action === 'merge' ? 'merge' : 'rebase', error) }
     }
     if (action === 'create') {
       const created = input.newName?.trim() ?? ''
-      if (!created) throw new Error('Digite o nome da nova branch.')
+      if (!created) throw new Error(tm().git.typeNewBranchName)
       await valid(created)
       await this.run(dir, ['checkout', '-b', created, name])
-      return { output: `Branch ${created} criada a partir de ${name} e aberta.` }
+      return { output: tm().git.branchCreatedFromOpened(created, name) }
     }
-    if (isHead) throw new Error('Não dá para apagar a branch atual.')
+    if (isHead) throw new Error(tm().git.cannotDeleteCurrentBranch)
     await this.run(dir, ['branch', '-d', name])
-    return { output: `Branch ${name} apagada.` }
+    return { output: tm().git.branchDeleted(name) }
   }
 
   /** Ações do menu de um commit na pasta principal. Cherry-pick e revert com conflito são desfeitos. */
   async commitAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }): Promise<{ output: string }> {
     const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir, { action, hash } = input
-    if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error('Commit inválido')
+    if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
     const name = input.name?.trim() ?? ''
     if (action === 'branch' || action === 'tag') {
-      if (!name || name.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', name]) === null) throw new Error('Nome inválido.')
-      if (action === 'tag') { await this.run(dir, ['tag', name, hash]); return { output: `Tag ${name} criada em ${hash.slice(0, 7)}.` } }
-      await this.run(dir, ['checkout', '-b', name, hash]); return { output: `Branch ${name} criada em ${hash.slice(0, 7)} e aberta.` }
+      if (!name || name.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', name]) === null) throw new Error(tm().git.invalidName)
+      if (action === 'tag') { await this.run(dir, ['tag', name, hash]); return { output: tm().git.tagCreatedAt(name, hash.slice(0, 7)) } }
+      await this.run(dir, ['checkout', '-b', name, hash]); return { output: tm().git.branchCreatedAtOpened(name, hash.slice(0, 7)) }
     }
-    if (action === 'checkout') { await this.run(dir, ['checkout', '--detach', hash]); return { output: `Pasta principal em ${hash.slice(0, 7)} (HEAD solto).` } }
-    if (action.startsWith('reset-')) { await this.run(dir, ['reset', `--${action.slice(6)}`, hash]); return { output: `Branch atual movida para ${hash.slice(0, 7)} (${action.slice(6)}).` } }
-    try { await this.run(dir, action === 'revert' ? ['revert', '--no-edit', hash] : ['cherry-pick', hash]); return { output: action === 'revert' ? `Commit ${hash.slice(0, 7)} revertido.` : `Commit ${hash.slice(0, 7)} aplicado na branch atual.` } } catch (error) { throw await this.afterFailure(dir, action as 'cherry-pick' | 'revert', error) }
+    if (action === 'checkout') { await this.run(dir, ['checkout', '--detach', hash]); return { output: tm().git.mainFolderAtDetached(hash.slice(0, 7)) } }
+    if (action.startsWith('reset-')) { await this.run(dir, ['reset', `--${action.slice(6)}`, hash]); return { output: tm().git.branchMovedTo(hash.slice(0, 7), action.slice(6)) } }
+    try { await this.run(dir, action === 'revert' ? ['revert', '--no-edit', hash] : ['cherry-pick', hash]); return { output: action === 'revert' ? tm().git.commitReverted(hash.slice(0, 7)) : tm().git.commitCherryPicked(hash.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, action as 'cherry-pick' | 'revert', error) }
   }
 
   /** Falha de merge/rebase/cherry-pick/revert: com conflito a operação fica aberta para a tela de conflitos; sem conflito é desfeita. */
   private async afterFailure(dir: string, kind: 'merge' | 'rebase' | 'cherry-pick' | 'revert', error: unknown): Promise<Error> {
     const state = await this.conflictState(dir)
-    if (state.operation && state.files.length) return new Error(`Conflito em ${state.files.length} arquivo${state.files.length === 1 ? '' : 's'}. Resolva na tela de conflitos (aviso no topo do Git).`)
+    if (state.operation && state.files.length) return new Error(tm().git.conflictInFiles(state.files.length))
     await this.tryRun(dir, [kind, '--abort'])
     return error instanceof Error ? error : new Error(String(error))
   }
 
-  private async conflictState(dir: string): Promise<{ operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null; files: string[] }> {
+  /**
+   * Operação com conflito em andamento. `stash` = há arquivos não mesclados sem MERGE_HEAD etc. (stash apply/pop que conflitou):
+   * não existe operação para continuar nem abortar, só marcar os arquivos como resolvidos.
+   */
+  private async conflictState(dir: string): Promise<{ operation: ConflictOperation | null; files: string[] }> {
     const gitDir = ((await this.tryRun(dir, ['rev-parse', '--absolute-git-dir'])) ?? '').trim()
+    if (!gitDir) return { operation: null, files: [] }
     const has = (name: string): Promise<boolean> => stat(join(gitDir, name)).then(() => true, () => false)
-    const operation = !gitDir ? null : await has('MERGE_HEAD') ? 'merge' : await has('rebase-merge') || await has('rebase-apply') ? 'rebase' : await has('CHERRY_PICK_HEAD') ? 'cherry-pick' : await has('REVERT_HEAD') ? 'revert' : null
-    const files = operation ? ((await this.tryRun(dir, ['diff', '--name-only', '--diff-filter=U'])) ?? '').split(/\r?\n/).filter(Boolean) : []
-    return { operation, files }
+    const found = await has('MERGE_HEAD') ? 'merge' : await has('rebase-merge') || await has('rebase-apply') ? 'rebase' : await has('CHERRY_PICK_HEAD') ? 'cherry-pick' : await has('REVERT_HEAD') ? 'revert' : null
+    const files = ((await this.tryRun(dir, ['diff', '--name-only', '--diff-filter=U'])) ?? '').split(/\r?\n/).filter(Boolean)
+    const operation: ConflictOperation | null = found ?? (files.length ? 'stash' : null)
+    return { operation, files: operation ? files : [] }
   }
 
   /** Pasta onde o conflito vive: o repositório do projeto ou, com `cardId`, a worktree do card nesse repositório. */
   private async conflictDir(sourceId: string, cardId?: string | null): Promise<string> { return (await this.target(this.source(sourceId), cardId ?? null)).dir }
 
-  async conflicts(sourceId: string, cardId?: string | null): Promise<{ operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | null; files: string[] }> { return this.conflictState(await this.conflictDir(sourceId, cardId)) }
+  async conflicts(sourceId: string, cardId?: string | null): Promise<{ operation: ConflictOperation | null; files: string[] }> { return this.conflictState(await this.conflictDir(sourceId, cardId)) }
 
   /** Repositórios (e worktrees de card) do projeto com merge/rebase/cherry-pick/revert em andamento, para marcar a lista da página Git. */
-  async conflictsAll(projectId: string): Promise<Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert'; files: string[] }>> {
+  async conflictsAll(projectId: string): Promise<Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: ConflictOperation; files: string[] }>> {
     const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS path FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order`).all(projectId) as Source[]
-    const found: Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert'; files: string[] }> = []
+    const found: Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: ConflictOperation; files: string[] }> = []
     for (const source of sources) {
       const state = await this.conflictState(source.path)
       if (state.operation) found.push({ sourceId: source.id, cardId: null, repo: source.name, cardTitle: null, operation: state.operation, files: state.files })
@@ -671,23 +692,23 @@ export class GitManager {
   /** Conteúdo do arquivo em conflito, com os marcadores do Git. */
   async conflictFile(sourceId: string, path: string, cardId?: string | null): Promise<string> {
     const dir = await this.conflictDir(sourceId, cardId)
-    if (!(await this.conflictState(dir)).files.includes(path)) throw new Error('Este arquivo não está em conflito.')
+    if (!(await this.conflictState(dir)).files.includes(path)) throw new Error(tm().git.fileNotInConflict)
     return (await readFile(join(dir, path), 'utf8').catch(() => '')).slice(0, 400_000)
   }
 
   /** Grava o texto editado de um arquivo que ainda está em conflito (sem `git add`) e diz quantos continuam em conflito. */
   async saveConflict(sourceId: string, path: string, content: string, cardId?: string | null): Promise<{ left: number }> {
     const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
-    if (!state.files.includes(path)) throw new Error('Este arquivo não está em conflito.')
+    if (!state.files.includes(path)) throw new Error(tm().git.fileNotInConflict)
     await writeFile(join(dir, path), content, 'utf8')
     return { left: state.files.length }
   }
 
   async resolveConflict(sourceId: string, path: string, side: 'ours' | 'theirs' | 'marked', cardId?: string | null): Promise<{ left: number }> {
     const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
-    if (!state.files.includes(path)) throw new Error('Este arquivo não está em conflito.')
+    if (!state.files.includes(path)) throw new Error(tm().git.fileNotInConflict)
     if (side === 'marked') {
-      if (/^(<{7}|>{7}) /m.test(await readFile(join(dir, path), 'utf8').catch(() => ''))) throw new Error('O arquivo ainda tem marcadores de conflito. Edite e salve antes de marcar como resolvido.')
+      if (/^(<{7}|>{7}) /m.test(await readFile(join(dir, path), 'utf8').catch(() => ''))) throw new Error(tm().git.conflictMarkersRemain)
       await this.run(dir, ['add', '--', path])
     } else if (await this.tryRun(dir, ['checkout', `--${side}`, '--', path]) === null) await this.run(dir, ['rm', '-f', '--', path]) // um dos lados apagou o arquivo
     else await this.run(dir, ['add', '--', path])
@@ -696,11 +717,13 @@ export class GitManager {
 
   async finishConflicts(sourceId: string, action: 'continue' | 'abort', cardId?: string | null): Promise<{ output: string }> {
     const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
-    if (!state.operation) throw new Error('Não há merge, rebase, cherry-pick ou revert em andamento.')
-    if (action === 'abort') { await this.run(dir, [state.operation, '--abort']); return { output: 'Operação cancelada; a pasta voltou ao que era.' } }
-    if (state.files.length) throw new Error(`Ainda há ${state.files.length} arquivo${state.files.length === 1 ? '' : 's'} em conflito.`)
+    if (!state.operation) throw new Error(tm().git.noOperationInProgress)
+    // Stash com conflito: não há "stash --abort/--continue"; cada arquivo resolvido já foi marcado com git add e o stash continua guardado.
+    if (state.operation === 'stash') throw new Error(action === 'abort' ? tm().git.stashConflictNoAbort : tm().git.stillInConflict(state.files.length))
+    if (action === 'abort') { await this.run(dir, [state.operation, '--abort']); return { output: tm().git.mergeAborted } }
+    if (state.files.length) throw new Error(tm().git.stillInConflict(state.files.length))
     const out = await this.run(dir, ['-c', 'core.editor=true', state.operation === 'merge' ? 'commit' : state.operation, ...(state.operation === 'merge' ? ['--no-edit'] : ['--continue'])])
-    return { output: out.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? 'Conflitos resolvidos.' }
+    return { output: out.trim().split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? tm().git.conflictsResolved }
   }
 
   /**
@@ -714,7 +737,7 @@ export class GitManager {
     if (mode === 'unstaged') { before = await show(`:${path}`); after = await readFile(await this.inside(sourceId, cardId, path), 'utf8').catch(() => null) }
     else if (mode === 'staged') { before = await show(`HEAD:${path}`); after = await show(`:${path}`) }
     else {
-      if (!hash || !/^[0-9a-f]{7,64}$/.test(hash)) throw new Error('Commit inválido')
+      if (!hash || !/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
       const renames = (await this.tryRun(target.dir, ['show', '--name-status', '-M', '--format=', hash])) ?? '', moved = renames.split(/\r?\n/).map((line) => line.split('\t')).find((cols) => cols[0]?.startsWith('R') && cols[2] === path)
       before = await show(`${hash}^:${moved?.[1] ?? path}`); after = await show(`${hash}:${path}`)
     }
@@ -722,15 +745,24 @@ export class GitManager {
     return binary || truncated ? { before: null, after: null, binary, truncated } : { before, after, binary: false, truncated: false }
   }
 
-  async stashAction(sourceId: string, input: { cardId?: string | null; action: 'apply' | 'pop' | 'drop'; ref: string }): Promise<{ output: string }> {
+  async stashAction(sourceId: string, input: { cardId?: string | null; action: 'apply' | 'pop' | 'drop'; ref: string }): Promise<{ output: string; conflicts?: number }> {
     const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir
-    if (!/^stash@\{\d+\}$/.test(input.ref)) throw new Error('Stash inválido')
-    await this.run(dir, ['stash', input.action, input.ref])
-    return { output: input.action === 'drop' ? 'Stash apagado.' : input.action === 'pop' ? 'Stash aplicado e removido.' : 'Stash aplicado.' }
+    if (!/^stash@\{\d+\}$/.test(input.ref)) throw new Error(tm().git.invalidStash)
+    if (input.action === 'drop') { await this.run(dir, ['stash', 'drop', input.ref]); return { output: tm().git.stashDropped } }
+    return this.applyStash(dir, ['stash', input.action, input.ref], input.action === 'pop' ? tm().git.stashAppliedRemoved : tm().git.stashApplied)
+  }
+
+  /** Aplica um stash (apply/pop). Se sobrar conflito, não é erro: o Git mantém o stash e a tela de conflitos assume (`conflicts` > 0). */
+  private async applyStash(dir: string, args: string[], ok: string): Promise<{ output: string; conflicts?: number }> {
+    try { await this.run(dir, args); return { output: ok } } catch (error) {
+      const state = await this.conflictState(dir)
+      if (state.operation === 'stash' && state.files.length) return { output: tm().git.stashAppliedWithConflicts(state.files.length), conflicts: state.files.length }
+      throw error
+    }
   }
 
   private async checkedStash(dir: string, ref: string, commit: string): Promise<void> {
-    if (!/^stash@\{\d+\}$/.test(ref) || !/^[0-9a-f]{40,64}$/.test(commit) || (await this.run(dir, ['rev-parse', '--verify', ref])).trim() !== commit) throw new Error('O stash mudou. Atualize a lista e tente novamente.')
+    if (!/^stash@\{\d+\}$/.test(ref) || !/^[0-9a-f]{40,64}$/.test(commit) || (await this.run(dir, ['rev-parse', '--verify', ref])).trim() !== commit) throw new Error(tm().git.stashChanged)
   }
 
   async stashDetail(sourceId: string, cardId: string | null, ref: string, commit: string): Promise<{ files: GitCommitFile[] }> {
@@ -744,7 +776,7 @@ export class GitManager {
 
   async renameStash(sourceId: string, cardId: string | null, ref: string, commit: string, message: string): Promise<{ ref: string; commit: string }> {
     const dir = (await this.target(this.source(sourceId), cardId)).dir
-    if (!message.trim() || /[\r\n]/.test(message)) throw new Error('Informe um nome em uma única linha.')
+    if (!message.trim() || /[\r\n]/.test(message)) throw new Error(tm().git.singleLineName)
     await this.checkedStash(dir, ref, commit)
     const index = Number(/^stash@\{(\d+)\}$/.exec(ref)![1])
     const tree = (await this.run(dir, ['rev-parse', `${commit}^{tree}`])).trim()
@@ -768,11 +800,11 @@ export class GitManager {
   /** Troca a origem de UM repositório do card (a dos outros não muda): os commits do card passam a ser contados a partir dela. */
   async setBase(cardId: string, sourceId: string, baseRef: string): Promise<{ baseRef: string }> {
     const source = this.source(sourceId), wt = this.latestWorktree(cardId)
-    if (!wt) throw new Error('Este card ainda não tem worktree.')
-    if (await this.tryRun(source.path, ['rev-parse', '--verify', '-q', baseRef]) === null) throw new Error(`A branch "${baseRef}" não existe em ${source.name}.`)
+    if (!wt) throw new Error(tm().git.cardHasNoWorktree)
+    if (await this.tryRun(source.path, ['rev-parse', '--verify', '-q', baseRef]) === null) throw new Error(tm().git.baseBranchMissing(baseRef, source.name))
     const members = this.database.db.prepare('SELECT id, repo_path AS repoPath FROM worktree_members WHERE worktree_id = ?').all(wt.id) as Array<{ id: string; repoPath: string }>
     const member = members.find((item) => same(item.repoPath, source.path))
-    if (!member) throw new Error(`${source.name} não faz parte da worktree deste card.`)
+    if (!member) throw new Error(tm().git.repoNotInCardWorktree(source.name))
     this.database.db.prepare('UPDATE worktree_members SET base_ref = ? WHERE id = ?').run(baseRef, member.id)
     return { baseRef }
   }
@@ -780,9 +812,9 @@ export class GitManager {
   // ---------- painel do card ----------
   async card(cardId: string): Promise<GitCard> {
     const card = this.database.db.prepare('SELECT project_id AS projectId FROM cards WHERE id = ?').get(cardId) as { projectId: string } | undefined
-    if (!card) throw new Error('Card não encontrado')
+    if (!card) throw new Error(tm().common.cardNotFound)
     const policy = this.policy(card.projectId), wt = this.latestWorktree(cardId)
-    if (!wt) return { branch: null, baseBranch: null, rule: { rule: policy.def, why: 'padrão do projeto' }, repos: [], delivery: { complete: false, pending: [] } }
+    if (!wt) return { branch: null, baseBranch: null, rule: { rule: policy.def, why: tm().git.projectDefault }, repos: [], delivery: { complete: false, pending: [] } }
     const sources = this.database.db.prepare('SELECT id, project_id AS projectId, name, local_path AS path FROM project_sources WHERE project_id = ?').all(card.projectId) as Source[]
     const agents = this.database.db.prepare('SELECT repo_path AS repoPath, hash, profile_id AS profileId FROM git_commit_agents').all() as Array<{ repoPath: string; hash: string; profileId: string }>
     const pending = this.requests(cardId).filter((item) => item.status === 'pending')
@@ -807,7 +839,7 @@ export class GitManager {
     }))
     const base = members[0]?.baseRef, list = repos.filter((item): item is NonNullable<typeof item> => Boolean(item))
     // Entrega por repositório: o card só está entregue quando todos estão prontos, commitados e sem pendência.
-    const missing = list.flatMap((repo) => repo.state === 'failed' ? [`${repo.name}: a worktree falhou (${repo.error ?? 'erro desconhecido'})`] : repo.state === 'missing' ? [`${repo.name}: a pasta da worktree sumiu`] : repo.files.length ? [`${repo.name}: ${repo.files.length} alteração(ões) sem commit`] : [])
+    const missing = list.flatMap((repo) => repo.state === 'failed' ? [tm().git.deliveryWorktreeFailed(repo.name, repo.error ?? tm().git.unknownError)] : repo.state === 'missing' ? [tm().git.deliveryWorktreeFolderGone(repo.name)] : repo.files.length ? [tm().git.deliveryUncommitted(repo.name, repo.files.length)] : [])
     return { branch: wt.branch, baseBranch: base ? base.replace(/^origin\//, '') : null, rule: resolveRule(policy, wt.branch), repos: list, delivery: { complete: !missing.length && list.some((repo) => repo.ahead > 0), pending: missing } }
   }
 
@@ -815,7 +847,7 @@ export class GitManager {
   /** Só abre no navegador um endereço de PR que o próprio card registrou (nunca um link qualquer vindo da tela). */
   prUrlOf(cardId: string, url: string): string {
     const known = this.database.db.prepare('SELECT m.pr_url FROM worktree_members m JOIN worktrees w ON w.id = m.worktree_id WHERE w.card_id = ? AND m.pr_url IS NOT NULL').pluck().all(cardId) as string[]
-    if (!known.includes(url) || !/^https:\/\//.test(url)) throw new Error('Endereço de PR desconhecido para este card')
+    if (!known.includes(url) || !/^https:\/\//.test(url)) throw new Error(tm().git.unknownPrUrl)
     return url
   }
 
@@ -825,9 +857,9 @@ export class GitManager {
    */
   async createPullRequests(cardId: string, input: { draft: boolean; title?: string; body?: string }): Promise<{ results: Array<{ repo: string; url: string | null; error: string | null }> }> {
     const card = this.database.db.prepare('SELECT project_id AS projectId, title FROM cards WHERE id = ?').get(cardId) as { projectId: string; title: string } | undefined
-    if (!card) throw new Error('Card não encontrado')
+    if (!card) throw new Error(tm().common.cardNotFound)
     const members = this.members(card.projectId, cardId)
-    if (!members.length) throw new Error('O card ainda não tem worktree')
+    if (!members.length) throw new Error(tm().git.cardHasNoWorktreeYet)
     const names = members.map((member) => member.repoPath.split(/[\\/]/).pop() ?? member.repoPath)
     const summary = (this.database.db.prepare("SELECT content_md FROM card_documents WHERE card_id = ? AND kind = 'resumo'").pluck().get(cardId) as string | undefined)?.trim() ?? ''
     const title = input.title?.trim() || card.title || 'Alterações do AgentBoard'
@@ -836,12 +868,12 @@ export class GitManager {
     for (const [index, member] of members.entries()) {
       const repo = names[index]!
       try {
-        if (member.status === 'failed') throw new Error(`a worktree deste repositório falhou: ${member.error ?? ''}`)
+        if (member.status === 'failed') throw new Error(tm().git.prWorktreeFailed(member.error ?? ''))
         if (member.prUrl) { results.push({ repo, url: member.prUrl, error: null }); continue }
         const ahead = Number.parseInt((await this.tryRun(member.path, ['rev-list', '--count', ...cardRevs(member.branch, member.baseRef, 'HEAD')]))?.trim() ?? '0', 10) || 0
-        if (!ahead) throw new Error('sem commits na branch do card')
+        if (!ahead) throw new Error(tm().git.prNoCommits)
         const remote = (await this.tryRun(member.path, ['remote', 'get-url', 'origin']))?.trim()
-        if (!remote) throw new Error('o repositório não tem remoto origin')
+        if (!remote) throw new Error(tm().git.prNoOrigin)
         await this.run(member.path, ['push', '-u', 'origin', member.branch])
         const target = member.baseRef.replace(/^origin\//, ''), gitlab = /gitlab/i.test(remote)
         const args = gitlab
@@ -851,13 +883,13 @@ export class GitManager {
         try { output = await this.cli.run(gitlab ? 'glab' : 'gh', args, member.path) }
         catch (error) {
           const text = error instanceof Error ? error.message : String(error)
-          if (/ENOENT|not recognized|não é reconhecido/i.test(text)) throw new Error(gitlab ? 'instale o GitLab CLI (glab) e faça glab auth login' : 'instale o GitHub CLI (gh) e faça gh auth login')
+          if (/ENOENT|not recognized|não é reconhecido/i.test(text)) throw new Error(gitlab ? tm().git.installGlab : tm().git.installGh)
           // PR já aberto para a branch: reaproveita o endereço dele.
           if (!gitlab && /already exists/i.test(text)) output = await this.cli.run('gh', ['pr', 'view', member.branch, '--json', 'url', '-q', '.url'], member.path)
           else throw new Error(text.split(/\r?\n/).find((line) => line.trim())?.slice(0, 300) ?? text)
         }
         const url = output.match(/https?:\/\/\S+/g)?.at(-1) ?? null
-        if (!url) throw new Error('o CLI não devolveu o endereço do PR')
+        if (!url) throw new Error(tm().git.prCliNoUrl)
         this.database.db.prepare('UPDATE worktree_members SET pr_url = ? WHERE path = ?').run(url, member.path)
         results.push({ repo, url, error: null })
       } catch (error) { results.push({ repo, url: null, error: error instanceof Error ? error.message : String(error) }) }
@@ -882,11 +914,11 @@ export class GitManager {
   async agentCommit(input: { cardId: string; chatId: string; message: string; files?: string[]; repo?: string }): Promise<{ rule: GitRule; text: string }> {
     const card = this.database.db.prepare('SELECT project_id AS projectId FROM cards WHERE id = ?').get(input.cardId) as { projectId: string } | undefined
     const wt = this.latestWorktree(input.cardId)
-    if (!card || !wt) throw new Error('Este card ainda não tem worktree; não há o que commitar.')
+    if (!card || !wt) throw new Error('This card has no worktree yet; there is nothing to commit.')
     const { rule, why } = this.ruleFor(card.projectId, wt.branch)
-    if (rule === 'never') throw new Error(`Commit do agente desligado na branch ${wt.branch} (${why}). Deixe as alterações na worktree: quem commita é o usuário.`)
+    if (rule === 'never') throw new Error(`Agent commits are turned off on branch ${wt.branch} (${why}). Leave the changes in the worktree: the user does the committing.`)
     const message = input.message.trim()
-    if (!message || message.length > 2000) throw new Error('mensagem deve ser um texto de 1 a 2000 caracteres (primeira linha = resumo)')
+    if (!message || message.length > 2000) throw new Error('mensagem must be a text of 1 to 2000 characters (first line = summary)')
     const profileId = (this.database.db.prepare('SELECT profile_id AS profileId FROM chats WHERE id = ?').get(input.chatId) as { profileId: string } | undefined)?.profileId ?? null
     const wanted = input.files?.map((item) => item.replace(/\\/g, '/').replace(/^\.\//, ''))
     const sources = this.database.db.prepare('SELECT id, project_id AS projectId, name, local_path AS path FROM project_sources WHERE project_id = ?').all(card.projectId) as Source[]
@@ -899,31 +931,36 @@ export class GitManager {
       const paths = wanted ? all.filter((path) => wanted.includes(path)) : all
       if (paths.length) plan.push({ source, dir: member.path, paths })
     }
-    if (!plan.length) throw new Error('Não há alterações para commitar (nos arquivos informados).')
+    if (!plan.length) throw new Error(tm().git.nothingToCommitInPlan)
     if (rule === 'auto') {
       const done: string[] = []
       for (const item of plan) {
         const hash = await this.commitAt(item.dir, { message, paths: item.paths })
         if (profileId) this.database.db.prepare('INSERT OR REPLACE INTO git_commit_agents(repo_path, hash, profile_id) VALUES (?, ?, ?)').run(item.source.path, hash, profileId)
-        done.push(`${item.source.name} (${hash.slice(0, 7)}, ${item.paths.length} arquivo${item.paths.length > 1 ? 's' : ''})`)
+        done.push(`${item.source.name} (${hash.slice(0, 7)}, ${item.paths.length} file${item.paths.length > 1 ? 's' : ''})`)
       }
-      return { rule, text: `Commit feito (regra automática): ${done.join('; ')}.` }
+      return { rule, text: `Commit done (automatic rule): ${done.join('; ')}.` }
     }
-    const insert = this.database.db.prepare(`INSERT INTO git_commit_requests(id, card_id, source_id, repo_name, repo_path, chat_id, profile_id, message, files, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`)
+    const insert = this.database.db.prepare(`INSERT INTO git_commit_requests(id, card_id, source_id, repo_name, repo_path, chat_id, profile_id, message, files, status, approval_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
     const drop = this.database.db.prepare(`DELETE FROM git_commit_requests WHERE card_id = ? AND source_id = ? AND status = 'pending'`)
-    this.database.db.transaction(() => {
-      for (const item of plan) {
+    for (const item of plan) {
+      const requestId = randomUUID()
+      // Auditoria unificada (S06): o pedido de commit também vira uma approval_record; a UX de decisão continua sendo a do card (`decide`).
+      const approval = this.approvals.request({ kind: 'git-commit', subjectRef: requestId, payload: { message, files: item.paths, repo: item.source.name }, requestedActor: 'agent', cardId: input.cardId, projectId: card.projectId })
+      this.database.db.transaction(() => {
         drop.run(input.cardId, item.source.id)
-        insert.run(randomUUID(), input.cardId, item.source.id, item.source.name, item.source.path, input.chatId, profileId, message, JSON.stringify(item.paths), new Date().toISOString())
-      }
-    })()
-    return { rule, text: `Pedido de commit registrado (${plan.map((item) => item.source.name).join(', ')}). O usuário autoriza no card; a regra desta branch é pedir permissão. NÃO rode git commit. Siga com o que não depende do commit.` }
+        insert.run(requestId, input.cardId, item.source.id, item.source.name, item.source.path, input.chatId, profileId, message, JSON.stringify(item.paths), approval.id, new Date().toISOString())
+      })()
+    }
+    return { rule, text: `Commit request registered (${plan.map((item) => item.source.name).join(', ')}). The user authorizes it on the card; this branch's rule is to ask for permission. Do NOT run git commit. Continue with whatever does not depend on the commit.` }
   }
 
   async decide(requestId: string, decision: 'allow' | 'deny', message?: string): Promise<GitRequest> {
-    const row = this.database.db.prepare('SELECT id, card_id AS cardId, source_id AS sourceId, repo_name AS repoName, message, files, status, profile_id AS profileId, hash, error, created_at AS createdAt FROM git_commit_requests WHERE id = ?').get(requestId) as RequestRow | undefined
-    if (!row) throw new Error('Pedido de commit não encontrado')
+    const row = this.database.db.prepare('SELECT id, card_id AS cardId, source_id AS sourceId, repo_name AS repoName, message, files, status, profile_id AS profileId, hash, error, created_at AS createdAt, approval_id AS approvalId FROM git_commit_requests WHERE id = ?').get(requestId) as RequestRow | undefined
+    if (!row) throw new Error(tm().git.commitRequestNotFound)
     if (row.status !== 'pending') return this.toRequest(row)
+    // Auditoria unificada (S06): a decisão do card também fecha a approval_record, sem mudar a UX deste fluxo.
+    if (row.approvalId) try { this.approvals.decide(row.approvalId, decision === 'allow') } catch { /* auditoria é best-effort; nunca bloqueia a decisão do usuário */ }
     const finish = (status: GitRequest['status'], extra: { hash?: string; error?: string } = {}): GitRequest => {
       this.database.db.prepare('UPDATE git_commit_requests SET status = ?, hash = ?, error = ?, decided_at = ? WHERE id = ?').run(status, extra.hash ?? null, extra.error ?? null, new Date().toISOString(), requestId)
       return this.toRequest({ ...row, status, hash: extra.hash ?? null, error: extra.error ?? null })

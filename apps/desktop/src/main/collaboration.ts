@@ -4,9 +4,12 @@ import type { AgentConfigRepository } from './agent-config'
 import type { ConversationRepository } from './conversations'
 import type { AppDatabase } from './database'
 import type { BoardRepository } from './projects'
+import { tm } from './i18n'
 
 export interface FollowUp { chatId: string; prompt: string; planning: boolean }
 const roleName: Record<AgentPurpose, string> = { planning: 'planejador', execution: 'desenvolvedor', test: 'testador' }
+/** Papéis como aparecem nos prompts enviados aos agentes. */
+const promptRole: Record<AgentPurpose, string> = { planning: 'planner', execution: 'developer', test: 'tester' }
 const maxPlannerRounds = 2
 
 interface QuestionRow { id: string; number: number; askerPurpose: AgentPurpose; askerChatId: string | null; question: string; status: Question['status']; answer: string | null; answeredBy: Question['answeredBy']; userQuestion: string | null; rounds: number; delivered: number; createdAt: string; answeredAt: string | null }
@@ -79,7 +82,7 @@ export class CollaborationService {
 
   /** Dúvida do desenvolvedor ou do testador. Fica "aberta" até a execução dele terminar; aí o app aciona o planejador. */
   askQuestion(input: { cardId: string; chatId: string; purpose: AgentPurpose; question: string }): Question {
-    if (input.purpose === 'planning') throw new Error('O planejador não pergunta a si mesmo; se precisar de uma decisão sua, use agentboard_pedir_ao_usuario')
+    if (input.purpose === 'planning') throw new Error('The planner does not ask itself; if it needs a decision from the user, use agentboard_pedir_ao_usuario')
     const id = randomUUID(), number = this.next('card_questions', input.cardId)
     this.database.db.prepare(`INSERT INTO card_questions(id, card_id, number, asker_purpose, asker_chat_id, question, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`).run(id, input.cardId, number, input.purpose, input.chatId, input.question.trim(), new Date().toISOString())
     this.render(input.cardId)
@@ -89,8 +92,8 @@ export class CollaborationService {
   /** Resposta do planejador (por número da dúvida). */
   answerFromPlanner(cardId: string, number: number, answer: string): void {
     const row = this.questions(cardId).find((item) => item.number === number)
-    if (!row) throw new Error(`Dúvida ${qLabel(number)} não encontrada`)
-    if (row.status === 'answered') throw new Error(`A dúvida ${qLabel(number)} já foi respondida`)
+    if (!row) throw new Error(tm().collaboration.questionNotFound(qLabel(number)))
+    if (row.status === 'answered') throw new Error(tm().collaboration.questionAlreadyAnswered(qLabel(number)))
     this.database.db.prepare(`UPDATE card_questions SET status = 'answered', answer = ?, answered_by = 'planner', answered_at = ? WHERE id = ?`).run(answer.trim(), new Date().toISOString(), row.id)
     this.render(cardId)
   }
@@ -98,16 +101,16 @@ export class CollaborationService {
   /** O planejador não consegue decidir sozinho: a pergunta vai para o usuário. */
   escalateToUser(cardId: string, number: number, userQuestion: string): void {
     const row = this.questions(cardId).find((item) => item.number === number)
-    if (!row) throw new Error(`Dúvida ${qLabel(number)} não encontrada`)
-    if (row.status === 'answered') throw new Error(`A dúvida ${qLabel(number)} já foi respondida`)
+    if (!row) throw new Error(tm().collaboration.questionNotFound(qLabel(number)))
+    if (row.status === 'answered') throw new Error(tm().collaboration.questionAlreadyAnswered(qLabel(number)))
     this.database.db.prepare(`UPDATE card_questions SET status = 'user', user_question = ? WHERE id = ?`).run(userQuestion.trim(), row.id)
     this.render(cardId)
   }
 
   answerByUser(questionId: string, answer: string): Collaboration {
     const row = this.database.db.prepare('SELECT id, card_id AS cardId, status FROM card_questions WHERE id = ?').get(questionId) as { id: string; cardId: string; status: string } | undefined
-    if (!row) throw new Error('Dúvida não encontrada')
-    if (row.status !== 'user') throw new Error('Esta dúvida não está esperando resposta sua')
+    if (!row) throw new Error(tm().collaboration.questionNotFoundPlain)
+    if (row.status !== 'user') throw new Error(tm().collaboration.notWaitingForYou)
     this.database.db.prepare(`UPDATE card_questions SET status = 'answered', answer = ?, answered_by = 'user', answered_at = ? WHERE id = ?`).run(answer.trim(), new Date().toISOString(), row.id)
     this.render(row.cardId)
     this.deliverAnswers(row.cardId)
@@ -116,7 +119,7 @@ export class CollaborationService {
 
   /** Proposta de mudança do desenvolvedor ou do testador: nada é alterado até o usuário autorizar. */
   proposeChange(input: { cardId: string; chatId: string; purpose: AgentPurpose; title: string; details: string; reason: string }): Change {
-    if (input.purpose === 'planning') throw new Error('O planejador altera os documentos direto; propostas de mudança são do desenvolvedor e do testador')
+    if (input.purpose === 'planning') throw new Error('The planner changes the documents directly; change proposals are for the developer and the tester')
     const id = randomUUID(), number = this.next('card_changes', input.cardId)
     this.database.db.prepare(`INSERT INTO card_changes(id, card_id, number, proposer_purpose, proposer_chat_id, title, details, reason, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`).run(id, input.cardId, number, input.purpose, input.chatId, input.title.trim(), input.details.trim(), input.reason.trim(), new Date().toISOString())
     this.render(input.cardId)
@@ -126,20 +129,20 @@ export class CollaborationService {
   /** Aceitar e sugerir outra visão passam pelo planejador (ele atualiza os documentos); recusar volta direto ao autor. */
   decideChange(changeId: string, decision: 'accept' | 'reject' | 'suggest', note?: string): Collaboration {
     const row = this.database.db.prepare(`SELECT card_id AS cardId FROM card_changes WHERE id = ?`).get(changeId) as { cardId: string } | undefined
-    if (!row) throw new Error('Proposta não encontrada')
+    if (!row) throw new Error(tm().common.proposalNotFound)
     const change = this.changes(row.cardId).find((item) => item.id === changeId)!
-    if (change.status !== 'pending') throw new Error('Esta proposta já foi decidida')
-    if (decision === 'suggest' && !note?.trim()) throw new Error('Conte qual é a sua visão para sugerir outra solução')
+    if (change.status !== 'pending') throw new Error(tm().collaboration.proposalAlreadyDecided)
+    if (decision === 'suggest' && !note?.trim()) throw new Error(tm().collaboration.suggestNeedsNote)
     const status = decision === 'accept' ? 'accepted' : decision === 'reject' ? 'rejected' : 'suggested'
     this.database.db.prepare('UPDATE card_changes SET status = ?, user_note = ?, decided_at = ? WHERE id = ?').run(status, note?.trim() || null, new Date().toISOString(), changeId)
     this.render(row.cardId)
     if (decision === 'reject') {
-      this.start(this.resumeChange(change, `A mudança ${mLabel(change.number)} (${change.title}) foi RECUSADA pelo usuário${note?.trim() ? `: ${note.trim()}` : ''}. Não implemente. Continue o restante do plano.`))
+      this.start(this.resumeChange(change, `Change ${mLabel(change.number)} (${change.title}) was REJECTED by the user${note?.trim() ? `: ${note.trim()}` : ''}. Do not implement it. Continue with the rest of the plan.`))
     } else {
       const action = this.plannerAction(row.cardId, [
         decision === 'accept'
-          ? `O usuário AUTORIZOU a mudança ${mLabel(change.number)} proposta pelo ${roleName[change.proposerPurpose]}: ${change.title}.\n\nDetalhes: ${change.details}\nMotivo: ${change.reason}\n\nAtualize a Especificação, o Plano (inclusive o plano de testes) e as Tasks para incluir a mudança, com agentboard_escrever_documento. Não implemente nada.`
-          : `O usuário NÃO aceitou a mudança ${mLabel(change.number)} como foi proposta (${change.title}) e sugeriu outra visão: ${note!.trim()}\n\nProposta original: ${change.details}\n\nReavalie e atualize a Especificação, o Plano (inclusive o plano de testes) e as Tasks conforme a visão do usuário, com agentboard_escrever_documento. Se for inviável, diga o porquê ao usuário com agentboard_pedir_ao_usuario. Não implemente nada.`
+          ? `The user AUTHORIZED change ${mLabel(change.number)}, proposed by the ${promptRole[change.proposerPurpose]}: ${change.title}.\n\nDetails: ${change.details}\nReason: ${change.reason}\n\nUpdate the Specification, the Plan (including the test plan) and the Tasks to include the change, with agentboard_escrever_documento. Do not implement anything.`
+          : `The user did NOT accept change ${mLabel(change.number)} as proposed (${change.title}) and suggested a different view: ${note!.trim()}\n\nOriginal proposal: ${change.details}\n\nReassess and update the Specification, the Plan (including the test plan) and the Tasks according to the user's view, with agentboard_escrever_documento. If it is not feasible, tell the user why with agentboard_pedir_ao_usuario. Do not implement anything.`
       ].join(''))
       if (action) this.start(action)
     }
@@ -152,16 +155,16 @@ export class CollaborationService {
    */
   sendChange(changeId: string): Collaboration {
     const row = this.database.db.prepare(`SELECT card_id AS cardId FROM card_changes WHERE id = ?`).get(changeId) as { cardId: string } | undefined
-    if (!row) throw new Error('Proposta não encontrada')
+    if (!row) throw new Error(tm().common.proposalNotFound)
     const change = this.changes(row.cardId).find((item) => item.id === changeId)!
-    if (change.status !== 'accepted' && change.status !== 'applied') throw new Error('Só uma mudança autorizada pode ser mandada para implementar')
+    if (change.status !== 'accepted' && change.status !== 'applied') throw new Error(tm().collaboration.onlyAuthorizedCanImplement)
     const card = this.board.card(row.cardId)
     const execution = this.conversations.listChats(card.projectId, row.cardId).find((chat) => chat.purpose === 'execution')
     const chatId = change.proposerChatId ?? execution?.id
-    if (!chatId) throw new Error('Este card ainda não tem chat de implementação. Inicie a execução primeiro.')
+    if (!chatId) throw new Error(tm().collaboration.noImplementationChat)
     this.database.db.prepare(`UPDATE card_changes SET status = 'applied', sent_at = ? WHERE id = ?`).run(new Date().toISOString(), changeId)
     this.render(row.cardId)
-    this.start({ chatId, planning: false, prompt: `A mudança ${mLabel(change.number)} (${change.title}) foi AUTORIZADA pelo usuário. Trabalhe nela agora.\n\nO que muda: ${change.details}\nMotivo: ${change.reason}${change.userNote ? `\nAnotação do usuário: ${change.userNote}` : ''}\n\nSiga os documentos do card; se algum ainda não refletir esta mudança, siga os detalhes acima e avise no Resumo.` })
+    this.start({ chatId, planning: false, prompt: `Change ${mLabel(change.number)} (${change.title}) was AUTHORIZED by the user. Work on it now.\n\nWhat changes: ${change.details}\nReason: ${change.reason}${change.userNote ? `\nUser note: ${change.userNote}` : ''}\n\nFollow the card documents; if any of them does not reflect this change yet, follow the details above and mention it in the Summary.` })
     return this.list(row.cardId)
   }
 
@@ -191,8 +194,8 @@ export class CollaborationService {
     for (const change of this.changes(info.cardId).filter((item) => item.status === 'accepted' || item.status === 'suggested')) {
       this.database.db.prepare(`UPDATE card_changes SET status = 'applied', sent_at = ? WHERE id = ?`).run(new Date().toISOString(), change.id)
       this.start(this.resumeChange(change, change.status === 'accepted'
-        ? `A mudança ${mLabel(change.number)} (${change.title}) foi AUTORIZADA e já está nos documentos do card. Retome de onde parou e implemente conforme os documentos atualizados.`
-        : `O usuário sugeriu outra visão para ${mLabel(change.number)} (${change.title}): ${change.userNote}. O planejador ajustou os documentos; siga os documentos atualizados e retome de onde parou.`))
+        ? `Change ${mLabel(change.number)} (${change.title}) was AUTHORIZED and is already in the card documents. Resume where you left off and implement according to the updated documents.`
+        : `The user suggested a different view for ${mLabel(change.number)} (${change.title}): ${change.userNote}. The planner adjusted the documents; follow the updated documents and resume where you left off.`))
     }
     this.render(info.cardId)
     this.deliverAnswers(info.cardId)
@@ -207,18 +210,18 @@ export class CollaborationService {
       const blocked = this.questions(cardId).some((item) => item.askerChatId === chatId && (item.status === 'open' || item.status === 'planner' || item.status === 'user'))
       if (blocked) continue
       for (const item of items) this.database.db.prepare('UPDATE card_questions SET delivered = 1 WHERE id = ?').run(item.id)
-      const lines = items.map((item) => `${qLabel(item.number)} — ${item.question}\nResposta (${item.answeredBy === 'user' ? 'usuário' : 'planejador'}): ${item.answer}`).join('\n\n')
-      this.start({ chatId, planning: false, prompt: `As dúvidas abaixo foram respondidas. Os documentos do card no contexto já refletem o que mudou. Retome de onde parou seguindo as respostas.\n\n${lines}` })
+      const lines = items.map((item) => `${qLabel(item.number)} — ${item.question}\nAnswer (${item.answeredBy === 'user' ? 'user' : 'planner'}): ${item.answer}`).join('\n\n')
+      this.start({ chatId, planning: false, prompt: `The questions below were answered. The card documents in the context already reflect what changed. Resume where you left off following the answers.\n\n${lines}` })
     }
   }
 
   private plannerQuestionsPrompt(items: QuestionRow[], retry = false): string {
-    const lines = items.map((item) => `${qLabel(item.number)} (${roleName[item.askerPurpose]}): ${item.question}`).join('\n')
-    return `${retry ? 'Você ainda não respondeu as dúvidas abaixo. ' : ''}Dúvidas do ${[...new Set(items.map((item) => roleName[item.askerPurpose]))].join(' e ')} deste card. Responda cada uma chamando agentboard_responder_duvida (numero e resposta). Se a resposta mudar a Especificação, o Plano ou as Tasks, atualize os documentos ANTES com agentboard_escrever_documento. Se só o usuário puder decidir, chame agentboard_pedir_ao_usuario (numero e pergunta clara). Não implemente nada.\n\n${lines}`
+    const lines = items.map((item) => `${qLabel(item.number)} (${promptRole[item.askerPurpose]}): ${item.question}`).join('\n')
+    return `${retry ? 'You have not answered the questions below yet. ' : ''}Questions from the ${[...new Set(items.map((item) => promptRole[item.askerPurpose]))].join(' and ')} of this card. Answer each one by calling agentboard_responder_duvida (numero and resposta). If the answer changes the Specification, the Plan or the Tasks, update the documents FIRST with agentboard_escrever_documento. If only the user can decide, call agentboard_pedir_ao_usuario (numero and a clear question). Do not implement anything.\n\n${lines}`
   }
 
   private resumeChange(change: ChangeRow, prompt: string): FollowUp {
-    if (!change.proposerChatId) throw new Error('A proposta não tem chat de origem')
+    if (!change.proposerChatId) throw new Error(tm().collaboration.proposalNoOriginChat)
     return { chatId: change.proposerChatId, planning: false, prompt }
   }
 

@@ -23,6 +23,9 @@ describe('windows', () => {
   it('monta a query só com o que existe', () => {
     expect(popoutQuery({ kind: 'chat', projectId: 'p', cardId: 'c' })).toEqual({ pop: 'chat', project: 'p', card: 'c' })
   })
+  it('abre o banco como uma visão destacável do projeto', () => {
+    expect(popoutQuery({ kind: 'db', projectId: 'p' })).toEqual({ pop: 'db', project: 'p' })
+  })
   it('abre somente o arquivo preservando o contexto do card e caracteres no caminho', () => {
     const query = popoutQuery({ kind: 'file', projectId: 'p', cardId: 'c', path: 'C:/repo/docs/nota #1.md' })
     const parsed = new URLSearchParams(new URLSearchParams(query).toString())

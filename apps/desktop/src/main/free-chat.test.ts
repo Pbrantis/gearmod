@@ -33,7 +33,7 @@ describe('free chat', () => {
       return { sessionId: 's', turnId: 'u', text: allowed ? 'approved' : 'denied', status: options.signal?.aborted ? 'interrupted' : 'completed', error: null }
     } }
     const events: string[] = []
-    const orchestrator = new AgentOrchestrator(conversations, { claude: adapter, codex: adapter }, (event) => events.push(event.eventType), {} as WorktreeService)
+    const orchestrator = new AgentOrchestrator(conversations, { claude: adapter, codex: adapter, gemini: adapter }, (event) => events.push(event.eventType), {} as WorktreeService)
     const run = orchestrator.start({ chatId: chat.id, prompt: 'x', planning: false })
     const request = orchestrator.permissions.list(chat.id)[0]!
     expect(request).toMatchObject({ runId: run.id, chatId: chat.id, provider: profile.provider, kind: 'Write' })
@@ -70,7 +70,7 @@ describe('free chat', () => {
 
     const changes: unknown[] = []
     const token = bridge.register(run.id, null, (change) => changes.push(change), { id: chat.id, purpose: 'free' }).env.AGENTBOARD_TOKEN!
-    expect(call(token, 'agentboard_ler_skill', { nome: 'agentboard-discovery' })).toMatchObject({ ok: true, text: expect.stringContaining('# Discovery da demanda') })
+    expect(call(token, 'agentboard_ler_skill', { nome: 'agentboard-discovery' })).toMatchObject({ ok: true, text: expect.stringContaining('# Request discovery (AgentBoard)') })
     expect(call(token, 'agentboard_ler_skill', { nome: 'skill-inexistente' })).toMatchObject({ ok: false })
     expect(call(token, 'agentboard_escrever_documento', { tipo: 'plano', markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('agentboard_criar_card') })
     expect(call(token, 'agentboard_criar_card', { titulo: ' ' })).toMatchObject({ ok: false })
@@ -86,7 +86,7 @@ describe('free chat', () => {
     // Depois da conversão o mesmo run já age como planejamento do card.
     expect(call(token, 'agentboard_escrever_documento', { tipo: 'especificacao', markdown: '## Spec' })).toMatchObject({ ok: true })
     expect(board.documents.read(card.id, 'especificacao')).toBe('## Spec')
-    expect(call(token, 'agentboard_criar_card', { titulo: 'Outro' })).toMatchObject({ ok: false, error: expect.stringContaining('já tem card') })
+    expect(call(token, 'agentboard_criar_card', { titulo: 'Outro' })).toMatchObject({ ok: false, error: expect.stringContaining('already has a card') })
     database.close()
   })
 

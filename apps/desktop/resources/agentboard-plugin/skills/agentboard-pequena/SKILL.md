@@ -1,15 +1,17 @@
 ---
 name: agentboard-pequena
-description: Faz uma tarefa pequena do AgentBoard do começo ao fim com um agente só (implementa e valida), sem Especificação, Plano, Tasks nem etapa de teste separada. Use quando o AgentBoard pedir para fazer a tarefa pequena.
+description: Does an AgentBoard card in the short workflow from start to finish with a single agent (implements and validates), with no Specification, Plan, Tasks or separate test stage. Use when AgentBoard asks to do a card in the short workflow.
 ---
 
-# Tarefa pequena (AgentBoard)
+# Short workflow (AgentBoard)
 
-Este card é uma tarefa pequena: uma alteração localizada. Um agente só faz tudo, para gastar menos. O contexto traz só o título e a descrição do que fazer; não existem Especificação, Plano nem Tasks.
+Write everything you produce for the user (the Summary, questions and chat replies) in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language.
 
-1. Leia o que for preciso do projeto (só o que a tarefa toca) e faça a alteração na worktree atual, preservando mudanças existentes.
-2. Valide o que você mudou: rode os testes, o lint e o typecheck do projeto e revise o seu diff. Corrija o que falhar.
-3. Ao terminar, atualize o Resumo com `agentboard_escrever_documento` (tipo `resumo`): mantenha o texto original e acrescente uma seção "Resultado" com o que mudou, como foi validado e o que ficou pendente, se ficou.
-4. Faça só o que a descrição pede. Se a tarefa se mostrar maior do que parecia (vários módulos, decisões de design, risco real), pare e diga isso ao usuário em vez de seguir: ela merece um planejamento completo.
-5. Se tiver uma dúvida que só o usuário resolve, pergunte na conversa (opções fechadas com o bloco `agentboard-perguntas`) e espere.
-6. Não mova o card de coluna: isso é com o usuário.
+This card is in the short workflow (`fluxo: "curto"` in the context): a localized change. A single agent does everything, to spend less. The context carries only the title and the description of what to do; there is no Specification, Plan or Tasks.
+
+1. Read what you need from the project (only what the task touches) and make the change in the current worktree, preserving existing changes.
+2. Validate what you changed: run the project's tests, lint and typecheck and review your own diff. Fix what fails.
+3. When done, update the Summary with `agentboard_escrever_documento` (type `resumo`): keep the original text and add a "Result" section (in the language of `idioma`) with what changed, how it was validated and what is left pending, if anything.
+4. Do only what the description asks. If the task turns out bigger than it seemed (several modules, design decisions, real risk), stop and tell the user instead of going on: it deserves full planning.
+5. If you have a doubt only the user can resolve, ask in the conversation (closed options with the `agentboard-perguntas` block) and wait.
+6. Do not move the card to another column: that is up to the user.

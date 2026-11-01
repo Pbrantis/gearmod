@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage } from '@agentboard/contracts'
 import { useFitInView } from './useFitInView'
-
-const roleLabel: Record<string, string> = { user: 'Você', assistant: 'Agente', system: 'Sistema', tool: 'Ferramenta' }
+import { useT } from './i18n'
 
 /** Texto como aparece na tela: sem as marcas de formatação do Markdown. */
 export function visibleText(body: string): string {
@@ -47,7 +46,7 @@ export function useChatSearchShortcut(expanded: boolean): { ref: React.RefObject
 
 /** Lupa do chat: pesquisa no que foi dito (eu e o agente); clicar num resultado rola até a mensagem e a destaca. */
 export function ChatSearch({ messages, log, reveal, request = 0 }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; reveal?(): void; request?: number }): React.JSX.Element {
-  const [open, setOpen] = useState(false), [query, setQuery] = useState(''), box = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), pop = useRef<HTMLDivElement>(null)
+  const t = useT(), roleLabel: Record<string, string> = t.chat.roles, [open, setOpen] = useState(false), [query, setQuery] = useState(''), box = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), pop = useRef<HTMLDivElement>(null)
   useFitInView(pop, open)
   const results = useMemo(() => searchMessages(messages, query), [messages, query])
   useEffect(() => { if (!request || !box.current?.getClientRects().length) return; setOpen(true); window.setTimeout(() => { input.current?.focus(); input.current?.select() }, 0) }, [request])
@@ -69,12 +68,12 @@ export function ChatSearch({ messages, log, reveal, request = 0 }: { messages: C
     }, reveal ? 80 : 0)
   }
   return <span className="popwrap chatsearch" ref={box}>
-    <button type="button" className="ibtn tip" data-tip="Pesquisar no chat (Ctrl+F)" aria-label="Pesquisar no chat" aria-expanded={open} onClick={() => setOpen(!open)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2L17 17" /></svg></button>
-    {open && <div className="popmenu cs-pop" ref={pop} role="dialog" aria-label="Pesquisar no chat">
-      <input ref={input} className="in" value={query} placeholder="Pesquisar no chat" aria-label="Pesquisar no chat" onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) go(results[0].id) }} />
-      <div className="cs-list">{query.trim().length < 2 ? <p className="ch-muted">Digite pelo menos 2 letras.</p> : !results.length ? <p className="ch-muted">Nada encontrado.</p>
+    <button type="button" className="ibtn tip" data-tip={t.chat.search.tip} aria-label={t.chat.search.label} aria-expanded={open} onClick={() => setOpen(!open)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2L17 17" /></svg></button>
+    {open && <div className="popmenu cs-pop" ref={pop} role="dialog" aria-label={t.chat.search.label}>
+      <input ref={input} className="in" value={query} placeholder={t.chat.search.label} aria-label={t.chat.search.label} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) go(results[0].id) }} />
+      <div className="cs-list">{query.trim().length < 2 ? <p className="ch-muted">{t.chat.search.minLetters}</p> : !results.length ? <p className="ch-muted">{t.chat.search.nothingFound}</p>
         : results.slice(0, 40).map((message) => <button type="button" key={message.id} className="cs-item" onClick={() => go(message.id)}><b>{roleLabel[message.role] ?? message.role}</b><span>{snippet(message.body, query.trim())}</span></button>)}</div>
-      {results.length > 40 && <p className="ch-muted">Mais {results.length - 40} resultados. Continue digitando para refinar.</p>}
+      {results.length > 40 && <p className="ch-muted">{t.chat.search.moreResults(results.length - 40)}</p>}
     </div>}
   </span>
 }

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Checkbox } from './Checkbox'
 import type { SelectOption } from './Select'
 import { useFloatingMenu } from './useFloatingMenu'
+import { useEscape } from './useEscape'
 
 /**
  * Seleção múltipla com o mesmo visual do `Select`: cada opção tem uma caixinha e a lista fica aberta enquanto se marca.
@@ -15,10 +16,10 @@ export function MultiSelect({ options, value, onChange, label, empty, up = false
   useEffect(() => {
     if (!open) return
     const close = (event: Event): void => { if (!root.current?.contains(event.target as Node) && !list.current?.contains(event.target as Node)) setOpen(false) }
-    const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false) } }
-    document.addEventListener('mousedown', close); document.addEventListener('keydown', key, true)
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', key, true) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
   }, [open])
+  useEscape(() => setOpen(false), open)
   const chosen = options.filter((option) => value.includes(option.value))
   const toggle = (option: string): void => onChange(value.includes(option) ? value.filter((item) => item !== option) : options.map((item) => item.value).filter((item) => item === option || value.includes(item)))
   return <div className="sel" ref={root}>

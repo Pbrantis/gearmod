@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { plainError } from '../NoticeDialog'
+import { useAsk } from '../useAsk'
 import { fileKind } from '../FileAppearance'
 import { fromDisk, isMarkdown, nameOf, slashed, type Document } from './documents'
 import { withEol } from './position'
+import { tr } from '../i18n'
 
 /**
  * Documentos abertos de um projeto/card: ler (`workspace:read`), salvar com `expected`, recarregar, o "antes" do diff e salvamento automático.
@@ -11,7 +13,7 @@ import { withEol } from './position'
 export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readOnlyChatId }: { projectId: string; cardId: string | null; autosave: boolean; diffFirst(path: string): boolean; readOnlyChatId?: string | undefined }): {
   documents: Document[]; setDocuments: React.Dispatch<React.SetStateAction<Document[]>>; latest: React.MutableRefObject<Document[]>; active: string; setActive(path: string): void; current: Document | undefined
   loading: boolean; setLoading(value: boolean): void; error: string; setError(value: string): void
-  update(path: string, patch: Partial<Document>): void; save(path: string): Promise<boolean>; open(path: string, options?: { transient?: boolean }): Promise<string | undefined>; reload(path: string): Promise<void>
+  update(path: string, patch: Partial<Document>): void; save(path: string): Promise<boolean>; open(path: string, options?: { transient?: boolean }): Promise<string | undefined>; reload(path: string): Promise<void>; dialog: React.ReactNode
 } {
   const context = { projectId, cardId }
   const [documents, setDocuments] = useState<Document[]>([]), [active, setActive] = useState(''), [loading, setLoading] = useState(false), [error, setError] = useState('')
@@ -58,12 +60,13 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     finally { if (id === loadingId.current) setLoading(false) }
     return undefined
   }, [projectId, cardId, readOnlyChatId, update])
+  const { ask, dialog } = useAsk()
   const reload = useCallback(async (path: string): Promise<void> => {
     const document = latest.current.find((item) => item.path === path)
-    if (document && document.content !== document.saved && !window.confirm(`Descartar suas alterações em ${nameOf(path)} e reler do disco?`)) return
+    if (document && document.content !== document.saved && !(await ask({ eyebrow: tr().files.editor.documents.reloadEyebrow, title: tr().files.workspace.discardTitle, text: tr().files.editor.documents.reloadText(nameOf(path)), ok: tr().files.workspace.discard, danger: true }))) return
     setLoading(true)
     try { const file = await window.agentboard.invoke('workspace:read', { projectId, cardId, path }); if (document) update(path, { ...fromDisk(file), error: '' }); else await open(path) } catch (reason) { setError(plainError(reason)) } finally { setLoading(false) }
-  }, [projectId, cardId, update, open])
+  }, [projectId, cardId, update, open, ask])
   // O "antes" do diff vem do Git uma vez por arquivo aberto.
   useEffect(() => {
     if (!current?.diffView || current.versions) return
@@ -97,7 +100,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     if (disk.disk === now.disk) { if (now.deleted) update(path, { deleted: false }); return }
     if (disk.content === now.content) { update(path, { saved: disk.saved, disk: disk.disk, eol: disk.eol, conflict: undefined, deleted: false }); return }
     if (now.content === now.saved) {
-      update(path, { ...disk, conflict: undefined, deleted: false, notice: 'Atualizado (alterado fora)' })
+      update(path, { ...disk, conflict: undefined, deleted: false, notice: tr().files.editor.documents.updatedOutside })
       window.clearTimeout(noticeTimers.current.get(path)); noticeTimers.current.set(path, window.setTimeout(() => update(path, { notice: undefined }), 3000))
     } else update(path, { conflict: { content: disk.content, disk: disk.disk, eol: disk.eol }, deleted: false })
   }, [projectId, cardId, update])
@@ -108,5 +111,5 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
   }), [sync, syncAll])
   // O `fs.watch` perde eventos às vezes (no Windows, principalmente): voltar à janela confere tudo de novo.
   useEffect(() => { window.addEventListener('focus', syncAll); return () => window.removeEventListener('focus', syncAll) }, [syncAll])
-  return { documents, setDocuments, latest, active, setActive, current, loading, setLoading, error, setError, update, save, open, reload }
+  return { documents, setDocuments, latest, active, setActive, current, loading, setLoading, error, setError, update, save, open, reload, dialog }
 }

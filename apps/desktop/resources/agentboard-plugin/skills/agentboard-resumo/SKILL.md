@@ -1,26 +1,26 @@
 ---
 name: agentboard-resumo
-description: Escreve o documento Resumo de um card do AgentBoard. Use ao terminar o planejamento, ao pausar e ao terminar uma execução, para dizer em poucas linhas o que o card é, em que pé está, o progresso das tasks e o próximo passo.
+description: Writes the Summary document of an AgentBoard card. Use when planning ends, when pausing and when finishing an execution, to say in a few lines what the card is, where it stands, task progress and the next step.
 ---
 
-# Documento: Resumo
+# Document: Summary
 
-O Resumo é o que o usuário lê primeiro, no card do quadro e ao abrir o card. Ele diz o que está acontecendo agora. É o único documento que não vem do Spec Kit: ele resume os outros três.
+The Summary is what the user reads first, on the board card and when opening the card. It says what is happening now. It is the only document that does not come from Spec Kit: it summarizes the other three.
 
-## Idioma
+## Language
 
-Escreva no idioma informado em `idioma`. Use `templates/<idioma>.md`; se não houver, traduza `templates/pt-BR.md`, incluindo os rótulos.
+Write everything you produce for the user (labels, status, text) in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language. Use `templates/<idioma>.md`; if there is none, translate `templates/pt-BR.md` (the fallback the app uses), including the labels.
 
-## Regras
+## Rules
 
-- **Status:** um destes: Rascunho, Plano pronto, Executando, Pausado, Concluído (traduzidos para o idioma).
-- **Texto:** 2 a 4 frases, até 600 caracteres: o que muda para quem usa, por que importa e o que falta. Não repita a Especificação nem liste arquivos.
-- **Histórias:** uma linha com as histórias e prioridades (ex.: "H1 Editar documentos (P1) · H2 Contar tasks (P2)").
-- **Progresso:** "x de y tasks concluídas", contando só as tasks de primeiro nível do documento Tasks.
-- **Próximo passo:** uma ação concreta e de quem é ("Você: revisar as tasks", "Agente: executar a Fase 2").
-- Se ainda houver `[PRECISA ESCLARECER]` na Especificação, diga isso no texto.
-- Reescreva o Resumo inteiro a cada atualização; ele sempre reflete o estado atual.
+- **Status:** one of these: Draft, Plan ready, Running, Paused, Done (translated into the language of `idioma`; the template shows the exact wording).
+- **Text:** 2 to 4 sentences, up to 600 characters: what changes for whoever uses it, why it matters and what is missing. Do not repeat the Specification or list files.
+- **Stories:** one line with the stories and priorities (e.g. "S1 Edit documents (P1) · S2 Count tasks (P2)", in the language of `idioma`).
+- **Progress:** "x of y tasks done", counting only the top-level tasks of the Tasks document.
+- **Next step:** one concrete action and whose it is ("You: review the tasks", "Agent: run Phase 2", in the language of `idioma`).
+- If a clarification marker is still in the Specification, say so in the text.
+- Rewrite the whole Summary on every update; it always reflects the current state.
 
-## Entrega
+## Delivery
 
-Envie com `tipo` = `resumo` (ferramenta `agentboard_escrever_documento` ou marcadores, conforme `agentboard-planejamento`).
+Send with `tipo` = `resumo` (the `agentboard_escrever_documento` tool or markers, as in `agentboard-planejamento`).

@@ -4,11 +4,13 @@ import { isAbsolute, join, resolve } from 'node:path'
 import type Database from 'better-sqlite3'
 import {
   assessmentSchema, complexityDimensions, complexityLevel, decisionSchema, defaultWorkflowConfig, dimensionLabels, discoveryBriefSchema, evidenceSchema, historyEventSchema,
-  levelLabels, recommendedWorkflow, triggerLabels, weightedTotal, workflowConfigSchema, workflowLabels,
+  levelLabels, normalizeLegacySdd, recommendedWorkflow, triggerLabels, weightedTotal, workflowConfigSchema, workflowLabels,
   type Assessment, type AssessmentTrigger, type CardComplexity, type CardHistory, type Confidence, type Decision, type DecisionKind, type DimensionScores, type DiscoveryBrief,
   type Evidence, type Exploration, type HistoryEvent, type HistoryEventType, type SddDetection, type WorkflowConfig, type WorkflowKind
 } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { redact, redactObject } from './redaction'
+import { tm } from './i18n'
 
 /** Fonte de quem registrou: agente (com a execução) ou usuário. */
 export interface HistorySource { actor: 'agent' | 'user' | 'system'; runId?: string | null; chatId?: string | null }
@@ -17,6 +19,18 @@ export interface AssessInput {
   evidence: Evidence[]; trigger: AssessmentTrigger; reason: string; source: HistorySource
 }
 type RunInfo = { profileId: string | null; provider: string | null; model: string | null; effort: string | null }
+type EventRow = { id: string; cardId: string; projectId: string; type: string; version: number; actor: string; at: string; json: string }
+const eventColumns = 'id, card_id AS cardId, project_id AS projectId, type, schema_version AS version, actor, created_at AS at, json'
+const auditEventTypes = new Set(['policy.decided', 'approval.requested', 'approval.approved', 'approval.denied', 'approval.consumed'])
+
+/** Auditorias antigas guardam só o payload em json; os demais campos estão nas colunas da linha. */
+function eventFromRow(row: EventRow): HistoryEvent {
+  const data: unknown = JSON.parse(row.json)
+  const full = historyEventSchema.safeParse(data)
+  if (full.success) return full.data
+  if (auditEventTypes.has(row.type)) return historyEventSchema.parse({ id: row.id, v: row.version, type: row.type, at: row.at, cardId: row.cardId, projectId: row.projectId, source: { actor: row.actor }, refs: [], payload: data })
+  return historyEventSchema.parse(data)
+}
 
 /**
  * Decision & Evidence Registry + Complexity Engine (docs/09). O SQLite guarda o estado para consulta rápida; cada evento também vai
@@ -32,16 +46,17 @@ export class CardHistoryService {
 
   config(projectId: string): WorkflowConfig {
     const raw = this.db.prepare('SELECT workflow_config FROM projects WHERE id = ?').pluck().get(projectId) as string | null | undefined
-    if (raw === undefined) throw new Error('Projeto não encontrado')
+    if (raw === undefined) throw new Error(tm().common.projectNotFound)
     if (!raw) return defaultWorkflowConfig
-    const parsed = workflowConfigSchema.safeParse({ ...defaultWorkflowConfig, ...JSON.parse(raw) as object })
+    // G01: configs de antes do `sdd` (sddPath/customManifest/complexMethod legado) normalizam na leitura, sem erro.
+    const parsed = workflowConfigSchema.safeParse({ ...defaultWorkflowConfig, ...normalizeLegacySdd(JSON.parse(raw) as Record<string, unknown>) })
     return parsed.success ? parsed.data : defaultWorkflowConfig
   }
 
   setConfig(projectId: string, input: WorkflowConfig): WorkflowConfig {
     const config = workflowConfigSchema.parse(input)
-    for (const path of [config.sddPath, config.artifactsDir, config.customManifest]) if (path && !isAbsolute(path)) throw new Error(`Use um caminho absoluto: ${path}`)
-    if (config.sddPath && !existsSync(config.sddPath)) throw new Error(`Pasta do SDD não encontrada: ${config.sddPath}`)
+    for (const path of [config.sddPath, config.artifactsDir, config.customManifest]) if (path && !isAbsolute(path)) throw new Error(tm().history.useAbsolutePath(path))
+    if (config.sddPath && !existsSync(config.sddPath)) throw new Error(tm().history.sddFolderNotFound(config.sddPath))
     if (config.complexMethod === 'custom') readManifest(config.customManifest)
     const before = this.config(projectId)
     this.db.prepare('UPDATE projects SET workflow_config = ? WHERE id = ?').run(JSON.stringify(config), projectId)
@@ -63,7 +78,7 @@ export class CardHistoryService {
   /** Spec Kit (`.specify/`) e OpenSpec (`openspec/`) já instalados na pasta do projeto ou nos repositórios dele. Nada é instalado aqui. */
   detect(projectId: string): SddDetection[] {
     const project = this.db.prepare('SELECT local_path FROM projects WHERE id = ?').pluck().get(projectId) as string | undefined
-    if (!project) throw new Error('Projeto não encontrado')
+    if (!project) throw new Error(tm().common.projectNotFound)
     const sources = this.db.prepare('SELECT name, local_path AS path FROM project_sources WHERE project_id = ? ORDER BY sort_order').all(projectId) as Array<{ name: string; path: string }>
     const roots = new Map<string, string | null>([[resolve(project), null]])
     for (const source of sources) roots.set(resolve(source.path), source.name)
@@ -87,7 +102,7 @@ export class CardHistoryService {
     const run = this.runInfo(input.source.runId)
     const assessment = assessmentSchema.parse({
       id: randomUUID(), cardId: input.cardId, version: (previous?.version ?? 0) + 1, preliminary: input.preliminary, scores, weights: config.weights, total, level,
-      confidence: input.confidence, criticalRisks: input.criticalRisks.map(redact), justifications: Object.fromEntries(Object.entries(input.justifications).map(([key, value]) => [key, redact(value)])),
+      confidence: input.confidence, criticalRisks: input.criticalRisks.map((risk) => redact(risk)), justifications: Object.fromEntries(Object.entries(input.justifications).map(([key, value]) => [key, redact(value)])),
       evidence: input.evidence.map((item) => ({ ...item, detail: redact(item.detail), commit: item.commit ?? this.codeVersion(projectId) })), workflow: recommendedWorkflow(level, scores),
       trigger: previous ? input.trigger : 'initial', reason: redact(input.reason), actor: input.source.actor === 'user' ? 'user' : 'agent', ...run, codeVersion: this.codeVersion(projectId),
       supersedesId: previous?.id ?? null, createdAt: new Date().toISOString()
@@ -121,12 +136,13 @@ export class CardHistoryService {
   decide(cardId: string, input: { kind: DecisionKind; statement: string; rationale?: string; actor: 'agent' | 'user'; status?: 'proposed' | 'approved'; supersedes?: number | string | null; source?: HistorySource }): Decision {
     const old = input.supersedes == null ? null : this.decisions(cardId).find((item) => item.id === input.supersedes || item.number === input.supersedes)
     if (input.supersedes != null && !old) throw new Error(`Decisão não encontrada: ${String(input.supersedes)}`)
+    if (old?.status === 'superseded') throw new Error('A decisão indicada já foi substituída')
     const number = ((this.db.prepare('SELECT MAX(number) FROM card_decisions WHERE card_id = ?').pluck().get(cardId) as number | null) ?? 0) + 1
     const decision = decisionSchema.parse({ id: randomUUID(), cardId, number, kind: input.kind, statement: redact(input.statement), rationale: redact(input.rationale ?? ''), status: input.status ?? (input.actor === 'user' ? 'approved' : 'proposed'), actor: input.actor, supersedesId: old?.id ?? null, createdAt: new Date().toISOString() })
     const source = input.source ?? { actor: input.actor }
     this.db.transaction(() => {
       this.insertDecision(decision)
-      if (old) { this.db.prepare("UPDATE card_decisions SET status = 'superseded' WHERE id = ?").run(old.id); this.insertEvent(this.event(cardId, 'decision.superseded', source, { decisionId: old.id, number: old.number, by: decision.id })) }
+      if (old && decision.status === 'approved') { this.db.prepare("UPDATE card_decisions SET status = 'superseded' WHERE id = ?").run(old.id); this.insertEvent(this.event(cardId, 'decision.superseded', source, { decisionId: old.id, number: old.number, by: decision.id })) }
       this.insertEvent(this.event(cardId, decision.status === 'approved' ? 'user.decision' : 'agent.decision', source, { decision }))
     })()
     this.sync(cardId)
@@ -136,8 +152,14 @@ export class CardHistoryService {
   /** O usuário aprova uma recomendação do agente ou a marca como substituída. */
   setDecision(decisionId: string, status: 'approved' | 'superseded'): string {
     const row = this.db.prepare('SELECT * FROM card_decisions WHERE id = ?').get(decisionId) as DecisionRow | undefined
-    if (!row) throw new Error('Decisão não encontrada')
+    if (!row) throw new Error(tm().common.decisionNotFound)
     this.db.transaction(() => {
+      if (status === 'approved' && row.supersedes_id) {
+        const old = this.db.prepare('SELECT * FROM card_decisions WHERE id = ? AND card_id = ?').get(row.supersedes_id, row.card_id) as DecisionRow | undefined
+        if (!old || old.status === 'superseded') throw new Error(tm().history.supersededNotCurrent)
+        this.db.prepare("UPDATE card_decisions SET status = 'superseded' WHERE id = ?").run(old.id)
+        this.insertEvent(this.event(row.card_id, 'decision.superseded', { actor: 'user' }, { decisionId: old.id, number: old.number, by: decisionId }))
+      }
       this.db.prepare('UPDATE card_decisions SET status = ? WHERE id = ?').run(status, decisionId)
       this.insertEvent(this.event(row.card_id, status === 'approved' ? 'user.decision' : 'decision.superseded', { actor: 'user' }, { decisionId, number: row.number, status }))
     })()
@@ -151,15 +173,24 @@ export class CardHistoryService {
 
   /** Fluxo efetivo do card. Fica registrado mesmo quando difere do recomendado; a decisão de fluxo anterior vira `superseded`. */
   /** `decidedBy`: quem decidiu (o agente pode registrar a escolha que o usuário confirmou no chat). */
-  selectWorkflow(cardId: string, workflow: WorkflowKind, source: HistorySource, reason = '', decidedBy: 'agent' | 'user' = source.actor === 'user' ? 'user' : 'agent'): void {
+  selectWorkflow(cardId: string, workflow: WorkflowKind, source: HistorySource, reason = '', decidedBy: 'agent' | 'user' = source.actor === 'user' ? 'user' : 'agent', method?: 'native' | 'speckit'): void {
     const recommended = this.latest(cardId)?.workflow ?? null
     const previous = this.decisions(cardId).filter((item) => item.kind === 'workflow' && item.status !== 'superseded').at(-1)
     this.db.prepare('UPDATE cards SET workflow = ? WHERE id = ?').run(workflow, cardId)
-    this.insertEvent(this.event(cardId, 'workflow.selected', source, { workflow, recommended, followsRecommendation: recommended === workflow, reason: redact(reason) }))
-    this.decide(cardId, { kind: 'workflow', statement: `Fluxo: ${workflowLabels[workflow]}`, rationale: reason || (recommended && recommended !== workflow ? `Diferente do recomendado (${workflowLabels[recommended]}).` : ''), actor: decidedBy, status: decidedBy === 'user' ? 'approved' : 'proposed', supersedes: previous?.id ?? null, source })
+    this.insertEvent(this.event(cardId, 'workflow.selected', source, { workflow, method: workflow === 'sdd' ? method ?? null : null, recommended, followsRecommendation: recommended === workflow, reason: redact(reason) }))
+    this.decide(cardId, { kind: 'workflow', statement: `Fluxo: ${workflowLabels[workflow]}${workflow === 'sdd' && method ? ` — ${method === 'native' ? 'SDD do AgentBoard' : 'GitHub Spec Kit'}` : ''}`, rationale: reason || (recommended && recommended !== workflow ? `Diferente do recomendado (${workflowLabels[recommended]}).` : ''), actor: decidedBy, status: decidedBy === 'user' ? 'approved' : 'proposed', supersedes: previous?.id ?? null, source })
   }
 
   workflow(cardId: string): WorkflowKind | null { return (this.db.prepare('SELECT workflow FROM cards WHERE id = ?').pluck().get(cardId) as WorkflowKind | null | undefined) ?? null }
+
+  sddMethod(cardId: string): 'native' | 'speckit' | null {
+    const event = this.lastEvent(cardId, 'workflow.selected'), method = event?.payload.method
+    return event?.payload.workflow === 'sdd' && (method === 'native' || method === 'speckit') ? method : null
+  }
+
+  recommendSddMethod(cardId: string, method: 'native' | 'speckit', reason: string, source: HistorySource): void {
+    this.insertEvent(this.event(cardId, 'workflow.method-recommended', source, { method, reason: redact(reason), assessmentId: this.latest(cardId)?.id ?? null })); this.sync(cardId)
+  }
 
   // ---- Discovery e exploração --------------------------------------------------------------------------------------------
 
@@ -216,11 +247,13 @@ export class CardHistoryService {
   // ---- Leitura completa -----------------------------------------------------------------------------------------------
 
   history(cardId: string): CardHistory {
-    return { assessments: this.assessments(cardId), decisions: this.decisions(cardId), discovery: this.discovery(cardId), exploration: this.exploration(cardId), workflow: this.workflow(cardId), artifactsDir: this.artifactsDir(cardId), events: this.events(cardId) }
+    const recommendation = this.lastEvent(cardId, 'workflow.method-recommended'), method = recommendation?.payload.method
+    const current = recommendation?.payload.assessmentId === (this.latest(cardId)?.id ?? null)
+    return { assessments: this.assessments(cardId), decisions: this.decisions(cardId), discovery: this.discovery(cardId), exploration: this.exploration(cardId), workflow: this.workflow(cardId), sddMethod: this.sddMethod(cardId), recommendedSddMethod: current && (method === 'native' || method === 'speckit') ? method : null, sddMethodReason: current && typeof recommendation?.payload.reason === 'string' ? recommendation.payload.reason : '', artifactsDir: this.artifactsDir(cardId), events: this.events(cardId) }
   }
 
   events(cardId: string): HistoryEvent[] {
-    return (this.db.prepare('SELECT json FROM card_events WHERE card_id = ? ORDER BY created_at, rowid').pluck().all(cardId) as string[]).map((json) => JSON.parse(json) as HistoryEvent)
+    return (this.db.prepare(`SELECT ${eventColumns} FROM card_events WHERE card_id = ? ORDER BY created_at, rowid`).all(cardId) as EventRow[]).map(eventFromRow)
   }
 
   // ---- Arquivos: gravação recuperável, reconciliação e reconstrução -------------------------------------------------
@@ -231,8 +264,8 @@ export class CardHistoryService {
     try {
       mkdirSync(dir, { recursive: true })
       const file = join(dir, 'history.jsonl'), known = existsSync(file) ? new Set(readJsonl(file).map((event) => event.id)) : new Set<string>()
-      const pending = this.db.prepare('SELECT id, json FROM card_events WHERE card_id = ? AND synced_at IS NULL ORDER BY created_at, rowid').all(cardId) as Array<{ id: string; json: string }>
-      const lines = pending.filter((item) => !known.has(item.id)).map((item) => `${item.json}\n`).join('')
+      const pending = this.db.prepare(`SELECT ${eventColumns} FROM card_events WHERE card_id = ? AND (synced_at IS NULL OR type IN ('policy.decided', 'approval.requested', 'approval.approved', 'approval.denied', 'approval.consumed')) ORDER BY created_at, rowid`).all(cardId) as EventRow[]
+      const lines = pending.filter((item) => !known.has(item.id)).map((item) => `${JSON.stringify(eventFromRow(item))}\n`).join('')
       if (lines) appendFileSync(file, lines, 'utf8')
       // Só marca depois de gravar: se o app cair no meio, a próxima reconciliação grava de novo e a dedup evita duplicar.
       const mark = this.db.prepare('UPDATE card_events SET synced_at = ? WHERE id = ?'), now = new Date().toISOString()
@@ -251,7 +284,7 @@ export class CardHistoryService {
   /** Reconstrói avaliações, decisões e eventos a partir de `history.jsonl`, sem apagar nem duplicar nada do banco. */
   rebuild(cardId: string): { events: number; assessments: number; decisions: number } {
     const file = join(this.artifactsDir(cardId), 'history.jsonl')
-    if (!existsSync(file)) throw new Error(`Nenhum histórico em ${file}`)
+    if (!existsSync(file)) throw new Error(tm().history.noHistoryAt(file))
     const counts = { events: 0, assessments: 0, decisions: 0 }
     const events = readJsonl(file).filter((event) => event.cardId === cardId)
     this.db.transaction(() => {
@@ -316,7 +349,7 @@ export class CardHistoryService {
 
   private projectOf(cardId: string): string {
     const projectId = this.db.prepare('SELECT project_id FROM cards WHERE id = ?').pluck().get(cardId) as string | undefined
-    if (!projectId) throw new Error('Card não encontrado')
+    if (!projectId) throw new Error(tm().common.cardNotFound)
     return projectId
   }
 
@@ -365,9 +398,9 @@ export function readArtifactHistory(dir: string): { events: HistoryEvent[]; asse
 /** Manifesto declarativo de método personalizado (JSON versionado): etapas, entradas, saídas e comandos permitidos. */
 export interface MethodManifest { name: string; version: string; steps: Array<{ id: string; description: string; inputs?: string[]; outputs?: string[]; commands?: string[] }> }
 export function readManifest(path: string | null): MethodManifest {
-  if (!path || !existsSync(path)) throw new Error('Informe o arquivo do manifesto do método personalizado (JSON).')
+  if (!path || !existsSync(path)) throw new Error(tm().history.manifestFileRequired)
   const value = JSON.parse(readFileSync(path, 'utf8')) as Partial<MethodManifest>
-  if (typeof value.name !== 'string' || typeof value.version !== 'string' || !Array.isArray(value.steps) || !value.steps.length || value.steps.some((step) => typeof step?.id !== 'string' || typeof step.description !== 'string')) throw new Error('Manifesto inválido: precisa de name, version e steps [{ id, description, inputs?, outputs?, commands? }].')
+  if (typeof value.name !== 'string' || typeof value.version !== 'string' || !Array.isArray(value.steps) || !value.steps.length || value.steps.some((step) => typeof step?.id !== 'string' || typeof step.description !== 'string')) throw new Error(tm().history.invalidManifest)
   return value as MethodManifest
 }
 
@@ -426,10 +459,8 @@ export function readHead(repoPath: string): string | null {
 }
 
 /** Nada de segredo vai para artefatos: tokens e chaves comuns viram `[redacted]`. */
-export function redact(value: string): string {
-  return value.replace(/(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|Bearer\s+[A-Za-z0-9._-]{10,})/g, '[redacted]')
-}
-function redactDeep<T>(value: T): T { return JSON.parse(redact(JSON.stringify(value))) as T }
+export { redact }
+function redactDeep<T>(value: T): T { return redactObject(value) }
 
 function runTable(runs: RunRow[]): string {
   const duration = (run: RunRow): string => run.endedAt ? `${Math.round((Date.parse(run.endedAt) - Date.parse(run.startedAt)) / 1000)} s` : '—'

@@ -5,6 +5,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirro
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput, indentUnit } from '@codemirror/language'
 import { highlightSelectionMatches, openSearchPanel, searchKeymap } from '@codemirror/search'
 import { highlight, editorTheme } from './theme'
+import { tr } from '../i18n'
 
 export interface EditorOptions { tabs?: boolean; wrap: boolean; tabSize: number; indentWithTab: boolean; whitespace: boolean; guides: boolean; scrollPastEnd: boolean }
 export const none: Extension = []
@@ -13,7 +14,7 @@ export const baseExtensions = (variant: 'code' | 'prose' = 'code'): Extension[] 
   ...(variant === 'code' ? [lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), rectangularSelection(), crosshairCursor(), foldGutter(), closeBrackets()] : []),
   history(), drawSelection(), dropCursor(), indentOnInput(), bracketMatching(), highlightSelectionMatches({ minSelectionLength: 2, wholeWords: true }),
   EditorState.allowMultipleSelections.of(true),
-  EditorState.phrases.of({ '$ unchanged lines': '··· $ linhas iguais ···', 'Revert this chunk': 'Reverter este trecho', Accept: 'Aceitar', Reject: 'Reverter', 'Go to line': 'Ir para linha', go: 'ir', Find: 'Localizar', Replace: 'Substituir', next: 'próxima', previous: 'anterior', all: 'todas', close: 'fechar', 'match case': 'diferenciar maiúsculas', 'by word': 'palavra inteira', regexp: 'regex', replace: 'substituir', 'replace all': 'substituir tudo' }),
+  EditorState.phrases.of(tr().files.editor.cmPhrases),
   keymap.of([...(variant === 'prose' ? [{ key: 'Mod-h', run: openSearchPanel, preventDefault: true }] : []), ...(variant === 'code' ? closeBracketsKeymap : []), ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...(variant === 'code' ? foldKeymap : [])]),
   editorTheme, highlight
 ]

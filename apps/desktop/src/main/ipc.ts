@@ -6,6 +6,7 @@ import type { BackupService } from './backup'
 import type { AppDatabase } from './database'
 import type { NoteRepository } from './repository'
 import type { SettingsRepository } from './settings'
+import { setMainLocale } from './i18n'
 import type { BoardRepository, GitService, ProfileRepository, ProjectRepository } from './projects'
 import type { AgentProbeService } from './agents'
 import type { ConversationRepository } from './conversations'
@@ -21,6 +22,7 @@ import type { VoiceService } from './voice'
 import type { UsageService } from './usage'
 import type { CollaborationService } from './collaboration'
 import type { GitManager } from './git-manager'
+import type { PullRequestService } from './pull-requests'
 import { fileVersions } from './file-versions'
 import { grepProject } from './workspace-grep'
 import { nativeGit } from './worktrees'
@@ -30,15 +32,27 @@ import type { PlaywrightCliService } from './playwright-cli'
 import type { FileWatchService } from './file-watch'
 import type { SpecToolsService } from './spec-tools'
 import type { ToolUpdateService } from './tool-updates'
-import { applyWorkflowType } from './mcp-bridge'
-import type { DecisionKind, DimensionScores, Effort, PermissionMode, WorkflowConfig, WorkflowKind } from '@agentboard/contracts'
+import type { ApprovalService } from './approvals'
+import { mcpPresets, type McpRegistry } from './mcp-registry'
+import { specKitMoveKind, specKitPermissionText, specKitProvider, specKitSpecifyRequest, type SpecKitRuntime } from './speckit'
+import { SpecKitImplementBlocked } from './spec-tools'
+import type { SddResolver } from './sdd/sdd-resolver'
+import type { SddWriter } from './sdd/sdd-writer'
+import type { DbService } from './db/service'
+import type { DbConnectionInput } from './db/connections'
+import type { TableChanges, TableQuery } from './db/sql-builder'
+import { GitFileReader } from './sdd/git-file-reader'
+import { candidate, constitutionMigrationPlan } from './sdd/constitution-migration-plan'
+import { cardTypeUsage, defaultCardTypes, setDefaultCardTypes } from './card-types'
+import type { CardTypeDef, SpecKitState, DecisionKind, DimensionScores, Effort, PermissionMode, SddConfig, WorkflowConfig, WorkflowKind } from '@agentboard/contracts'
 
 const workflowState = (history: CardHistoryService, projectId: string) => ({ config: history.config(projectId), detected: history.detect(projectId), defaultArtifactsDir: history.defaultArtifactsRoot(projectId) })
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { basename, dirname, extname, isAbsolute, join, relative } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { tm } from './i18n'
 
-const imageMime: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' }
+const imageMime: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
 
 export interface IpcMainLike {
   handle(channel: string, listener: (event: unknown, input: unknown) => unknown): void
@@ -70,11 +84,18 @@ interface Services {
   usage: UsageService
   collab: CollaborationService
   gitManager: GitManager
+  pullRequests: PullRequestService
   history: CardHistoryService
   playwright: PlaywrightCliService
   fileWatch: FileWatchService
   specTools: SpecToolsService
+  speckit: SpecKitRuntime
+  mcp: McpRegistry
   toolUpdates: ToolUpdateService
+  approvals: ApprovalService
+  sddResolver: Pick<SddResolver, 'locate' | 'constitution'>
+  sddWriter: Pick<SddWriter, 'write'>
+  dbManager?: DbService
   openPath(path: string): Promise<void>
   terminals: TerminalService
   openWindow(target: PopoutTarget, placement: WindowPlacement, point?: { x: number; y: number }): void
@@ -86,6 +107,7 @@ interface Services {
   trashItem?(path: string): Promise<void>
   openExternal(url: string): Promise<void>
   chooseSkillSource(): Promise<string | null>
+  saveTextFile(input: { content: string; defaultName: string }): Promise<{ saved: boolean; path: string | null }>
   appVersion: string
   dataDir: string
   reopen(): Promise<void>
@@ -94,21 +116,122 @@ interface Services {
 type Handler = (input: never) => unknown | Promise<unknown>
 
 export function registerIpc(ipcMain: IpcMainLike, services: Services): () => void {
+  const db = (): DbService => { if (!services.dbManager) throw new Error(tm().ipc.dbUnavailable); return services.dbManager }
   const workspaceRoots = ({ projectId, cardId }: { projectId: string; cardId: string | null }): string[] => {
     const project = services.projects.get(projectId)
-    if (cardId && services.board.card(cardId).projectId !== projectId) throw new Error('Card não pertence ao projeto')
+    if (cardId && services.board.card(cardId).projectId !== projectId) throw new Error(tm().common.cardNotInProject)
     const worktree = cardId ? services.worktrees.get(cardId) : null
     if (worktree && existsSync(worktree.path)) return [...new Set([worktree.path, ...services.worktrees.repositories(cardId!).filter((repo) => repo.status === 'active').map((repo) => repo.path)])]
     return [...new Set([project.localPath, ...project.sources.map((source) => source.localPath)])]
   }
+  const applyingConstitution = new Set<string>()
+  /** Estado do Spec Kit de um card para o chat: permissão escolhida, cartões pendentes e os artefatos REAIS da feature do card. */
+  const specKitState = (cardId: string): SpecKitState => {
+    services.speckit.sync(cardId)
+    const speckit = services.speckit, card = services.board.card(cardId), availability = speckit.availability(card.projectId), active = speckit.active(cardId)
+    const chatProvider = active ? services.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === 'planning')?.provider ?? null : null, provider = chatProvider ? specKitProvider(chatProvider) : null
+    let artifacts: SpecKitState['artifacts'] = null
+    if (active && availability.enabled) { try { artifacts = speckit.artifacts(cardId) } catch { artifacts = null } }
+    return { active, enabled: availability.enabled, reason: availability.reason, permission: active ? speckit.permission(cardId) : null, permissionRequestId: active ? speckit.permissionRequest(cardId)?.id ?? null : null, moveRequestId: speckit.moveRequest(cardId)?.id ?? null, startRequestId: speckit.startRequest(cardId)?.id ?? null, provider, texts: provider ? { manual: specKitPermissionText(provider, 'manual'), free: specKitPermissionText(provider, 'free') } : null, artifacts }
+  }
+  const applyConstitution = async (id: string) => {
+    if (applyingConstitution.has(id)) throw new Error(tm().ipc.approvalAlreadyApplying)
+    applyingConstitution.add(id)
+    try {
+      const approval = services.approvals.get(id), payload = approval.payload
+      if (approval.kind !== 'constitution-apply' || approval.status !== 'approved' || approval.consumedAt || new Date(approval.expiresAt).getTime() <= Date.now() || !approval.cardId || !approval.projectId) throw new Error(tm().ipc.approvalNotAvailable)
+      if (services.board.card(approval.cardId).projectId !== approval.projectId || typeof payload.sourceId !== 'string' || typeof payload.path !== 'string' || typeof payload.content !== 'string' || !(payload.expectBlobSha === null || typeof payload.expectBlobSha === 'string')) throw new Error(tm().ipc.invalidApprovalData)
+      const [location, view] = await Promise.all([services.sddResolver.locate({ projectId: approval.projectId, cardId: approval.cardId }), services.sddResolver.constitution({ projectId: approval.projectId, cardId: approval.cardId })])
+      if (location.sourceId !== payload.sourceId || view.path !== payload.path) throw new Error(tm().ipc.constitutionLocationChanged)
+      await services.sddWriter.write(approval.cardId, payload.sourceId, payload.path, payload.content, { blobSha: payload.expectBlobSha })
+      return services.approvals.consume(id, approval.opHash)
+    } finally { applyingConstitution.delete(id) }
+  }
   const handlers: Record<IpcChannel, Handler> = {
+    'db:feature-enabled': () => process.env.AGENTBOARD_DATABASE_EXPERIMENTAL !== '0',
+    'db:connections:list': (input: { projectId: string }) => db().list(input.projectId),
+    'db:connections:save': (input: DbConnectionInput) => db().save(input),
+    'db:connections:test': async (input: DbConnectionInput) => ({ ok: true as const, ...await db().testConnection(input) }),
+    'db:connections:delete': async (input: { connectionId: string }) => { await db().delete(input.connectionId); return {} },
+    'db:connect': async (input: { connectionId: string }) => { await db().connect(input.connectionId); return {} },
+    'db:session-password': async (input: { connectionId: string; password: string }) => { await db().sessionPassword(input.connectionId, input.password); return {} },
+    'db:state': (input: { connectionId: string }) => db().state(input.connectionId),
+    'db:disconnect': async (input: { connectionId: string }) => { await db().disconnect(input.connectionId); return {} },
+    'db:cancel': async (input: { connectionId: string; requestId: string }) => { await db().cancel(input.connectionId, input.requestId); return {} },
+    'db:databases': (input: { connectionId: string }) => db().databases(input.connectionId),
+    'db:schemas': (input: { connectionId: string; all?: boolean }) => db().schemas(input.connectionId, input.all),
+    'db:tables': (input: { connectionId: string; schemaOid: number }) => db().tables(input.connectionId, input.schemaOid),
+    'db:describe': (input: { connectionId: string; oid: number }) => db().describe(input.connectionId, input.oid),
+    'db:page': (input: TableQuery & { connectionId: string; requestId: string }) => db().page(input.connectionId, input),
+    'db:apply': (input: TableChanges & { connectionId: string; requestId: string; oid: number; dryRun?: boolean }) => db().apply(input.connectionId, input),
+    'db:count': (input: TableQuery & { connectionId: string; requestId: string }) => db().count(input.connectionId, input),
+    'db:query:run': (input: { connectionId: string; requestId: string; sql: string; limit: number; confirmDestructive?: string }) => db().query(input.connectionId, input),
+    'db:history:list': (input: { connectionId: string }) => db().history(input.connectionId),
+    'db:history:clear': async (input: { connectionId: string }) => { await db().clearHistory(input.connectionId); return {} },
+    'mcp:presets': () => mcpPresets,
+    'mcp:list': (input: { projectId?: string }) => services.mcp.list(input.projectId),
+    'mcp:save': (input: Parameters<McpRegistry['save']>[0]) => services.mcp.save(input),
+    'mcp:delete': async (input: { id: string }) => { await services.mcp.remove(input.id); return { deleted: true as const } },
+    'mcp:set-project-enabled': (input: { projectId: string; id: string; enabled: boolean }) => { services.mcp.setProjectEnabled(input.projectId, input.id, input.enabled); return { ok: true as const } },
+    'speckit:availability': (input: { projectId: string }) => services.speckit.availability(input.projectId),
+    'speckit:state': (input: { cardId: string }) => specKitState(input.cardId),
+    'speckit:choose': (input: { cardId: string; permission: 'manual' | 'free' }) => {
+      const first = !services.speckit.permission(input.cardId)
+      services.speckit.choose(input.cardId, input.permission)
+      // Primeira escolha: a etapa specify começa sozinha, visível no chat e com o entendimento e as decisões do card como entrada.
+      if (first) {
+        const card = services.board.card(input.cardId), chat = services.conversations.listChats(card.projectId, input.cardId).find((item) => item.purpose === 'planning')
+        let hasSpec = false; try { hasSpec = Boolean(services.speckit.artifacts(input.cardId).spec) } catch { /* sem worktree ainda */ }
+        const specProvider = chat ? specKitProvider(chat.provider) : null
+        if (chat && specProvider && !chat.busy && !hasSpec) {
+          const decisions = services.history.decisions(input.cardId).filter((item) => item.status !== 'superseded')
+          services.orchestrator.start({ chatId: chat.id, planning: true, notice: '▶ Usando a skill speckit-specify', prompt: specKitSpecifyRequest(specProvider, card, services.history.discovery(input.cardId), decisions) })
+        }
+      }
+      return specKitState(input.cardId)
+    },
+    'speckit:request-move': (input: { cardId: string }) => { services.speckit.requestMove(input.cardId); return specKitState(input.cardId) },
+    'approvals:list': (input: { cardId?: string }) => services.approvals.list(input.cardId),
+    'approvals:decide': async (input: { id: string; approve: boolean; note?: string }) => {
+      const pending = services.approvals.get(input.id)
+      if (input.approve && pending.kind === 'constitution-apply' && pending.cardId && pending.projectId) {
+        const view = await services.sddResolver.constitution({ projectId: pending.projectId, cardId: pending.cardId })
+        if (view.blobSha !== pending.payload.expectBlobSha) throw new Error(tm().ipc.constitutionChanged)
+      }
+      if (input.approve && pending.kind === 'workflow-choice' && pending.payload.workflow === 'sdd' && pending.payload.method !== 'native' && pending.payload.method !== 'speckit') throw new Error(tm().ipc.chooseSddMethodBeforeApproving)
+      const approval = services.approvals.decide(input.id, input.approve, input.note)
+      if (approval.status === 'approved' && approval.kind === 'workflow-choice' && approval.cardId) {
+        const workflow = approval.payload.workflow
+        if (workflow === 'light' || workflow === 'spec' || workflow === 'sdd') {
+          const method = approval.payload.method === 'native' || approval.payload.method === 'speckit' ? approval.payload.method : undefined
+          if (workflow === 'sdd' && !method) throw new Error(tm().ipc.chooseSddMethodBeforeApproving)
+          services.history.selectWorkflow(approval.cardId, workflow, { actor: 'user' }, typeof approval.payload.reason === 'string' ? approval.payload.reason : '', 'user', method)
+        }
+      }
+      // S05: aprovar um pedido de movimento do agente aplica o movimento agora, ainda sujeito ao gate de Done (skipGate fica false).
+      if (approval.status === 'approved' && approval.kind === 'agent-move' && approval.cardId && typeof approval.payload.columnId === 'string') {
+        services.board.move(approval.cardId, approval.payload.columnId, null, 'agent')
+      }
+      // Spec Kit: o pedido de implementação no planejamento só mexe no card depois da aprovação do usuário. Negar = cancelar.
+      if (approval.status === 'approved' && approval.kind === specKitMoveKind && approval.cardId && typeof approval.payload.columnId === 'string') {
+        services.board.move(approval.cardId, approval.payload.columnId, null, 'user')
+        if (approval.note === 'move-and-implement') services.speckit.requestStart(approval.cardId)
+      }
+      if (approval.status === 'approved' && approval.kind === 'constitution-apply') return applyConstitution(approval.id)
+      return approval
+    },
+    'approvals:apply-constitution': (input: { id: string }) => applyConstitution(input.id),
+    'usage:export': (input: { from?: string; to?: string }) => ({ csv: services.usage.exportCsv(input) }),
+    'usage:purge-request': (input: { from?: string; to?: string }) => services.usage.requestPurge(services.approvals, input),
+    'usage:purge': (input: { from?: string; to?: string; approvalId: string }) => services.usage.purge(services.approvals, input, input.approvalId),
+    'usage:save-csv': (input: { content: string; defaultName: string }) => services.saveTextFile(input),
     'terminal:info': (input: { id: string }) => services.terminals.info(input.id),
     'terminal:resize': (input: { id: string; cols: number; rows: number }) => { services.terminals.resize(input.id, input.cols, input.rows); return {} },
-    'workspace:external': async (input: { projectId: string; cardId: string | null; path: string; target: 'explorer' | 'default' | 'vscode' }) => { const path = await allowedPath(workspaceRoots(input), input.path); if (!services.openFileExternal) throw new Error('Abertura externa indisponível'); await services.openFileExternal(path, input.target); return {} },
-    'workspace:comment': async (input: { projectId: string; cardId: string | null; text: string }) => { if (!services.commentFile) throw new Error('Chat indisponível'); services.commentFile(input); return {} },
-    'workspace:attach': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path); if (!statSync(path).isFile()) throw new Error('Escolha um arquivo para anexar'); if (!services.attachFile) throw new Error('Chat indisponível'); services.attachFile({ ...input, path }); return {} },
+    'workspace:external': async (input: { projectId: string; cardId: string | null; path: string; target: 'explorer' | 'default' | 'vscode' }) => { const path = await allowedPath(workspaceRoots(input), input.path); if (!services.openFileExternal) throw new Error(tm().ipc.externalOpenUnavailable); await services.openFileExternal(path, input.target); return {} },
+    'workspace:comment': async (input: { projectId: string; cardId: string | null; text: string }) => { if (!services.commentFile) throw new Error(tm().ipc.chatUnavailable); services.commentFile(input); return {} },
+    'workspace:attach': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path); if (!statSync(path).isFile()) throw new Error(tm().ipc.chooseFileToAttach); if (!services.attachFile) throw new Error(tm().ipc.chatUnavailable); services.attachFile({ ...input, path }); return {} },
     'workspace:terminal': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path), cwd = statSync(path).isDirectory() ? path : dirname(path), id = services.terminals.open(cwd); return { id, cwd, shell: services.terminals.info(id).shell } },
-    'workspace:image': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path), mime = imageMime[extname(path).toLowerCase()]; if (!mime || statSync(path).size > 20_000_000) throw new Error('Prévia disponível para imagens de até 20 MB'); return `data:${mime};base64,${readFileSync(path).toString('base64')}` },
+    'workspace:image': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await allowedPath(workspaceRoots(input), input.path), mime = imageMime[extname(path).toLowerCase()]; if (!mime || statSync(path).size > 20_000_000) throw new Error(tm().ipc.imagePreviewLimit); return `data:${mime};base64,${readFileSync(path).toString('base64')}` },
     'workspace:roots': async (input: { projectId: string; cardId: string | null }) => {
       const worktree = input.cardId ? services.worktrees.get(input.cardId) : null, cards = services.board.get(input.projectId).cards, paths = workspaceRoots(input)
       return Promise.all(paths.map(async (path) => {
@@ -122,7 +245,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'workspace:watch': async (input: { projectId: string; cardId: string | null; watchId: string; paths: string[] }) => { const roots = workspaceRoots(input), allowed = await Promise.all(input.paths.map((path) => allowedPath(roots, path).catch(() => null))); services.fileWatch.watch(input.watchId, allowed.filter((path): path is string => path !== null)); return {} },
     'workspace:create': (input: { projectId: string; cardId: string | null; parent: string; name: string; kind: 'file' | 'folder' }) => createProjectItem(workspaceRoots(input), input.parent, input.name, input.kind),
     'workspace:rename': (input: { projectId: string; cardId: string | null; path: string; name: string }) => renameProjectItem(workspaceRoots(input), input.path, input.name),
-    'workspace:trash': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await trashablePath(workspaceRoots(input), input.path); if (!services.trashItem) throw new Error('Lixeira indisponível'); await services.trashItem(path); return {} },
+    'workspace:trash': async (input: { projectId: string; cardId: string | null; path: string }) => { const path = await trashablePath(workspaceRoots(input), input.path); if (!services.trashItem) throw new Error(tm().ipc.trashUnavailable); await services.trashItem(path); return {} },
     'workspace:grep': (input: { projectId: string; cardId: string | null; query: string; caseSensitive: boolean; wholeWord: boolean; regex: boolean; include?: string | undefined }) => grepProject(workspaceRoots(input), input),
     'workspace:save-image': (input: { projectId: string; cardId: string | null; markdownPath: string; data: string; mime: string }) => saveMarkdownImage(workspaceRoots(input), input.markdownPath, input.data, input.mime),
     'workspace:resolve-references': (input: { projectId: string; cardId: string | null; markdownPath?: string; targets: string[] }) => resolveProjectReferences(workspaceRoots(input), input.targets, input.markdownPath),
@@ -144,10 +267,10 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       return { restored: true as const }
     },
     'settings:get': () => services.settings.get(),
-    'settings:update': (input: { tema?: AppTheme; idioma?: AppLanguage; voz?: VoiceModel }) => services.settings.update(input),
+    'settings:update': (input: { tema?: AppTheme; idioma?: AppLanguage; voz?: VoiceModel }) => { const updated = services.settings.update(input); setMainLocale(updated.idioma); return updated },
     'profiles:list': () => services.profiles.list(),
-    'profiles:create': (input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean; color?: string }) => services.profiles.create(input),
-    'profiles:update': (input: { profileId: string; label: string; scope: string; color?: string }) => services.profiles.update(input),
+    'profiles:create': (input: { provider: 'codex' | 'claude' | 'gemini'; label: string; scope: string; color?: string }) => services.profiles.create(input),
+    'profiles:update': (input: { profileId: string; label: string; scope: string; color?: string; billingMode?: 'subscription' | 'api' | 'credits' | 'unknown' }) => services.profiles.update(input),
     'profiles:delete': (input: { profileId: string }) => services.profiles.delete(input.profileId),
     'profiles:removed': () => services.profiles.removed(),
     'profiles:probe': (input: { profileId: string }) => services.agentProbes.probe(input.profileId),
@@ -155,6 +278,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'profiles:detect-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.detectProvider(input.provider),
     'profiles:update-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.updateProvider(input.provider),
     'tools:status': (input: { projectId: string }) => services.specTools.status(input.projectId),
+    'tools:cached': () => services.toolUpdates.cached(),
     'tools:latest': (input: { force: boolean }) => services.toolUpdates.latest(input.force),
     'profiles:install-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.installProvider(input.provider),
     'profiles:install': (input: { profileId: string }) => services.agentProbes.install(input.profileId),
@@ -162,21 +286,33 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'projects:list': () => services.projects.list(),
     'projects:create': async (input: { name?: string; sourcePaths: string[]; profileIds: string[] }) => {
       const probes = await Promise.all(input.profileIds.map((profileId) => services.agentProbes.probe(profileId)))
-      if (probes.some((probe) => !probe.installed || !probe.authenticated)) throw new Error('Todos os agentes selecionados precisam estar instalados e conectados')
+      if (probes.some((probe) => !probe.installed || !probe.authenticated)) throw new Error(tm().ipc.agentsMustBeConnected)
       return services.projects.create(input)
     },
     'projects:reorder': (input: { projectIds: string[] }) => services.projects.reorder(input.projectIds),
     'projects:delete': (input: { projectId: string }) => ({ deleted: services.projects.delete(input.projectId) }),
     'projects:update': (input: { projectId: string; name: string; icon?: string | null }) => services.projects.update(input),
+    'projects:set-base-branch': (input: { projectId: string; sourceId: string; branch: string }) => services.projects.setBaseBranch(input.projectId, input.sourceId, input.branch),
+    'cards:set-base-branch': async (input: { cardId: string; branch: string }) => {
+      const info = await services.executions.branches(input.cardId)
+      if (info.locked) throw new Error(tm().ipc.worktreeAlreadyCreated)
+      if (!info.branches.includes(input.branch)) throw new Error(tm().ipc.baseBranchNotFound)
+      services.board.setBaseBranch(input.cardId, input.branch)
+      return { branch: input.branch }
+    },
     'projects:inspect': (input: { localPath: string }) => services.git.inspect(input.localPath),
     'projects:branches': (input: { localPath: string }) => services.git.branches(input.localPath),
     'projects:choose-directory': (input?: { projectId: string }) => services.chooseDirectory(input ? services.projects.get(input.projectId).localPath : undefined),
     'projects:set-profiles': async (input: { projectId: string; profileIds: string[] }) => {
       if (!input.profileIds.length) return services.projects.setProfiles(input.projectId, [])
       const probes = await Promise.all(input.profileIds.map((profileId) => services.agentProbes.probe(profileId)))
-      if (probes.some((probe) => !probe.installed || !probe.authenticated)) throw new Error('Todos os agentes selecionados precisam estar instalados e conectados')
+      if (probes.some((probe) => !probe.installed || !probe.authenticated)) throw new Error(tm().ipc.agentsMustBeConnected)
       return services.projects.setProfiles(input.projectId, input.profileIds)
     },
+    'projects:set-card-types': (input: { projectId: string; types: CardTypeDef[] | null }) => services.projects.setCardTypes(input.projectId, input.types),
+    'card-types:get-default': () => defaultCardTypes(services.database.db),
+    'card-types:set-default': (input: { types: CardTypeDef[] }) => setDefaultCardTypes(services.database.db, input.types),
+    'card-types:usage': (input: { projectId?: string }) => cardTypeUsage(services.database.db, input.projectId),
     'board:get': (input: { projectId: string }) => services.board.get(input.projectId),
     'cards:create': (input: { projectId: string; columnId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }) => services.board.create(input),
     'cards:update': (input: { cardId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }) => services.board.update(input),
@@ -189,10 +325,10 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'collab:send-change': (input: { changeId: string }) => services.collab.sendChange(input.changeId),
     'collab:decide-change': (input: { changeId: string; decision: 'accept' | 'reject' | 'suggest'; note?: string }) => services.collab.decideChange(input.changeId, input.decision, input.note),
     'collab:answer-question': (input: { questionId: string; answer: string }) => services.collab.answerByUser(input.questionId, input.answer),
-    'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => (systemDocumentKinds as readonly string[]).includes(input.kind) ? (() => { throw new Error('Este documento é gerado pelo sistema') })() : services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
+    'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => (systemDocumentKinds as readonly string[]).includes(input.kind) ? (() => { throw new Error(tm().ipc.documentGeneratedBySystem) })() : services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
     'cards:document-versions': (input: { cardId: string; kind: CardDocumentKind }) => services.board.documents.versions(input.cardId, input.kind),
     'cards:toggle-task': (input: { cardId: string; line: number; checked: boolean }) => services.board.documents.setTask(input.cardId, input.line, input.checked, 'user'),
-    'cards:start': (input: { cardId: string; config: AgentConfig; purpose?: 'execution' | 'test'; baseBranch?: string }) => services.executions.start(input.cardId, input.config, input.purpose, input.baseBranch),
+    'cards:start': (input: { cardId: string; config: AgentConfig; purpose?: 'execution' | 'test'; baseBranch?: string }) => { const run = services.executions.start(input.cardId, input.config, input.purpose, input.baseBranch); services.speckit.settleStart(input.cardId); return run },
     'cards:branches': (input: { cardId: string }) => services.executions.branches(input.cardId),
     'agents:options': (input: { profileId: string }) => services.agentConfigs.options(input.profileId),
     'cards:agent-config': (input: { cardId: string }) => services.agentConfigs.get(input.cardId),
@@ -205,13 +341,44 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'constitution:save': (input: { projectId: string; contentMd: string }) => { services.constitution.write(input.projectId, input.contentMd, 'user'); return services.constitution.state(input.projectId) },
     'constitution:import': (input: { projectId: string }) => services.constitution.importSpecKit(input.projectId),
     'constitution:set-proposal': (input: { proposalId: string; status: 'applied' | 'dismissed' }) => services.constitution.state(services.constitution.setProposal(input.proposalId, input.status)),
+    // G10: canais do SDD file-first (resolver/writer), ao lado dos antigos `constitution:*` (SQLite, legado até G14).
+    'sdd:config-get': (input: { projectId: string }) => services.history.config(input.projectId).sdd,
+    'sdd:config-set': (input: { projectId: string; config: SddConfig }) => { const current = services.history.config(input.projectId); return services.history.setConfig(input.projectId, { ...current, sdd: input.config }).sdd },
+    'sdd:locate': (input: { projectId: string; cardId: string | null }) => services.sddResolver.locate({ projectId: input.projectId, cardId: input.cardId ?? undefined }),
+    'sdd:detect-constitutions': async (input: { projectId: string }) => {
+      const config = services.history.config(input.projectId).sdd
+      const location = await services.sddResolver.locate({ projectId: input.projectId })
+      const reader = new GitFileReader(location.repo)
+      const path = (file: string): string => [config.root, file].filter(Boolean).join('/').replace(/\\/g, '/')
+      const [native, speckit] = await Promise.all([reader.show(location.ref, path(config.constitution.native)), reader.show(location.ref, path(config.constitution.speckit))])
+      const db = services.constitution.get(input.projectId).contentMd
+      return constitutionMigrationPlan({ db: candidate(db || null), native: candidate(native), speckit: candidate(speckit) }, config.method)
+    },
+    'constitution:read': (input: { projectId: string; cardId: string | null }) => services.sddResolver.constitution({ projectId: input.projectId, cardId: input.cardId ?? undefined }),
+    'constitution:card-details': async (input: { projectId: string; cardId: string }) => {
+      if (services.board.card(input.cardId).projectId !== input.projectId) throw new Error(tm().common.cardNotInProject)
+      const [view, location] = await Promise.all([services.sddResolver.constitution(input), services.sddResolver.locate(input)])
+      const projectLocation = await services.sddResolver.locate({ projectId: input.projectId })
+      const baseRef = services.board.baseBranch(input.cardId) || projectLocation.ref
+      const baseContent = await new GitFileReader(location.repo).show(baseRef, view.path)
+      const ref = location.worktreeBranch || baseRef
+      const history = (await nativeGit.run(['-C', location.repo, 'log', '-20', '--format=%h %ad %s', '--date=short', ref, '--', view.path])).stdout
+      return { location, view, baseRef, baseContent, history }
+    },
+    'constitution:write': async (input: { projectId: string; cardId: string; content: string; expectBlobSha: string | null }) => {
+      if (services.board.card(input.cardId).projectId !== input.projectId) throw new Error(tm().common.cardNotInProject)
+      const location = await services.sddResolver.locate({ projectId: input.projectId, cardId: input.cardId })
+      const current = await services.sddResolver.constitution({ projectId: input.projectId, cardId: input.cardId })
+      await services.sddWriter.write(input.cardId, location.sourceId, current.path, input.content, { blobSha: input.expectBlobSha })
+      return services.sddResolver.constitution({ projectId: input.projectId, cardId: input.cardId })
+    },
     'skills:list': (input: { scope: 'global' | 'project'; projectId?: string }) => services.skills.list(input.scope, input.projectId),
     'skills:choose-source': () => services.chooseSkillSource(),
     'skills:choose-folder': () => services.chooseDirectory(),
     'skills:delete': (input: { scope: 'global' | 'project'; projectId?: string; name: string; provider?: 'claude' | 'codex' }) => services.skills.delete(input),
     'skills:import-folder': (input: { scope: 'global' | 'project'; projectId?: string; folderPath: string; provider: 'claude' | 'codex' }) => services.skills.importFolder(input),
     'skills:import': (input: { scope: 'global' | 'project'; projectId?: string; sourcePath: string; name: string; provider: 'claude' | 'codex' }) => services.skills.import(input),
-    'skills:convert': (input: { scope: 'global' | 'project'; projectId?: string; name: string; from: 'claude' | 'codex'; to: 'claude' | 'codex'; reviewProfileId?: string; model?: string | null }) => services.skills.convert(input),
+    'skills:convert': (input: { scope: 'global' | 'project'; projectId?: string; name: string; from: 'claude' | 'codex' | 'gemini'; to: 'claude' | 'codex' | 'gemini'; reviewProfileId?: string; model?: string | null }) => services.skills.convert(input),
     'chats:set-skill': async (input: { chatId: string; skill: { name: string; path: string } | null }) => {
       if (input.skill) await services.skills.assertKnown(input.skill, services.conversations.projectOf(input.chatId))
       return services.conversations.setSkill(input.chatId, input.skill)
@@ -221,6 +388,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'voice:set-key': (input: { key: string }) => services.voice.setGroqKey(input.key, services.settings.get().voz),
     'voice:transcribe': async (input: { wav: Uint8Array; prompt?: string }) => { const settings = services.settings.get(); return { text: await services.voice.transcribe({ wav: input.wav, model: settings.voz, language: settings.idioma === 'en' ? 'en' : 'pt', prompt: input.prompt }) } },
     'usage:list': () => services.usage.list(),
+    'usage:history': (input: { granularity: 'day' | 'week' | 'month'; tz: string; groupBy: 'provider' | 'profile' | 'model' | 'project' | 'card' | 'purpose'; from?: string; to?: string }) => services.usage.history(input),
     'files:read': (input: { chatId: string; path: string }) => {
       const context = services.conversations.context(input.chatId), worktree = context.cardId ? services.worktrees.get(context.cardId) : null
       // Card com worktree: a pasta dela e a de cada repositório dela (é onde o agente trabalha), mesmo que o estado esteja desatualizado.
@@ -230,7 +398,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     },
     'app:open-link': async (input: { url: string }) => {
       // Só links web e e-mail; nada de file:, javascript: ou caminhos locais.
-      if (!/^(https?:\/\/|mailto:)/i.test(input.url) || input.url.length > 2048) throw new Error('Link não permitido')
+      if (!/^(https?:\/\/|mailto:)/i.test(input.url) || input.url.length > 2048) throw new Error(tm().ipc.linkNotAllowed)
       await services.openExternal(input.url); return { opened: true as const }
     },
     'files:preview': (input: { path: string }) => {
@@ -243,13 +411,32 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       const safe = basename(input.name).replace(/[^\w. -]/g, '_').slice(-80) || 'arquivo', path = join(dir, `${randomUUID().slice(0, 8)}-${safe}`)
       writeFileSync(path, Buffer.from(input.base64, 'base64')); return path
     },
-    'usage:refresh': () => services.usage.refresh(),
+    'usage:refresh': () => services.usage.refresh(true),
     'cards:usage': (input: { cardId: string }) => services.conversations.cardUsage(input.cardId),
     'cards:checklist': (input: { cardId: string }) => services.checklists.get(input.cardId),
     'cards:checklist-toggle': (input: { cardId: string; line: number; text: string; checked: boolean }) => services.checklists.toggle(input.cardId, input.line, input.text, input.checked),
-    'cards:delete': (input: { cardId: string }) => ({ deleted: services.board.delete(input.cardId) }),
+    'cards:delete': async (input: { cardId: string; deleteArtifacts?: boolean }) => {
+      services.board.card(input.cardId)
+      if (input.deleteArtifacts) {
+        const path = resolve(services.history.artifactsDir(input.cardId))
+        const others = services.database.db.prepare('SELECT id FROM cards WHERE substr(id, 1, 8) = ? AND id <> ?').pluck().all(input.cardId.slice(0, 8), input.cardId) as string[]
+        const samePath = (a: string, b: string): boolean => process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b
+        if (others.some((id) => samePath(resolve(services.history.artifactsDir(id)), path))) throw new Error(tm().ipc.artifactsSharedCannotDelete)
+        if (existsSync(path)) {
+          if (!services.trashItem) throw new Error(tm().ipc.artifactsTrashFailed)
+          await services.trashItem(path)
+        }
+      }
+      return { deleted: services.board.delete(input.cardId) }
+    },
     'cards:set-repos': (input: { cardId: string; sourceIds: string[] | null }) => services.board.setRepos(input.cardId, input.sourceIds),
     'git:create-prs': (input: { cardId: string; draft: boolean; title?: string; body?: string }) => services.gitManager.createPullRequests(input.cardId, input),
+    'prs:list': (input: { sourceId: string }) => services.pullRequests.list(input.sourceId),
+    'prs:view': (input: { sourceId: string; number: number }) => services.pullRequests.view(input.sourceId, input.number),
+    'prs:comment': async (input: { sourceId: string; number: number; body: string }) => { await services.pullRequests.comment(input.sourceId, input.number, input.body); return {} },
+    'prs:review': async (input: { sourceId: string; number: number; action: 'approve' | 'request-changes' | 'comment'; body: string }) => { await services.pullRequests.review(input.sourceId, input.number, input.action, input.body); return {} },
+    'prs:create': (input: { sourceId: string; head: string; base: string; title: string; body: string; draft: boolean }) => services.pullRequests.create(input.sourceId, input),
+    'prs:open': async (input: { sourceId: string; url: string }) => { await services.openExternal(await services.pullRequests.assertUrl(input.sourceId, input.url)); return { opened: true as const } },
     'git:open-pr': async (input: { cardId: string; url: string }) => { await services.openExternal(services.gitManager.prUrlOf(input.cardId, input.url)); return { opened: true as const } },
     'playwright:sources': (input: { projectId: string }) => services.playwright.nodeSources(input.projectId),
     'playwright:status': (input: { projectId: string }) => services.playwright.status(input.projectId),
@@ -257,9 +444,9 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'playwright:install': (input: { projectId: string; sourceId: string; browser: boolean; skills: Array<'claude' | 'agents'> }) => services.playwright.install(input),
     'history:get': (input: { cardId: string }) => services.history.history(input.cardId),
     'history:contest': (input: { cardId: string; scores: DimensionScores; reason: string }) => { services.history.contest(input.cardId, input.scores, input.reason); return services.history.history(input.cardId) },
-    'history:select-workflow': (input: { cardId: string; workflow: WorkflowKind; reason?: string }) => {
-      services.history.selectWorkflow(input.cardId, input.workflow, { actor: 'user' }, input.reason ?? '')
-      applyWorkflowType(services.board, input.cardId, input.workflow)
+    'history:select-workflow': (input: { cardId: string; workflow: WorkflowKind; method?: 'native' | 'speckit'; reason?: string }) => {
+      if (input.workflow === 'sdd' && !input.method) throw new Error(tm().ipc.chooseSddMethod)
+      services.history.selectWorkflow(input.cardId, input.workflow, { actor: 'user' }, input.reason ?? '', 'user', input.method)
       return services.history.history(input.cardId)
     },
     'history:add-decision': (input: { cardId: string; kind: DecisionKind; statement: string; rationale?: string }) => { services.history.decide(input.cardId, { ...input, actor: 'user' }); return services.history.history(input.cardId) },
@@ -283,17 +470,24 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'workflow:open-path': async (input: { projectId: string; which: 'artifacts' | 'sdd' }) => {
       // Só abre as pastas que o próprio projeto configurou (ou o padrão dos artefatos), nunca um caminho vindo da tela.
       const state = workflowState(services.history, input.projectId), path = input.which === 'sdd' ? state.config.sddPath : state.config.artifactsDir ?? state.defaultArtifactsDir
-      if (!path) throw new Error('Esta pasta ainda não foi definida.')
+      if (!path) throw new Error(tm().ipc.folderNotDefined)
       await services.openPath(path); return { path }
     },
     'workflow:set': (input: { projectId: string; config: WorkflowConfig }) => { services.history.setConfig(input.projectId, input.config); return workflowState(services.history, input.projectId) }
+    , 'chats:background': (input: { chatId: string }) => services.conversations.backgroundTasks(input.chatId)
     , 'chats:list': (input: { projectId: string; cardId?: string | null }) => services.conversations.listChats(input.projectId, input.cardId)
     , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: AgentPurpose; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }
     , 'messages:list': (input: { chatId: string }) => services.conversations.listMessages(input.chatId)
     , 'messages:add': (input: { chatId: string; role: string; body: string; status: string }) => services.conversations.addMessage(input)
     , 'runs:create': (input: { cardId: string; chatId: string; profileId: string }) => services.conversations.createRun(input)
     , 'runs:event': (input: { runId: string; eventType: string; payload: Record<string, unknown> }) => services.conversations.appendEvent(input.runId, input.eventType, input.payload)
-    , 'agents:start': (input: { chatId: string; prompt: string; planning: boolean; attachments?: string[]; choice?: { model?: string | null; effort?: Effort | null; mode?: PermissionMode } }) => services.orchestrator.start(input)
+    , 'agents:start': (input: { chatId: string; prompt: string; planning: boolean; attachments?: string[]; choice?: { model?: string | null; effort?: Effort | null; mode?: PermissionMode } }) => {
+      try { return services.orchestrator.start(input) } catch (error) {
+        // Pediu implementação no planejamento do Spec Kit: o bloqueio vale, e o app oferece mover o card (aprovação do usuário).
+        if (error instanceof SpecKitImplementBlocked) { const cardId = services.conversations.context(input.chatId).cardId; if (cardId && services.speckit.active(cardId)) services.speckit.requestMove(cardId); throw new Error(error.message) }
+        throw error
+      }
+    }
     , 'files:choose': () => services.chooseFiles()
     , 'agents:permissions': (input: { chatId: string }) => services.orchestrator.permissions.list(input.chatId)
     , 'agents:permission-decide': (input: { runId: string; requestId: string; allow: boolean }) => ({ decided: services.orchestrator.permissions.decide(input.runId, input.requestId, input.allow) })

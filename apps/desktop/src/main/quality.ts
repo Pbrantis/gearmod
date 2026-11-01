@@ -3,7 +3,10 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { Review, TestRun } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { redact } from './redaction'
 import type { WorktreeService } from './worktrees'
+import { applyEnvPolicy } from './env-policy'
+import { tm } from './i18n'
 
 const exec = promisify(execFile)
 export class QualityService {
@@ -11,12 +14,13 @@ export class QualityService {
 
   async runTest(cardId: string, executable: string, args: string[]): Promise<TestRun> {
     const worktree = this.worktrees.get(cardId)
-    if (!worktree) throw new Error('Crie a worktree antes de executar testes')
+    if (!worktree) throw new Error(tm().quality.createWorktreeBeforeTests)
     const id = randomUUID(), startedAt = new Date().toISOString(), command = [executable, ...args].map(displayArg).join(' ')
     this.database.db.prepare(`INSERT INTO test_runs(id, card_id, command, status, summary, started_at) VALUES (?, ?, ?, 'running', '', ?)`).run(id, cardId, command, startedAt)
     let exitCode = 0, status: TestRun['status'] = 'passed', summary = ''
     try {
-      const result = await exec(executable, args, { cwd: worktree.path, timeout: 10 * 60_000, windowsHide: true, maxBuffer: 5 * 1024 * 1024 })
+      // S07: o comando de teste é do usuário (não tem perfil de agente); recebe só a lista fixa do app, sem passthrough declarado.
+      const result = await exec(executable, args, { cwd: worktree.path, timeout: 10 * 60_000, windowsHide: true, maxBuffer: 5 * 1024 * 1024, env: applyEnvPolicy({ envPassthrough: [] }, process.env) })
       summary = `${result.stdout}\n${result.stderr}`.trim().slice(-100_000)
     } catch (error) {
       status = 'failed'; exitCode = typeof error === 'object' && error && 'code' in error && typeof error.code === 'number' ? error.code : 1
@@ -38,7 +42,7 @@ export class QualityService {
 
   prepareLocalReview(cardId: string): Review {
     const worktree = this.worktrees.get(cardId)
-    if (!worktree) throw new Error('Crie a worktree antes da revisão')
+    if (!worktree) throw new Error(tm().quality.createWorktreeBeforeReview)
     const existing = this.database.db.prepare(`SELECT id, card_id AS cardId, provider, remote_url AS remoteUrl, remote_id AS remoteId,
       state, target_branch AS targetBranch, source_branch AS sourceBranch, updated_at AS updatedAt FROM reviews WHERE card_id = ? ORDER BY updated_at DESC LIMIT 1`).get(cardId) as Review | undefined
     if (existing) return existing
@@ -50,7 +54,7 @@ export class QualityService {
   approveLocal(reviewId: string): Review {
     const row = this.database.db.prepare(`SELECT id, card_id AS cardId, provider, remote_url AS remoteUrl, remote_id AS remoteId,
       state, target_branch AS targetBranch, source_branch AS sourceBranch, updated_at AS updatedAt FROM reviews WHERE id = ?`).get(reviewId) as Review | undefined
-    if (!row || row.provider !== 'local') throw new Error('Revisão local não encontrada')
+    if (!row || row.provider !== 'local') throw new Error(tm().quality.localReviewNotFound)
     const updatedAt = new Date().toISOString()
     this.database.db.prepare(`UPDATE reviews SET state = 'approved', updated_at = ? WHERE id = ?`).run(updatedAt, reviewId)
     return { ...row, state: 'approved', updatedAt }
@@ -58,4 +62,3 @@ export class QualityService {
 }
 
 function displayArg(value: string): string { return /\s/.test(value) ? JSON.stringify(value) : value }
-function redact(value: string): string { return value.replace(/(?:sk-|Bearer\s+)[A-Za-z0-9._-]+/gi, '[redacted]').slice(0, 100_000) }

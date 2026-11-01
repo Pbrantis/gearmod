@@ -2,6 +2,7 @@ import { open, realpath, stat } from 'node:fs/promises'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import { allowedPath } from './file-viewer'
 import type { GitRunner } from './worktrees'
+import { tm } from './i18n'
 
 export interface FileVersions { path: string; relative: string; root: string; before: string | null; after: string | null; baseLabel: string; binary: boolean; truncated: boolean }
 const maxBytes = 1_000_000
@@ -24,7 +25,7 @@ export async function fileVersions(roots: string[], requested: string, options: 
   let folder = dirname(target)
   while (!await stat(folder).then((info) => info.isDirectory(), () => false)) { const up = dirname(folder); if (up === folder) break; folder = up }
   const top = await options.git.run(['-C', folder, 'rev-parse', '--show-toplevel']).then((result) => realpath(result.stdout.trim()), () => null)
-  if (!top) throw new Error('Este arquivo não está num repositório Git')
+  if (!top) throw new Error(tm().fileVersions.notInGitRepo)
   const path = relative(top, target).split(sep).join('/'), base = await options.baseFor(top) ?? { ref: 'HEAD', label: 'HEAD' }
   const shown = await options.git.run(['-C', top, 'show', `${base.ref}:${path}`]).then((result) => result.stdout, () => null)
   let after: string | null = null, binary = shown?.includes('\0') ?? false, truncated = shown !== null && Buffer.byteLength(shown) > maxBytes

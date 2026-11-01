@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useT } from './i18n'
 
 type Line = { kind: 'ctx' | 'add' | 'del'; text: string; oldNo: number | null; newNo: number | null; mark?: [number, number] }
 export type DiffRow =
@@ -67,6 +68,7 @@ export function reviewPrompt(path: string, rows: Array<Extract<DiffRow, { kind: 
  * ao clicar nele, o campo para dizer à IA o que fazer com essas linhas.
  */
 export function DiffLines({ text, review }: { text: string; review?: { path: string; send(prompt: string): boolean | Promise<boolean> } }): React.JSX.Element {
+  const { git: { editor: t }, common } = useT()
   const rows = useMemo(() => parseDiff(text), [text])
   const [range, setRange] = useState<[number, number] | null>(null), [composing, setComposing] = useState(false), [comment, setComment] = useState(''), [top, setTop] = useState(0)
   const drag = useRef<number | null>(null), box = useRef<HTMLDivElement>(null), field = useRef<HTMLTextAreaElement>(null)
@@ -87,11 +89,11 @@ export function DiffLines({ text, review }: { text: string; review?: { path: str
     <div className={`gdl ${review ? 'review' : ''}`} ref={box}>{rows.map((row, index) => row.kind === 'hunk'
       ? <div key={index} className="gdl-row hunk"><span className="no" /><span className="no" /><span className="sign" /><span className="code">{row.text || '···'}</span></div>
       : <div key={index} className={`gdl-row ${row.kind} ${index >= lo && index <= hi ? 'picked' : ''}`} onMouseDown={(event) => down(index, event)} onMouseEnter={() => { if (drag.current !== null) setRange([drag.current, index]) }}><span className="no">{row.oldNo ?? ''}</span><span className="no">{row.newNo ?? ''}</span><span className="sign">{row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ''}</span><span className="code"><Code row={row} /></span></div>)}
-      {review && range && chosen.length > 0 && !composing && <button type="button" className="gdl-chatbtn tip" data-tip={`Conversar sobre ${chosen.length} linha${chosen.length === 1 ? '' : 's'}`} aria-label="Conversar sobre as linhas selecionadas" style={{ top }} onMouseDown={(event) => event.stopPropagation()} onClick={() => setComposing(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg></button>}
+      {review && range && chosen.length > 0 && !composing && <button type="button" className="gdl-chatbtn tip" data-tip={t.chatAbout(chosen.length)} aria-label={t.chatAboutAria} style={{ top }} onMouseDown={(event) => event.stopPropagation()} onClick={() => setComposing(true)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z" /></svg></button>}
     </div>
-    {review && range && chosen.length > 0 && composing && <div className="gdl-compose" role="group" aria-label="Pedir à IA sobre as linhas selecionadas">
-      <div className="gdl-askhead"><span>{chosen.length} linha{chosen.length === 1 ? '' : 's'} selecionada{chosen.length === 1 ? '' : 's'}</span><button type="button" className="ghost" onClick={clear}>Cancelar</button></div>
-      <div className="cbox"><textarea ref={field} value={comment} rows={1} placeholder="O que fazer nessas linhas? Ex.: isso está errado, não trata o caso vazio" aria-label="Mensagem sobre as linhas" onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } else if (event.key === 'Escape') { event.stopPropagation(); clear() } }} />
-        <button type="button" className="sendbtn tip" data-tip="Enviar (Enter)" aria-label="Enviar" disabled={!comment.trim()} onClick={() => void send()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg></button></div></div>}
+    {review && range && chosen.length > 0 && composing && <div className="gdl-compose" role="group" aria-label={t.askAiAria}>
+      <div className="gdl-askhead"><span>{t.linesSelected(chosen.length)}</span><button type="button" className="ghost" onClick={clear}>{common.cancel}</button></div>
+      <div className="cbox"><textarea ref={field} value={comment} rows={1} placeholder={t.linesPlaceholder} aria-label={t.linesMessageAria} onChange={(event) => setComment(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() } else if (event.key === 'Escape') { event.stopPropagation(); clear() } }} />
+        <button type="button" className="sendbtn tip" data-tip={t.sendTip} aria-label={t.send} disabled={!comment.trim()} onClick={() => void send()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg></button></div></div>}
   </div>
 }

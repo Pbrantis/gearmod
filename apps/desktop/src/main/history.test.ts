@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { complexityLevel, defaultComplexityLimits, defaultComplexityWeights, defaultWorkflowConfig, recommendedWorkflow, weightedTotal, type DimensionScores } from '@agentboard/contracts'
+import { cardHistorySchema, complexityLevel, defaultComplexityLimits, defaultComplexityWeights, defaultWorkflowConfig, recommendedWorkflow, weightedTotal, type DimensionScores } from '@agentboard/contracts'
 import { AgentContextService } from './agent-context'
 import { AppDatabase } from './database'
 import { CardHistoryService, readArtifactHistory, readHead, redact } from './history'
@@ -11,6 +11,8 @@ import { McpBridge } from './mcp-bridge'
 import { BoardRepository, ProjectRepository } from './projects'
 import { SettingsRepository } from './settings'
 import { exportPlanArtifacts } from './workflows'
+import { ApprovalService } from './approvals'
+import { PolicyEngine } from './policy'
 
 const roots: string[] = []
 const closers: Array<() => Promise<void> | void> = []
@@ -70,6 +72,13 @@ describe('Complexity Engine', () => {
     expect(history.events(card.id).map((event) => event.type)).toEqual(['assessment.created', 'assessment.revised', 'assessment.contested'])
   })
 
+  it('preserva o texto completo de cada risco crítico', async () => {
+    const { history, card } = await setup()
+    const risks = ['Primeiro risco', 'Segundo risco', 'Terceiro risco']
+    assess(history, card.id, low, { criticalRisks: risks })
+    expect(history.latest(card.id)?.criticalRisks).toEqual(risks)
+  })
+
   it('registra o fluxo escolhido mesmo diferente do recomendado e substitui a escolha anterior', async () => {
     const { history, card } = await setup()
     assess(history, card.id, high)
@@ -85,9 +94,56 @@ describe('Complexity Engine', () => {
     history.setDecision(proposal.id, 'approved')
     expect(history.decisions(card.id).find((item) => item.id === proposal.id)?.status).toBe('approved')
   })
+
+  it('só substitui a decisão anterior quando a nova proposta é aprovada', async () => {
+    const { history, card } = await setup()
+    const old = history.decide(card.id, { kind: 'scope', statement: 'Apenas Android', actor: 'user' })
+    const rejected = history.decide(card.id, { kind: 'scope', statement: 'Apenas iOS', actor: 'agent', supersedes: old.number })
+    expect(history.decisions(card.id).find((item) => item.id === old.id)?.status).toBe('approved')
+    history.setDecision(rejected.id, 'superseded')
+    expect(history.decisions(card.id).find((item) => item.id === old.id)?.status).toBe('approved')
+    const replacement = history.decide(card.id, { kind: 'scope', statement: 'Android e iOS', actor: 'agent', supersedes: old.number })
+    history.setDecision(replacement.id, 'approved')
+    expect(history.decisions(card.id).map((item) => item.status)).toEqual(['superseded', 'superseded', 'approved'])
+    expect(readArtifactHistory(history.artifactsDir(card.id)).decisions.map((item) => item.status)).toEqual(['superseded', 'superseded', 'approved'])
+  })
+
+  it('guarda recomendação e escolha de método por card e recupera pelo histórico', async () => {
+    const { history, card, project, database, board } = await setup()
+    assess(history, card.id, high)
+    history.setConfig(project.id, { ...defaultWorkflowConfig, complexMethod: 'speckit' })
+    history.recommendSddMethod(card.id, 'speckit', 'Funcionalidade nova', { actor: 'agent' })
+    expect(history.history(card.id)).toMatchObject({ recommendedSddMethod: 'speckit', sddMethod: null, sddMethodReason: 'Funcionalidade nova' })
+    history.selectWorkflow(card.id, 'sdd', { actor: 'user' }, '', 'user', 'native')
+    expect(history.history(card.id)).toMatchObject({ recommendedSddMethod: 'speckit', sddMethod: 'native' })
+    const context = new AgentContextService(board, new SettingsRepository(database), null, undefined, undefined, history)
+    expect(await context.block(card.id)).toContain('Full AgentBoard SDD')
+    database.db.exec('DELETE FROM card_assessments; DELETE FROM card_decisions; DELETE FROM card_events;')
+    history.rebuild(card.id)
+    expect(history.history(card.id)).toMatchObject({ workflow: 'sdd', recommendedSddMethod: 'speckit', sddMethod: 'native' })
+  })
 })
 
 describe('Artefatos versionáveis', () => {
+  it('inclui auditorias no histórico e recupera registros antigos já sincronizados', async () => {
+    const { history, card, project, database } = await setup()
+    new PolicyEngine(database).decide([], 'commit', { cardId: card.id, projectId: project.id, actor: 'agent' })
+    const approvals = new ApprovalService(database)
+    const approval = approvals.request({ kind: 'test', subjectRef: 'test', payload: {}, requestedActor: 'agent', cardId: card.id, projectId: project.id })
+    approvals.decide(approval.id, true)
+    const events = history.history(card.id).events
+    expect(events.map((event) => event.type)).toEqual(['policy.decided', 'approval.requested', 'approval.approved'])
+    expect(events[0]).toMatchObject({ cardId: card.id, projectId: project.id, source: { actor: 'agent' }, payload: { action: 'commit', decision: 'ask' } })
+    expect(cardHistorySchema.safeParse(history.history(card.id)).success).toBe(true)
+    database.db.prepare('UPDATE card_events SET synced_at = ?').run(new Date().toISOString())
+    history.sync(card.id)
+    history.sync(card.id)
+    const file = join(history.artifactsDir(card.id), 'history.jsonl')
+    expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(3)
+    database.db.exec('DELETE FROM card_events')
+    expect(history.rebuild(card.id).events).toBe(3)
+    expect(history.events(card.id).map((event) => event.type)).toEqual(events.map((event) => event.type))
+  })
   it('espelha eventos em history.jsonl sem duplicar e reconstrói o histórico só pelos arquivos', async () => {
     const { history, card, database } = await setup()
     assess(history, card.id, low)
@@ -123,6 +179,30 @@ describe('Artefatos versionáveis', () => {
     expect(readFileSync(join(history.artifactsDir(card.id), 'history.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1)
   })
 
+  it('G01: normaliza configs antigas (sddPath, customManifest, complexMethod legado) na leitura, sem erro; escreve só o formato novo', async () => {
+    const { history, project, database } = await setup()
+    const setRaw = (raw: Record<string, unknown>): void => { database.db.prepare('UPDATE projects SET workflow_config = ? WHERE id = ?').run(JSON.stringify(raw), project.id) }
+    const fixtures: Array<{ name: string; raw: Record<string, unknown>; expectMethod: 'native' | 'speckit'; expectLegacy: string | null }> = [
+      { name: 'vazio (projeto novo)', raw: {}, expectMethod: 'native', expectLegacy: null },
+      { name: 'nativo sem sdd', raw: { complexMethod: 'native' }, expectMethod: 'native', expectLegacy: null },
+      { name: 'speckit com sddPath', raw: { complexMethod: 'speckit', sddPath: '/abs/path/.specify/memory/constitution.md' }, expectMethod: 'speckit', expectLegacy: null },
+      { name: 'openspec legado (sem sdd)', raw: { complexMethod: 'openspec' }, expectMethod: 'native', expectLegacy: 'openspec' },
+      { name: 'custom legado com customManifest', raw: { complexMethod: 'custom', customManifest: '/abs/manifest.json' }, expectMethod: 'native', expectLegacy: 'custom' },
+      { name: 'já no formato novo (idempotente)', raw: { sdd: { method: 'speckit', sourceId: null, root: 'docs', constitution: { native: 'a.md', speckit: 'b.md' }, featuresDir: 'specs' } }, expectMethod: 'speckit', expectLegacy: null }
+    ]
+    for (const fixture of fixtures) {
+      setRaw(fixture.raw)
+      const config = history.config(project.id)
+      expect(config.sdd.method, fixture.name).toBe(fixture.expectMethod)
+      expect(config.legacyMethod, fixture.name).toBe(fixture.expectLegacy)
+    }
+    // Escrita: sempre grava `sdd`, nunca complexMethod legado (a UI de hoje só oferece native/speckit).
+    const saved = history.setConfig(project.id, { ...defaultWorkflowConfig, sdd: { ...defaultWorkflowConfig.sdd, method: 'speckit' } })
+    expect(saved.sdd.method).toBe('speckit')
+    const storedRaw = JSON.parse(database.db.prepare('SELECT workflow_config FROM projects WHERE id = ?').pluck().get(project.id) as string)
+    expect(storedRaw.sdd.method).toBe('speckit'); expect(storedRaw.legacyMethod).toBeNull()
+  })
+
   it('marca a exploração como desatualizada quando o HEAD de um repositório muda', async () => {
     const { history, card, root } = await setup(['frontend', 'backend'])
     history.recordExploration(card.id, { summary: 'Push fica em src/push', modules: ['push'], repositories: ['frontend'], evidence: [] }, { actor: 'agent' })
@@ -141,7 +221,7 @@ describe('Artefatos versionáveis', () => {
 })
 
 describe('SDD central (cenários E, F e G)', () => {
-  it('detecta o Spec Kit no repositório de documentação e grava o plano só lá, no formato nativo', async () => {
+  it('detecta o Spec Kit sem gerar cópias paralelas dos documentos do card', async () => {
     const { history, board, card, project, root } = await setup(['docs', 'frontend', 'backend'])
     mkdirSync(join(root, 'docs', '.specify', 'templates'), { recursive: true }); mkdirSync(join(root, 'docs', '.claude', 'commands'), { recursive: true })
     writeFileSync(join(root, 'docs', '.claude', 'commands', 'speckit.specify.md'), '# specify')
@@ -149,18 +229,14 @@ describe('SDD central (cenários E, F e G)', () => {
     expect(detected).toEqual([{ method: 'speckit', path: join(root, 'docs'), repository: 'docs', commands: ['.claude/commands/speckit.specify.md'] }])
     history.setConfig(project.id, { ...defaultWorkflowConfig, complexMethod: 'speckit' })
     for (const [kind, text] of [['especificacao', '# Spec'], ['plano', '# Plano'], ['tasks', '- [ ] T001 Fazer']] as const) board.documents.write(card.id, kind, text, 'agent')
-    history.selectWorkflow(card.id, 'sdd', { actor: 'user' })
+    history.selectWorkflow(card.id, 'sdd', { actor: 'user' }, '', 'user', 'speckit')
     const result = exportPlanArtifacts(history, board, card.id)
     const specDir = join(root, 'docs', 'specs', `${card.id.slice(0, 8)}-notificacoes-push`)
-    expect(result.notices).toEqual([])
-    expect(readFileSync(join(specDir, 'spec.md'), 'utf8')).toBe('# Spec\n')
-    expect(existsSync(join(specDir, 'tasks.md'))).toBe(true)
+    expect(result.notices[0]).toContain('nenhum artefato paralelo')
+    expect(existsSync(specDir)).toBe(false)
     expect(existsSync(join(root, 'frontend', 'specs'))).toBe(false)
     expect(existsSync(join(root, 'frontend', '.specify'))).toBe(false)
-    expect(existsSync(join(history.artifactsDir(card.id), 'plan.md'))).toBe(true)
-    // Pasta de outro dono não é sobrescrita.
-    writeFileSync(join(specDir, '.agentboard-card'), 'outro-card')
-    expect(exportPlanArtifacts(history, board, card.id).notices[0]).toMatch(/não foi criada pelo AgentBoard/)
+    expect(existsSync(join(history.artifactsDir(card.id), 'plan.md'))).toBe(false)
   })
 
   it('sem SDD, o fluxo curto produz só os artefatos mínimos na pasta gerenciada', async () => {
@@ -177,23 +253,33 @@ describe('Ferramentas MCP e contexto', () => {
   it('o agente avalia, escolhe o fluxo confirmado e o contexto do próximo turno traz o resumo', async () => {
     const { history, board, card, database } = await setup()
     const context = new AgentContextService(board, new SettingsRepository(database), null, undefined, undefined, history)
-    const bridge = new McpBridge({ board, context, serverScript: 'unused', history })
+    const approvals = new ApprovalService(database)
+    const bridge = new McpBridge({ board, context, serverScript: 'unused', history, approvals })
     const changes: string[] = []
     const token = bridge.register('00000000-0000-4000-8000-000000000001', card.id, (change) => changes.push(change.type), { id: '00000000-0000-4000-8000-000000000002', purpose: 'planning' }).env.AGENTBOARD_TOKEN!
     const call = (tool: string, args: Record<string, unknown>) => (bridge as unknown as { handle(token: string, tool: string, args: Record<string, unknown>): { ok: boolean; text?: string; error?: string } }).handle(token, tool, args)
     expect(call('agentboard_avaliar_complexidade', { notas: { escopo: 4 }, confianca: 'alta', motivo: 'x' })).toMatchObject({ ok: false })
     const first = call('agentboard_avaliar_complexidade', { notas: { escopo: 1, acoplamento: 0, incerteza: 1, risco: 0, novidade: 0, validacao: 1 }, justificativas: { escopo: 'Um componente' }, confianca: 'media', motivo: 'Discovery inicial', evidencias: [{ tipo: 'file', referencia: 'src/App.tsx', linha: 10 }] })
-    expect(first).toMatchObject({ ok: true }); expect(first.text).toContain('5 pontos')
-    expect(call('agentboard_escolher_fluxo', { fluxo: 'light', confirmado_pelo_usuario: false })).toMatchObject({ ok: false })
-    expect(call('agentboard_escolher_fluxo', { fluxo: 'light', confirmado_pelo_usuario: true })).toMatchObject({ ok: true })
-    expect(board.card(card.id).type).toBe('minor')
+    expect(first).toMatchObject({ ok: true }); expect(first.text).toContain('5 points')
+    expect(call('agentboard_escolher_fluxo', { fluxo: 'light', confirmado_pelo_usuario: false })).toMatchObject({ ok: true })
+    const proposed = approvals.list(card.id)[0]!
+    expect(proposed.status).toBe('requested')
+    approvals.decide(proposed.id, true)
+    history.selectWorkflow(card.id, 'light', { actor: 'user' }, '', 'user')
+    // O fluxo curto não muda o tipo do card: vem do workflow escolhido.
+    expect(board.card(card.id)).toMatchObject({ type: card.type, workflow: 'light', sddMethod: null })
     expect(call('agentboard_avaliar_complexidade', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'user-correction', motivo: 'x' })).toMatchObject({ ok: false })
-    expect(call('agentboard_avaliar_complexidade', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'new-dependency', motivo: 'Descobri que o backend também muda' }).text).toContain('antes 5; +9')
-    expect(call('agentboard_registrar_decisao', { decisao: 'Usar FCM', origem: 'agente', tipo: 'technical' })).toMatchObject({ ok: true })
+    expect(call('agentboard_avaliar_complexidade', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'new-dependency', motivo: 'Descobri que o backend também muda' }).text).toContain('before 5; +9')
+    const currentDecisions = history.decisions(card.id).filter((item) => item.status !== 'superseded').map((item) => item.number)
+    expect(call('agentboard_registrar_decisao', { decisao: 'Usar FCM', origem: 'agente', tipo: 'technical' })).toMatchObject({ ok: false })
+    expect(call('agentboard_registrar_decisao', { decisao: 'Usar FCM', origem: 'agente', tipo: 'technical', decisoes_revisadas: currentDecisions })).toMatchObject({ ok: true })
+    expect(call('agentboard_escolher_fluxo', { fluxo: 'sdd', confirmado_pelo_usuario: false })).toMatchObject({ ok: false })
+    expect(call('agentboard_escolher_fluxo', { fluxo: 'sdd', metodo: 'speckit', motivo: 'Funcionalidade nova', confirmado_pelo_usuario: false })).toMatchObject({ ok: true })
+    expect(history.history(card.id)).toMatchObject({ recommendedSddMethod: 'speckit', sddMethod: null })
     expect(changes.filter((type) => type === 'card').length).toBeGreaterThanOrEqual(4)
-    const block = context.block(card.id)
-    expect(block).toContain('Complexidade v2: 14 pontos, média')
-    expect(block).toContain('fluxo escolhido: light')
-    expect(block).toContain('[recomendação do agente, não aprovada] Usar FCM')
+    const block = await context.block(card.id)
+    expect(block).toContain('Complexity v2: 14 points, média')
+    expect(block).toContain('chosen workflow: light')
+    expect(block).toContain('[agent recommendation, not approved] Usar FCM')
   })
 })

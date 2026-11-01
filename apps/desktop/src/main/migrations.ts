@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 
 export interface Migration {
@@ -529,6 +530,189 @@ export const migrations: readonly Migration[] = [
     up(db) {
       // Card que usa a worktree de outro card (em vez de criar a sua): guarda quem é o dono. Vazio = o card tem a própria.
       db.exec(`ALTER TABLE cards ADD COLUMN worktree_card_id TEXT;`)
+    }
+  },
+  {
+    version: 30,
+    checksum: 'sha256:agentboard-usage-ledger-v30-2026-10-28',
+    up(db) {
+      db.exec(`
+        CREATE TABLE usage_ledger (
+          id TEXT PRIMARY KEY, at TEXT NOT NULL,
+          run_id TEXT, seq INTEGER NOT NULL DEFAULT 0,
+          source TEXT NOT NULL CHECK (source IN ('run','probe','skill-review','model-list','backfill')),
+          provider TEXT NOT NULL, profile_id TEXT NOT NULL, account_key TEXT,
+          model_configured TEXT, model_effective TEXT,
+          project_id TEXT, project_name TEXT, card_id TEXT, card_title TEXT, purpose TEXT,
+          input_tokens INTEGER NOT NULL DEFAULT 0, cached_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_write_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, reasoning_tokens INTEGER,
+          billing_mode TEXT NOT NULL DEFAULT 'unknown' CHECK (billing_mode IN ('subscription','api','credits','unknown')),
+          cost_kind TEXT NOT NULL DEFAULT 'unknown' CHECK (cost_kind IN ('billed','api_equivalent','unknown')), cost_usd REAL,
+          partial INTEGER NOT NULL DEFAULT 0,
+          UNIQUE (run_id, seq)
+        );
+        CREATE INDEX usage_ledger_at ON usage_ledger(at);
+        CREATE INDEX usage_ledger_card ON usage_ledger(card_id, at);
+        CREATE INDEX usage_ledger_profile ON usage_ledger(profile_id, at);
+        CREATE TRIGGER usage_ledger_no_update BEFORE UPDATE ON usage_ledger BEGIN SELECT RAISE(ABORT, 'usage_ledger é append-only'); END;
+        CREATE TRIGGER usage_ledger_no_delete BEFORE DELETE ON usage_ledger BEGIN SELECT RAISE(ABORT, 'usage_ledger é append-only'); END;
+      `)
+    }
+  },
+  {
+    version: 31,
+    checksum: 'sha256:agentboard-usage-ledger-backfill-v31-2026-10-28',
+    up(db) {
+      db.exec(`INSERT OR IGNORE INTO usage_ledger (
+        id, at, run_id, seq, source, provider, profile_id, model_configured, project_id, project_name, card_id, card_title, purpose,
+        input_tokens, cached_read_tokens, output_tokens, cost_kind, cost_usd, partial
+      ) SELECT lower(hex(randomblob(16))), r.started_at, r.id, 0, 'backfill', COALESCE(r.provider, c.provider, 'unknown'), r.profile_id,
+        r.model, p.id, p.name, r.card_id, c.title, COALESCE(r.purpose, c.purpose), r.input_tokens, r.cached_tokens, r.output_tokens,
+        'unknown', r.cost_usd, 0
+        FROM runs r LEFT JOIN chats c ON c.id = r.chat_id LEFT JOIN cards k ON k.id = r.card_id
+        LEFT JOIN projects p ON p.id = k.project_id;`)
+    }
+  },
+  {
+    version: 32,
+    checksum: 'sha256:agentboard-quota-snapshots-v32-2026-10-28',
+    up(db) {
+      db.exec(`
+        CREATE TABLE quota_snapshots (
+          id TEXT PRIMARY KEY, captured_at TEXT NOT NULL, provider TEXT NOT NULL, profile_id TEXT NOT NULL, account_key TEXT,
+          bucket TEXT NOT NULL, window_id TEXT NOT NULL, used_percent REAL NOT NULL, resets_at TEXT, window_duration_mins INTEGER,
+          credits_json TEXT, plan_type TEXT, reliability TEXT NOT NULL CHECK (reliability IN ('reported','projected')),
+          source TEXT NOT NULL CHECK (source IN ('provider-event','session-file','probe'))
+        );
+        CREATE INDEX quota_snapshots_lookup ON quota_snapshots(account_key, provider, bucket, window_id, captured_at);
+        CREATE TRIGGER quota_snapshots_no_update BEFORE UPDATE ON quota_snapshots BEGIN SELECT RAISE(ABORT, 'quota_snapshots é append-only'); END;
+        CREATE TRIGGER quota_snapshots_no_delete BEFORE DELETE ON quota_snapshots BEGIN SELECT RAISE(ABORT, 'quota_snapshots é append-only'); END;
+        ALTER TABLE agent_profiles ADD COLUMN billing_mode TEXT NOT NULL DEFAULT 'unknown' CHECK (billing_mode IN ('subscription','api','credits','unknown'));
+        ALTER TABLE agent_profiles ADD COLUMN account_key TEXT;
+        INSERT INTO quota_snapshots(id, captured_at, provider, profile_id, bucket, window_id, used_percent, resets_at, reliability, source)
+          SELECT lower(hex(randomblob(16))), s.captured_at, p.provider, s.profile_id, s.window, s.window, s.utilization, s.resets_at, 'reported', 'provider-event'
+          FROM agent_usage_snapshots s JOIN agent_profiles p ON p.id = s.profile_id;
+      `)
+    }
+  },
+  {
+    version: 33,
+    checksum: 'sha256:agentboard-approval-records-v33-2026-10-28',
+    up(db) {
+      db.exec(`
+        CREATE TABLE approval_records (
+          id TEXT PRIMARY KEY, kind TEXT NOT NULL, subject_ref TEXT NOT NULL, op_hash TEXT NOT NULL, payload_json TEXT NOT NULL,
+          requested_actor TEXT NOT NULL CHECK (requested_actor IN ('agent','system','user')), run_id TEXT, card_id TEXT, project_id TEXT,
+          status TEXT NOT NULL CHECK (status IN ('requested','approved','denied','expired')),
+          decided_by TEXT CHECK (decided_by IS NULL OR decided_by = 'user'), decided_at TEXT, note TEXT,
+          requested_at TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_at TEXT
+        );
+        CREATE INDEX approval_records_pending ON approval_records(status, expires_at);
+      `)
+    }
+  },
+  {
+    version: 34,
+    checksum: 'sha256:agentboard-quota-account-key-v34-2026-10-28',
+    up(db) {
+      db.exec(`CREATE INDEX quota_snapshots_profile_lookup ON quota_snapshots(profile_id, provider, bucket, captured_at);
+        CREATE INDEX agent_profiles_account_key ON agent_profiles(account_key) WHERE account_key IS NOT NULL;`)
+    }
+  },
+  {
+    version: 35,
+    checksum: 'sha256:agentboard-effective-model-v35-2026-10-29',
+    up(db) { db.exec('ALTER TABLE runs ADD COLUMN model_effective TEXT;') }
+  },
+  {
+    version: 36,
+    checksum: 'sha256:agentboard-billing-hint-commit-approval-v36-2026-10-29',
+    up(db) {
+      db.exec(`ALTER TABLE agent_profiles ADD COLUMN api_key_source_hint TEXT;
+        ALTER TABLE git_commit_requests ADD COLUMN approval_id TEXT;`)
+    }
+  },
+  {
+    version: 37,
+    checksum: 'sha256:agentboard-env-passthrough-v37-2026-10-29',
+    up(db) {
+      db.exec(`ALTER TABLE agent_profiles ADD COLUMN env_passthrough TEXT NOT NULL DEFAULT '[]';`)
+      // S07: perfil existente que já rodava com a chave de API no ambiente do processo continua funcionando quando o modo
+      // enforce for ligado — a migração só sugere (declara por ele), nunca grava modalidade nem lê o valor da chave.
+      const detected: Array<{ provider: string; envVar: string }> = []
+      if (process.env.ANTHROPIC_API_KEY) detected.push({ provider: 'claude', envVar: 'ANTHROPIC_API_KEY' })
+      if (process.env.OPENAI_API_KEY) detected.push({ provider: 'codex', envVar: 'OPENAI_API_KEY' })
+      if (detected.length) for (const { provider, envVar } of detected) {
+        db.prepare(`UPDATE agent_profiles SET env_passthrough = ? WHERE provider = ? AND env_passthrough = '[]'`).run(JSON.stringify([envVar]), provider)
+      }
+    }
+  },
+  {
+    version: 38,
+    checksum: 'sha256:agentboard-db-manager-v38-2026-10-29',
+    up(db) {
+      db.exec(`CREATE TABLE db_connections (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, klass TEXT NOT NULL CHECK(klass IN ('dev','test','prod','external')),
+        host TEXT NOT NULL, port INTEGER NOT NULL, database_name TEXT NOT NULL, username TEXT NOT NULL,
+        ssl_mode TEXT NOT NULL CHECK(ssl_mode IN ('disable','require','verify-full')),
+        has_secret INTEGER NOT NULL DEFAULT 0 CHECK(has_secret IN (0,1)), allow_write INTEGER NOT NULL CHECK(allow_write IN (0,1)),
+        agent_access TEXT NOT NULL CHECK(agent_access IN ('none','read')), origin TEXT NOT NULL DEFAULT 'manual', env_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_used_at TEXT
+      );
+      CREATE INDEX db_connections_project ON db_connections(project_id);
+      CREATE TABLE db_query_audit (id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL, sql_hash TEXT NOT NULL, duration_ms INTEGER NOT NULL, rows INTEGER NOT NULL, status TEXT NOT NULL, history_ref TEXT);
+      CREATE INDEX db_query_audit_connection ON db_query_audit(connection_id, at);`)
+    }
+  },
+  {
+    version: 39,
+    checksum: 'sha256:agentboard-mcp-registry-v39-2026-10-30',
+    up(db) {
+      db.exec(`CREATE TABLE mcp_servers (
+        id TEXT PRIMARY KEY, scope TEXT NOT NULL CHECK(scope IN ('global','project')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, preset_id TEXT, transport TEXT NOT NULL CHECK(transport IN ('stdio','http')),
+        command TEXT, args_json TEXT NOT NULL DEFAULT '[]', url TEXT,
+        env_keys_json TEXT NOT NULL DEFAULT '[]', header_keys_json TEXT NOT NULL DEFAULT '[]',
+        providers_json TEXT NOT NULL DEFAULT '["claude","codex"]', enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE INDEX mcp_servers_project ON mcp_servers(project_id);
+      CREATE TABLE mcp_project_disabled (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+        PRIMARY KEY (project_id, server_id)
+      );`)
+    }
+  },
+  {
+    version: 40,
+    checksum: 'sha256:agentboard-db-server-parent-v40-2026-10-30',
+    up(db) {
+      // Servidor = conexão raiz (parent_id nulo); banco = conexão filha que herda host, usuário, SSL, ambiente e senha do servidor.
+      db.exec(`ALTER TABLE db_connections ADD COLUMN parent_id TEXT REFERENCES db_connections(id) ON DELETE CASCADE;
+      CREATE INDEX db_connections_parent ON db_connections(parent_id);`)
+    }
+  },
+  {
+    version: 41,
+    checksum: 'sha256:agentboard-db-server-first-database-v41-2026-10-30',
+    up(db) {
+      // O servidor é só o contêiner: conexões antigas, sem nenhum banco dentro, passam a mostrar o próprio banco como filho.
+      const roots = db.prepare(`SELECT * FROM db_connections r WHERE r.parent_id IS NULL AND NOT EXISTS (SELECT 1 FROM db_connections c WHERE c.parent_id = r.id)`).all() as Array<Record<string, unknown>>
+      const insert = db.prepare(`INSERT INTO db_connections(id,project_id,parent_id,name,klass,host,port,database_name,username,ssl_mode,has_secret,allow_write,agent_access,origin,env_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?)`)
+      for (const row of roots) insert.run(randomUUID(), row.project_id, row.id, row.database_name, row.klass, row.host, row.port, row.database_name, row.username, row.ssl_mode, row.allow_write, row.agent_access, row.origin, row.env_id, row.created_at, row.updated_at)
+    }
+  },
+  {
+    version: 42,
+    checksum: 'sha256:agentboard-card-types-v42-2026-10-31',
+    up(db) {
+      // Tipos de card cadastráveis por projeto (JSON; nulo = segue a lista padrão). "Tarefa pequena" deixa de ser tipo: vira o fluxo curto.
+      db.exec(`ALTER TABLE projects ADD COLUMN card_types TEXT;
+      UPDATE cards SET workflow = 'light' WHERE type = 'minor' AND workflow IS NULL;
+      UPDATE cards SET type = 'improvement' WHERE type IN ('minor', 'task');`)
     }
   }
 ]

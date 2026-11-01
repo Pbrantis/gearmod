@@ -1,4 +1,5 @@
 /** Leitura do documento Tasks: só os itens de primeiro nível contam como tasks; os critérios ficam recuados dentro de cada task. */
+import { tm } from './i18n'
 const topLevelItem = /^[-*+]\s+\[( |x|X)\]\s+(.*)$/
 const anyItem = /^\s*[-*+]\s+\[( |x|X)\]\s+/
 
@@ -47,7 +48,7 @@ export function verificationOnlyTasks(markdown: string): string[] {
 export function setTaskChecked(markdown: string, lineIndex: number, checked: boolean): string {
   const lines = markdown.split('\n')
   const line = lines[lineIndex]
-  if (line === undefined || !anyItem.test(line)) throw new Error('A linha informada não é um item de checklist')
+  if (line === undefined || !anyItem.test(line)) throw new Error(tm().tasks.notChecklistItem)
   lines[lineIndex] = line.replace(/\[( |x|X)\]/, checked ? '[x]' : '[ ]')
   return lines.join('\n')
 }

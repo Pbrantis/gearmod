@@ -1,11 +1,16 @@
+import { providerLabels } from '@agentboard/contracts'
 import { SettingsIcon } from './SettingsIcon'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAgentUpdatesPending } from './useAgentUpdates'
 import { ProjectAvatar } from './ProjectIcon'
 import { dismissVoiceInstall, useVoiceInstall } from './voiceStore'
-import type { AgentProfile, AgentUsage, Project } from '@agentboard/contracts'
+import type { AgentProfile, AgentUsage, Project, UsageHistoryRow } from '@agentboard/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
 import { ChevronLeftIcon, PlusIcon, TrashIcon } from './icons'
+import { plainError } from './NoticeDialog'
+import { useEscape } from './useEscape'
+import { useAsk } from './useAsk'
+import { dateLocale, tr, useT } from './i18n'
 
 const level = (percent: number): string => (percent >= 90 ? 'hi' : percent >= 70 ? 'mid' : 'ok')
 function left(iso: string | null): string {
@@ -13,23 +18,29 @@ function left(iso: string | null): string {
   const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60000)), days = Math.floor(minutes / 1440), hours = Math.floor((minutes % 1440) / 60)
   return days ? `${days}d ${hours}h` : hours ? `${hours}h ${minutes % 60}min` : `${minutes}min`
 }
-const at = (iso: string | null): string => (iso ? new Date(iso).toLocaleString('pt-BR', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '')
+const at = (iso: string | null): string => (iso ? new Date(iso).toLocaleString(dateLocale(), { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '')
 const Bar = ({ percent }: { percent: number }): React.JSX.Element => <div className="ubar"><i className={level(percent)} style={{ width: `${percent}%` }} /></div>
+
+export function usageHistorySummary(rows: UsageHistoryRow[]): { input: number; cached: number; output: number; billed: number; equivalent: number; unknown: number } {
+  return rows.reduce((total, row) => ({ input: total.input + row.input, cached: total.cached + row.cached, output: total.output + row.output, billed: total.billed + row.billedUsd, equivalent: total.equivalent + row.equivalentUsd, unknown: total.unknown + row.unknownUsd }), { input: 0, cached: 0, output: 0, billed: 0, equivalent: 0, unknown: 0 })
+}
+const tokens = (value: number): string => new Intl.NumberFormat(dateLocale()).format(value)
+const money = (value: number): string => new Intl.NumberFormat(dateLocale(), { style: 'currency', currency: 'USD' }).format(value)
 
 /** Uso das sessões: botão do rodapé com os provedores, lista por agente (5 h) e, ao clicar, o painel completo com a semana. */
 /** Instalação do ditado por voz: barra de progresso acima dos agentes e um aviso quando termina; fica visível em qualquer tela. */
 function VoiceInstallCard(): React.JSX.Element | null {
-  const voice = useVoiceInstall()
+  const t = useT(), voice = useVoiceInstall()
   if (!voice.installing && !voice.done && !voice.error) return null
   return <div className={`voicecard ${voice.error ? 'err' : ''}`} role="status">
-    {voice.installing && <><div className="vrow"><span>Instalando ditado por voz{voice.item ? ` · ${voice.item}` : ''}</span><b>{voice.percent === null ? `${voice.megabytes} MB` : `${voice.percent}%`}</b></div><div className="vbar"><i style={{ width: `${voice.percent ?? 8}%` }} /></div></>}
-    {!voice.installing && voice.done && <div className="vrow"><span>Ditado por voz instalado</span><button type="button" aria-label="Fechar aviso" onClick={dismissVoiceInstall}>×</button></div>}
-    {!voice.installing && voice.error && <div className="vrow"><span>Ditado por voz: {voice.error}</span><button type="button" aria-label="Fechar aviso" onClick={dismissVoiceInstall}>×</button></div>}
+    {voice.installing && <><div className="vrow"><span>{t.shell.sidebar.voiceInstalling(voice.item ?? '')}</span><b>{voice.percent === null ? `${voice.megabytes} MB` : `${voice.percent}%`}</b></div><div className="vbar"><i style={{ width: `${voice.percent ?? 8}%` }} /></div></>}
+    {!voice.installing && voice.done && <div className="vrow"><span>{t.shell.sidebar.voiceInstalled}</span><button type="button" aria-label={t.shell.sidebar.closeNotice} onClick={dismissVoiceInstall}>×</button></div>}
+    {!voice.installing && voice.error && <div className="vrow"><span>{t.shell.sidebar.voiceError(voice.error)}</span><button type="button" aria-label={t.shell.sidebar.closeNotice} onClick={dismissVoiceInstall}>×</button></div>}
   </div>
 }
 
 function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Element {
-  const [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>(), [refreshing, setRefreshing] = useState(false)
+  const t = useT(), [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>(), [refreshing, setRefreshing] = useState(false)
   const load = useCallback(async () => { try { setUsage(await window.agentboard.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
   // Mostra o que já se sabe na hora e atualiza por baixo dos panos (o Claude só informa o limite quando roda).
   useEffect(() => {
@@ -44,28 +55,67 @@ function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Eleme
   useEffect(() => {
     if (!open) return
     const outside = (event: Event): void => { if (!root.current?.contains(event.target as Node)) setOpen(false) }
-    const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') setOpen(false) }
-    document.addEventListener('mousedown', outside); document.addEventListener('keydown', key)
-    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', key) }
+    document.addEventListener('mousedown', outside)
+    return () => document.removeEventListener('mousedown', outside)
   }, [open])
+  useEscape(() => setOpen(false), open)
   const shown = profiles.slice(0, 4), extra = profiles.length - shown.length
   const session = (profileId: string) => usage.find((item) => item.profileId === profileId)?.windows.find((window) => window.id === 'five_hour')
   return <div className="used" ref={root}>
-    <button type="button" className="usedbtn tip" data-tip="Agentes e uso da sessão" aria-expanded={open} aria-label="Agentes e uso da sessão" onClick={() => setOpen(!open)}><span className="avstack">{shown.map((profile) => <span key={profile.id} className={`av ptl ${profile.provider}`} style={{ color: profile.color, background: `color-mix(in srgb, ${profile.color} 22%, #1b1e1c)` }}><ProviderLogo provider={profile.provider} /></span>)}{extra > 0 && <span className="av ptl more">+{extra}</span>}</span><svg className={`uchev ${open ? 'open' : ''}`} viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg></button>
-    {open && <div className="upop"><div className="sectitle">Uso da sessão (5 h){refreshing && <span className="refreshing"> · atualizando…</span>}</div>{profiles.length === 0 && <p className="hint">Nenhum agente cadastrado.</p>}{profiles.map((profile) => { const window = session(profile.id); return <button type="button" className="urow" key={profile.id} onClick={() => { setDetail(profile.id); setOpen(false) }}><AgentIcon profile={profile} tip={false} /><span className="un"><b>{profile.label}</b><small className="rs">{window ? <>Reseta em<span>{left(window.resetsAt)}</span></> : 'Sem dados ainda'}</small>{window && <Bar percent={window.usedPercent} />}</span><span className="up">{window ? `${window.usedPercent}%` : ''}</span></button> })}</div>}
+    <button type="button" className="usedbtn tip" data-tip={t.shell.sidebar.usedTip} aria-expanded={open} aria-label={t.shell.sidebar.usedTip} onClick={() => setOpen(!open)}><span className="avstack">{shown.map((profile) => <span key={profile.id} className={`av ptl ${profile.provider}`} style={{ color: profile.color, background: `color-mix(in srgb, ${profile.color} 22%, var(--surface-2))` }}><ProviderLogo provider={profile.provider} /></span>)}{extra > 0 && <span className="av ptl more">+{extra}</span>}</span><svg className={`uchev ${open ? 'open' : ''}`} viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg></button>
+    {open && <div className="upop"><div className="sectitle">{t.shell.sidebar.sessionUsage}{refreshing && <span className="refreshing">{t.shell.sidebar.updating}</span>}</div>{profiles.length === 0 && <p className="hint">{t.shell.sidebar.noAgents}</p>}{profiles.map((profile) => { const window = session(profile.id); return <button type="button" className="urow" key={profile.id} onClick={() => { setDetail(profile.id); setOpen(false) }}><AgentIcon profile={profile} tip={false} /><span className="un"><b>{profile.label}</b><small className="rs">{window ? <>{t.shell.sidebar.resetsIn}<span>{left(window.resetsAt)}</span></> : t.shell.sidebar.noDataYet}</small>{window && <Bar percent={window.usedPercent} />}</span><span className="up">{window ? `${window.usedPercent}%` : ''}</span></button> })}</div>}
     {detail && <UsageModal profiles={profiles} usage={usage} current={detail} close={() => setDetail(undefined)} />}
   </div>
 }
 
 function UsageModal({ profiles: all, usage, current, close, only }: { profiles: AgentProfile[]; usage: AgentUsage[]; current: string; close(): void; only?: boolean }): React.JSX.Element {
-  const profiles = only ? all.filter((profile) => profile.id === current) : all
-  useEffect(() => { const key = (event: KeyboardEvent): void => { if (event.key === 'Escape') close() }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [close])
-  return <div className="overlay top"><div className="modal usage" style={{ width: 'min(420px,100%)' }}><header><div><div className="eyebrow">Uso do plano</div><h2>Sessões e semana</h2></div><button className="x" onClick={close} aria-label="Fechar">×</button></header>
-    <div className="ugrid">{profiles.map((profile) => { const item = usage.find((entry) => entry.profileId === profile.id); return <section className={`ucard ${profile.id === current ? 'here' : ''}`} key={profile.id}>
-      <div className="uhead"><AgentIcon profile={profile} size="lg" tip={false} /><span><b>{profile.label}</b><small>{profile.provider === 'codex' ? 'Codex' : 'Claude'}</small></span></div>
-      {item?.windows.length ? item.windows.map((window) => <div className="ublk" key={window.id}><div className="uh"><span>{window.label}</span>{window.resetsAt && <small>Reseta em {left(window.resetsAt)} · {at(window.resetsAt)}</small>}<b>{window.usedPercent}%</b></div><Bar percent={window.usedPercent} /></div>) : <div className="ublk"><small>{profile.provider === 'claude' ? 'O Claude informa o uso a cada execução; rode algo para ver aqui.' : 'Sem sessões do Codex com limites ainda.'}</small></div>}
-      
-    </section> })}</div>
+  const t = useT(), profiles = only ? all.filter((profile) => profile.id === current) : all
+  const [history, setHistory] = useState<UsageHistoryRow[]>([]), [historyError, setHistoryError] = useState(''), [historyLoading, setHistoryLoading] = useState(true)
+  useEscape(close)
+  const { ask, dialog: askDialog } = useAsk()
+  useEffect(() => {
+    let alive = true
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    void window.agentboard.invoke('usage:history', { granularity: 'month', tz, groupBy: 'profile' }).then((rows) => {
+      if (!alive) return
+      setHistory(only ? rows.filter((row) => row.group === current) : rows); setHistoryError('')
+    }).catch(() => { if (alive) setHistoryError(tr().shell.sidebar.historyLoadFailed) }).finally(() => { if (alive) setHistoryLoading(false) })
+    return () => { alive = false }
+  }, [current, only])
+  const totals = usageHistorySummary(history)
+  const [retentionBusy, setRetentionBusy] = useState(false), [retentionMessage, setRetentionMessage] = useState('')
+  const exportCsv = async (): Promise<void> => {
+    setRetentionBusy(true); setRetentionMessage('')
+    try {
+      const { csv } = await window.agentboard.invoke('usage:export', {})
+      const { saved } = await window.agentboard.invoke('usage:save-csv', { content: csv, defaultName: 'consumo-agentboard.csv' })
+      setRetentionMessage(saved ? t.shell.sidebar.csvSaved : t.shell.sidebar.exportCancelled)
+    } catch (reason) { setRetentionMessage(plainError(reason)) } finally { setRetentionBusy(false) }
+  }
+  // U14: apagar sempre exporta antes (approval_record kind usage-ledger-purge); sem a aprovação, nada é apagado.
+  const purgeAll = async (): Promise<void> => {
+    if (!(await ask({ eyebrow: t.shell.sidebar.purgeEyebrow, title: t.shell.sidebar.purgeTitle, text: t.shell.sidebar.purgeText, ok: t.shell.sidebar.purgeOk, danger: true }))) return
+    setRetentionBusy(true); setRetentionMessage('')
+    try {
+      const range = { to: new Date().toISOString() }
+      const approval = await window.agentboard.invoke('usage:purge-request', range)
+      await window.agentboard.invoke('approvals:decide', { id: approval.id, approve: true })
+      const { deleted, csv } = await window.agentboard.invoke('usage:purge', { ...range, approvalId: approval.id })
+      const { saved } = await window.agentboard.invoke('usage:save-csv', { content: csv, defaultName: 'consumo-antes-de-apagar.csv' })
+      setRetentionMessage(t.shell.sidebar.purged(deleted, saved))
+    } catch (reason) { setRetentionMessage(plainError(reason)) } finally { setRetentionBusy(false) }
+  }
+  return <div className="overlay top" role="dialog" aria-label={t.shell.sidebar.usageTitle}><div className="modal usage usage-history" style={{ width: 'min(620px,100%)' }}>{askDialog}<header><div><div className="eyebrow">{t.shell.sidebar.planUsage}</div><h2>{t.shell.sidebar.usageTitle}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
+    <section className="usage-area" aria-labelledby="quota-title"><div className="usage-area-title"><b id="quota-title">{t.shell.sidebar.accountQuota}</b><small>{t.shell.sidebar.accountQuotaHint}</small></div><div className="ugrid">{profiles.map((profile) => { const item = usage.find((entry) => entry.profileId === profile.id); return <section className={`ucard ${profile.id === current ? 'here' : ''}`} key={profile.id}>
+      <div className="uhead"><AgentIcon profile={profile} size="lg" tip={false} /><span><b>{profile.label}</b><small>{providerLabels[profile.provider]}</small></span></div>
+      {item?.windows.length ? item.windows.map((window) => <div className="ublk" key={window.id}><div className="uh"><span>{window.label}</span>{window.resetsAt && <small>{t.shell.sidebar.resetsAt(left(window.resetsAt), at(window.resetsAt))}</small>}<b>{window.usedPercent}%</b></div><Bar percent={window.usedPercent} /></div>) : <div className="ublk"><small>{profile.provider === 'claude' ? t.shell.sidebar.claudeReportsUsage : t.shell.sidebar.noCodexSessions}</small></div>}
+    </section> })}</div></section>
+    <section className="usage-area" aria-labelledby="tokens-title"><div className="usage-area-title"><b id="tokens-title">{t.shell.sidebar.assignedTokens}</b><small>{t.shell.sidebar.assignedTokensHint}</small></div>{historyLoading ? <p className="dim">{t.shell.sidebar.loadingHistory}</p> : history.length === 0 ? <p className="dim">{t.shell.sidebar.noTokensYet}</p> : <div className="history-grid"><div><small>{t.shell.sidebar.input}</small><b>{tokens(totals.input)}</b></div><div><small>{t.shell.sidebar.cache}</small><b>{tokens(totals.cached)}</b></div><div><small>{t.shell.sidebar.output}</small><b>{tokens(totals.output)}</b></div></div>}{historyError && <p className="error">{historyError}</p>}</section>
+    <section className="usage-area" aria-labelledby="cost-title"><div className="usage-area-title"><b id="cost-title">{t.shell.sidebar.costsByType}</b><small>{t.shell.sidebar.costsHint}</small></div>{historyLoading ? <p className="dim">{t.shell.sidebar.loadingCosts}</p> : <div className="history-grid costs"><div><small>{t.shell.sidebar.billed}</small><b>{money(totals.billed)}</b></div><div><small>{t.shell.sidebar.apiEquivalent}</small><b>{money(totals.equivalent)}</b></div><div><small>{t.shell.sidebar.unknown}</small><b>{totals.unknown ? money(totals.unknown) : '—'}</b></div></div>}</section>
+    <section className="usage-area" aria-labelledby="retention-title"><div className="usage-area-title"><b id="retention-title">{t.shell.sidebar.historyPrivacy}</b><small>{t.shell.sidebar.historyPrivacyHint}</small></div>
+      <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={retentionBusy} onClick={() => void exportCsv()}>{t.shell.sidebar.exportCsv}</button><button type="button" className="danger" disabled={retentionBusy} onClick={() => void purgeAll()}>{t.shell.sidebar.purgeUntilToday}</button></div>
+      {retentionMessage && <p className="hint" role="status">{retentionMessage}</p>}
+    </section>
     </div></div>
 }
 
@@ -83,7 +133,7 @@ export function UsageDialog({ current, close }: { current?: string; close(): voi
 }
 
 export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onProjectSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onProjectSettings(projectId: string): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
-  const agentUpdates = useAgentUpdatesPending(profiles)
+  const t = useT(), agentUpdates = useAgentUpdatesPending(profiles)
   // Arrastar: enquanto arrasta, a lista mostra o projeto já na posição nova; ao soltar, grava a ordem.
   const [drag, setDrag] = useState<{ id: string; over: number }>(), [menu, setMenu] = useState<{ project: Project; x: number; y: number }>()
   const projectMenu = useRef<HTMLDivElement>(null)
@@ -93,7 +143,6 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
     if (!menu) return
     projectMenu.current?.focus()
     const close = (): void => setMenu(undefined), key = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') { close(); return }
       if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || (event.target instanceof HTMLElement && event.target.closest('input,textarea,[contenteditable="true"]'))) return
       const pressed = event.key.toLowerCase()
       if (pressed !== 'n' && pressed !== 'c' && pressed !== 'delete') return
@@ -103,13 +152,14 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
     window.addEventListener('click', close); window.addEventListener('blur', close); document.addEventListener('keydown', key)
     return () => { window.removeEventListener('click', close); window.removeEventListener('blur', close); document.removeEventListener('keydown', key) }
   }, [menu, onNewChat, onProjectSettings, onDelete])
+  useEscape(() => setMenu(undefined), Boolean(menu))
   return <>
-    <button type="button" className="side-toggle tip" data-tip={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} aria-label={collapsed ? 'Mostrar barra lateral' : 'Ocultar barra lateral'} onClick={onToggle}><ChevronLeftIcon /></button>
+    <button type="button" className="side-toggle tip" data-tip={collapsed ? t.shell.sidebar.showSidebar : t.shell.sidebar.hideSidebar} aria-label={collapsed ? t.shell.sidebar.showSidebar : t.shell.sidebar.hideSidebar} onClick={onToggle}><ChevronLeftIcon />{collapsed && <span>{t.shell.sidebar.menu}</span>}</button>
     <aside>
-      <button className="secondary newproj" onClick={onNew}>＋ Novo projeto</button>
+      <button className="secondary newproj" onClick={onNew}>{t.shell.sidebar.newProject}</button>
       <nav className="projs" onDragOver={(e) => { if (drag) e.preventDefault() }} onDrop={(e) => { e.preventDefault(); drop() }}>{ordered.map((project, index) => {
         const { running, finished } = project.activity, git = project.sources.filter((source) => source.isGitRepository).length
-        const sub = running ? <small className="srun">{running} executando</small> : finished ? <small className="sfin">Terminou · clique para ver</small> : <small>{git ? `${git} ${git === 1 ? 'repositório' : 'repositórios'}` : 'Pasta sem Git'}</small>
+        const sub = running ? <small className="srun">{t.shell.sidebar.running(running)}</small> : finished ? <small className="sfin">{t.shell.sidebar.finishedClickToSee}</small> : <small>{git ? t.shell.sidebar.repositories(git) : t.shell.sidebar.folderWithoutGit}</small>
         return <div className={`projrow ${drag?.id === project.id ? 'dragging' : ''}`} key={project.id} draggable
           onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setMenu(undefined); setDrag({ id: project.id, over: index }) }}
           onDragOver={(e) => {
@@ -123,17 +173,17 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
           }}
           onDragEnd={() => setDrag(undefined)}
           onContextMenu={(e) => { e.preventDefault(); setMenu({ project, x: e.clientX, y: e.clientY }) }}>
-          <button type="button" className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''} ${running ? 'busy' : ''}`} onClick={() => onSelect(project.id)}><ProjectAvatar name={project.name} icon={project.icon} /><span>{project.name}{sub}</span>{running > 0 && <span className="spin sm" title="Executando" />}{finished > 0 && <b className="pdot" title="Terminou" />}</button>
-          <button type="button" className="projnew tip" data-tip="Novo chat livre neste projeto" aria-label={`Novo chat livre em ${project.name}`} onClick={() => onNewChat(project.id)}><PlusIcon /></button></div>
+          <button type="button" className={`proj ${selected === project.id ? 'on' : ''} ${finished ? 'fin' : ''} ${running ? 'busy' : ''}`} onClick={() => onSelect(project.id)}><ProjectAvatar name={project.name} icon={project.icon} /><span title={project.name}>{project.name}{sub}</span>{running > 0 && <span className="spin sm" data-tip={t.shell.sidebar.runningTip} />}{finished > 0 && <b className="pdot" data-tip={t.shell.sidebar.finishedTip} />}</button>
+          <button type="button" className="projnew tip" data-tip={t.shell.sidebar.newFreeChatTip} aria-label={t.shell.sidebar.newFreeChatIn(project.name)} onClick={() => onNewChat(project.id)}><PlusIcon /></button></div>
       })}</nav>
       <VoiceInstallCard />
-      <div className="side-foot"><button className="iconbtn gearwrap" title={agentUpdates ? 'Configurações · há atualização de agente disponível' : 'Configurações'} aria-label={agentUpdates ? 'Configurações, há atualização de agente disponível' : 'Configurações'} onClick={onSettings}>⚙{agentUpdates && <i className="gear-dot" aria-hidden="true" />}</button><UsedAgents profiles={profiles} /></div>
+      <div className="side-foot"><button className="iconbtn gearwrap" data-tip={agentUpdates ? t.shell.sidebar.settingsWithUpdate : t.common.settings} aria-label={agentUpdates ? t.shell.sidebar.settingsLabelWithUpdate : t.common.settings} onClick={onSettings}>⚙{agentUpdates && <i className="gear-dot" aria-hidden="true" />}</button><UsedAgents profiles={profiles} /></div>
     </aside>
-    {menu && <div ref={projectMenu} className="projmenu" role="menu" aria-label={`Ações do projeto ${menu.project.name}`} tabIndex={-1} style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+    {menu && <div ref={projectMenu} className="projmenu" role="menu" aria-label={t.shell.sidebar.projectActions(menu.project.name)} tabIndex={-1} style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
       <div className="ctxtitle">{menu.project.name}</div>
-      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onNewChat(menu.project.id) }}><PlusIcon /><span>Novo chat livre</span><kbd>N</kbd></button>
-      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onProjectSettings(menu.project.id) }}><SettingsIcon /><span>Configurar projeto</span><kbd>C</kbd></button>
-      <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(undefined); onDelete(menu.project) }}><TrashIcon /><span>Excluir projeto</span><kbd>Del</kbd></button>
+      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onNewChat(menu.project.id) }}><PlusIcon /><span>{t.shell.sidebar.newFreeChat}</span><kbd>N</kbd></button>
+      <button type="button" role="menuitem" onClick={() => { setMenu(undefined); onProjectSettings(menu.project.id) }}><SettingsIcon /><span>{t.shell.sidebar.configureProject}</span><kbd>C</kbd></button>
+      <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(undefined); onDelete(menu.project) }}><TrashIcon /><span>{t.shell.sidebar.deleteProject}</span><kbd>Del</kbd></button>
     </div>}
   </>
 }

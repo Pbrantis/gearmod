@@ -5,6 +5,7 @@ import { baseExtensions, none, optionExtensions, readOnlyExtension, type EditorO
 import { languageFor } from './languages'
 import { minimalChange } from './position'
 import { conflictExtension, hasConflicts, type ConflictOptions } from './conflicts'
+import { useT } from '../i18n'
 
 export type { EditorOptions }
 export interface EditorViewState { anchor: number; head: number; scrollTop: number }
@@ -19,7 +20,7 @@ export function CodeEditor({ value, path, onChange, readOnly = false, options, e
   /** `prose`: texto corrido (documentos do card, Constituição) sem números de linha nem dobras, com a mesma quebra de linha de um campo de texto. */
   variant?: 'code' | 'prose'
 }): React.JSX.Element {
-  const host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null)
+  const t = useT(), host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null)
   const compartments = useRef({ conflicts: new Compartment(), language: new Compartment(), readOnly: new Compartment(), options: new Compartment(), extra: new Compartment() })
   const callbacks = useRef({ onChange, onViewState, onReady, onCompareConflict }); callbacks.current = { onChange, onViewState, onReady, onCompareConflict }
   const first = useRef({ value, path, readOnly, options, extensions, initialSelection, initialScroll, ariaLabel, variant })
@@ -61,7 +62,7 @@ export function CodeEditor({ value, path, onChange, readOnly = false, options, e
     void languageFor(path).then((extension) => { if (alive) view.current?.dispatch({ effects: compartments.current.language.reconfigure(extension ?? none) }) }).catch(() => undefined)
     return () => { alive = false }
   }, [path])
-  const marked = hasConflicts(value), ours = conflictLabels?.ours ?? 'atual', theirs = conflictLabels?.theirs ?? 'chegando'
+  const marked = hasConflicts(value), ours = conflictLabels?.ours ?? t.files.editor.conflictOurs, theirs = conflictLabels?.theirs ?? t.files.editor.conflictTheirs
   useEffect(() => { view.current?.dispatch({ effects: compartments.current.conflicts.reconfigure(marked ? conflictExtension({ oursLabel: ours, theirsLabel: theirs, ...(onCompareConflict ? { compare: (info: Parameters<NonNullable<ConflictOptions['compare']>>[0]) => callbacks.current.onCompareConflict?.(info) } : {}) }) : none) }) }, [marked, ours, theirs, Boolean(onCompareConflict)])
   useEffect(() => { view.current?.dispatch({ effects: compartments.current.readOnly.reconfigure(readOnlyExtension(readOnly)) }) }, [readOnly])
   useEffect(() => { view.current?.dispatch({ effects: compartments.current.options.reconfigure(optionExtensions(options)) }) }, [options.wrap, options.tabSize, options.tabs, options.indentWithTab, options.whitespace, options.scrollPastEnd])

@@ -11,6 +11,7 @@ import { McpBridge } from './mcp-bridge'
 import { BoardRepository, ProfileRepository, ProjectRepository } from './projects'
 import { SettingsRepository } from './settings'
 import { seedProfiles } from './test-helpers'
+import { ApprovalService } from './approvals'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
@@ -27,37 +28,42 @@ async function setup() {
   const card = board.create({ projectId: project.id, columnId: board.get(project.id).columns[0]!.id, title: 'Card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
   const conversations = new ConversationRepository(database), constitution = new ConstitutionRepository(database), checklists = new ChecklistRepository(database)
   const context = new AgentContextService(board, new SettingsRepository(database), null, constitution)
-  const bridge = new McpBridge({ board, context, serverScript: 'x', conversations, constitution, checklists })
-  const call = (token: string, tool: string, args: Record<string, unknown> = {}): Reply => (bridge as unknown as { handle(token: string, tool: string, args: Record<string, unknown>): Reply }).handle(token, tool, args)
+  // G09: sem SddResolver/SddWriter de verdade (este teste não monta Git/worktree), a leitura cai no legado SQLite e a
+  // escrita fica fingida — o que importa aqui é a decisão de ROTA (precisa de card, não de propósito) e o aviso certo.
+  const writes: Array<{ cardId: string; sourceId: string; relPath: string; content: string }> = []
+  const sddResolver = { constitution: async () => ({ path: 'constitution.md', content: null, blobSha: null, baseBlobSha: null, headBlobSha: null, state: 'missing' as const, method: 'native' as const, via: 'ref' as const }), locate: async () => ({ repo: root, rootAbs: root, ref: 'dev', via: 'ref' as const, sourceId: 'source-1', method: 'native' as const, worktreeBranch: null }) }
+  const sddWriter = { write: async (cardId: string, sourceId: string, relPath: string, content: string) => { writes.push({ cardId, sourceId, relPath, content }); return { blobSha: 'fakehash', path: relPath } } }
+  const approvals = new ApprovalService(database)
+  const bridge = new McpBridge({ board, context, serverScript: 'x', conversations, constitution, checklists, sddResolver, sddWriter, approvals })
+  const call = (token: string, tool: string, args: Record<string, unknown> = {}): Promise<Reply> => Promise.resolve((bridge as unknown as { handle(token: string, tool: string, args: Record<string, unknown>): Reply | Promise<Reply> }).handle(token, tool, args))
   const open = (purpose: 'constitution' | 'execution' | 'test') => {
     const chat = conversations.createChat({ projectId: project.id, cardId: purpose === 'constitution' ? null : card.id, purpose, profileId: profile.id })
     const run = conversations.createRun({ cardId: chat.cardId, chatId: chat.id, profileId: profile.id })
     const changes: unknown[] = []
     return { chat, changes, token: bridge.register(run.id, chat.cardId, (change) => changes.push(change), { id: chat.id, purpose }).env.AGENTBOARD_TOKEN! }
   }
-  return { root, database, project, card, constitution, checklists, context, call, open }
+  return { root, database, project, card, constitution, checklists, context, call, open, writes, approvals }
 }
 
 describe('Constituição do projeto', () => {
-  it('só o chat da Constituição a escreve; os outros chats leem e propõem', async () => {
-    const { project, card, constitution, context, call, open, database } = await setup()
-    expect(context.block(card.id)).toContain('ainda não tem Constituição')
+  it('G09: escrever exige card (não propósito); o chat da Constituição sem card cria um antes de gravar', async () => {
+    const { project, card, constitution, context, call, open, database, writes, approvals } = await setup()
+    expect(await context.block(card.id)).toContain('has no Constitution yet')
 
     const law = open('constitution')
-    expect(call(law.token, 'agentboard_escrever_constituicao', { markdown: '# Constituição\n\n### I. Testes primeiro\n- **DEVE** ter teste.' })).toMatchObject({ ok: true, text: expect.stringContaining('versão 1') })
-    expect(law.changes).toEqual([{ type: 'constitution' }])
-    expect(call(law.token, 'agentboard_propor_constituicao', { titulo: 'x', o_que_muda: 'y', motivo: 'z' })).toMatchObject({ ok: false })
+    // Sem card ainda: a ferramenta recusa e orienta a criar um, em vez de gravar direto no SQLite como antes.
+    expect(await call(law.token, 'agentboard_escrever_constituicao', { markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('Create a card') })
+    const created = await call(law.token, 'agentboard_criar_card', { titulo: 'Atualizar a Constituição' })
+    expect(created).toMatchObject({ ok: true })
+    expect(await call(law.token, 'agentboard_escrever_constituicao', { markdown: '# Constituição\n\n### I. Testes primeiro\n- **DEVE** ter teste.' })).toMatchObject({ ok: true, text: expect.stringContaining('has not been changed yet') })
+    expect(writes).toHaveLength(0); expect(approvals.list().find((item) => item.kind === 'constitution-apply')?.payload.content).toContain('Testes primeiro')
+    expect(law.changes.map((item) => (item as { type: string }).type)).toContain('constitution')
 
+    // Chat de execução de um card já existente: também exige card (já tem) — o SddResolver fake devolve content:null, então cai no legado.
     const dev = open('execution')
-    expect(call(dev.token, 'agentboard_ler_constituicao')).toMatchObject({ ok: true, text: expect.stringContaining('Testes primeiro') })
-    expect(call(dev.token, 'agentboard_escrever_constituicao', { markdown: 'outra' })).toMatchObject({ ok: false, error: expect.stringContaining('agentboard_propor_constituicao') })
-    expect(call(dev.token, 'agentboard_propor_constituicao', { titulo: 'Sem any', o_que_muda: 'Proibir any no TypeScript', motivo: 'Apareceu duas vezes' })).toMatchObject({ ok: true, text: expect.stringContaining('C001') })
+    expect(await call(dev.token, 'agentboard_ler_constituicao')).toMatchObject({ ok: true })
+    expect(await call(dev.token, 'agentboard_propor_constituicao', { titulo: 'Sem any', o_que_muda: 'Proibir any no TypeScript', motivo: 'Apareceu duas vezes' })).toMatchObject({ ok: true, text: expect.stringContaining('C001') })
     expect(constitution.proposals(project.id)).toMatchObject([{ number: 1, title: 'Sem any', status: 'pending', cardId: card.id }])
-
-    // Curta: vai inteira no contexto do card, com a regra de avisar quando algo fere um princípio.
-    expect(context.block(card.id)).toContain('Testes primeiro')
-    expect(context.block(card.id)).toContain('versão 1')
-    expect(context.constitutionPrompt(project.id, 'oi')).toContain('C001 Sem any')
     database.close()
   })
 
@@ -73,7 +79,7 @@ describe('Constituição do projeto', () => {
     expect(constitution.state(project.id).importable).toContain('constitution.md')
     expect(constitution.importSpecKit(project.id).constitution).toMatchObject({ version: 2, updatedBy: 'user' })
     expect(constitutionIndex(long)).toBe('# Constituição\n### I. Primeiro\n### II. Segundo')
-    const block = context.block(card.id)
+    const block = await context.block(card.id)
     expect(block).toContain('### II. Segundo')
     expect(block).toContain('agentboard_ler_constituicao')
     expect(block).not.toContain('texto texto')
@@ -83,9 +89,9 @@ describe('Constituição do projeto', () => {
   it('o testador grava o checklist dele; os outros não', async () => {
     const { card, checklists, call, open, database } = await setup()
     const tester = open('test'), dev = open('execution')
-    expect(call(dev.token, 'agentboard_checklist_teste', { markdown: '- [ ] a' })).toMatchObject({ ok: false })
-    expect(call(tester.token, 'agentboard_checklist_teste', { markdown: 'sem itens' })).toMatchObject({ ok: false, error: expect.stringContaining('- [ ]') })
-    expect(call(tester.token, 'agentboard_checklist_teste', { markdown: '- [x] Testes passam\n- [ ] Lint' })).toMatchObject({ ok: true })
+    expect(await call(dev.token, 'agentboard_checklist_teste', { markdown: '- [ ] a' })).toMatchObject({ ok: false })
+    expect(await call(tester.token, 'agentboard_checklist_teste', { markdown: 'sem itens' })).toMatchObject({ ok: false, error: expect.stringContaining('- [ ]') })
+    expect(await call(tester.token, 'agentboard_checklist_teste', { markdown: '- [x] Testes passam\n- [ ] Lint' })).toMatchObject({ ok: true })
     expect(tester.changes).toEqual([{ type: 'checklist' }])
     expect(checklists.get(card.id).contentMd).toBe('- [x] Testes passam\n- [ ] Lint')
     database.close()

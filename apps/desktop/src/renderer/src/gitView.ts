@@ -1,4 +1,5 @@
-import type { GitRef, GitRow } from '@agentboard/contracts'
+import type { GitRef, GitRow, GitRule } from '@agentboard/contracts'
+import { tr } from './i18n'
 
 /** Cores das faixas do grafo, na ordem da faixa. */
 export const laneColors = ['#8db99a', '#8fb8d6', '#e8c27a', '#b98fd6', '#e07a9a']
@@ -13,28 +14,30 @@ export const isWip = (row: GitRow): boolean => row.wip !== null
 
 /** Etiqueta de data por semana: "esta semana", "semana passada", "há N semanas"; depois de um mês, meses e anos. */
 export function agoLabel(date: string | null, now = Date.now()): string {
-  if (!date) return 'esta semana'
+  const v = tr().git.view
+  if (!date) return v.thisWeek
   const days = Math.max(0, Math.floor((now - new Date(date).getTime()) / 86_400_000))
   const weeks = Math.floor(days / 7)
-  if (weeks === 0) return 'esta semana'
-  if (weeks === 1) return 'semana passada'
-  if (days < 35) return `há ${weeks} semanas`
+  if (weeks === 0) return v.thisWeek
+  if (weeks === 1) return v.lastWeek
+  if (days < 35) return v.weeksAgo(weeks)
   const months = Math.floor(days / 30)
-  if (months < 12) return months === 1 ? 'há 1 mês' : `há ${months} meses`
+  if (months < 12) return v.monthsAgo(months)
   const years = Math.floor(days / 365)
-  return years === 1 ? 'há 1 ano' : `há ${years} anos`
+  return v.yearsAgo(years)
 }
 
 /** Tempo curto para listas: "agora", "12 min", "3 h", "2 dias". */
 export function shortAgo(date: string | null, now = Date.now()): string {
-  if (!date) return 'agora'
+  const v = tr().git.view
+  if (!date) return v.now
   const minutes = Math.max(0, Math.floor((now - new Date(date).getTime()) / 60_000))
-  if (minutes < 1) return 'agora'
-  if (minutes < 60) return `${minutes} min`
+  if (minutes < 1) return v.now
+  if (minutes < 60) return v.minutes(minutes)
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} h`
+  if (hours < 24) return v.hours(hours)
   const days = Math.floor(hours / 24)
-  return days === 1 ? '1 dia' : `${days} dias`
+  return v.days(days)
 }
 
 export interface RefChip { name: string; local?: boolean; remote?: boolean; head?: boolean; tag?: boolean }
@@ -100,9 +103,5 @@ export function splitPath(path: string): { dir: string; name: string } {
   return at < 0 ? { dir: '', name: path } : { dir: path.slice(0, at + 1), name: path.slice(at + 1) }
 }
 
-export const ruleLabel = { auto: 'Automático', ask: 'Pedir permissão', never: 'Nunca' } as const
-export const ruleNote = {
-  auto: 'o agente commita sozinho ao fechar cada task',
-  ask: 'o agente pede antes de cada commit',
-  never: 'o agente não commita nesta branch, só você'
-} as const
+export const ruleLabel = (rule: GitRule): string => tr().git.view.ruleLabel[rule]
+export const ruleNote = (rule: GitRule): string => tr().git.view.ruleNote[rule]

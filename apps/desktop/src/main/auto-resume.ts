@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ChatPurpose, UsageWindow } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { getMainLocale, tm } from './i18n'
 
 /** Um minuto de folga depois do horário em que o limite volta, para o provedor já ter liberado. */
 const slackMs = 60_000
@@ -76,7 +77,7 @@ export interface AutoResumeDeps {
 
 const clock = (ms: number): string => {
   const date = new Date(ms), today = new Date().toDateString() === date.toDateString()
-  return `${today ? '' : `${date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} `}${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+  return `${today ? '' : `${date.toLocaleDateString(getMainLocale(), { day: '2-digit', month: '2-digit' })} `}${date.toLocaleTimeString(getMainLocale(), { hour: '2-digit', minute: '2-digit' })}`
 }
 
 /**
@@ -95,9 +96,9 @@ export class AutoResumeService {
   async onFinished(info: { chatId: string; cardId: string | null; purpose: ChatPurpose; profileId: string; status: string; error: string | null }): Promise<number | null> {
     if (info.status !== 'failed' || !isUsageLimit(info.error)) return null
     const at = resumeTime(info.error, await this.deps.usage(info.profileId).catch(() => []))
-    if (!this.deps.enabled()) { this.deps.notify(info.chatId, `Limite de uso atingido. Ele volta por volta de ${clock(at)}; depois é só clicar em Continuar. (Para o AgentBoard retomar sozinho, ligue "Retomar sozinho" nas configurações.)`); return null }
+    if (!this.deps.enabled()) { this.deps.notify(info.chatId, tm().autoResume.limitReachedManual(clock(at))); return null }
     this.deps.repository.schedule({ ...info, resumeAt: at })
-    this.deps.notify(info.chatId, `Limite de uso atingido. O AgentBoard retoma sozinho às ${clock(at)}, quando o limite voltar, de onde parou.`)
+    this.deps.notify(info.chatId, tm().autoResume.limitReachedAuto(clock(at)))
     return at
   }
 
@@ -113,11 +114,11 @@ export class AutoResumeService {
         if (blocked.length) {
           const at = Math.max(...blocked.map((window) => Date.parse(window.resetsAt!))) + slackMs
           this.deps.repository.schedule({ ...item, resumeAt: at })
-          this.deps.notify(item.chatId, `O limite ainda não voltou. Nova tentativa às ${clock(at)}.`)
+          this.deps.notify(item.chatId, tm().autoResume.limitStillActive(clock(at)))
           continue
         }
         this.deps.repository.finish(item.id, 'done')
-        try { this.deps.resume(item) } catch (error) { this.deps.notify(item.chatId, `Não foi possível retomar sozinho: ${error instanceof Error ? error.message : String(error)}`) }
+        try { this.deps.resume(item) } catch (error) { this.deps.notify(item.chatId, tm().autoResume.resumeFailed(error instanceof Error ? error.message : String(error))) }
       }
     } finally { this.checking = false }
   }

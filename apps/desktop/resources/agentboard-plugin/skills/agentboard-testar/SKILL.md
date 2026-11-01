@@ -1,39 +1,41 @@
 ---
 name: agentboard-testar
-description: Testa um card do AgentBoard conferindo as Tasks e os critérios de aceite contra o que foi implementado, na worktree do card. Use quando o AgentBoard pedir para testar o card.
+description: Tests an AgentBoard card by checking the Tasks and acceptance criteria against what was implemented, in the card's worktree. Use when AgentBoard asks to test the card.
 ---
 
-# Testar card (AgentBoard)
+# Test card (AgentBoard)
 
-Teste este card na worktree atual: confira as Tasks e os critérios de aceite do contexto contra o que foi implementado.
+Write everything you produce for the user — documents, headings, labels, descriptive IDs, questions and chat replies — in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language.
 
-- Antes de começar, monte o checklist do que vai verificar e grave com `agentboard_checklist_teste` (itens `- [ ] ...`, um por verificação: testes, lint, typecheck, cada critério de aceite que vai conferir, revisão do diff). Ao terminar cada item, grave o checklist de novo com ele marcado (`- [x]`); se falhou, deixe `- [ ]` e acrescente ` — falhou: <motivo>`. O usuário acompanha esse checklist ao lado do chat.
-- Rode os testes, o lint e o typecheck do projeto, revise o diff e aponte o que falhar, com o motivo e onde.
-- Use o plano de testes do Plano e os critérios das Tasks como roteiro: rode a suíte inteira, confira cada regressão listada e valide cada critério.
-- Julgue os testes automatizados que o desenvolvedor escreveu: existem os que o Plano de testes pede? Cobrem o critério de verdade (não são vazios nem só "não quebra")? Teste faltando ou fraco vira item reprovado no checklist com o motivo; você não escreve o código dele. O que não estiver nos documentos e for preciso testar vira proposta com `agentboard_propor_mudanca`.
-- Marque com `agentboard_marcar_task` só o que você verificou de fato. Ao terminar, atualize o Resumo com `agentboard_escrever_documento` dizendo se está pronto ou o que falta.
-- Se tiver uma dúvida que os documentos não respondem, use `agentboard_perguntar_ao_planejador`, continue só com o que não depende dela e termine a execução: o app te retoma com a resposta.
-- Não altere o código a menos que o usuário peça, e não mova o card de coluna.
+Test this card in the current worktree: check the Tasks and acceptance criteria in the context against what was implemented.
 
-## Testes de tela com o Playwright
+- Before starting, build the checklist of what you will verify and save it with `agentboard_checklist_teste` (`- [ ] ...` items, one per verification: tests, lint, typecheck, each acceptance criterion you will check, diff review). As you finish each item, save the checklist again with it marked (`- [x]`); if it failed, leave `- [ ]` and append ` — failed: <reason>` (the word "failed" in the language of `idioma`; pt-BR: ` — falhou: <motivo>`). The user follows this checklist next to the chat.
+- Run the project's tests, lint and typecheck, review the diff and point out whatever fails, with the reason and where.
+- Use the Plan's test plan and the Tasks' criteria as your script: run the whole suite, check each listed regression and validate each criterion.
+- Judge the automated tests the developer wrote: do the ones the test plan asks for exist? Do they really cover the criterion (not empty, not just "doesn't break")? A missing or weak test becomes a failed item in the checklist with the reason; you do not write their code. Anything not in the documents that needs testing becomes a proposal with `agentboard_propor_mudanca`.
+- Mark with `agentboard_marcar_task` only what you actually verified. When finished, update the Summary with `agentboard_escrever_documento` saying whether it is ready or what is missing.
+- If you have a question the documents do not answer, use `agentboard_perguntar_ao_planejador`, continue only with what does not depend on it and end the execution: the app resumes you with the answer.
+- Do not change the code unless the user asks, and do not move the card to another column.
 
-Duas ferramentas, para coisas diferentes (podem ser combinadas):
+## On-screen tests with Playwright
 
-- **Playwright CLI (`playwright-cli`)**: para explorar e conferir a tela gastando pouco contexto. Só use se o contexto trouxer `playwrightCli` (o usuário ligou e instalou no projeto); use o caminho de `comando`.
-  - Sempre na sessão do card: `<comando> -s=<sessao> open <url>`, depois `snapshot`, `click <ref>`, `fill <ref> <texto>`. Headless é o padrão; `--headed` só se o usuário pedir para acompanhar.
-  - Prefira `snapshot` e refs a screenshots. Screenshot só para provar um critério ou uma falha: `<comando> -s=<sessao> screenshot --filename=<evidencias>/<critério>.png`, e cite o caminho no checklist.
-  - Não cole snapshots inteiros repetidos nem logs enormes na resposta: resuma o que viu e aponte o arquivo.
-  - Ao terminar: `<comando> -s=<sessao> close`.
-  - O CLI não substitui uma suíte versionada: se o critério precisa continuar coberto, diga que vale um teste do Playwright Test.
-- **Playwright Test**: testes automatizados e reproduzíveis, como abaixo.
+Two tools, for different things (they can be combined):
 
-Use o Playwright para conferir os critérios de aceite que só se verificam na tela (aparece só para certo perfil, diálogo fecha ao cancelar, fluxo completo). Os testes unitários, o lint e o typecheck continuam sendo rodados normalmente.
+- **Playwright CLI (`playwright-cli`)**: to explore and check the screen while spending little context. Only use it if the context carries `playwrightCli` (the user turned it on and installed it in the project); use the path in `comando`.
+  - Always in the card's session: `<comando> -s=<sessao> open <url>`, then `snapshot`, `click <ref>`, `fill <ref> <text>`. Headless is the default; `--headed` only if the user asks to watch.
+  - Prefer `snapshot` and refs over screenshots. Take a screenshot only to prove a criterion or a failure: `<comando> -s=<sessao> screenshot --filename=<evidencias>/<criterion>.png`, and cite the path in the checklist.
+  - Do not paste repeated full snapshots or huge logs in the reply: summarize what you saw and point to the file.
+  - When finished: `<comando> -s=<sessao> close`.
+  - The CLI does not replace a versioned suite: if the criterion must stay covered, say that a Playwright Test is worthwhile.
+- **Playwright Test**: automated, reproducible tests, as below.
 
-- **Já tem Playwright no projeto** (`playwright.config.*` ou `@playwright/test` no `package.json`): rode `npx playwright test --reporter=line` na worktree e ponha o resultado como um item do checklist. Para um critério específico, rode só o arquivo ou o título com `-g`.
-- **Sem janela por padrão (headless).** Deixe `video`/`trace`/`screenshot` ligados só para falhas (`--trace=retain-on-failure`) e grave no checklist o caminho do trace ou do screenshot de cada falha (`npx playwright show-trace <arquivo>` abre o trace).
-- **Se o usuário pedir para acompanhar** ("ver o navegador", "mostrar na tela"): rode com `--headed` e, se der, `slowMo: 400` em `launchOptions`, para dar tempo de acompanhar. O modo `--ui` só se o usuário pedir, porque ele abre uma janela interativa que espera por ele.
-- **Precisa do servidor da aplicação no ar?** Suba o comando de desenvolvimento do projeto em segundo plano, espere a porta responder e encerre o processo ao terminar. Não deixe servidor rodando.
-- **Faltam os navegadores ou o Playwright nem existe no projeto?** Não instale nada sozinho: baixar navegadores são ~150 MB. Diga isso ao usuário (ou abra uma proposta com `agentboard_propor_mudanca`) e siga com o que dá para testar sem isso.
-- Teste a tela do jeito que o usuário usa (clicar, digitar, esperar o resultado visível), não a implementação por dentro. Marque a task só quando o critério foi observado de fato.
+Use Playwright to check the acceptance criteria that can only be verified on screen (appears only for a certain profile, dialog closes on cancel, full flow). Unit tests, lint and typecheck are still run as usual.
 
-- **Reavaliação:** se a validação for bem mais difícil do que a avaliação do card previa, ou os mesmos testes falharem de novo após correção, reavalie com `agentboard_avaliar_complexidade` (gatilho `failures` ou `risk`).
+- **Project already has Playwright** (`playwright.config.*` or `@playwright/test` in `package.json`): run `npx playwright test --reporter=line` in the worktree and put the result as a checklist item. For a specific criterion, run only the file or the title with `-g`.
+- **No window by default (headless).** Keep `video`/`trace`/`screenshot` on only for failures (`--trace=retain-on-failure`) and record in the checklist the path of the trace or screenshot of each failure (`npx playwright show-trace <file>` opens the trace).
+- **If the user asks to watch** ("see the browser", "show it on screen"): run with `--headed` and, if possible, `slowMo: 400` in `launchOptions`, to give time to follow. `--ui` mode only if the user asks, because it opens an interactive window that waits for them.
+- **Need the application server running?** Start the project's development command in the background, wait for the port to respond and stop the process when finished. Do not leave a server running.
+- **Browsers missing, or Playwright not in the project at all?** Do not install anything on your own: downloading browsers is ~150 MB. Tell the user (or open a proposal with `agentboard_propor_mudanca`) and continue with what can be tested without it.
+- Test the screen the way the user uses it (click, type, wait for the visible result), not the implementation internals. Mark the task only when the criterion was actually observed.
+
+- **Reassessment:** if validation turns out much harder than the card's assessment predicted, or the same tests fail again after a fix, reassess with `agentboard_avaliar_complexidade` (trigger `failures` or `risk`).

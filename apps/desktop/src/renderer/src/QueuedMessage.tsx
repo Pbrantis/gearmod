@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AttachmentChips } from './Attachments'
 import { SendIcon } from './icons'
+import { ReplyContextCards } from './ChatReplies'
+import { splitChatReplies } from './chatReplyContext'
+import { useT } from './i18n'
 
 /**
  * Mensagem escrita enquanto o agente ainda trabalha: fica numa prévia embaixo do chat em vez de se perder. Quando o agente termina,
@@ -33,6 +36,7 @@ export function useQueuedMessage(busy: boolean, deliver: (text: string, files: s
 }
 
 export function QueuedPreview({ text, files, busy, sendNow, edit, discard }: { text: string; files: string[]; busy: boolean; sendNow(): void; edit(): void; discard(): void }): React.JSX.Element {
+  const t = useT().chat.queued, parsed = splitChatReplies(text)
   const [open, setOpen] = useState(false), menu = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
@@ -42,11 +46,11 @@ export function QueuedPreview({ text, files, busy, sendNow, edit, discard }: { t
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', escape) }
   }, [open])
   return <div className="queued" role="status">
-    <div className="q-content"><AttachmentChips files={files} /><p className="q-text">{text}</p></div>
+    <div className="q-content"><AttachmentChips files={files} /><ReplyContextCards replies={parsed.replies} />{parsed.text && <p className="q-text">{parsed.text}</p>}</div>
     <div className="q-tools" ref={menu}>
-      <button type="button" className="sendbtn q-send tip" data-tip={busy ? 'Enviar agora' : 'Enviar'} aria-label={busy ? 'Enviar agora' : 'Enviar'} onClick={sendNow}><SendIcon /></button>
-      <button type="button" className="sendbtn q-more" aria-label="Mais opções da fila" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.35" /><circle cx="10" cy="10" r="1.35" /><circle cx="16" cy="10" r="1.35" /></svg></button>
-      {open && <div className="q-menu" role="menu"><button type="button" role="menuitem" onClick={() => { setOpen(false); edit() }}>Editar</button><button type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); discard() }}>Descartar da fila</button></div>}
+      <button type="button" className="sendbtn q-send tip" data-tip={busy ? t.sendNow : t.send} aria-label={busy ? t.sendNow : t.send} onClick={sendNow}><SendIcon /></button>
+      <button type="button" className="sendbtn q-more" aria-label={t.moreOptions} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.35" /><circle cx="10" cy="10" r="1.35" /><circle cx="16" cy="10" r="1.35" /></svg></button>
+      {open && <div className="q-menu" role="menu"><button type="button" role="menuitem" onClick={() => { setOpen(false); edit() }}>{t.edit}</button><button type="button" role="menuitem" className="danger" onClick={() => { setOpen(false); discard() }}>{t.discard}</button></div>}
     </div>
   </div>
 }

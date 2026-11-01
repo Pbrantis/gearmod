@@ -79,8 +79,8 @@ describe('readProjectFile', () => {
 
 describe('criar, renomear e excluir', () => {
   it('valida nomes', () => {
-    expect(validateName('  ok.ts ')).toBe('ok.ts')
-    for (const bad of ['', '..', 'a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', 'nome.', 'x'.repeat(256)]) expect(() => validateName(bad), bad).toThrow()
+    expect(validateName('ok.ts')).toBe('ok.ts')
+    for (const bad of ['', '..', 'a/b', 'a\\b', 'a:b', 'a*b', 'a?b', 'a"b', 'a<b', 'a>b', 'a|b', 'nome.', 'esp ', ' esp', 'a\t','x'.repeat(256)]) expect(() => validateName(bad), bad).toThrow()
   })
   it('cria arquivo e pasta, inclusive com pastas intermediárias, sem sobrescrever', async () => {
     const root = await temp(), real = await realpath(root)
@@ -91,6 +91,8 @@ describe('criar, renomear e excluir', () => {
     await expect(createProjectItem([root], root, 'novo.ts', 'file')).rejects.toThrow('Já existe')
     await expect(createProjectItem([root], root, 'novo.ts/filho.ts', 'file')).rejects.toThrow('nome de uma das pastas')
     await expect(createProjectItem([root], root, '../fora.ts', 'file')).rejects.toThrow()
+    await expect(createProjectItem([root], root, 'esp ', 'folder')).rejects.toThrow('espaço')
+    await expect(createProjectItem([root], root, 'esp /x.ts', 'file')).rejects.toThrow('espaço')
   })
   it('recusa criar fora das raízes', async () => {
     const root = await temp(), outside = await temp()
@@ -103,6 +105,7 @@ describe('criar, renomear e excluir', () => {
     expect((await readProjectFile([root], join(root, 'c.ts'), true)).content).toBe('a')
     await expect(renameProjectItem([root], join(root, 'c.ts'), 'b.ts')).rejects.toThrow('Já existe')
     await expect(renameProjectItem([root], join(root, 'c.ts'), '../x.ts')).rejects.toThrow()
+    await expect(renameProjectItem([root], join(root, 'c.ts'), 'd.ts ')).rejects.toThrow('espaço')
     await expect(renameProjectItem([root], root, 'outro')).rejects.toThrow('raiz')
   })
   it('só libera para a Lixeira o que está dentro das raízes e não é a raiz', async () => {

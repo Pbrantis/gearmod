@@ -5,6 +5,7 @@ import { InlineMarkdown } from './markdown'
 import { checklistEvent, toggleChecklist } from './checklistToggle'
 import { MarkBadges } from './MarkBadges'
 import { plainError } from './NoticeDialog'
+import { useT } from './i18n'
 
 interface Criterion { text: string; done: boolean; line: number }
 interface Task { key: string; line: number; text: string; done: boolean; criteria: Criterion[]; group: string | null }
@@ -35,6 +36,7 @@ const CheckMark = (): React.JSX.Element => <svg viewBox="0 0 12 12" aria-hidden=
  * Atualiza sozinho quando o agente grava.
  */
 export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'execution' | 'test' }): React.JSX.Element | null {
+  const t = useT().board
   const [source, setSource] = useState<string>(), [open, setOpen] = useState(true), [toggled, setToggled] = useState<Record<string, boolean>>({}), [marks, setMarks] = useState<CardChecklist['marks']>({}), [problem, setProblem] = useState('')
   const load = useCallback(async () => {
     try {
@@ -50,7 +52,7 @@ export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'ex
   useEffect(() => { void load() }, [load])
   useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType === 'agentboard/card-updated' && event.payload.cardId === cardId) void load() }), [cardId, load])
   if (source === undefined) return null
-  const tasks = parseTasks(source), done = tasks.filter((task) => task.done).length, title = purpose === 'test' ? 'Checklist do teste' : 'Tasks'
+  const tasks = parseTasks(source), done = tasks.filter((task) => task.done).length, title = purpose === 'test' ? t.progress.testChecklist : t.progress.tasks
   if (!tasks.length && purpose === 'execution') return null
   // A task em andamento (a primeira não concluída) começa aberta; as outras, fechadas. O clique do usuário vence.
   const current = tasks.find((task) => !task.done)?.key
@@ -67,19 +69,19 @@ export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'ex
         {task.group && task.group !== tasks[index - 1]?.group && <div className="pg-group">{task.group}</div>}
         <div className={`pg-task ${task.done ? 'done' : started ? 'doing' : ''} ${task.key === current ? 'current' : ''} ${isOpen ? 'expanded' : ''}`}>
           {interactive ? <div className="pg-row split">
-            <button type="button" className="pg-markbtn" role="checkbox" aria-checked={task.done} aria-label={`${task.done ? 'Desmarcar' : 'Marcar'}: ${task.text}`} title={task.done ? 'Desmarcar este item' : 'Marcar este item como verificado'} onClick={() => flip(task.line, task.text, !task.done)}><span className="pg-mark">{task.done && <CheckMark />}</span></button>
+            <button type="button" className="pg-markbtn" role="checkbox" aria-checked={task.done} aria-label={task.done ? t.testChecklist.uncheckItem(task.text) : t.testChecklist.checkItem(task.text)} data-tip={task.done ? t.testChecklist.uncheckTip : t.testChecklist.checkTip} onClick={() => flip(task.line, task.text, !task.done)}><span className="pg-mark">{task.done && <CheckMark />}</span></button>
             <button type="button" className="pg-rowmain" disabled={!task.criteria.length} aria-expanded={task.criteria.length ? isOpen : undefined} onClick={() => setToggled({ ...toggled, [task.key]: !isOpen })}>
               <span className="pg-text"><InlineMarkdown text={task.text} /></span>{by(task.text, task.done)}
               {task.criteria.length > 0 && <span className="pg-meta">{met}/{task.criteria.length}<span className="chev" aria-hidden="true">›</span></span>}
             </button>
           </div> : <button type="button" className="pg-row" disabled={!task.criteria.length} aria-expanded={task.criteria.length ? isOpen : undefined} onClick={() => setToggled({ ...toggled, [task.key]: !isOpen })}>
-            <span className="pg-mark" aria-label={task.done ? 'Concluída' : started ? 'Em andamento' : 'A fazer'}>{task.done && <CheckMark />}</span>
+            <span className="pg-mark" aria-label={task.done ? t.progress.completed : started ? t.progress.inProgress : t.progress.toDo}>{task.done && <CheckMark />}</span>
             <span className="pg-text"><InlineMarkdown text={task.text} /></span>
             {task.criteria.length > 0 && <span className="pg-meta">{met}/{task.criteria.length}<span className="chev" aria-hidden="true">›</span></span>}
           </button>}
-          {isOpen && <ul className="pg-criteria">{task.criteria.map((item, position) => <li key={position} className={`pg-crit ${item.done ? 'done' : ''}`}>{interactive ? <button type="button" className="pg-mark sm btn" role="checkbox" aria-checked={item.done} aria-label={`${item.done ? 'Desmarcar' : 'Marcar'}: ${item.text}`} title={item.done ? 'Desmarcar este item' : 'Marcar este item como verificado'} onClick={() => flip(item.line, item.text, !item.done)}>{item.done && <CheckMark />}</button> : <span className="pg-mark sm">{item.done && <CheckMark />}</span>}<span className="pg-text"><InlineMarkdown text={item.text} /></span>{by(item.text, item.done)}</li>)}</ul>}
+          {isOpen && <ul className="pg-criteria">{task.criteria.map((item, position) => <li key={position} className={`pg-crit ${item.done ? 'done' : ''}`}>{interactive ? <button type="button" className="pg-mark sm btn" role="checkbox" aria-checked={item.done} aria-label={item.done ? t.testChecklist.uncheckItem(item.text) : t.testChecklist.checkItem(item.text)} data-tip={item.done ? t.testChecklist.uncheckTip : t.testChecklist.checkTip} onClick={() => flip(item.line, item.text, !item.done)}>{item.done && <CheckMark />}</button> : <span className="pg-mark sm">{item.done && <CheckMark />}</span>}<span className="pg-text"><InlineMarkdown text={item.text} /></span>{by(item.text, item.done)}</li>)}</ul>}
         </div>
       </React.Fragment>
-    }) : <p className="hint">O testador monta aqui o checklist do que vai verificar e marca cada item conforme termina.</p>}{problem && <p className="hint err" role="alert">{problem}</p>}</div>}
+    }) : <p className="hint">{t.progress.testerHint}</p>}{problem && <p className="hint err" role="alert">{problem}</p>}</div>}
   </aside>
 }

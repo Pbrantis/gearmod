@@ -17,7 +17,7 @@ export function placementBounds(area: Bounds, placement: WindowPlacement): Bound
 /** A outra metade, para a janela que abriu poder dividir a tela com a nova. */
 export const oppositePlacement = (placement: WindowPlacement): WindowPlacement | null => placement === 'left' ? 'right' : placement === 'right' ? 'left' : placement === 'top' ? 'bottom' : placement === 'bottom' ? 'top' : null
 
-export interface PopoutTarget { kind: 'board' | 'chats' | 'git' | 'chat' | 'files' | 'file' | 'terminal'; projectId: string; cardId?: string | undefined; chatId?: string | undefined; terminalId?: string | undefined; path?: string | undefined; paths?: string[] | undefined; purpose?: string | undefined }
+export interface PopoutTarget { kind: 'board' | 'chats' | 'git' | 'db' | 'chat' | 'files' | 'file' | 'terminal'; projectId: string; cardId?: string | undefined; chatId?: string | undefined; terminalId?: string | undefined; path?: string | undefined; paths?: string[] | undefined; purpose?: string | undefined }
 
 /** Parâmetros que o renderer lê (`?pop=chat&project=…`) para montar só aquela parte do app. */
 export function popoutQuery(target: PopoutTarget): Record<string, string> {

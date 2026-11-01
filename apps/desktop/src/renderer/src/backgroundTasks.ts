@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { toast } from './toasts'
+import { tr } from './i18n'
 
 /** Um processo demorado (instalação, revisão de skill…) que continua rodando mesmo com o diálogo fechado. */
 export interface BgTask { id: string; key: string; title: string; detail: string; state: 'running' | 'done' | 'failed'; startedAt: number; endedAt?: number; error?: string }
@@ -28,7 +29,7 @@ export const tasks = {
     const task = state.find((item) => item.id === id)
     patch(id, error === undefined ? { state: 'done', endedAt: Date.now() } : { state: 'failed', endedAt: Date.now(), error: text(error) })
     if (task?.state !== 'running') return
-    if (error === undefined) toast.success(`${task.title} concluído`, task.detail || undefined); else toast.error(`${task.title} falhou`, text(error))
+    if (error === undefined) toast.success(tr().shell.tasks.completed(task.title), task.detail || undefined); else toast.error(tr().shell.tasks.failedTitle(task.title), text(error))
   },
   /** Roda a operação acompanhando-a; o resultado (ou o erro) continua chegando a quem chamou. */
   track<T>(meta: { key?: string; title: string; detail?: string }, run: () => Promise<T>): { id: string; promise: Promise<T> } {
@@ -45,9 +46,9 @@ if (typeof window !== 'undefined' && window.agentboard) {
   const reviews = new Map<string, string>()
   window.agentboard.onRunEvent((event) => {
     const name = String(event.payload.name ?? '')
-    if (event.eventType === 'skills/review-started') reviews.set(name, tasks.begin({ key: `skill-review:${name}`, title: `Revisar a skill ${name}`, detail: 'Um agente confere se a conversão ficou completa' }))
+    if (event.eventType === 'skills/review-started') reviews.set(name, tasks.begin({ key: `skill-review:${name}`, title: tr().shell.tasks.reviewSkill(name), detail: tr().shell.tasks.reviewSkillDetail }))
     else if (event.eventType === 'skills/review-finished' && reviews.has(name)) { tasks.end(reviews.get(name)!); reviews.delete(name) }
-    else if (event.eventType === 'skills/review-failed' && reviews.has(name)) { tasks.end(reviews.get(name)!, event.payload.error ?? 'A revisão falhou'); reviews.delete(name) }
+    else if (event.eventType === 'skills/review-failed' && reviews.has(name)) { tasks.end(reviews.get(name)!, event.payload.error ?? tr().shell.tasks.reviewFailed); reviews.delete(name) }
   })
 }
 

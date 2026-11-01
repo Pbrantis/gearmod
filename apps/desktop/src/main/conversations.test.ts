@@ -23,6 +23,8 @@ describe('ConversationRepository', () => {
     const chat = repo.createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profile.id })
     expect(repo.addMessage({ chatId: chat.id, role: 'user', body: 'Execute', status: 'complete' }).body).toBe('Execute')
     const run = repo.createRun({ cardId: card.id, chatId: chat.id, profileId: profile.id })
+    repo.recordRunMeta(run.id, { purpose: 'execution', provider: profile.provider, model: 'configurado', effort: null, promptChars: 10 })
+    repo.recordEffectiveModel(run.id, 'efetivo')
     expect(repo.appendEvent(run.id, 'started', { safe: true }).seq).toBe(0)
     expect(repo.appendEvent(run.id, 'delta', { text: 'ok' }).seq).toBe(1)
     expect(database.db.prepare('SELECT COUNT(*) AS value FROM run_events WHERE run_id = ?').get(run.id)).toEqual({ value: 2 })
@@ -31,6 +33,7 @@ describe('ConversationRepository', () => {
     const versions = repo.listPlans(card.id); expect(repo.approvePlan(versions[0]!.id).status).toBe('approved')
     expect(repo.reconcileInterrupted()).toBe(1)
     expect(database.db.prepare('SELECT status FROM runs WHERE id = ?').get(run.id)).toEqual({ status: 'interrupted' })
+    expect(repo.runMetrics(card.id)[0]).toMatchObject({ model: 'configurado', modelEffective: 'efetivo' })
     database.close()
   })
 

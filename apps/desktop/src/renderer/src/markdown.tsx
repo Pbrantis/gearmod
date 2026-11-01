@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { terminal, useTerminal } from './terminalStore'
 import { resolveRelative } from './editor/markdownPaths'
 import { highlightCode, type Piece } from './editor/highlightCode'
+import { toast } from './toasts'
+import { plainError } from './NoticeDialog'
+import { useT } from './i18n'
 
 /** Renderizador Markdown mínimo e seguro (sem HTML cru). Devolve só os blocos: quem chama põe dentro de um `.md`. Checklists no formato do protótipo (`ul.tasks > li.tk`). */
 interface Item { indent: number; ordered: boolean; checked: boolean | null; text: string; line: number; children: Item[] }
@@ -17,17 +20,17 @@ const shellLangs = /^(bash|sh|shell|zsh|powershell|pwsh|ps1|ps|cmd|bat|console|t
 
 /** Bloco de código do chat; os de shell (ou sem linguagem) ganham ▶ para rodar no terminal do app, e todos ganham copiar. */
 function CodeBlock({ code, lang, runnable: allowRun = true }: { code: string; lang: string; runnable?: boolean }): React.JSX.Element {
-  const { context } = useTerminal(), [copied, setCopied] = useState(false), [pieces, setPieces] = useState<Piece[]>([]), [seen, setSeen] = useState(false), box = useRef<HTMLDivElement>(null)
+  const t = useT(), { context } = useTerminal(), [copied, setCopied] = useState(false), [pieces, setPieces] = useState<Piece[]>([]), [seen, setSeen] = useState(false), box = useRef<HTMLDivElement>(null)
   // Só colore o que chega perto da tela: uma conversa longa tem dezenas de blocos e a rolagem não pode travar.
   useEffect(() => { const element = box.current; if (!element || seen) return; if (typeof IntersectionObserver === 'undefined') { setSeen(true); return } const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { setSeen(true); observer.disconnect() } }, { rootMargin: '300px' }); observer.observe(element); return () => observer.disconnect() }, [seen])
   useEffect(() => { if (!seen) return; let alive = true; void highlightCode(code, lang).then((result) => { if (alive) setPieces(result) }).catch(() => undefined); return () => { alive = false } }, [seen, code, lang])
   const runnable = allowRun && Boolean(context) && (!lang || shellLangs.test(lang)) && code.trim().length > 0 && code.length < 4000
   const command = code.split('\n').map((line) => line.replace(/^\s*(\$|PS [^>]*>|>)\s+/, '')).join('\n')
-  const copy = (): void => { void navigator.clipboard.writeText(code).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1400) }).catch(() => undefined) }
+  const copy = (): void => { void navigator.clipboard.writeText(code).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1400) }).catch((reason: unknown) => toast.error(t.shell.markdown.couldNotCopy, plainError(reason))) }
   return <div className="codeblock" ref={box}><pre><code>{pieces.length ? pieces.map((piece, index) => piece.cls ? <span key={index} className={piece.cls}>{piece.text}</span> : piece.text) : code}</code></pre>
     <div className="cb-tools">
-      {runnable && <button type="button" className="cb-btn tip" data-tip="Executar no terminal" aria-label="Executar no terminal" onClick={() => void terminal.run(command)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z" /></svg></button>}
-      <button type="button" className="cb-btn tip" data-tip={copied ? 'Copiado' : 'Copiar'} aria-label="Copiar" onClick={copy}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="9" rx="2" /><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" /></svg></button>
+      {runnable && <button type="button" className="cb-btn tip" data-tip={t.shell.markdown.runInTerminal} aria-label={t.shell.markdown.runInTerminal} onClick={() => void terminal.run(command)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l10 6-10 6z" /></svg></button>}
+      <button type="button" className="cb-btn tip" data-tip={copied ? t.shell.markdown.copied : t.shell.markdown.copy} aria-label={t.shell.markdown.copy} onClick={copy}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="9" rx="2" /><path d="M13 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" /></svg></button>
     </div></div>
 }
 
@@ -50,7 +53,7 @@ function MdImage({ alt, src }: { alt: string; src: string }): React.JSX.Element 
     return () => { alive = false }
   }, [src, base?.path, base?.projectId, base?.cardId])
   if (url && !failed) return <img className="mdimg" src={url} alt={alt} loading="lazy" onError={() => setFailed(true)} />
-  return <span className="mdLink" title={src}>{alt || src}</span>
+  return <span className="mdLink" data-tip={src}>{alt || src}</span>
 }
 
 function isFileLink(target: string): boolean {
@@ -63,12 +66,12 @@ function isFileLink(target: string): boolean {
 const isFileCode = (text: string): boolean => /^[\w@.~/\\:-]+$/.test(text) && codeExtensions.test(withoutLine(text))
 
 function FileRef({ target, children, code }: { target: string; children: React.ReactNode; code?: boolean }): React.JSX.Element {
-  const open = React.useContext(FileOpenContext), files = React.useContext(MarkdownFiles), resolved = files?.paths.get(target)
-  if (resolved && files) return <button type="button" className={`mdFile ${code ? 'code' : ''}`} title={`${resolved.directory ? 'Mostrar pasta' : 'Abrir arquivo'}: ${resolved.path}`} onClick={(event) => { event.stopPropagation(); files.open(target) }} onDoubleClick={(event) => event.stopPropagation()}>{children}</button>
+  const t = useT(), open = React.useContext(FileOpenContext), files = React.useContext(MarkdownFiles), resolved = files?.paths.get(target)
+  if (resolved && files) return <button type="button" className={`mdFile ${code ? 'code' : ''}`} data-tip={resolved.directory ? t.shell.markdown.showFolder(resolved.path) : t.shell.markdown.openFile(resolved.path)} onClick={(event) => { event.stopPropagation(); files.open(target) }} onDoubleClick={(event) => event.stopPropagation()}>{children}</button>
   const ok = !files && open && (code ? isFileCode(target) : isFileLink(target))
-  if (!ok && !code && /^(https?:\/\/|mailto:)/i.test(target)) return <a className="mdLink ext" href={target} title={target} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void window.agentboard.invoke('app:open-link', { url: target }).catch(() => undefined) }}>{children}</a>
-  if (!ok) return code ? <code>{children}</code> : <span className="mdLink" title={target}>{children}</span>
-  return <button type="button" className={`mdFile ${code ? 'code' : ''}`} title={`Abrir ${target}`} onClick={() => open(target.replace(/^file:\/\/\/?/i, '').replace(/^\/([A-Za-z]:)/, '$1'))}>{children}</button>
+  if (!ok && !code && /^(https?:\/\/|mailto:)/i.test(target)) return <a className="mdLink ext" href={target} data-tip={target} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void window.agentboard.invoke('app:open-link', { url: target }).catch((reason: unknown) => toast.error(t.shell.markdown.couldNotOpenLink, plainError(reason))) }}>{children}</a>
+  if (!ok) return code ? <code>{children}</code> : <span className="mdLink" data-tip={target}>{children}</span>
+  return <button type="button" className={`mdFile ${code ? 'code' : ''}`} data-tip={t.shell.markdown.open(target)} onClick={() => open(target.replace(/^file:\/\/\/?/i, '').replace(/^\/([A-Za-z]:)/, '$1'))}>{children}</button>
 }
 
 function inline(text: string, key: string): React.ReactNode[] {
@@ -114,7 +117,7 @@ function buildTree(lines: Array<{ match: RegExpExecArray; line: number }>): Item
 }
 
 export function Markdown({ source, onToggle, base, runnable = true, onOpenReference }: { source: string; onToggle?(line: number, checked: boolean): void; base?: MarkdownBaseInfo; runnable?: boolean; onOpenReference?(): void }): React.JSX.Element {
-  const inherited = React.useContext(MarkdownBase)
+  const t = useT(), inherited = React.useContext(MarkdownBase)
   const context = base ?? inherited, [paths, setPaths] = useState<Map<string, { path: string; directory: boolean }>>(new Map())
   useEffect(() => {
     if (!context) { setPaths(new Map()); return }
@@ -172,5 +175,5 @@ export function Markdown({ source, onToggle, base, runnable = true, onOpenRefere
     blocks.push(<p key={`b${start}`}>{inline(body.join(' '), `b${start}`)}</p>)
   }
   const files = context ? { paths, open: (target: string): void => { const item = paths.get(target); if (!item) return; onOpenReference?.(); const suffix = /(?::\d+(?::\d+)?|#L?\d+(?:-L?\d+)?)$/.exec(target)?.[0] ?? ''; const line = suffix.startsWith('#') ? `:${suffix.match(/\d+/)?.[0]}` : suffix; window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path: item.path + (item.directory ? '' : line), directory: item.directory } })) } } : null
-  return <MarkdownBase.Provider value={context}><MarkdownFiles.Provider value={files}>{blocks.length ? blocks : <p className="mdEmpty">Nada escrito ainda.</p>}</MarkdownFiles.Provider></MarkdownBase.Provider>
+  return <MarkdownBase.Provider value={context}><MarkdownFiles.Provider value={files}>{blocks.length ? blocks : <p className="mdEmpty">{t.shell.markdown.nothingWritten}</p>}</MarkdownFiles.Provider></MarkdownBase.Provider>
 }

@@ -45,23 +45,73 @@ export const discoveryBriefSchema = z.object({
 /** Exploração do código guardada em cache: vale enquanto a versão (HEAD) dos repositórios não mudar. */
 export const explorationSchema = z.object({ summary: z.string(), modules: z.array(z.string()), repositories: z.array(z.string()), evidence: z.array(evidenceSchema), codeVersions: z.record(z.string(), z.string()), stale: z.boolean(), createdAt: isoDate })
 export const cardComplexitySchema = z.object({ total: z.number().int(), level: complexityLevelSchema, confidence: confidenceSchema, preliminary: z.boolean(), recommended: workflowKindSchema, workflow: workflowKindSchema.nullable(), delta: z.number().int().nullable(), version: z.number().int(), createdAt: isoDate })
-export const historyEventTypes = ['assessment.created', 'assessment.revised', 'assessment.contested', 'evidence.recorded', 'user.decision', 'agent.decision', 'decision.superseded', 'workflow.selected', 'discovery.recorded', 'exploration.recorded', 'artifact.updated', 'execution.started', 'execution.completed', 'handoff.completed', 'verification.completed', 'harness.alert'] as const
+export const historyEventTypes = ['assessment.created', 'assessment.revised', 'assessment.contested', 'evidence.recorded', 'user.decision', 'agent.decision', 'decision.superseded', 'workflow.selected', 'workflow.method-recommended', 'discovery.recorded', 'exploration.recorded', 'artifact.updated', 'execution.started', 'execution.completed', 'handoff.completed', 'verification.completed', 'harness.alert', 'policy.decided', 'approval.requested', 'approval.approved', 'approval.denied', 'approval.consumed'] as const
 export const historyEventSchema = z.object({ id: uuid, v: z.literal(1), type: z.enum(historyEventTypes), at: isoDate, cardId: uuid, projectId: uuid, source: z.object({ actor: z.enum(['agent', 'user', 'system']), profileId: z.string().nullable().optional(), runId: z.string().nullable().optional(), chatId: z.string().nullable().optional() }), refs: z.array(z.string()), payload: z.record(z.string(), z.unknown()) })
 /**
  * Limites da execução (Harness). Nulo = sem limite. `maxAttempts`: falhas seguidas com o mesmo erro antes de parar as retomadas
  * automáticas; `scopeCheck`: avisar quando o agente altera arquivos fora das áreas citadas no Plano.
  */
-export const harnessConfigSchema = z.object({ timeoutMinutes: z.number().int().min(1).max(24 * 60).nullable(), maxTokens: z.number().int().min(1000).nullable(), maxCostUsd: z.number().min(0.01).nullable(), maxAttempts: z.number().int().min(1).max(20), scopeCheck: z.boolean() }).strict()
-export const defaultHarnessConfig: HarnessConfig = { timeoutMinutes: null, maxTokens: null, maxCostUsd: null, maxAttempts: 3, scopeCheck: true }
+/** `includeEquivalentCost`: por padrão `maxCostUsd` soma só custo faturado (`cost_kind='billed'`); ligar inclui também o equivalente estimado de planos por assinatura. */
+export const harnessConfigSchema = z.object({ timeoutMinutes: z.number().int().min(1).max(24 * 60).nullable(), maxTokens: z.number().int().min(1000).nullable(), maxCostUsd: z.number().min(0.01).nullable(), includeEquivalentCost: z.boolean().default(false), maxAttempts: z.number().int().min(1).max(20), scopeCheck: z.boolean() }).strict()
+export const defaultHarnessConfig: HarnessConfig = { timeoutMinutes: null, maxTokens: null, maxCostUsd: null, includeEquivalentCost: false, maxAttempts: 3, scopeCheck: true }
 export type HarnessConfig = z.output<typeof harnessConfigSchema>
+/** S11 — `PolicyEngine` mínimo: regra por ação (a primeira que casar decide); sem regra para a ação, fica `ask` (nada muda sozinho). */
+export const policyActionSchema = z.enum(['commit', 'move', 'choose-workflow'])
+export const policyDecisionSchema = z.enum(['allow', 'ask', 'deny'])
+export const policyRuleSchema = z.object({ action: policyActionSchema, decision: policyDecisionSchema }).strict()
+export const policyConfigSchema = z.object({ rules: z.array(policyRuleSchema).max(50) }).strict().default({ rules: [] })
+export const defaultPolicyConfig: PolicyConfig = { rules: [] }
+export type PolicyAction = z.output<typeof policyActionSchema>
+export type PolicyDecision = z.output<typeof policyDecisionSchema>
+export type PolicyRule = z.output<typeof policyRuleSchema>
+export type PolicyConfig = z.output<typeof policyConfigSchema>
+
+/**
+ * G01 (`02` §4.1) — localização do SDD file-first: só onde está, nunca o conteúdo (isso é SQLite ainda, read-only no legado
+ * depois do G14). Convive com os campos antigos (`sddPath`, `customManifest`, `complexMethod` com `openspec`/`custom`): a
+ * leitura normaliza os antigos para este formato (`normalizeLegacySdd`); a escrita só grava neste formato.
+ */
+export const sddConfigSchema = z.object({
+  method: z.enum(['native', 'speckit']),
+  sourceId: z.string().uuid().nullable(),
+  root: z.string().max(512),
+  constitution: z.object({ native: z.string().max(512), speckit: z.string().max(512) }).strict(),
+  featuresDir: z.string().max(512)
+}).strict()
+export const defaultSddConfig: SddConfig = { method: 'native', sourceId: null, root: '', constitution: { native: '.agentboard/constitution.md', speckit: '.specify/memory/constitution.md' }, featuresDir: 'specs' }
+export type SddConfig = z.output<typeof sddConfigSchema>
+
 export const workflowConfigSchema = z.object({
   weights: dimensionWeightsSchema, limits: z.object({ simpleMax: z.number().int().min(0).max(100), mediumMax: z.number().int().min(0).max(100) }).strict().refine((value) => value.simpleMax < value.mediumMax, 'O limite de simples precisa ser menor que o de média'),
   complexMethod: sddMethodSchema, sddPath: z.string().trim().max(2048).nullable(), artifactsDir: z.string().trim().max(2048).nullable(), customManifest: z.string().trim().max(2048).nullable(),
-  harness: harnessConfigSchema, playwrightCli: z.boolean()
+  harness: harnessConfigSchema, playwrightCli: z.boolean(), policy: policyConfigSchema, exportUsage: z.boolean().default(false),
+  sdd: sddConfigSchema.default(defaultSddConfig),
+  /** Só preenchido na leitura, quando `complexMethod` guardado era `openspec`/`custom` (não existem mais na escrita). */
+  legacyMethod: z.enum(['openspec', 'custom']).nullable().default(null)
 }).strict()
-export const defaultWorkflowConfig: WorkflowConfig = { weights: defaultComplexityWeights, limits: defaultComplexityLimits, complexMethod: 'native', sddPath: null, artifactsDir: null, customManifest: null, harness: defaultHarnessConfig, playwrightCli: false }
+export const defaultWorkflowConfig: WorkflowConfig = { weights: defaultComplexityWeights, limits: defaultComplexityLimits, complexMethod: 'native', sddPath: null, artifactsDir: null, customManifest: null, harness: defaultHarnessConfig, playwrightCli: false, policy: defaultPolicyConfig, exportUsage: false, sdd: defaultSddConfig, legacyMethod: null }
+
+/**
+ * G01: normaliza um `workflow_config` cru (JSON já parseado, de antes do `sdd`) para o formato novo, antes do
+ * `workflowConfigSchema.safeParse`. Nunca lança; `sddPath`/`customManifest` continuam no retorno (ainda lidos pelo
+ * resto do app até G06/G09 migrarem), só o `sdd`/`legacyMethod` são acrescentados quando ainda não existem.
+ */
+export function normalizeLegacySdd(raw: Record<string, unknown>): Record<string, unknown> {
+  if (raw.sdd && typeof raw.sdd === 'object') return raw
+  const legacyMethods = ['openspec', 'custom'] as const
+  const storedMethod = raw.complexMethod
+  const isLegacy = typeof storedMethod === 'string' && (legacyMethods as readonly string[]).includes(storedMethod)
+  const method = storedMethod === 'speckit' ? 'speckit' : 'native'
+  const speckitPath = typeof raw.sddPath === 'string' && raw.sddPath.trim() ? raw.sddPath.trim() : defaultSddConfig.constitution.speckit
+  return {
+    ...raw,
+    sdd: { ...defaultSddConfig, method, constitution: { ...defaultSddConfig.constitution, speckit: speckitPath } },
+    legacyMethod: isLegacy ? storedMethod : null
+  }
+}
 export const sddDetectionSchema = z.object({ method: z.enum(['speckit', 'openspec']), path: z.string(), repository: z.string().nullable(), commands: z.array(z.string()) })
-export const cardHistorySchema = z.object({ assessments: z.array(assessmentSchema), decisions: z.array(decisionSchema), discovery: discoveryBriefSchema.nullable(), exploration: explorationSchema.nullable(), workflow: workflowKindSchema.nullable(), artifactsDir: z.string(), events: z.array(historyEventSchema) })
+export const cardSddMethodSchema = z.enum(['native', 'speckit'])
+export const cardHistorySchema = z.object({ assessments: z.array(assessmentSchema), decisions: z.array(decisionSchema), discovery: discoveryBriefSchema.nullable(), exploration: explorationSchema.nullable(), workflow: workflowKindSchema.nullable(), sddMethod: cardSddMethodSchema.nullable().default(null), recommendedSddMethod: cardSddMethodSchema.nullable().default(null), sddMethodReason: z.string().default(''), artifactsDir: z.string(), events: z.array(historyEventSchema) })
 export const contestAssessmentInputSchema = z.object({ cardId: uuid, scores: dimensionScoresSchema, reason: z.string().trim().min(1).max(4000) }).strict()
 
 export type ComplexityDimension = (typeof complexityDimensions)[number]

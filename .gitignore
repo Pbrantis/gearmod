@@ -14,3 +14,6 @@ coverage/
 /exe/
 /apps/desktop/teste/
 /apps/desktop/dist - Copia/
+
+# Dados temporários do Postgres de teste
+/.tmp-agentboard-pg/

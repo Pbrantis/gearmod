@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -28,7 +29,9 @@ describe('validated IPC', () => {
     const projectId = '123e4567-e89b-42d3-a456-426614174000'
     const chooseDirectory = vi.fn(async () => null)
     const projects = { get: vi.fn(() => ({ localPath: root })) } as never
-    registerIpc(ipc, { database, notes, settings: new SettingsRepository(database), backups: new BackupService(root, '0.1.0'), profiles: unavailable, gitManager: unavailable, projects, board: unavailable, git: unavailable, agentProbes: unavailable, conversations: unavailable, orchestrator: unavailable, worktrees: unavailable, quality: unavailable, executions: unavailable, agentConfigs: unavailable, skills: unavailable, constitution: unavailable, checklists: unavailable, voice: unavailable, usage: unavailable, collab: unavailable, history: unavailable, playwright: unavailable, fileWatch: unavailable, specTools: unavailable, toolUpdates: unavailable, openPath: async () => undefined, terminals: unavailable, openWindow: () => undefined, placeWindow: () => undefined, openExternal: async () => undefined, chooseSkillSource: async () => null, chooseDirectory, chooseFiles: async () => [], appVersion: '0.1.0', dataDir: root, reopen: async () => { await database.open() } })
+    const artifactDir = join(root, 'card-123e4567'), deleteCard = vi.fn(() => true), trashItem = vi.fn(async (_path: string) => undefined)
+    const board = { card: vi.fn(), delete: deleteCard } as never, history = { artifactsDir: () => artifactDir } as never
+    registerIpc(ipc, { database, notes, settings: new SettingsRepository(database), backups: new BackupService(root, '0.1.0'), profiles: unavailable, gitManager: unavailable, pullRequests: unavailable, projects, board, git: unavailable, agentProbes: unavailable, conversations: unavailable, orchestrator: unavailable, worktrees: unavailable, quality: unavailable, executions: unavailable, agentConfigs: unavailable, skills: unavailable, constitution: unavailable, checklists: unavailable, voice: unavailable, usage: unavailable, collab: unavailable, history, playwright: unavailable, fileWatch: unavailable, specTools: unavailable, speckit: unavailable, mcp: unavailable, toolUpdates: unavailable, approvals: unavailable, sddResolver: unavailable, sddWriter: unavailable, openPath: async () => undefined, trashItem, terminals: unavailable, openWindow: () => undefined, placeWindow: () => undefined, openExternal: async () => undefined, chooseSkillSource: async () => null, saveTextFile: async () => ({ saved: false, path: null }), chooseDirectory, chooseFiles: async () => [], appVersion: '0.1.0', dataDir: root, reopen: async () => { await database.open() } })
     await ipc.invoke('projects:choose-directory', { projectId })
     expect(chooseDirectory).toHaveBeenLastCalledWith(root)
     await ipc.invoke('projects:choose-directory')
@@ -37,6 +40,14 @@ describe('validated IPC', () => {
     expect(created.body).toBe('nota válida')
     await expect(ipc.invoke('notes:create', { body: '', unexpected: true })).rejects.toThrow()
     await expect(ipc.invoke('notes:delete', { id: '../../db.sqlite' })).rejects.toThrow()
+    mkdirSync(artifactDir); writeFileSync(join(artifactDir, 'history.jsonl'), 'histórico')
+    await ipc.invoke('cards:delete', { cardId: projectId })
+    expect(trashItem).not.toHaveBeenCalled()
+    await ipc.invoke('cards:delete', { cardId: projectId, deleteArtifacts: true })
+    expect(trashItem).toHaveBeenCalledWith(artifactDir)
+    trashItem.mockRejectedValueOnce(new Error('Lixeira indisponível'))
+    await expect(ipc.invoke('cards:delete', { cardId: projectId, deleteArtifacts: true })).rejects.toThrow('Lixeira indisponível')
+    expect(deleteCard).toHaveBeenCalledTimes(2)
     database.close()
   })
 })

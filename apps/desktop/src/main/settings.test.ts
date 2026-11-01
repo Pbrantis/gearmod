@@ -45,8 +45,8 @@ describe('agent color', () => {
   it('uses a provider default, accepts a custom color and keeps it on update', async () => {
     const { root, database } = await open()
     const profiles = new ProfileRepository(database, root)
-    const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'Pessoal', useExistingSession: false })
-    const codex = profiles.create({ provider: 'codex', label: 'Codex', scope: 'Pessoal', useExistingSession: false, color: '#9ccf6f' })
+    const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'Pessoal' })
+    const codex = profiles.create({ provider: 'codex', label: 'Codex', scope: 'Pessoal', color: '#9ccf6f' })
     expect(claude.color).toBe('#D97757'); expect(codex.color).toBe('#9ccf6f')
     expect(profiles.update({ profileId: codex.id, label: 'Codex 2', scope: 'Pessoal' }).color).toBe('#9ccf6f')
     expect(profiles.update({ profileId: codex.id, label: 'Codex 2', scope: 'Pessoal', color: '#e07a9a' }).color).toBe('#e07a9a')

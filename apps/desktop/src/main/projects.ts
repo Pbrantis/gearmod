@@ -9,8 +9,17 @@ import type { AppDatabase } from './database'
 import { DocumentRepository } from './documents'
 import { countTasks } from './tasks'
 import type Database from 'better-sqlite3'
+import { tm } from './i18n'
+import { projectCardTypes, setProjectCardTypes } from './card-types'
 
 const execFileAsync = promisify(execFile)
+/** `env_passthrough` vem do SQLite como JSON; nunca quebra a listagem por um valor corrompido. */
+function parseEnvPassthrough(row: Record<string, unknown>): Record<string, unknown> {
+  const { envPassthroughRaw, ...rest } = row
+  let envPassthrough: string[] = []
+  try { const parsed = JSON.parse(String(envPassthroughRaw ?? '[]')); if (Array.isArray(parsed)) envPassthrough = parsed.filter((item): item is string => typeof item === 'string') } catch { /* lista vazia */ }
+  return { ...rest, envPassthrough }
+}
 const defaultColumns = [
   ['Backlog', 'backlog'], ['To do', 'todo'], ['Doing', 'doing'], ['Test', 'test'], ['Done', 'done']
 ] as const
@@ -30,7 +39,7 @@ export class GitService {
 
   async inspect(localPath: string): Promise<{ localPath: string; name: string; repositories: Array<{ localPath: string; name: string; currentBranch: string; branches: string[] }> }> {
     const folder = await stat(localPath).catch(() => undefined)
-    if (!folder?.isDirectory()) throw new Error('A pasta do projeto não existe')
+    if (!folder?.isDirectory()) throw new Error(tm().projects.projectFolderMissing)
     const root = resolve(localPath)
     const direct = await this.repository(root)
     if (direct) return { localPath: root, name: basename(root), repositories: [direct] }
@@ -54,17 +63,17 @@ export class GitService {
 
   async branches(localPath: string): Promise<string[]> {
     const folder = await stat(localPath).catch(() => undefined)
-    if (!folder?.isDirectory()) throw new Error('A pasta do projeto não existe')
+    if (!folder?.isDirectory()) throw new Error(tm().projects.projectFolderMissing)
     try {
       const { stdout } = await execFileAsync('git', ['-C', localPath, 'for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes'])
       const branches = stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean).map((item) => item.replace(/^origin\//, ''))
       return [...new Set(branches)].sort()
-    } catch { throw new Error('A pasta selecionada não é um repositório Git acessível') }
+    } catch { throw new Error(tm().projects.folderNotGitRepo) }
   }
 
   async validate(localPath: string, baseBranch: string): Promise<void> {
     const branches = await this.branches(localPath)
-    if (!branches.includes(baseBranch)) throw new Error(`A branch base “${baseBranch}” não existe no repositório`)
+    if (!branches.includes(baseBranch)) throw new Error(tm().projects.baseBranchMissing(baseBranch))
   }
 }
 
@@ -75,15 +84,29 @@ export class ProfileRepository {
     this.database.db.prepare('UPDATE agent_profiles SET executable_path = ? WHERE id = ?').run(path, id)
   }
 
-  create(input: { provider: 'codex' | 'claude'; label: string; scope: string; useExistingSession: boolean; color?: string }): AgentProfile {
+  accountKey(id: string): string | null {
+    const row = this.database.db.prepare('SELECT account_key AS accountKey FROM agent_profiles WHERE id = ?').get(id) as { accountKey: string | null } | undefined
+    if (!row) throw new Error(tm().common.profileNotFound)
+    return row.accountKey
+  }
+
+  setAccountKey(id: string, key: string): void {
+    this.database.db.prepare('UPDATE agent_profiles SET account_key = ?, updated_at = ? WHERE id = ? AND account_key IS NULL').run(key, new Date().toISOString(), id)
+  }
+
+  /** Indício de modalidade visto na própria execução (ex.: `apiKeySource` do Claude). Só registra para sugerir na UI; nunca grava `billing_mode` sozinho. */
+  recordBillingHint(id: string, hint: string): void {
+    this.database.db.prepare('UPDATE agent_profiles SET api_key_source_hint = ? WHERE id = ?').run(hint, id)
+  }
+
+  /**
+   * S16 (decisão do usuário, Q-07): todo perfil novo exige login próprio; o app nunca reaproveita uma sessão já logada do
+   * CLI no diretório padrão (`~/.codex`, `~/.claude`). A pasta de configuração é sempre isolada por perfil; sem concluir o
+   * login (`profiles:login` + `profiles:probe` autenticado), o perfil fica inutilizável ("login pendente").
+   */
+  create(input: { provider: 'codex' | 'claude' | 'gemini'; label: string; scope: string; color?: string }): AgentProfile {
     const id = randomUUID()
-    const configDir = input.useExistingSession
-      ? join(this.homeDir, input.provider === 'codex' ? '.codex' : '.claude')
-      : join(this.homeDir, '.agentboard', 'profiles', id)
-    if (input.useExistingSession) {
-      const existing = this.database.db.prepare('SELECT 1 FROM agent_profiles WHERE provider = ? AND config_dir = ?').get(input.provider, configDir)
-      if (existing) throw new Error(`A sessão atual de ${input.provider === 'codex' ? 'Codex' : 'Claude'} já foi adicionada`)
-    }
+    const configDir = join(this.homeDir, '.agentboard', 'profiles', id)
     const now = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO agent_profiles
       (id, provider, label, scope, color, config_dir, executable_path, enabled, created_at, updated_at)
@@ -91,10 +114,10 @@ export class ProfileRepository {
     return this.get(id)
   }
 
-  update(input: { profileId: string; label: string; scope: string; color?: string }): AgentProfile {
+  update(input: { profileId: string; label: string; scope: string; color?: string; billingMode?: AgentProfile['billingMode']; envPassthrough?: string[] }): AgentProfile {
     const current = this.get(input.profileId)
-    this.database.db.prepare('UPDATE agent_profiles SET label = ?, scope = ?, color = ?, updated_at = ? WHERE id = ?')
-      .run(input.label.trim(), input.scope.trim(), input.color ?? current.color, new Date().toISOString(), input.profileId)
+    this.database.db.prepare('UPDATE agent_profiles SET label = ?, scope = ?, color = ?, billing_mode = ?, env_passthrough = ?, updated_at = ? WHERE id = ?')
+      .run(input.label.trim(), input.scope.trim(), input.color ?? current.color, input.billingMode ?? current.billingMode, JSON.stringify(input.envPassthrough ?? current.envPassthrough), new Date().toISOString(), input.profileId)
     return this.get(input.profileId)
   }
 
@@ -105,7 +128,7 @@ export class ProfileRepository {
   delete(id: string): { deleted: boolean; archived: boolean } {
     this.get(id)
     const running = this.database.db.prepare(`SELECT COALESCE(k.title, '') AS title FROM runs r LEFT JOIN cards k ON k.id = r.card_id WHERE r.profile_id = ? AND r.status IN ('queued', 'running')`).all(id) as Array<{ title: string }>
-    if (running.length) throw new Error(`Este agente está executando agora (${running.map((item) => `“${item.title || 'chat livre'}”`).join(', ')}). Pare a execução antes de remover o agente.`)
+    if (running.length) throw new Error(tm().projects.agentRunningNow(running.map((item) => `“${item.title || tm().common.freeChat}”`).join(', ')))
     const references = ['plans', 'chats', 'runs'].some((table) => {
       const column = table === 'plans' ? 'agent_profile_id' : 'profile_id'
       return Boolean(this.database.db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id))
@@ -124,19 +147,19 @@ export class ProfileRepository {
   /** Agentes removidos (desativados) que ainda têm histórico; só para mostrar quem executou. */
   removed(): AgentProfile[] {
     return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
-      executable_path AS executablePath FROM agent_profiles WHERE removed_at IS NOT NULL ORDER BY created_at`).all()
-      .map((row) => ({ ...(row as Omit<AgentProfile, 'enabled'>), enabled: false }))
+      executable_path AS executablePath, billing_mode AS billingMode, api_key_source_hint AS apiKeySourceHint, env_passthrough AS envPassthroughRaw FROM agent_profiles WHERE removed_at IS NOT NULL ORDER BY created_at`).all()
+      .map((row) => ({ ...parseEnvPassthrough(row as Record<string, unknown>), enabled: false } as AgentProfile))
   }
 
   list(): AgentProfile[] {
     return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
-      executable_path AS executablePath, enabled FROM agent_profiles WHERE enabled = 1 AND removed_at IS NULL ORDER BY created_at`).all()
-      .map((row) => ({ ...(row as Omit<AgentProfile, 'enabled'> & { enabled: number }), enabled: Boolean((row as { enabled: number }).enabled) }))
+      executable_path AS executablePath, enabled, billing_mode AS billingMode, api_key_source_hint AS apiKeySourceHint, env_passthrough AS envPassthroughRaw FROM agent_profiles WHERE enabled = 1 AND removed_at IS NULL ORDER BY created_at`).all()
+      .map((row) => ({ ...parseEnvPassthrough(row as Record<string, unknown>), enabled: Boolean((row as { enabled: number }).enabled) } as AgentProfile))
   }
 
   get(id: string): AgentProfile {
     const profile = this.list().find((item) => item.id === id)
-    if (!profile) throw new Error('Perfil não encontrado')
+    if (!profile) throw new Error(tm().common.profileNotFound)
     return profile
   }
 }
@@ -165,7 +188,7 @@ export class ProjectRepository {
 
   list(): Project[] {
     const rows = this.database.db.prepare(`SELECT id, name, icon, local_path AS localPath, base_branch AS baseBranch,
-      remote_provider AS remoteProvider, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY sort_order IS NULL, sort_order, updated_at DESC`).all() as Omit<Project, 'allowedProfileIds' | 'sources' | 'activity'>[]
+      remote_provider AS remoteProvider, created_at AS createdAt, updated_at AS updatedAt FROM projects ORDER BY sort_order IS NULL, sort_order, updated_at DESC`).all() as Omit<Project, 'allowedProfileIds' | 'sources' | 'activity' | 'cardTypes' | 'customCardTypes'>[]
     const allowed = this.database.db.prepare('SELECT profile_id AS profileId FROM project_agent_profiles WHERE project_id = ? AND allowed = 1')
     const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS localPath,
       is_git_repository AS isGitRepository, current_branch AS currentBranch, sort_order AS sortOrder FROM project_sources WHERE project_id = ? ORDER BY sort_order`)
@@ -175,22 +198,30 @@ export class ProjectRepository {
     const finished = this.database.db.prepare(`SELECT COUNT(*) AS n FROM cards k WHERE k.project_id = ? AND k.archived_at IS NULL AND EXISTS (
       SELECT 1 FROM runs r WHERE r.id = (SELECT id FROM runs WHERE card_id = k.id ORDER BY started_at DESC, rowid DESC LIMIT 1)
       AND r.status = 'completed' AND r.ended_at > COALESCE(k.viewed_at, ''))`)
-    return rows.map((row) => ({ ...row,
+    return rows.map((row) => { const types = projectCardTypes(this.database.db, row.id); return { ...row,
+      cardTypes: types.types, customCardTypes: types.custom,
       activity: { running: (running.get(row.id) as { n: number }).n, finished: (finished.get(row.id) as { n: number }).n },
       allowedProfileIds: (allowed.all(row.id) as { profileId: string }[]).map((item) => item.profileId),
       sources: (sources.all(row.id) as Array<Omit<ProjectSource, 'isGitRepository'> & { isGitRepository: number }>).map((item) => ({ ...item, isGitRepository: Boolean(item.isGitRepository) }))
-    }))
+    } })
+  }
+
+  /** Lista própria de tipos de card do projeto; `null` volta a seguir a lista padrão. */
+  setCardTypes(projectId: string, types: Project['cardTypes'] | null): Project {
+    this.get(projectId)
+    setProjectCardTypes(this.database.db, projectId, types)
+    return this.get(projectId)
   }
 
   get(id: string): Project {
     const project = this.list().find((item) => item.id === id)
-    if (!project) throw new Error('Projeto não encontrado')
+    if (!project) throw new Error(tm().common.projectNotFound)
     return project
   }
 
   async create(input: { name?: string; sourcePaths?: string[]; profileIds?: string[]; localPath?: string; baseBranch?: string; icon?: string | null }): Promise<Project> {
     const paths = input.sourcePaths ?? (input.localPath ? [input.localPath] : [])
-    if (!paths.length) throw new Error('Adicione pelo menos uma pasta de origem')
+    if (!paths.length) throw new Error(tm().projects.addAtLeastOneFolder)
     const inspections = await Promise.all(paths.map((path) => this.git.inspect(path)))
     const first = inspections[0]!
     type DiscoveredSource = { localPath: string; name: string; currentBranch: string | null; branches: string[]; isGitRepository: boolean }
@@ -224,8 +255,16 @@ export class ProjectRepository {
     const result = input.icon === undefined
       ? this.database.db.prepare('UPDATE projects SET name = ?, updated_at = ? WHERE id = ?').run(input.name, new Date().toISOString(), input.projectId)
       : this.database.db.prepare('UPDATE projects SET name = ?, icon = ?, updated_at = ? WHERE id = ?').run(input.name, input.icon, new Date().toISOString(), input.projectId)
-    if (!result.changes) throw new Error('Projeto não encontrado')
+    if (!result.changes) throw new Error(tm().common.projectNotFound)
     return this.get(input.projectId)
+  }
+
+  async setBaseBranch(projectId: string, sourceId: string, branch: string): Promise<Project> {
+    const source = this.get(projectId).sources.find((item) => item.id === sourceId && item.isGitRepository)
+    if (!source) throw new Error(tm().projects.gitRepoNotInProject)
+    await this.git.validate(source.localPath, branch)
+    this.database.db.prepare('UPDATE projects SET base_branch = ?, updated_at = ? WHERE id = ?').run(branch, new Date().toISOString(), projectId)
+    return this.get(projectId)
   }
 
   /** Nova ordem da barra lateral (os ids na ordem em que aparecem). Ids que não vierem ficam depois, na ordem que já tinham. */
@@ -242,7 +281,7 @@ export class ProjectRepository {
   delete(projectId: string): boolean {
     this.get(projectId)
     const busy = this.database.db.prepare(`SELECT 1 FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ? AND r.status IN ('queued', 'running') LIMIT 1`).get(projectId)
-    if (busy) throw new Error('Há um agente trabalhando neste projeto. Pare a execução antes de excluir.')
+    if (busy) throw new Error(tm().projects.agentWorkingInProject)
     // `runs.chat_id` e `test_runs.run_id` não apagam em cascata: sai o histórico de execuções dos chats do projeto antes do resto.
     const runs = `SELECT r.id FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ?`
     return this.database.db.transaction(() => {
@@ -255,7 +294,7 @@ export class ProjectRepository {
   setProfiles(projectId: string, profileIds: string[]): Project {
     this.get(projectId)
     const known = new Set((this.database.db.prepare('SELECT id FROM agent_profiles WHERE enabled = 1').all() as { id: string }[]).map((item) => item.id))
-    if (profileIds.some((id) => !known.has(id))) throw new Error('Perfil desconhecido ou desabilitado')
+    if (profileIds.some((id) => !known.has(id))) throw new Error(tm().projects.unknownOrDisabledProfile)
     const update = this.database.db.transaction(() => {
       this.database.db.prepare('DELETE FROM project_agent_profiles WHERE project_id = ?').run(projectId)
       const insert = this.database.db.prepare('INSERT INTO project_agent_profiles(project_id, profile_id, allowed) VALUES (?, ?, 1)')
@@ -271,6 +310,8 @@ export class ProjectRepository {
 const priorityRank = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`
 
 export class BoardRepository {
+  private onDone?: (cardId: string) => void
+  setOnDone(callback: (cardId: string) => void): void { this.onDone = callback }
   readonly documents: DocumentRepository
 
   constructor(private readonly database: AppDatabase, private readonly projects: ProjectRepository) { this.documents = new DocumentRepository(database) }
@@ -286,12 +327,12 @@ export class BoardRepository {
   card(cardId: string): Card {
     const row = this.database.db.prepare(`SELECT id, project_id AS projectId, column_id AS columnId, source_id AS sourceId, type, title, description,
       priority, order_key AS orderKey, created_at AS createdAt, updated_at AS updatedAt, archived_at AS archivedAt
-      FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run' | 'hasPlan' | 'planningOpen' | 'workspace' | 'pending' | 'execProfileId' | 'execModel'> | undefined
-    if (!row) throw new Error('Card não encontrado')
+      , workflow FROM cards WHERE id = ?`).get(cardId) as Omit<Card, 'acceptanceCriteria' | 'tasks' | 'run' | 'hasPlan' | 'planningOpen' | 'workspace' | 'pending' | 'execProfileId' | 'execModel' | 'sddMethod'> | undefined
+    if (!row) throw new Error(tm().common.cardNotFound)
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
       .map((item) => ({ ...item, checked: Boolean(item.checked) }))
-    const tasks = countTasks(this.documents.read(cardId, 'tasks')), run = cardRunState(this.database.db, cardId), hasPlan = Boolean(this.database.db.prepare('SELECT plan_ready_at FROM cards WHERE id = ?').pluck().get(cardId)) || (row.type === 'minor' && Boolean(row.description.trim())) // tarefa pequena não tem plano: basta dizer o que fazer
+    const tasks = countTasks(this.documents.read(cardId, 'tasks')), run = cardRunState(this.database.db, cardId), hasPlan = Boolean(this.database.db.prepare('SELECT plan_ready_at FROM cards WHERE id = ?').pluck().get(cardId)) || (row.workflow === 'light' && Boolean(row.description.trim())) // fluxo curto não tem plano: basta dizer o que fazer
     // Planejamento aberto: começou a planejar (card sem título ou com chat de planejamento) e ainda não saiu nada dele.
     const hasPlanningChat = Boolean(this.database.db.prepare("SELECT 1 FROM chats WHERE card_id = ? AND purpose = 'planning' LIMIT 1").get(cardId))
     const planningOpen = run.state === 'idle' && !hasPlan && tasks.total === 0 && !row.description.trim() && !this.documents.read(cardId, 'especificacao').trim() && (!row.title.trim() || hasPlanningChat)
@@ -301,8 +342,18 @@ export class BoardRepository {
     const agentIds = this.database.db.prepare('SELECT profile_id FROM chats WHERE card_id = ? GROUP BY profile_id ORDER BY MIN(created_at)').pluck().all(cardId) as string[]
     // Quando o card usa a worktree de outro, a tela mostra de quem é (e oferece desvincular).
     const sharedFrom = (this.database.db.prepare('SELECT o.title FROM cards c JOIN cards o ON o.id = c.worktree_card_id WHERE c.id = ?').pluck().get(cardId) as string | undefined) ?? null
-    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace: workspace ? { ...workspace, sharedFrom } : null, pending: this.pendingCounts(cardId), ...this.execSettings(cardId), agentIds, complexity: complexitySummary(this.database.db, cardId), repoIds: this.repoIds(cardId) }
+    return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace: workspace ? { ...workspace, sharedFrom } : null, pending: this.pendingCounts(cardId), ...this.execSettings(cardId), agentIds, complexity: complexitySummary(this.database.db, cardId), repoIds: this.repoIds(cardId), workflow: row.workflow ?? null, sddMethod: this.sddMethod(cardId, row.workflow) }
   }
+
+  /** Método do SDD escolhido junto com o fluxo (último `workflow.selected`); só vale no fluxo `sdd`. */
+  private sddMethod(cardId: string, workflow: Card['workflow']): Card['sddMethod'] {
+    if (workflow !== 'sdd') return null
+    const json = this.database.db.prepare("SELECT json FROM card_events WHERE card_id = ? AND type = 'workflow.selected' ORDER BY created_at DESC, rowid DESC LIMIT 1").pluck().get(cardId) as string | undefined
+    try { const method = json ? (JSON.parse(json) as { payload?: { method?: unknown } }).payload?.method : null; return method === 'native' || method === 'speckit' ? method : null } catch { return null }
+  }
+
+  /** Tipos de card valendo no projeto (os próprios ou a lista padrão). */
+  cardTypes(projectId: string): Project['cardTypes'] { return projectCardTypes(this.database.db, projectId).types }
 
   /** Repositórios em que o card trabalha (nulo = todos os do projeto). */
   repoIds(cardId: string): string[] | null {
@@ -315,7 +366,7 @@ export class BoardRepository {
     const card = this.card(cardId)
     const valid = new Set(this.database.db.prepare('SELECT id FROM project_sources WHERE project_id = ? AND is_git_repository = 1').pluck().all(card.projectId) as string[])
     const unknown = (sourceIds ?? []).filter((id) => !valid.has(id))
-    if (unknown.length) throw new Error('Repositório não pertence a este projeto ou não é Git')
+    if (unknown.length) throw new Error(tm().projects.repoNotInProjectOrNotGit)
     const value = sourceIds?.length ? JSON.stringify([...new Set(sourceIds)]) : null
     this.database.db.prepare('UPDATE cards SET repo_ids = ?, updated_at = ? WHERE id = ?').run(value, new Date().toISOString(), cardId)
     return this.card(cardId)
@@ -334,7 +385,7 @@ export class BoardRepository {
   create(input: { projectId: string; columnId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
     this.assertColumn(input.projectId, input.columnId)
     const sourceId = input.sourceId ?? (this.database.db.prepare('SELECT id FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order LIMIT 1').get(input.projectId) as { id: string } | undefined)?.id ?? null
-    if (sourceId && !this.database.db.prepare('SELECT 1 FROM project_sources WHERE id = ? AND project_id = ?').get(sourceId, input.projectId)) throw new Error('Pasta de origem não pertence ao projeto')
+    if (sourceId && !this.database.db.prepare('SELECT 1 FROM project_sources WHERE id = ? AND project_id = ?').get(sourceId, input.projectId)) throw new Error(tm().projects.sourceNotInProject)
     const id = randomUUID(), now = new Date().toISOString()
     const order = (this.database.db.prepare('SELECT COALESCE(MAX(order_key), 0) + 1024 AS value FROM cards WHERE column_id = ?').get(input.columnId) as { value: number }).value
     const create = this.database.db.transaction(() => {
@@ -356,10 +407,16 @@ export class BoardRepository {
     this.database.db.prepare('UPDATE cards SET base_branch = ? WHERE id = ?').run(branch, cardId)
   }
 
+  /** Spec Kit: o selo "Plano pronto" segue os arquivos reais (spec, plan e tasks da feature do card), nunca o fim de uma resposta. */
+  setSpecKitReady(cardId: string, ready: boolean): void {
+    if (ready) this.database.db.prepare('UPDATE cards SET plan_ready_at = COALESCE(plan_ready_at, ?) WHERE id = ?').run(new Date().toISOString(), cardId)
+    else this.database.db.prepare('UPDATE cards SET plan_ready_at = NULL WHERE id = ? AND plan_ready_at IS NOT NULL').run(cardId)
+  }
+
   /** O planejador só declara o plano concluído com Especificação, Plano e Tasks escritos; devolve o que falta. */
   markPlanReady(cardId: string): string[] {
-    // Tarefa pequena: sem Especificação, Plano e Tasks; basta a descrição do que fazer.
-    if (this.card(cardId).type === 'minor') {
+    // Fluxo curto: sem Especificação, Plano e Tasks; basta a descrição do que fazer.
+    if (this.card(cardId).workflow === 'light') {
       if (!this.documents.read(cardId, 'resumo').trim()) return ['descricao']
       this.database.db.prepare('UPDATE cards SET plan_ready_at = COALESCE(plan_ready_at, ?) WHERE id = ?').run(new Date().toISOString(), cardId)
       return []
@@ -373,7 +430,7 @@ export class BoardRepository {
   update(input: { cardId: string; sourceId?: string | null; type: string; title: string; description: string; priority: string; acceptanceCriteria: { body: string; checked: boolean }[] }): Card {
     const current = this.card(input.cardId)
     const sourceId = input.sourceId === undefined ? current.sourceId : input.sourceId
-    if (sourceId && !this.database.db.prepare('SELECT 1 FROM project_sources WHERE id = ? AND project_id = ?').get(sourceId, current.projectId)) throw new Error('Pasta de origem não pertence ao projeto')
+    if (sourceId && !this.database.db.prepare('SELECT 1 FROM project_sources WHERE id = ? AND project_id = ?').get(sourceId, current.projectId)) throw new Error(tm().projects.sourceNotInProject)
     const update = this.database.db.transaction(() => {
       this.database.db.prepare('UPDATE cards SET source_id = ?, type = ?, title = ?, description = ?, priority = ?, updated_at = ? WHERE id = ?')
         .run(sourceId, input.type, input.title, input.description, input.priority, new Date().toISOString(), input.cardId)
@@ -394,7 +451,7 @@ export class BoardRepository {
     let orderKey: number, priority = current.priority
     if (beforeCardId) {
       const before = this.card(beforeCardId)
-      if (before.columnId !== columnId) throw new Error('Card de referência pertence a outra coluna')
+      if (before.columnId !== columnId) throw new Error(tm().projects.referenceCardOtherColumn)
       priority = before.priority
       const prior = this.database.db.prepare('SELECT MAX(order_key) AS value FROM cards WHERE column_id = ? AND priority = ? AND order_key < ? AND id <> ?').get(columnId, priority, before.orderKey, cardId) as { value: number | null }
       orderKey = prior.value === null ? before.orderKey - 1024 : (prior.value + before.orderKey) / 2
@@ -407,7 +464,9 @@ export class BoardRepository {
       if (current.columnId !== columnId) this.database.db.prepare(`INSERT INTO column_history(id, card_id, from_column_id, to_column_id, changed_at, actor, reason)
         VALUES (?, ?, ?, ?, ?, ?, ?)`).run(randomUUID(), cardId, current.columnId, columnId, now, actor, actor === 'agent' ? 'agent-request' : skipped ? 'kanban-move-skipped-checks' : 'kanban-move')
     })
-    move(); return this.card(cardId)
+    move()
+    if (destination.state === 'done' && current.columnId !== columnId) this.onDone?.(cardId)
+    return this.card(cardId)
   }
 
   archive(cardId: string, restore = false): Card {
@@ -430,7 +489,7 @@ export class BoardRepository {
 
   private assertColumn(projectId: string, columnId: string): void {
     const row = this.database.db.prepare('SELECT 1 FROM board_columns WHERE id = ? AND project_id = ?').get(columnId, projectId)
-    if (!row) throw new Error('Coluna não pertence ao projeto')
+    if (!row) throw new Error(tm().projects.columnNotInProject)
   }
 
   private replaceCriteria(cardId: string, criteria: { body: string; checked: boolean }[]): void {
@@ -445,17 +504,17 @@ export class BoardRepository {
     // Entrega em vários repositórios não é atômica: um repositório que falhou impede declarar o card entregue.
     const failed = this.database.db.prepare(`SELECT m.repo_path FROM worktree_members m JOIN worktrees w ON w.id = m.worktree_id
       WHERE w.card_id = ? AND m.status = 'failed' AND w.id = (SELECT id FROM worktrees x WHERE x.card_id = w.card_id ORDER BY x.created_at DESC LIMIT 1)`).pluck().all(cardId) as string[]
-    if (failed.length) throw new Error(`Done exige todos os repositórios do card prontos; falhou: ${failed.map((path) => basename(path)).join(', ')}`)
+    if (failed.length) throw new Error(tm().projects.doneNeedsAllRepos(failed.map((path) => basename(path)).join(', ')))
     return Boolean(pending)
   }
 
   private pendingChecks(cardId: string): string | null {
     const test = this.database.db.prepare('SELECT status FROM test_runs WHERE card_id = ? ORDER BY started_at DESC LIMIT 1').get(cardId) as { status: string } | undefined
-    if (!test) return 'Para mover para Done, rode “Testes automatizados” no painel Alterações do chat de Teste.'
-    if (test.status === 'running') return 'Os Testes automatizados ainda estão rodando. Aguarde a conclusão antes de mover para Done.'
-    if (test.status !== 'passed') return 'O último Teste automatizado falhou. Rode-o novamente e deixe-o passar antes de mover para Done.'
+    if (!test) return tm().projects.moveToDoneRunTests
+    if (test.status === 'running') return tm().projects.testsStillRunning
+    if (test.status !== 'passed') return tm().projects.lastTestFailed
     const review = this.database.db.prepare('SELECT state FROM reviews WHERE card_id = ? ORDER BY updated_at DESC LIMIT 1').get(cardId) as { state: string } | undefined
-    if (!review || !['approved', 'merged'].includes(review.state)) return 'Os testes passaram. Agora use “Revisar” no painel Alterações para aprovar as mudanças antes de mover para Done.'
+    if (!review || !['approved', 'merged'].includes(review.state)) return tm().projects.testsPassedReviewNeeded
     return null
   }
 }

@@ -8,7 +8,7 @@ import { ToolUpdateService } from './tool-updates'
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-updates-')); dirs.push(dir); return join(dir, 'tool-versions.json') }
-const answer = (url: string): unknown => url.includes('spec-kit') ? { tag_name: 'v0.7.2' } : { version: url.includes('claude-code') ? '2.0.20' : url.includes('codex') ? '0.51.0' : url.includes('openspec') ? '1.5.0' : '1.55.0' }
+const answer = (url: string): unknown => url.includes('spec-kit') ? { tag_name: 'v0.7.2' } : { version: url.includes('claude-code') ? '2.0.20' : url.includes('codex') ? '0.51.0' : url.includes('gemini-cli') ? '0.66.0' : url.includes('openspec') ? '1.5.0' : '1.55.0' }
 
 describe('isOutdated', () => {
   it('compara versões em formatos diferentes', () => {
@@ -26,14 +26,22 @@ describe('ToolUpdateService', () => {
     const file = await temp(), calls: string[] = []; let clock = Date.parse('2026-10-27T10:00:00Z')
     const service = new ToolUpdateService(file, async (url) => { calls.push(url); return answer(url) }, () => clock)
     const first = await service.latest()
-    expect(first).toMatchObject({ checkedAt: '2026-10-27T10:00:00.000Z', error: null, versions: { claude: '2.0.20', codex: '0.51.0', specify: '0.7.2', openspec: '1.5.0', playwright: '1.55.0' } })
-    expect(calls).toHaveLength(5); expect(calls.some((url) => url.includes('%2F'))).toBe(true)
-    clock += 3 * 3600_000; await service.latest(); expect(calls).toHaveLength(5)
+    expect(first).toMatchObject({ checkedAt: '2026-10-27T10:00:00.000Z', error: null, versions: { claude: '2.0.20', codex: '0.51.0', gemini: '0.66.0', specify: '0.7.2', openspec: '1.5.0', playwright: '1.55.0' } })
+    expect(calls).toHaveLength(6); expect(calls.some((url) => url.includes('%2F'))).toBe(true)
+    clock += 3 * 3600_000; await service.latest(); expect(calls).toHaveLength(6)
     expect(JSON.parse(await readFile(file, 'utf8')).versions.specify).toBe('0.7.2')
     // Outra instância (app reaberto) lê o arquivo sem pedir de novo.
-    await new ToolUpdateService(file, async (url) => { calls.push(url); return answer(url) }, () => clock).latest(); expect(calls).toHaveLength(5)
-    clock += 25 * 3600_000; await service.latest(); expect(calls).toHaveLength(10)
-    await service.latest(true); expect(calls).toHaveLength(15)
+    await new ToolUpdateService(file, async (url) => { calls.push(url); return answer(url) }, () => clock).latest(); expect(calls).toHaveLength(6)
+    clock += 25 * 3600_000; await service.latest(); expect(calls).toHaveLength(12)
+    await service.latest(true); expect(calls).toHaveLength(18)
+  })
+  it('devolve o cache salvo sem consultar a rede', async () => {
+    const file = await temp(), calls: string[] = []
+    const first = new ToolUpdateService(file, async (url) => { calls.push(url); return answer(url) })
+    await first.latest()
+    const reopened = new ToolUpdateService(file, async (url) => { calls.push(url); return answer(url) })
+    expect(reopened.cached().versions.specify).toBe('0.7.2')
+    expect(calls).toHaveLength(6)
   })
   it('sem internet devolve o que tinha, com aviso, e tenta de novo na próxima', async () => {
     const file = await temp(); let online = true, clock = Date.parse('2026-10-27T10:00:00Z')

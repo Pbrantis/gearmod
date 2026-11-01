@@ -7,6 +7,7 @@ export const BranchIcon = make(<><circle cx="6" cy="5" r="2" /><circle cx="6" cy
 export const WorktreeIcon = make(<><rect x="9" y="3" width="6" height="5" rx="1" /><rect x="3" y="16" width="6" height="5" rx="1" /><rect x="15" y="16" width="6" height="5" rx="1" /><path d="M12 8v4M6 16v-4h12v4" /></>)
 export const TreeIcon = make(<><path d="M12 21v-6" /><path d="M12 15c-3.5 0-6-2.4-6-5.2 0-1.2.5-2.3 1.3-3.1C7.3 4.6 9.3 3 12 3s4.7 1.6 4.7 3.7c.8.8 1.3 1.9 1.3 3.1 0 2.8-2.5 5.2-6 5.2z" /><path d="M9 21h6" /></>)
 export const TokenIcon = make(<><ellipse cx="12" cy="6" rx="7" ry="3" /><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" /><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" /></>)
+export const DatabaseIcon = make(<><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5" /><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></>)
 export const BoardIcon = make(<><rect x="3" y="3" width="5" height="18" rx="1.5" /><rect x="10" y="3" width="5" height="11" rx="1.5" /><rect x="17" y="3" width="4" height="14" rx="1.5" /></>)
 export const ChatIcon = make(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />)
 export const SparkIcon = make(<><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" /><path d="M20 3v4" /><path d="M22 5h-4" /><path d="M4 17v2" /><path d="M5 18H3" /></>)

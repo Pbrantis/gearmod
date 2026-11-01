@@ -3,18 +3,20 @@ import type { VoiceStatus } from '@agentboard/contracts'
 import { encodeWav } from './wav'
 import { plainError } from './NoticeDialog'
 import { startVoiceInstall, useVoiceInstall } from './voiceStore'
+import { tr, useT } from './i18n'
 
 const maxSeconds = 300
 
 /** Ditado por voz: grava o microfone, converte para WAV 16 kHz e manda ao main (whisper.cpp local ou Groq). O texto volta para o campo do chat. */
 export function useDictation(onText: (text: string) => void, hint?: string): { status?: VoiceStatus; recording: boolean; transcribing: boolean; progress: string; error: string; toggle(): Promise<void>; install(): Promise<void> } {
+  const t = useT().chat.dictation
   const [status, setStatus] = useState<VoiceStatus>(), [recording, setRecording] = useState(false), [transcribing, setTranscribing] = useState(false), [error, setError] = useState('')
   const recorder = useRef<MediaRecorder | undefined>(undefined), chunks = useRef<Blob[]>([]), stream = useRef<MediaStream | undefined>(undefined), timer = useRef<number | undefined>(undefined)
-  const refresh = useCallback(async () => { try { setStatus(await window.agentboard.invoke('voice:status', undefined)) } catch (reason) { setError(String(reason)) } }, [])
+  const refresh = useCallback(async () => { try { setStatus(await window.agentboard.invoke('voice:status', undefined)) } catch (reason) { setError(plainError(reason)) } }, [])
   useEffect(() => { void refresh(); const changed = (): void => { setError(''); void refresh() }; window.addEventListener('agentboard:voice-changed', changed); return () => window.removeEventListener('agentboard:voice-changed', changed) }, [refresh])
   const installation = useVoiceInstall()
   useEffect(() => { if (installation.done) void refresh() }, [installation.done, refresh])
-  const progress = installation.installing ? `Baixando o ${installation.item || 'programa'}… ${installation.percent === null ? `${installation.megabytes} MB` : `${installation.percent}%`}` : ''
+  const progress = installation.installing ? t.downloading(installation.item || t.program, installation.percent === null ? `${installation.megabytes} MB` : `${installation.percent}%`) : ''
   useEffect(() => () => { window.clearTimeout(timer.current); stream.current?.getTracks().forEach((track) => track.stop()) }, [])
 
   const finish = useCallback(async () => {
@@ -26,7 +28,7 @@ export function useDictation(onText: (text: string) => void, hint?: string): { s
       const audio = await context.decodeAudioData(await blob.arrayBuffer()); await context.close()
       const wav = encodeWav(audio.getChannelData(0), 16000)
       const { text } = await window.agentboard.invoke('voice:transcribe', { wav, prompt: hint })
-      if (text) onText(text); else setError('Não entendi o áudio. Tente falar mais perto do microfone.')
+      if (text) onText(text); else setError(tr().chat.dictation.notUnderstood)
     } catch (reason) { setError(plainError(reason)) } finally { setTranscribing(false) }
   }, [hint, onText])
 
@@ -41,7 +43,7 @@ export function useDictation(onText: (text: string) => void, hint?: string): { s
       recorder.current.onstop = () => void finish()
       recorder.current.start(); setRecording(true)
       timer.current = window.setTimeout(() => recorder.current?.stop(), maxSeconds * 1000)
-    } catch { setError('Não consegui acessar o microfone. Verifique a permissão do sistema.') }
+    } catch { setError(tr().chat.dictation.micDenied) }
   }, [recording, finish])
 
   const install = useCallback(async () => { setError(''); await startVoiceInstall() }, [])

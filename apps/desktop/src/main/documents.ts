@@ -3,6 +3,7 @@ import type { CardDocument, CardDocumentKind, CardDocuments, DocumentVersion } f
 import { cardDocumentKinds } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { setTaskChecked, validateTasks, verificationOnlyTasks } from './tasks'
+import { tm } from './i18n'
 
 type Actor = 'user' | 'agent' | 'system'
 
@@ -28,7 +29,7 @@ export class DocumentRepository {
     // Só o agente é barrado (o usuário escreve o que quiser): verificação vai para o Plano de testes, vale para qualquer método (Spec Kit, OpenSpec...).
     if (kind === 'tasks' && actor === 'agent') {
       const checks = verificationOnlyTasks(contentMd)
-      if (checks.length) throw new Error(`${checks.join(', ')} ${checks.length > 1 ? 'são' : 'é'} só verificação (rodar lint/type-check/testes ou confirmar que algo continua funcionando). Isso não é task de desenvolvimento: tire do Tasks e ponha na seção "Plano de testes" do Plano (o testador executa). Os testes automatizados de cada task ficam como critério dentro dela, e rodar lint, type-check e os testes da área é a regra de pronto do desenvolvedor.`)
+      if (checks.length) throw new Error(tm().documents.verificationOnlyTasks(checks.join(', '), checks.length > 1))
     }
     const now = new Date().toISOString()
     const save = this.database.db.transaction(() => {
@@ -57,6 +58,6 @@ export class DocumentRepository {
   }
 
   private assertCard(cardId: string): void {
-    if (!this.database.db.prepare('SELECT 1 FROM cards WHERE id = ?').get(cardId)) throw new Error('Card não encontrado')
+    if (!this.database.db.prepare('SELECT 1 FROM cards WHERE id = ?').get(cardId)) throw new Error(tm().common.cardNotFound)
   }
 }

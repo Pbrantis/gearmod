@@ -26,7 +26,7 @@ describe('anexos no chat', () => {
     const file = join(root, 'requisitos.md'); await writeFile(file, '# Requisitos')
     const calls: AgentRunOptions[] = []
     const fake: AgentAdapter = { run: async (options) => { calls.push(options); return { sessionId: 's', turnId: null, text: 'li', status: 'completed', error: null } } } as AgentAdapter
-    const orchestrator = new AgentOrchestrator(conversations, { codex: fake, claude: fake }, () => undefined, {} as WorktreeService, 1)
+    const orchestrator = new AgentOrchestrator(conversations, { codex: fake, claude: fake, gemini: fake }, () => undefined, {} as WorktreeService, 1)
 
     expect(() => orchestrator.start({ chatId: chat.id, prompt: 'oi', planning: true, attachments: [join(root, 'nao-existe.txt')] })).toThrow('Nenhum dos arquivos')
     orchestrator.start({ chatId: chat.id, prompt: 'Resuma', planning: true, attachments: [file, join(root, 'nao-existe.txt'), file] })

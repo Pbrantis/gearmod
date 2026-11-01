@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AppDatabase } from './database'
 import { ProjectRepository, GitService } from './projects'
-import { SpecToolsService, specKitIntegrations } from './spec-tools'
+import { SpecToolsService, isSpecKitImplementRequest, specKitIntegrations, specKitSkill } from './spec-tools'
 import type { CommandRunner } from './playwright-cli'
 
 const roots: string[] = [], opened: AppDatabase[] = []
@@ -53,5 +53,35 @@ describe('specKitIntegrations', () => {
     await writeFile(join(repo, '.specify', 'integration.json'), JSON.stringify({ integration: 'gemini' })); await writeFile(join(repo, '.agents', 'skills', 'speckit-plan'), '')
     expect(specKitIntegrations(repo).sort()).toEqual(['codex', 'gemini'])
     expect(specKitIntegrations(join(root, 'inexistente'))).toEqual([])
+  })
+})
+
+describe('specKitSkill', () => {
+  it('exige instalação e skill não vazia para o agente e etapa solicitados', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agentboard-speckit-')); roots.push(root)
+    const repo = join(root, 'native')
+    const codex = join(repo, '.agents', 'skills', 'speckit-specify')
+    const claude = join(repo, '.claude', 'skills', 'speckit-plan')
+    await mkdir(codex, { recursive: true }); await mkdir(claude, { recursive: true })
+    await writeFile(join(codex, 'SKILL.md'), '# specify')
+    await writeFile(join(claude, 'SKILL.md'), '# plan')
+    expect(specKitSkill(repo, 'codex', 'specify')).toBeNull()
+    await mkdir(join(repo, '.specify'))
+    expect(specKitSkill(repo, 'codex', 'specify')).toBe(join(codex, 'SKILL.md'))
+    expect(specKitSkill(repo, 'claude', 'plan')).toBe(join(claude, 'SKILL.md'))
+    expect(specKitSkill(repo, 'claude', 'specify')).toBeNull()
+    expect(specKitSkill(repo, 'codex', 'plan')).toBeNull()
+    await writeFile(join(codex, 'SKILL.md'), '  ')
+    expect(specKitSkill(repo, 'codex', 'specify')).toBeNull()
+  })
+})
+
+describe('bloqueio explícito de speckit-implement no planejamento', () => {
+  it('reconhece invocações Codex e Claude e uma skill selecionada', () => {
+    expect(isSpecKitImplementRequest('$speckit-implement agora')).toBe(true)
+    expect(isSpecKitImplementRequest('/speckit.implement')).toBe(true)
+    expect(isSpecKitImplementRequest('continue', { name: 'speckit-implement', path: 'x' })).toBe(true)
+    expect(isSpecKitImplementRequest('continue', { name: 'outra', path: 'C:\\repo\\speckit-implement\\SKILL.md' })).toBe(true)
+    expect(isSpecKitImplementRequest('$speckit-plan')).toBe(false)
   })
 })

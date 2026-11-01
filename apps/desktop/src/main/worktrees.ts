@@ -6,6 +6,7 @@ import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { GitSnapshot, Worktree } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { tm } from './i18n'
 
 const exec = promisify(execFile)
 export interface GitRunner { run(args: string[]): Promise<{ stdout: string; stderr: string }> }
@@ -36,10 +37,10 @@ export class WorktreeService {
   /** Faz o card usar a worktree de outro (ou volta a ter a própria com `null`). Só enxerga e trabalha lá: limpeza e merge continuam do dono. */
   link(cardId: string, fromCardId: string | null): void {
     if (fromCardId === null) { this.database.db.prepare('UPDATE cards SET worktree_card_id = NULL WHERE id = ?').run(cardId); return }
-    if (fromCardId === cardId) throw new Error('Um card não pode usar a própria worktree como se fosse de outro')
-    if (!this.candidates(cardId).some((item) => item.cardId === fromCardId)) throw new Error('Esse card não tem uma worktree ativa neste projeto')
+    if (fromCardId === cardId) throw new Error(tm().worktrees.cardCannotUseOwn)
+    if (!this.candidates(cardId).some((item) => item.cardId === fromCardId)) throw new Error(tm().worktrees.otherCardNoWorktree)
     const own = this.database.db.prepare(`SELECT 1 FROM worktrees WHERE card_id = ? AND cleanup_state = 'active' LIMIT 1`).get(cardId)
-    if (own) throw new Error('Este card já tem uma worktree própria. Remova-a antes de usar a de outro card.')
+    if (own) throw new Error(tm().worktrees.cardHasOwnWorktree)
     this.database.db.prepare('UPDATE cards SET worktree_card_id = ? WHERE id = ?').run(fromCardId, cardId)
   }
 
@@ -66,12 +67,12 @@ export class WorktreeService {
     if (existing && !alive) this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(existing.id)
     const card = this.database.db.prepare(`SELECT c.title, c.project_id AS projectId, c.base_branch AS baseBranch, c.repo_ids AS repoIds, p.local_path AS projectPath
       FROM cards c JOIN projects p ON p.id = c.project_id WHERE c.id = ?`).get(cardId) as { title: string; projectId: string; baseBranch: string | null; repoIds: string | null; projectPath: string } | undefined
-    if (!card) throw new Error('Card não encontrado')
+    if (!card) throw new Error(tm().common.cardNotFound)
     const all = await this.gitSources(card.projectId, card.projectPath)
-    if (!all.length) throw new Error('Nenhum repositório Git foi encontrado na pasta do projeto nem nas pastas internas. O planejamento continua disponível, mas a execução isolada exige Git.')
+    if (!all.length) throw new Error(tm().worktrees.noGitRepoFound)
     const wanted = card.repoIds ? JSON.parse(card.repoIds) as string[] : null
     const sources = wanted?.length ? all.filter((source) => wanted.includes(source.id)) : all
-    if (!sources.length) throw new Error('Os repositórios escolhidos para este card não existem mais no projeto. Escolha de novo no card.')
+    if (!sources.length) throw new Error(tm().worktrees.chosenReposGone)
     // Caminho curto (wt/<8 letras do card>/<repo>): no Windows o limite de 260 caracteres quebra repositórios com nomes longos (migrations etc.).
     const short = cardId.slice(0, 8), path = alive?.path ?? join(this.dataDir, 'wt', short)
     await mkdir(path, { recursive: true })
@@ -84,30 +85,8 @@ export class WorktreeService {
     const results: Array<{ repoPath: string; path: string; baseRef: string; error: string | null }> = []
     for (const source of todo) {
       const index = all.findIndex((item) => item.id === source.id)
-      const repoName = plain(source.name).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || `repo-${index + 1}`
-      const memberPath = current.find((member) => same(member.repoPath, source.repoPath))?.path ?? join(path, `${index + 1}-${repoName}`)
-      let baseRef = source.baseRef
-      try {
-        // Branch escolhida ao iniciar: vale nos repositórios que a têm (local ou em origin); nos outros fica a branch atual deles.
-        if (card.baseBranch) for (const candidate of [card.baseBranch, `origin/${card.baseBranch}`]) { if (await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', candidate]).then(() => true, () => false)) { baseRef = candidate; break } }
-        await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', baseRef])
-        await this.releaseStale(source.repoPath, branch, memberPath)
-        try {
-          try { await this.git.run(['-c', 'core.longpaths=true', '-C', source.repoPath, 'worktree', 'add', '-b', branch, memberPath, baseRef]) }
-          catch (error) {
-            const branches = await this.git.run(['-C', source.repoPath, 'branch', '--list', branch])
-            if (!branches.stdout.trim()) throw error
-            await this.git.run(['-c', 'core.longpaths=true', '-C', source.repoPath, 'worktree', 'add', memberPath, branch])
-          }
-        } catch (error) {
-          // Uma worktree criada pela metade prende a branch e impede a próxima tentativa: desfaz antes de avisar.
-          await this.discard(source.repoPath, memberPath)
-          throw error
-        }
-        results.push({ repoPath: source.repoPath, path: memberPath, baseRef, error: null })
-      } catch (error) {
-        results.push({ repoPath: source.repoPath, path: memberPath, baseRef, error: friendlyGitError(error, source.name) })
-      }
+      const memberPath = current.find((member) => same(member.repoPath, source.repoPath))?.path ?? join(path, `${index + 1}-${memberName(source.name, index)}`)
+      results.push(await this.addMember(source, card.baseBranch, branch, memberPath))
     }
     const ok = results.filter((item) => !item.error)
     if (!alive && !ok.length) throw new Error(results.map((item) => item.error).join('\n'))
@@ -121,6 +100,64 @@ export class WorktreeService {
       results.forEach((item) => upsert.run(randomUUID(), worktree.id, item.repoPath, item.path, item.baseRef, item.error ? 'failed' : 'active', item.error))
     })()
     return worktree
+  }
+
+  /** Cria (ou confirma) a pasta de um repositório na worktree, na branch do card; nunca lança — o erro vai no campo `error`. */
+  private async addMember(source: { repoPath: string; name: string; baseRef: string }, cardBaseBranch: string | null, branch: string, memberPath: string): Promise<{ repoPath: string; path: string; baseRef: string; error: string | null }> {
+    let baseRef = source.baseRef
+    try {
+      // Branch escolhida ao iniciar: vale nos repositórios que a têm (local ou em origin); nos outros fica a branch atual deles.
+      if (cardBaseBranch) for (const candidate of [cardBaseBranch, `origin/${cardBaseBranch}`]) { if (await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', candidate]).then(() => true, () => false)) { baseRef = candidate; break } }
+      await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', baseRef])
+      await this.releaseStale(source.repoPath, branch, memberPath)
+      try {
+        try { await this.git.run(['-c', 'core.longpaths=true', '-C', source.repoPath, 'worktree', 'add', '-b', branch, memberPath, baseRef]) }
+        catch (error) {
+          const branches = await this.git.run(['-C', source.repoPath, 'branch', '--list', branch])
+          if (!branches.stdout.trim()) throw error
+          await this.git.run(['-c', 'core.longpaths=true', '-C', source.repoPath, 'worktree', 'add', memberPath, branch])
+        }
+      } catch (error) {
+        // Uma worktree criada pela metade prende a branch e impede a próxima tentativa: desfaz antes de avisar.
+        await this.discard(source.repoPath, memberPath)
+        throw error
+      }
+      return { repoPath: source.repoPath, path: memberPath, baseRef, error: null }
+    } catch (error) {
+      return { repoPath: source.repoPath, path: memberPath, baseRef, error: friendlyGitError(error, source.name) }
+    }
+  }
+
+  private readonly ensuring = new Map<string, Promise<unknown>>()
+  /**
+   * G07 — garante que um repositório específico está na worktree composta do card, mesmo fora de `cards.repo_ids` (ex.: o
+   * repositório do SDD, que só entra no primeiro write). Idempotente: repositório já membro e ativo não é recriado. Não
+   * recria os outros membros existentes. Duas chamadas concorrentes para o mesmo card+repositório são serializadas (a
+   * segunda reaproveita o resultado da primeira), então nunca disputam a mesma pasta/branch no Git.
+   */
+  async ensureMember(cardId: string, sourceId: string): Promise<{ repoPath: string; path: string; baseRef: string; status: 'active' | 'failed'; error: string | null }> {
+    const owner = this.ownerOf(cardId)
+    const key = `${owner}:${sourceId}`
+    const prior = this.ensuring.get(key) ?? Promise.resolve()
+    const next = prior.catch(() => undefined).then(() => this.ensureMemberNow(owner, sourceId))
+    this.ensuring.set(key, next)
+    try { return await next } finally { if (this.ensuring.get(key) === next) this.ensuring.delete(key) }
+  }
+
+  private async ensureMemberNow(owner: string, sourceId: string): Promise<{ repoPath: string; path: string; baseRef: string; status: 'active' | 'failed'; error: string | null }> {
+    const worktree = await this.prepare(owner)
+    const source = this.database.db.prepare('SELECT name, local_path AS repoPath, current_branch AS baseRef FROM project_sources WHERE id = ?').get(sourceId) as { name: string; repoPath: string; baseRef: string } | undefined
+    if (!source) throw new Error(tm().common.repoNotFoundInProject)
+    const current = this.members(worktree.id)
+    const existing = current.find((member) => same(member.repoPath, source.repoPath))
+    if (existing && existing.status === 'active' && existsSync(existing.path)) return existing
+    const card = this.database.db.prepare('SELECT base_branch AS baseBranch FROM cards WHERE id = ?').get(owner) as { baseBranch: string | null }
+    const memberPath = existing?.path ?? join(worktree.path, `${current.length + 1}-${memberName(source.name, current.length)}`)
+    const result = await this.addMember(source, card.baseBranch, worktree.branch, memberPath)
+    this.database.db.prepare(`INSERT INTO worktree_members(id, worktree_id, repo_path, path, base_ref, status, error) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(worktree_id, repo_path) DO UPDATE SET path = excluded.path, base_ref = excluded.base_ref, status = excluded.status, error = excluded.error`)
+      .run(randomUUID(), worktree.id, result.repoPath, result.path, result.baseRef, result.error ? 'failed' : 'active', result.error)
+    return { ...result, status: result.error ? 'failed' : 'active' }
   }
 
   /** Estado de cada repositório da worktree do card: `active` (pasta pronta), `failed` (com o erro) ou `missing` (pasta sumiu). */
@@ -155,7 +192,7 @@ export class WorktreeService {
 
   async snapshot(cardId: string): Promise<GitSnapshot> {
     const worktree = this.get(cardId)
-    if (!worktree) throw new Error('Worktree ainda não foi criada')
+    if (!worktree) throw new Error('Worktree ainda não foi criada') // fixo em português: o ChangesCard.tsx do renderer detecta /Worktree ainda não foi criada/
     if (!await exists(worktree.path)) {
       this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(worktree.id)
       return { worktreeId: worktree.id, status: '', diff: '', exists: false }
@@ -200,7 +237,7 @@ export class WorktreeService {
     const worktree = this.get(cardId)
     if (!worktree) return null
     const member = this.members(worktree.id).find((item) => item.status === 'active' && same(item.path, repoPath))
-    return member ? { ref: await this.mergeBase(member), label: `${member.baseRef} (ponto de saída do card)` } : null
+    return member ? { ref: await this.mergeBase(member), label: tm().worktrees.cardStartingPoint(member.baseRef) } : null
   }
 
   /** Solta a branch de worktrees antigas do AgentBoard que ficaram quebradas (pasta apagada ou criação interrompida). */
@@ -248,11 +285,14 @@ const same = (a: string, b: string): boolean => resolve(a).toLowerCase() === res
 /** Tira acentos ("Botão" → "Botao") antes de virar nome de branch ou pasta. */
 const plain = (text: string): string => text.normalize('NFKD').replace(/[̀-ͯ]/g, '')
 
+/** Nome da pasta do repositório dentro da worktree composta (curto, sem acento nem caractere especial). */
+const memberName = (name: string, index: number): string => plain(name).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || `repo-${index + 1}`
+
 function friendlyGitError(error: unknown, repo: string): string {
   const text = error instanceof Error ? error.message : String(error)
-  if (/Filename too long/i.test(text)) return `Não foi possível criar a worktree de ${repo}: o Windows recusou nomes de arquivo longos demais. Ative caminhos longos no Git (git config --global core.longpaths true) e tente de novo.`
+  if (/Filename too long/i.test(text)) return tm().worktrees.longPaths(repo)
   const detail = text.split(/\r?\n/).find((line) => /^(fatal|error):/.test(line.trim()))?.trim()
-  return `Não foi possível criar a worktree de ${repo}${detail ? `: ${detail}` : ''}`
+  return tm().worktrees.createFailed(repo, detail)
 }
 
 async function exists(path: string): Promise<boolean> { return stat(path).then((value) => value.isDirectory(), () => false) }

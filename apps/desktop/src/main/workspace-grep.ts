@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { open, readdir, realpath, stat } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
+import { tm } from './i18n'
 
 export interface GrepOptions { query: string; caseSensitive: boolean; wholeWord: boolean; regex: boolean; include?: string | undefined }
 export interface GrepMatch { path: string; root: string; line: number; column: number; preview: string; matchStart: number; matchEnd: number }
@@ -10,7 +11,7 @@ const ignored = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.next'
 /** Expressão JS equivalente à busca, usada para achar o trecho exato na linha e na busca sem Git. */
 function matcher(options: GrepOptions): RegExp {
   const source = options.regex ? options.query : options.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  try { return new RegExp(options.wholeWord ? `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])` : source, options.caseSensitive ? 'u' : 'iu') } catch { throw new Error('Expressão regular inválida') }
+  try { return new RegExp(options.wholeWord ? `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])` : source, options.caseSensitive ? 'u' : 'iu') } catch { throw new Error(tm().search.invalidRegex) }
 }
 
 /** Corta a linha em volta da ocorrência (200 caracteres) e devolve onde ela ficou no trecho. */
@@ -50,7 +51,7 @@ function gitGrep(root: string, options: GrepOptions, regex: RegExp, take: (match
       if (limited) resolveRun('limited')
       else if (code === 0 || code === 1) resolveRun('done')
       else if (/not a git repository/i.test(errors)) resolveRun('none')
-      else reject(new Error(options.regex ? 'Expressão regular inválida' : errors.trim().split('\n')[0] || 'Falha ao pesquisar'))
+      else reject(new Error(options.regex ? tm().search.invalidRegex : errors.trim().split('\n')[0] || tm().search.searchFailed))
     })
   })
 }

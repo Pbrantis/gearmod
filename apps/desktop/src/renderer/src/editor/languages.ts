@@ -1,6 +1,7 @@
 import type { Extension } from '@codemirror/state'
 import { StreamLanguage, type StreamParser } from '@codemirror/language'
 import { extensionOf } from '../FileAppearance'
+import { tr } from '../i18n'
 
 const stream = (parser: StreamParser<unknown>): Extension => StreamLanguage.define(parser)
 type Loader = () => Promise<Extension>
@@ -35,6 +36,6 @@ export async function languageFor(path: string): Promise<Extension | null> {
   return load ? load() : null
 }
 
-const names: Record<string, string> = { js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JavaScript React', ts: 'TypeScript', mts: 'TypeScript', cts: 'TypeScript', tsx: 'TypeScript React', json: 'JSON', jsonc: 'JSON', css: 'CSS', scss: 'SCSS', less: 'Less', html: 'HTML', htm: 'HTML', md: 'Markdown', mdx: 'Markdown', markdown: 'Markdown', py: 'Python', sql: 'SQL', xml: 'XML', svg: 'SVG', csproj: 'XML', yml: 'YAML', yaml: 'YAML', sh: 'Shell', bash: 'Shell', ps1: 'PowerShell', toml: 'TOML', ini: 'INI', conf: 'Configuração', env: 'Variáveis de ambiente', go: 'Go', rs: 'Rust', java: 'Java', cs: 'C#', cpp: 'C++', h: 'C/C++' }
+const names: Record<string, string> = { js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JavaScript React', ts: 'TypeScript', mts: 'TypeScript', cts: 'TypeScript', tsx: 'TypeScript React', json: 'JSON', jsonc: 'JSON', css: 'CSS', scss: 'SCSS', less: 'Less', html: 'HTML', htm: 'HTML', md: 'Markdown', mdx: 'Markdown', markdown: 'Markdown', py: 'Python', sql: 'SQL', xml: 'XML', svg: 'SVG', csproj: 'XML', yml: 'YAML', yaml: 'YAML', sh: 'Shell', bash: 'Shell', ps1: 'PowerShell', toml: 'TOML', ini: 'INI', go: 'Go', rs: 'Rust', java: 'Java', cs: 'C#', cpp: 'C++', h: 'C/C++' }
 /** Nome da linguagem para a barra de status; `Texto` quando não há realce. */
-export const languageName = (path: string): string => { const name = path.split(/[\\/]/).at(-1) ?? ''; return names[name === '.env' || name.startsWith('.env.') ? 'env' : extensionOf(path)] ?? 'Texto' }
+export const languageName = (path: string): string => { const name = path.split(/[\\/]/).at(-1) ?? '', key = name === '.env' || name.startsWith('.env.') ? 'env' : extensionOf(path); return key === 'conf' ? tr().files.editor.languageConfig : key === 'env' ? tr().files.editor.languageEnv : names[key] ?? tr().files.editor.languagePlain }

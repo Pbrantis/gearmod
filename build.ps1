@@ -1,5 +1,6 @@
-# Gera o instalador do AgentBoard em apps\desktop\dist.
+# Gera somente o executável portátil do AgentBoard.
 # Uso: powershell -File build.ps1   (ou .\build.ps1 no PowerShell)
+# Saída: apps\desktop\dist\win-unpacked\AgentBoard.exe
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
@@ -22,7 +23,18 @@ if ($running) {
 }
 
 pnpm install
-pnpm dist
-if ($LASTEXITCODE -ne 0) { throw "pnpm dist falhou (codigo $LASTEXITCODE)" }
+if ($LASTEXITCODE -ne 0) { throw "pnpm install falhou (codigo $LASTEXITCODE)" }
 
-Get-ChildItem apps\desktop\dist -Filter *.exe | Select-Object FullName, LastWriteTime
+Push-Location (Join-Path $PSScriptRoot 'apps\desktop')
+try {
+  pnpm run build
+  if ($LASTEXITCODE -ne 0) { throw "pnpm run build falhou (codigo $LASTEXITCODE)" }
+
+  pnpm exec electron-builder --win --dir
+  if ($LASTEXITCODE -ne 0) { throw "electron-builder --win --dir falhou (codigo $LASTEXITCODE)" }
+}
+finally {
+  Pop-Location
+}
+
+Get-Item (Join-Path $unpacked 'AgentBoard.exe') | Select-Object FullName, LastWriteTime

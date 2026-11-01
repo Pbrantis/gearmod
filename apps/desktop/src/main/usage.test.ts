@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { AppDatabase } from './database'
 import { ProfileRepository } from './projects'
 import { parseCodexRateLimits, rollWindow, UsageService } from './usage'
+import { UsageLedgerService } from './usage-ledger'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
@@ -45,8 +46,8 @@ describe('UsageService', () => {
     const root = await mkdtemp(join(tmpdir(), 'agentboard-usage-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root)
-    const codex = profiles.create({ provider: 'codex', label: 'Codex', scope: 'x', useExistingSession: true })
-    const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x', useExistingSession: true })
+    const codex = profiles.create({ provider: 'codex', label: 'Codex', scope: 'x' })
+    const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x' })
     return { root, database, codex, claude, service: new UsageService(database, profiles) }
   }
 
@@ -88,6 +89,29 @@ describe('UsageService', () => {
     service.recordClaude(claude.id, { rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.8, resetsAt: future } } } })
     expect((await service.list()).find((item) => item.profileId === claude.id)!.windows[0]!.usedPercent).toBe(80)
     service.recordClaude(claude.id, { nada: true })
+    expect(database.db.prepare('SELECT count(*) AS count FROM quota_snapshots WHERE profile_id = ?').get(claude.id)).toEqual({ count: 3 })
+    expect(database.db.prepare('SELECT count(*) AS count FROM agent_usage_snapshots WHERE profile_id = ?').get(claude.id)).toEqual({ count: 0 })
+    database.close()
+  })
+
+  it('expõe histórico e exportação pela fachada de uso', async () => {
+    const { database, root } = await setup()
+    const profiles = new ProfileRepository(database, root), service = new UsageService(database, profiles, undefined, undefined, undefined, new UsageLedgerService(database))
+    expect(service.history({ granularity: 'month', tz: 'UTC', groupBy: 'provider' })).toEqual([])
+    expect(service.exportCsv({})).toContain('inputTokens')
+    database.close()
+  })
+
+  it('deduplicates quota snapshots when two profiles identify the same account', async () => {
+    const { database, claude, service } = await setup()
+    const profiles = new ProfileRepository(database, join(tmpdir(), 'agentboard-usage-second-profile'))
+    const second = profiles.create({ provider: 'claude', label: 'Claude 2', scope: 'x' })
+    const future = Math.floor(Date.now() / 1000) + 3600
+    const firstPayload = { account: { accountId: 'same-account' }, rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.5, resetsAt: future } } } }
+    service.recordClaude(claude.id, firstPayload)
+    service.recordClaude(second.id, firstPayload)
+    expect(database.db.prepare('SELECT count(*) AS count FROM quota_snapshots WHERE account_key IS NOT NULL').get()).toEqual({ count: 1 })
+    expect(profiles.accountKey(claude.id)).toBe(profiles.accountKey(second.id))
     database.close()
   })
 
@@ -97,13 +121,13 @@ describe('UsageService', () => {
     const future = Math.floor(Date.now() / 1000) + 3600
     const profiles = new ProfileRepository(database, root)
     const service = new UsageService(database, profiles, async (profile) => { calls.push(profile.id); return { rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.4, resetsAt: future } } } } })
-    const first = await service.refresh()
+    const first = await service.refresh(true)
     expect(calls).toEqual([claude.id]); expect(first.find((item) => item.profileId === claude.id)!.windows[0]!.usedPercent).toBe(40)
-    await service.refresh(); expect(calls).toHaveLength(1)
+    await service.refresh(true); expect(calls).toHaveLength(1)
     const stale = new UsageService(database, profiles, async (profile) => { calls.push(profile.id); return null }, 0)
-    await stale.refresh(); expect(calls).toHaveLength(2)
+    await stale.refresh(true); expect(calls).toHaveLength(2)
     const failing = new UsageService(database, profiles, async () => { throw new Error('sem login') }, 0)
-    expect((await failing.refresh()).find((item) => item.profileId === claude.id)!.windows[0]!.usedPercent).toBe(40)
+    expect((await failing.refresh(true)).find((item) => item.profileId === claude.id)!.windows[0]!.usedPercent).toBe(40)
     database.close()
   })
 })

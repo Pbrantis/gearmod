@@ -27,12 +27,14 @@ export class AgentWriteback {
     const report = this.bridge.finish(input.runId), notices: string[] = []
     if (!input.cardId) return { notices, wroteDocuments: false }
     const written = new Set<CardDocumentKind>(report.written)
+    const specKit = this.bridge.usesSpecKit(input.cardId)
     if (input.completed) {
       for (const document of extractDocuments(input.text)) {
+        if (specKit && (document.kind === 'especificacao' || document.kind === 'plano' || document.kind === 'tasks')) { notices.push('Os artefatos do Spec Kit devem ser produzidos pelas skills nativas; o documento paralelo não foi gravado.'); continue }
         try { this.board.documents.write(input.cardId, document.kind, document.markdown, 'agent'); written.add(document.kind) }
         catch (error) { notices.push(`O documento ${document.kind} não foi gravado: ${error instanceof Error ? error.message : String(error)}`) }
       }
-      if (input.planning && /<!--\s*agentboard:planejamento-concluido\s*-->/.test(input.text)) {
+      if (input.planning && !specKit && /<!--\s*agentboard:planejamento-concluido\s*-->/.test(input.text)) {
         const missing = this.board.markPlanReady(input.cardId)
         if (missing.length) notices.push(`O planejamento não foi dado como concluído: faltam ${missing.join(', ')}.`)
       }

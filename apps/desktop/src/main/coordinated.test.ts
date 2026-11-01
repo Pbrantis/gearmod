@@ -108,7 +108,7 @@ describe('Harness', () => {
   it('para por orçamento e por falhas repetidas só nas retomadas automáticas', async () => {
     const { database, board, card, project, data, worktrees, profiles } = await workspace()
     const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
-    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: 30, maxTokens: 5000, maxCostUsd: null, maxAttempts: 2, scopeCheck: true } })
+    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: 30, maxTokens: 5000, maxCostUsd: null, includeEquivalentCost: false, maxAttempts: 2, scopeCheck: true } })
     const conversations = new ConversationRepository(database), chat = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profiles.list()[0]!.id })
     for (const reason of ['Claude exited (1): rede caiu 12', 'Claude exited (1): rede caiu 13']) {
       const run = conversations.createRun({ cardId: card.id, chatId: chat.id, profileId: profiles.list()[0]!.id }); conversations.updateRun(run.id, 'failed', reason)
@@ -122,11 +122,63 @@ describe('Harness', () => {
     expect(board.card(card.id).id).toBe(card.id)
   })
 
+  it('S10: detecta commit que não veio de agentCommit, e não aponta nada quando veio', async () => {
+    const { board, card, sources, worktrees, database, data, profiles } = await workspace()
+    board.setRepos(card.id, [sources.frontend!.id])
+    const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
+    await worktrees.prepare(card.id)
+    const repo = worktrees.repositories(card.id)[0]!
+    await harness.snapshotRepos(card.id)
+    await writeFile(join(repo.path, 'escondido.ts'), 'x')
+    await exec('git', ['-C', repo.path, 'add', 'escondido.ts'])
+    await exec('git', ['-C', repo.path, 'commit', '-m', 'commit direto, sem passar pelo pedido'])
+    const tampered = await harness.after({ cardId: card.id, runId: 'r1', chatId: 'c1', purpose: 'execution', status: 'completed' })
+    expect(tampered.some((notice) => notice.includes('não veio do pedido de commit'))).toBe(true)
+
+    await worktrees.prepare(card.id)
+    await harness.snapshotRepos(card.id)
+    await writeFile(join(repo.path, 'aprovado.ts'), 'x')
+    await exec('git', ['-C', repo.path, 'add', 'aprovado.ts'])
+    await exec('git', ['-C', repo.path, 'commit', '-m', 'commit pelo fluxo de aprovação'])
+    const hash = (await exec('git', ['-C', repo.path, 'rev-parse', 'HEAD'])).stdout.trim()
+    database.db.prepare("INSERT INTO git_commit_agents(repo_path, hash, profile_id) VALUES (?, ?, ?)").run(repo.path, hash, profiles.list()[0]!.id)
+    const clean = await harness.after({ cardId: card.id, runId: 'r2', chatId: 'c1', purpose: 'execution', status: 'completed' })
+    expect(clean.some((notice) => notice.includes('não veio do pedido de commit'))).toBe(false)
+  })
+
+  it('S10: também detecta troca de branch na worktree durante a execução', async () => {
+    const { board, card, sources, worktrees, database, data } = await workspace()
+    board.setRepos(card.id, [sources.frontend!.id])
+    const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
+    await worktrees.prepare(card.id)
+    const repo = worktrees.repositories(card.id)[0]!
+    await harness.snapshotRepos(card.id)
+    await exec('git', ['-C', repo.path, 'checkout', '-b', 'outra-branch'])
+    const result = await harness.after({ cardId: card.id, runId: 'r3', chatId: 'c1', purpose: 'execution', status: 'completed' })
+    expect(result.some((notice) => notice.includes('mudou de'))).toBe(true)
+  })
+
+  it('maxCostUsd soma só custo faturado por padrão; includeEquivalentCost também soma o equivalente', async () => {
+    const { database, data, worktrees, board, card, project, profiles } = await workspace()
+    const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
+    const chat = new ConversationRepository(database).createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profiles.list()[0]!.id })
+    const insert = database.db.prepare(`INSERT INTO usage_ledger(id, at, run_id, seq, source, provider, profile_id, card_id, cost_kind, cost_usd)
+      VALUES (?, ?, NULL, 0, 'run', 'claude', ?, ?, ?, ?)`)
+    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: null, maxTokens: null, maxCostUsd: 1, includeEquivalentCost: false, maxAttempts: 3, scopeCheck: true } })
+    insert.run('u1', new Date().toISOString(), profiles.list()[0]!.id, card.id, 'api_equivalent', 5)
+    expect(harness.before({ cardId: card.id, chatId: chat.id, automatic: false })).toBeNull()
+    insert.run('u2', new Date().toISOString(), profiles.list()[0]!.id, card.id, 'billed', 2)
+    expect(harness.before({ cardId: card.id, chatId: chat.id, automatic: false })).toMatch(/custo faturado,/)
+    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: null, maxTokens: null, maxCostUsd: 1, includeEquivalentCost: true, maxAttempts: 3, scopeCheck: true } })
+    expect(harness.before({ cardId: card.id, chatId: chat.id, automatic: false })).toMatch(/custo faturado e equivalente/)
+    expect(board.card(card.id).id).toBe(card.id)
+  })
+
   it('o orquestrador marca a execução que estourou o tempo como falha, não como parada do usuário', async () => {
     const { database, card, profiles } = await workspace()
     const conversations = new ConversationRepository(database), chat = conversations.createChat({ projectId: card.projectId, cardId: card.id, purpose: 'planning', profileId: profiles.list()[0]!.id })
     const slow: AgentAdapter = { run: (options) => new Promise((resolve) => options.signal?.addEventListener('abort', () => resolve({ sessionId: 's', turnId: null, text: '', status: 'interrupted', error: 'Interrompido pelo usuário' }))) } as AgentAdapter
-    const orchestrator = new AgentOrchestrator(conversations, { codex: slow, claude: slow }, () => undefined, {} as WorktreeService, 1)
+    const orchestrator = new AgentOrchestrator(conversations, { codex: slow, claude: slow, gemini: slow }, () => undefined, { prepare: async () => { throw new Error('Nenhum repositório Git foi encontrado') } } as unknown as WorktreeService, 1)
     orchestrator.setHarness({ before: () => null, timeoutMs: () => 50, after: async () => [] })
     const runOf = (id: string) => database.db.prepare('SELECT status, exit_reason AS exitReason FROM runs WHERE id = ?').get(id) as { status: string; exitReason: string | null }
     const run = orchestrator.start({ chatId: chat.id, prompt: 'planeje', planning: true })

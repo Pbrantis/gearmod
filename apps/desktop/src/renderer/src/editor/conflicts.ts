@@ -1,5 +1,6 @@
 import { EditorView, Decoration, WidgetType, keymap, type DecorationSet } from '@codemirror/view'
 import { EditorSelection, Prec, StateField, type EditorState, type Extension } from '@codemirror/state'
+import { tr } from '../i18n'
 
 export interface Conflict {
   /** Do começo da linha `<<<<<<<` até o fim da linha `>>>>>>>` (com a quebra de linha), em caracteres do documento. */
@@ -66,10 +67,11 @@ class Actions extends WidgetType {
       button.onmousedown = (event) => { event.preventDefault(); run(view.posAtDOM(box)) }
       box.append(button)
     }
-    add(`Aceitar ${this.options.oursLabel}`, `Manter só o bloco ${this.options.oursLabel}`, (position) => resolveConflict(view, position, 'ours'))
-    add(`Aceitar ${this.options.theirsLabel}`, `Manter só o bloco ${this.options.theirsLabel}`, (position) => resolveConflict(view, position, 'theirs'))
-    add('Aceitar ambos', 'Manter os dois, um depois do outro', (position) => resolveConflict(view, position, 'both'))
-    if (this.options.compare) add('Comparar', 'Ver os dois lados lado a lado', (position) => { const text = view.state.doc.toString(), found = findConflicts(text).find((item) => position >= item.from && position < item.to); if (found) this.options.compare?.({ ours: conflictText(text, found.ours), theirs: conflictText(text, found.theirs), oursLabel: this.options.oursLabel, theirsLabel: this.options.theirsLabel }) })
+    const t = tr().git.editor
+    add(t.acceptSide(this.options.oursLabel), t.keepOnlySide(this.options.oursLabel), (position) => resolveConflict(view, position, 'ours'))
+    add(t.acceptSide(this.options.theirsLabel), t.keepOnlySide(this.options.theirsLabel), (position) => resolveConflict(view, position, 'theirs'))
+    add(t.acceptBoth, t.keepBoth, (position) => resolveConflict(view, position, 'both'))
+    if (this.options.compare) add(t.compare, t.compareTip, (position) => { const text = view.state.doc.toString(), found = findConflicts(text).find((item) => position >= item.from && position < item.to); if (found) this.options.compare?.({ ours: conflictText(text, found.ours), theirs: conflictText(text, found.theirs), oursLabel: this.options.oursLabel, theirsLabel: this.options.theirsLabel }) })
     return box
   }
   ignoreEvent(): boolean { return true }

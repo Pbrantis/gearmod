@@ -6,13 +6,15 @@ import { promisify } from 'node:util'
 import type { PlaywrightStatus } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import type { CardHistoryService } from './history'
+import { applyEnvPolicy } from './env-policy'
+import { tm } from './i18n'
 
 const exec = promisify(execFile)
 /** Roda um comando numa pasta. No Windows, `npm`/`.cmd` precisam de shell; os argumentos aqui são sempre fixos, nunca do usuário. */
 export interface CommandRunner { run(command: string, args: string[], cwd: string, timeoutMs: number): Promise<string> }
 export const nativeCommands: CommandRunner = {
   run: async (command, args, cwd, timeoutMs) => {
-    const result = await exec(command, args, { cwd, timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell: process.platform === 'win32', env: { ...process.env, CI: '1' } })
+    const result = await exec(command, args, { cwd, timeout: timeoutMs, windowsHide: true, maxBuffer: 8 * 1024 * 1024, shell: process.platform === 'win32', env: { ...applyEnvPolicy({ envPassthrough: [] }, process.env), CI: '1' } })
     return `${result.stdout}${result.stderr}`
   }
 }
@@ -52,22 +54,22 @@ export class PlaywrightCliService {
   /** Instalação local confirmada pelo usuário: pacote, navegador (opcional) e skill do agente (opcional, sem sobrescrever). */
   async install(input: { projectId: string; sourceId: string; browser: boolean; skills: Array<'claude' | 'agents'> }): Promise<PlaywrightStatus> {
     const source = this.sources(input.projectId).find((item) => item.id === input.sourceId)
-    if (!source) throw new Error('Repositório não encontrado no projeto')
+    if (!source) throw new Error(tm().common.repoNotFoundInProject)
     this.log = ''; this.error = null
     const step = async (title: string, command: string, args: string[], timeoutMs: number): Promise<void> => {
       this.log += `\n$ ${title}\n`
       try { this.log += await this.commands.run(command, args, source.path, timeoutMs) }
-      catch (error) { const text = error instanceof Error ? error.message : String(error); this.log += `${text}\n`; throw new Error(`${title} falhou: ${text.split(/\r?\n/).find((line) => line.trim())?.slice(0, 300) ?? text}`) }
+      catch (error) { const text = error instanceof Error ? error.message : String(error); this.log += `${text}\n`; throw new Error(tm().playwrightCli.stepFailed(title, text.split(/\r?\n/).find((line) => line.trim())?.slice(0, 300) ?? text)) }
     }
     try {
-      if (!(await this.commands.run('node', ['--version'], source.path, 15_000).then(() => true, () => false))) throw new Error('Node.js não encontrado no PATH. Instale o Node.js 18 ou mais novo e tente de novo.')
-      if (!existsSync(join(source.path, 'package.json'))) throw new Error(`${source.name} não tem package.json; a instalação local precisa de um projeto Node. Escolha outro repositório.`)
+      if (!(await this.commands.run('node', ['--version'], source.path, 15_000).then(() => true, () => false))) throw new Error(tm().playwrightCli.nodeNotFound)
+      if (!existsSync(join(source.path, 'package.json'))) throw new Error(tm().playwrightCli.noPackageJson(source.name))
       await step('npm install -D @playwright/cli@latest', process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '-D', '@playwright/cli@latest'], 10 * 60_000)
-      if (!existsSync(bin(source.path))) throw new Error('O pacote foi instalado, mas o comando playwright-cli não apareceu em node_modules/.bin.')
+      if (!existsSync(bin(source.path))) throw new Error(tm().playwrightCli.binNotFound)
       if (input.browser) await step('playwright-cli install-browser', quote(bin(source.path)), ['install-browser'], 15 * 60_000)
       for (const skill of [...new Set(input.skills)]) {
         const target = join(source.path, skill === 'claude' ? '.claude' : '.agents', 'skills', 'playwright-cli')
-        if (existsSync(target)) this.log += `\nA skill já existe em ${target}; nada foi sobrescrito.\n`
+        if (existsSync(target)) this.log += `\n${tm().playwrightCli.skillExists(target)}\n`
         else await step(`playwright-cli install --skills=${skill}`, quote(bin(source.path)), ['install', `--skills=${skill}`], 5 * 60_000)
       }
       this.history.setConfig(input.projectId, { ...this.history.config(input.projectId), playwrightCli: true })
@@ -78,8 +80,8 @@ export class PlaywrightCliService {
   /** Baixa só o navegador (depois da instalação do CLI), usando o CLI local do repositório escolhido. */
   async installBrowser(input: { projectId: string; sourceId: string }): Promise<PlaywrightStatus> {
     const source = this.sources(input.projectId).find((item) => item.id === input.sourceId)
-    if (!source) throw new Error('Repositório não encontrado no projeto')
-    if (!existsSync(bin(source.path))) throw new Error('O Playwright CLI ainda não está instalado neste repositório.')
+    if (!source) throw new Error(tm().common.repoNotFoundInProject)
+    if (!existsSync(bin(source.path))) throw new Error(tm().playwrightCli.notInstalledInRepo)
     this.log = '\n$ playwright-cli install-browser\n'; this.error = null
     try { this.log += await this.commands.run(quote(bin(source.path)), ['install-browser'], source.path, 15 * 60_000) } catch (error) { const text = error instanceof Error ? error.message : String(error); this.log += `${text}\n`; this.error = `playwright-cli install-browser falhou: ${text.split(/\r?\n/).find((line) => line.trim())?.slice(0, 300) ?? text}` }
     return this.status(input.projectId)
@@ -93,7 +95,7 @@ export class PlaywrightCliService {
     if (!local) return null
     return {
       comando: bin(local.path), sessao: `ab-${cardId.slice(0, 8)}`, evidencias: join(this.history.artifactsDir(cardId), 'playwright'),
-      regra: 'Use sempre -s=<sessao>; headless (padrão). Prefira snapshot e refs a screenshots; só tire screenshot (--filename dentro de evidencias) para provar um critério ou uma falha. Feche com close ao terminar.'
+      regra: 'Always use -s=<sessao>; headless (default). Prefer snapshot and refs over screenshots; only take a screenshot (--filename inside evidencias) to prove a criterion or a failure. Close with close when done.'
     }
   }
 

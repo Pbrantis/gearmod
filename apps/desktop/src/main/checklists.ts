@@ -1,5 +1,6 @@
 import { checklistKey, type CardChecklist } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { tm } from './i18n'
 
 const item = /^\s*[-*+]\s+\[( |x|X)\]\s+\S/m
 const line = /^(\s*[-*+]\s+)\[( |x|X)\](\s+)(.*)$/
@@ -26,7 +27,7 @@ export class ChecklistRepository {
    * estava gravado fica marcado como alterado por `by` (o agente, quando ele grava; o usuário, quando clica).
    */
   write(cardId: string, contentMd: string, by: 'user' | 'agent' = 'agent'): CardChecklist {
-    if (!item.test(contentMd)) throw new Error('O checklist precisa ter itens no formato "- [ ] o que verificar" (ou "- [x]" quando verificado)')
+    if (!item.test(contentMd)) throw new Error(tm().checklists.invalidFormat)
     const before = this.get(cardId), was = new Map(itemsOf(before.contentMd).map((entry) => [entry.key, entry.checked])), at = new Date().toISOString(), marks: Marks = {}
     for (const entry of itemsOf(contentMd)) {
       const old = before.marks[entry.key]
@@ -46,7 +47,7 @@ export class ChecklistRepository {
   toggle(cardId: string, lineNumber: number, text: string, checked: boolean): CardChecklist {
     const current = this.get(cardId), eol = current.contentMd.includes('\r\n') ? '\r\n' : '\n', lines = current.contentMd.split(/\r?\n/)
     const match = line.exec(lines[lineNumber] ?? '')
-    if (!match || checklistKey(match[4]!) !== checklistKey(text)) throw new Error('O checklist mudou enquanto você clicava. Os itens foram atualizados; tente de novo.')
+    if (!match || checklistKey(match[4]!) !== checklistKey(text)) throw new Error(tm().checklists.changedWhileClicking)
     lines[lineNumber] = `${match[1]}[${checked ? 'x' : ' '}]${match[3]}${match[4]}`
     return this.write(cardId, lines.join(eol), 'user')
   }

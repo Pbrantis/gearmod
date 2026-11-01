@@ -7,6 +7,7 @@ import { resolveCommand } from './agents'
 import type { AgentProfile, Effort, ModelOption, PermissionMode } from '@agentboard/contracts'
 import { effortSchema } from '@agentboard/contracts'
 import type { McpEndpoint } from './mcp-bridge'
+import { claudeMcpServers, codexMcpServers, type McpRunServer } from './mcp-registry'
 import type { ServerNotification } from './generated/codex-app-server/ServerNotification'
 import type { ThreadStartParams } from './generated/codex-app-server/v2/ThreadStartParams'
 import type { ReasoningEffort } from './generated/codex-app-server/ReasoningEffort'
@@ -14,17 +15,20 @@ import type { SandboxMode } from './generated/codex-app-server/v2/SandboxMode'
 import type { AskForApproval } from './generated/codex-app-server/v2/AskForApproval'
 import type { ApprovalsReviewer } from './generated/codex-app-server/v2/ApprovalsReviewer'
 import type { TurnStartParams } from './generated/codex-app-server/v2/TurnStartParams'
+import { redact, redactObject } from './redaction'
+import { applyEnvPolicy } from './env-policy'
+import { tm } from './i18n'
 
 export type AgentEvent = { type: string; payload: Record<string, unknown> }
-export type AgentRunOptions = { cwd: string; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; attachments?: string[]; signal?: AbortSignal; requestPermission?(kind: string, details: Record<string, unknown>, signal?: AbortSignal): Promise<boolean>; onEvent(event: AgentEvent): void }
+export type AgentRunOptions = { cwd: string; addDirs?: string[]; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; env?: Record<string, string>; mcpServers?: McpRunServer[]; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; attachments?: string[]; signal?: AbortSignal; requestPermission?(kind: string, details: Record<string, unknown>, signal?: AbortSignal): Promise<boolean>; onEvent(event: AgentEvent): void }
 /** `costUsd`: só quando o próprio agente informa (Claude: `total_cost_usd` do result); nunca estimado aqui. */
 export type RunTokens = { input: number; cached: number; output: number; costUsd?: number }
-export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null; usage?: RunTokens }
+export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null; usage?: RunTokens; modelEffective?: string; apiKeySource?: string }
 export interface AgentAdapter { run(options: AgentRunOptions): Promise<AgentRunResult> }
 
 type JsonObject = Record<string, unknown>
 export interface ProcessFactory { start(command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }): ChildProcessWithoutNullStreams }
-const nodeProcesses: ProcessFactory = { start(command, args, options) {
+export const nodeProcesses: ProcessFactory = { start(command, args, options) {
   const executable = safeExecutable(command)
   if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(executable).toLowerCase())) {
     const commandLine = [executable, ...args].map((value) => `"${value.replace(/"/g, '""')}"`).join(' ')
@@ -54,7 +58,7 @@ class JsonLineRpc {
     return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.write({ id, method, params }) })
   }
   respond(id: string | number, result: JsonObject): void { this.write({ id, result }) }
-  unsupported(id: string | number): void { this.write({ id, error: { code: -32601, message: 'Solicitação do agente não suportada pelo AgentBoard' } }) }
+  unsupported(id: string | number): void { this.write({ id, error: { code: -32601, message: 'Agent request not supported by AgentBoard' } }) }
   stop(): void { if (!this.process.killed) this.process.kill() }
   private write(value: JsonObject): void { if (!this.process.stdin.writable || this.process.stdin.destroyed) return; this.process.stdin.write(`${JSON.stringify(value)}\n`) }
   private receive(line: string): void {
@@ -90,7 +94,7 @@ export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; appro
     case 'on_request': return { sandbox: 'workspace-write', approvalPolicy: 'on-request', approvalsReviewer: 'user' }
     case 'read_only': return { sandbox: 'read-only', approvalPolicy: 'on-request', approvalsReviewer: 'user' }
     case 'bypass': return { sandbox: 'danger-full-access', approvalPolicy: 'never' }
-    default: throw new Error(`Modo não suportado pelo Codex: ${mode}`)
+    default: throw new Error(tm().adapters.unsupportedCodexMode(mode))
   }
 }
 
@@ -100,12 +104,12 @@ export const claudePermissionMode: Record<PermissionMode, string | null> = { pla
 export class CodexAppServerAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
-    if (options.signal?.aborted) throw new Error('Execução cancelada')
-    const child = this.processes.start(options.profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: options.cwd, env: { ...process.env, CODEX_HOME: options.profile.configDir } })
+    if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
+    const child = this.processes.start(options.profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: options.cwd, env: { ...applyEnvPolicy(options.profile, process.env), CODEX_HOME: options.profile.configDir, ...options.env } })
     const rpc = new JsonLineRpc(child)
     const approvals = new ProviderApprovals(options)
     const abort = () => { approvals.close(); rpc.stop() }; options.signal?.addEventListener('abort', abort, { once: true })
-    let text = '', turnId: string | null = null
+    let text = '', turnId: string | null = null, modelEffective: string | undefined
     let turnAbort: (() => void) | undefined
     const items = new Map<string, JsonObject>()
     // O Codex avisa o uso a cada chamada ao modelo (`last`); soma só quando o total do thread muda, para não contar aviso repetido.
@@ -114,11 +118,12 @@ export class CodexAppServerAdapter implements AgentAdapter {
       await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
       rpc.notify('initialized')
       const access = codexAccess(options.planning ? 'plan' : options.mode ?? 'auto')
-      const policy = { cwd: options.cwd, ...access, ...(options.model ? { model: options.model } : {}), ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp ? { config: { mcp_servers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env, ...agentboardToolApproval } } } } : {}) } satisfies ThreadStartParams
+      const policy = { cwd: options.cwd, ...access, ...(options.model ? { model: options.model } : {}), ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp || options.mcpServers?.length ? { config: { mcp_servers: { ...codexMcpServers(options.mcpServers ?? []), ...(options.mcp ? { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env, ...agentboardToolApproval } } : {}) } } } : {}) } satisfies ThreadStartParams
       const threadResult = options.sessionId
         ? await rpc.request('thread/resume', { threadId: options.sessionId, ...policy })
         : await rpc.request('thread/start', policy)
       const thread = threadResult.thread as { id: string }
+      if (typeof (threadResult as Record<string, unknown>).model === 'string') modelEffective = (threadResult as Record<string, unknown>).model as string
       const completed = new Promise<AgentRunResult>((resolve, reject) => {
         const onAbort = turnAbort = () => resolve({ sessionId: thread.id, turnId, text, status: 'interrupted', error: 'Interrompido pelo usuário', usage: { ...usage } })
         options.signal?.addEventListener('abort', onAbort, { once: true })
@@ -152,13 +157,15 @@ export class CodexAppServerAdapter implements AgentAdapter {
               lastTotal = token.total?.totalTokens ?? lastTotal
               const cached = token.last.cachedInputTokens ?? 0
               usage.cached += cached; usage.input += Math.max(0, (token.last.inputTokens ?? 0) - cached); usage.output += token.last.outputTokens ?? 0
+              options.onEvent({ type: 'tokens.update', payload: { input: Math.max(0, (token.last.inputTokens ?? 0) - cached), cached, output: token.last.outputTokens ?? 0 } })
             }
           }
           if (event.method === 'turn/completed' && params.threadId === thread.id) {
             approvals.close()
             const turn = params.turn as { id?: string; status?: string; error?: unknown }; turnId = turn.id ?? turnId
             const status = turn.status === 'completed' ? 'completed' : turn.status === 'interrupted' ? 'interrupted' : 'failed'
-            resolve({ sessionId: thread.id, turnId, text, status, error: status === 'failed' ? sanitize(JSON.stringify(turn.error ?? 'Turn failed')) : null, usage: { ...usage } })
+            const turnModel = typeof (turn as Record<string, unknown>).model === 'string' ? (turn as Record<string, unknown>).model as string : undefined
+            resolve({ sessionId: thread.id, turnId, text, status, error: status === 'failed' ? sanitize(JSON.stringify(turn.error ?? 'Turn failed')) : null, usage: { ...usage }, ...(turnModel ?? modelEffective ? { modelEffective: turnModel ?? modelEffective } : {}) })
           }
           if (event.method === 'error') reject(new Error(sanitize(JSON.stringify(params))))
         })
@@ -183,7 +190,19 @@ export async function listCodexModels(profile: AgentProfile, processes: ProcessF
   }
   const cached = readCodexModelsCache(profile)
   if (cached.length) return cached
-  throw new Error('O Codex não devolveu nenhum modelo.')
+  throw new Error(tm().adapters.noCodexModels)
+}
+
+/** Leitura oficial de quota do App Server; o chamador mantém fallback nos arquivos de sessão. */
+export async function readCodexQuota(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 15_000): Promise<Record<string, unknown> | null> {
+  const child = processes.start(profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: process.cwd(), env: { ...applyEnvPolicy(profile, process.env), CODEX_HOME: profile.configDir } })
+  const rpc = new JsonLineRpc(child); let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; rpc.stop() }, timeoutMs)
+  try {
+    await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
+    rpc.notify('initialized')
+    return await rpc.request('account/rateLimits/read', {})
+  } catch (error) { if (timedOut) return null; throw error } finally { clearTimeout(timer); rpc.stop() }
 }
 
 /** Plano B: o Codex guarda o último catálogo em `models_cache.json` dentro do CODEX_HOME. */
@@ -199,7 +218,7 @@ export function readCodexModelsCache(profile: AgentProfile): ModelOption[] {
 }
 
 async function listCodexModelsLive(profile: AgentProfile, processes: ProcessFactory, timeoutMs: number): Promise<ModelOption[]> {
-  const child = processes.start(profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: process.cwd(), env: { ...process.env, CODEX_HOME: profile.configDir } })
+  const child = processes.start(profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: process.cwd(), env: { ...applyEnvPolicy(profile, process.env), CODEX_HOME: profile.configDir } })
   const rpc = new JsonLineRpc(child)
   let timedOut = false
   const timer = setTimeout(() => { timedOut = true; rpc.stop() }, timeoutMs)
@@ -209,13 +228,13 @@ async function listCodexModelsLive(profile: AgentProfile, processes: ProcessFact
     const result = await rpc.request('model/list', {}) as unknown as { data?: Array<{ model: string; displayName: string; description: string; hidden: boolean; isDefault: boolean; defaultReasoningEffort: Effort; supportedReasoningEfforts: Array<{ reasoningEffort: Effort }> }> }
     return (result.data ?? []).filter((model) => !model.hidden).map((model) => ({ id: model.model, label: model.displayName, description: model.description, efforts: model.supportedReasoningEfforts.map((item) => item.reasoningEffort).filter(knownEffort), recommendedFor: model.isDefault ? ['planning', 'execution'] as const : [], defaultEffort: knownEffort(model.defaultReasoningEffort) ? model.defaultReasoningEffort : null })).map((model) => ({ ...model, recommendedFor: [...model.recommendedFor] }))
   } catch (error) {
-    throw timedOut ? new Error('O Codex não respondeu a tempo ao listar os modelos.') : error
+    throw timedOut ? new Error(tm().adapters.codexModelsTimeout) : error
   } finally { clearTimeout(timer); rpc.stop() }
 }
 
 /** Chamada mínima ao Claude só para ler o `rate_limit_event` (limite de uso); encerra o processo assim que o evento chega. */
 export async function probeClaudeLimits(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 90_000): Promise<Record<string, unknown> | null> {
-  const child = processes.start(profile.executablePath || 'claude', ['--print', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--no-session-persistence', '--', 'responda apenas: ok'], { cwd: tmpdir(), env: { ...process.env, CLAUDE_CONFIG_DIR: profile.configDir } })
+  const child = processes.start(profile.executablePath || 'claude', ['--print', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--no-session-persistence', '--', 'responda apenas: ok'], { cwd: tmpdir(), env: { ...applyEnvPolicy(profile, process.env), CLAUDE_CONFIG_DIR: profile.configDir } })
   child.stdin.end()
   return new Promise((resolve) => {
     let done = false
@@ -231,53 +250,69 @@ export async function probeClaudeLimits(profile: AgentProfile, processes: Proces
 export class ClaudeCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
-    if (options.signal?.aborted) throw new Error('Execução cancelada')
+    if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
     // Em `plan` o Claude se recusa a chamar ferramentas que gravam (inclusive as do AgentBoard; confirmado em teste real).
     // Com o MCP ligado, o planejamento usa o modo padrão só com ferramentas de leitura + as do AgentBoard; sem MCP, `plan` e documentos por marcadores.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
     const executionMode = claudePermissionMode[options.mode ?? 'accept_edits']
-    if (!options.planning && !executionMode) throw new Error(`Modo não suportado pelo Claude: ${String(options.mode)}`)
+    if (!options.planning && !executionMode) throw new Error(tm().adapters.unsupportedClaudeMode(String(options.mode)))
     const args = ['--print', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', options.planning ? (readOnlyPlanning ? 'default' : 'plan') : executionMode!]
     if (options.model) args.push('--model', options.model)
     if (options.effort) args.push('--effort', options.effort)
     if (readOnlyPlanning) args.push('--tools', 'Read,Grep,Glob,WebSearch,WebFetch')
     if (options.pluginDir) args.push('--plugin-dir', options.pluginDir)
-    if (options.mcp) args.push('--mcp-config', JSON.stringify({ mcpServers: { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } }), '--allowedTools', 'mcp__agentboard')
+    if (options.mcp || options.mcpServers?.length) args.push('--mcp-config', JSON.stringify({ mcpServers: { ...claudeMcpServers(options.mcpServers ?? []), ...(options.mcp ? { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } : {}) } }))
+    if (options.mcp) args.push('--allowedTools', 'mcp__agentboard')
     if (options.sessionId) args.push('--resume', options.sessionId)
     // Anexos fora da pasta do projeto: libera a leitura da pasta de cada um.
-    for (const dir of new Set((options.attachments ?? []).map((path) => dirname(path)))) args.push('--add-dir', dir)
+    for (const dir of new Set([...(options.attachments ?? []).map((path) => dirname(path)), ...(options.addDirs ?? [])])) args.push('--add-dir', dir)
     const interactive = Boolean(options.requestPermission)
     if (interactive) args.push('--input-format', 'stream-json', '--permission-prompt-tool', 'stdio')
     else args.push('--', options.prompt)
-    const child = this.processes.start(options.profile.executablePath || 'claude', args, { cwd: options.cwd, env: { ...process.env, CLAUDE_CONFIG_DIR: options.profile.configDir } })
+    const child = this.processes.start(options.profile.executablePath || 'claude', args, { cwd: options.cwd, env: { ...applyEnvPolicy(options.profile, process.env), CLAUDE_CONFIG_DIR: options.profile.configDir, ...options.env } })
     const approvals = new ProviderApprovals(options)
     if (!interactive) child.stdin.end()
-    let text = '', sessionId = options.sessionId ?? '', stderr = ''
+    let text = '', sessionId = options.sessionId ?? '', stderr = '', apiKeySource: string | undefined
     const abort = () => { approvals.close(); child.kill() }; options.signal?.addEventListener('abort', abort, { once: true })
     child.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString()}`.slice(-4000) })
     return new Promise<AgentRunResult>((resolve, reject) => {
+      // Tarefas em segundo plano (subagentes e comandos): o `result` do turno chega com elas ainda rodando. O processo só pode sair quando todas
+      // terminarem e o Claude responder à notificação delas (outro `result`); se não responder, vale o último resultado depois de uma folga.
+      const pending = new Set<string>(), grace = 60_000
+      let deferred: AgentRunResult | null = null, graceTimer: NodeJS.Timeout | undefined
+      const finish = (result: AgentRunResult): void => { if (graceTimer) clearTimeout(graceTimer); resolve(result) }
+      const settle = (): void => { if (deferred && !pending.size && !graceTimer) { const last = deferred; graceTimer = setTimeout(() => finish(last), grace) } }
       createInterface({ input: child.stdout }).on('line', (line) => {
         let message: JsonObject; try { message = JSON.parse(line) as JsonObject } catch { return }
         if (message.type === 'control_request' && typeof message.request_id === 'string') {
           const id = message.request_id, request = (message.request ?? {}) as JsonObject
-          const respond = (allow: boolean): void => { if (!child.stdin.writable || child.stdin.destroyed) return; child.stdin.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response: allow ? { behavior: 'allow', updatedInput: request.input ?? {} } : { behavior: 'deny', message: 'Permissão negada pelo usuário ou execução encerrada' } } })}\n`) }
+          const respond = (allow: boolean): void => { if (!child.stdin.writable || child.stdin.destroyed) return; child.stdin.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response: allow ? { behavior: 'allow', updatedInput: request.input ?? {} } : { behavior: 'deny', message: 'Permission denied by the user or the run has ended' } } })}\n`) }
           if (request.subtype === 'can_use_tool') approvals.ask(id, String(request.tool_name ?? 'Ferramenta'), request, respond)
-          else child.stdin.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'error', request_id: id, error: 'Solicitação não suportada' } })}\n`)
+          else child.stdin.write(`${JSON.stringify({ type: 'control_response', response: { subtype: 'error', request_id: id, error: 'Request not supported' } })}\n`)
           return
         }
         if (message.type === 'control_cancel_request' && typeof message.request_id === 'string') { approvals.cancel(message.request_id); return }
         if (typeof message.session_id === 'string') sessionId = message.session_id
+        if (message.type === 'system' && message.subtype === 'init' && typeof message.apiKeySource === 'string') apiKeySource = message.apiKeySource
         const event = message.event as JsonObject | undefined, delta = event?.delta as JsonObject | undefined
         if (message.type === 'stream_event' && delta?.type === 'text_delta' && typeof delta.text === 'string') { text += delta.text; options.onEvent({ type: 'item/agentMessage/delta', payload: { delta: delta.text } }) }
         else options.onEvent({ type: `claude/${String(message.type ?? 'event')}`, payload: redactObject(message) })
+        if (message.type === 'system' && typeof message.task_id === 'string') {
+          if (message.subtype === 'task_started') pending.add(message.task_id)
+          else if (message.subtype === 'task_notification') { pending.delete(message.task_id); settle() }
+        }
         if (message.type === 'result') {
+          if (graceTimer) { clearTimeout(graceTimer); graceTimer = undefined }
           approvals.close()
           if (!text && typeof message.result === 'string') text = message.result
-          resolve({ sessionId, turnId: null, text, status: message.is_error ? 'failed' : 'completed', error: message.is_error ? sanitize(String(message.result ?? 'Claude failed')) : null, usage: claudeUsage(message.usage, message.total_cost_usd) })
+          const modelEffective = typeof message.model === 'string' ? message.model : typeof (message.result as JsonObject | undefined)?.model === 'string' ? (message.result as JsonObject).model as string : undefined
+          const result: AgentRunResult = { sessionId, turnId: null, text, status: message.is_error ? 'failed' : 'completed', error: message.is_error ? sanitize(String(message.result ?? 'Claude failed')) : null, usage: claudeUsage(message.usage, message.total_cost_usd), ...(modelEffective ? { modelEffective } : {}), ...(apiKeySource ? { apiKeySource } : {}) }
+          if (pending.size && !message.is_error) deferred = result
+          else finish(result)
         }
       })
       child.on('error', (error) => reject(error))
-      child.on('exit', (code) => { if (options.signal?.aborted) resolve({ sessionId, turnId: null, text, status: 'interrupted', error: 'Interrompido pelo usuário' }); else reject(new Error(`Claude encerrou sem resultado (${code}): ${sanitize(stderr)}`)) })
+      child.on('exit', (code) => { if (deferred && !options.signal?.aborted) { finish(deferred); return } if (options.signal?.aborted) resolve({ sessionId, turnId: null, text, status: 'interrupted', error: 'Interrompido pelo usuário' }); else reject(new Error(`Claude encerrou sem resultado (${code}): ${sanitize(stderr)}`)) })
       if (interactive) child.stdin.write(`${JSON.stringify({ type: 'user', session_id: '', message: { role: 'user', content: options.prompt }, parent_tool_use_id: null })}\n`)
       if (options.signal?.aborted) abort()
     }).finally(() => { approvals.close(); options.signal?.removeEventListener('abort', abort); if (!child.killed) child.kill() })
@@ -290,14 +325,13 @@ function claudeUsage(value: unknown, cost?: unknown): RunTokens | undefined {
   const usage = value as Record<string, unknown>, count = (key: string): number => (typeof usage[key] === 'number' && Number.isFinite(usage[key]) ? Math.max(0, Math.round(usage[key] as number)) : 0)
   return { input: count('input_tokens') + count('cache_creation_input_tokens'), cached: count('cache_read_input_tokens'), output: count('output_tokens'), ...(typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {}) }
 }
-function redactObject(value: Record<string, unknown>): Record<string, unknown> { return JSON.parse(JSON.stringify(value, (_key, item: unknown) => typeof item === 'string' ? sanitize(item) : item)) as Record<string, unknown> }
-function sanitize(value: string): string { return value.replace(/(?:sk-|Bearer\s+)[A-Za-z0-9._-]+/gi, '[redacted]').slice(0, 100_000) }
+function sanitize(value: string): string { return redact(value) }
 
 function safeExecutable(command: string): string {
   if (process.platform !== 'win32') return command
   command = resolveCommand(command, process.env)
   if (isAbsolute(command)) {
-    if (!['.exe', '.cmd', '.bat'].includes(extname(command).toLowerCase())) throw new Error('No Windows, o agente deve apontar para um arquivo .exe, .cmd ou .bat')
+    if (!['.exe', '.cmd', '.bat'].includes(extname(command).toLowerCase())) throw new Error(tm().adapters.windowsExecutableRequired)
     return command
   }
   const folders = (process.env.PATH ?? '').split(delimiter)
@@ -307,7 +341,7 @@ function safeExecutable(command: string): string {
       if (existsSync(candidate)) return candidate
     }
   }
-  throw new Error(`Executável seguro não encontrado no PATH: ${command}`)
+  throw new Error(tm().adapters.safeExecutableNotFound(command))
 }
 
 /** Responses are synchronous on close, before killing the provider process; late UI replies cannot write. */

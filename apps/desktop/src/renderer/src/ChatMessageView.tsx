@@ -2,6 +2,9 @@ import React, { useLayoutEffect, useRef, useState } from 'react'
 import type { ChatMessage } from '@agentboard/contracts'
 import { AgentMessage, answersFor } from './AgentMessage'
 import { AttachmentChips, splitAttachmentNote } from './Attachments'
+import { ReplyContextCards } from './ChatReplies'
+import { splitChatReplies } from './chatReplyContext'
+import { useT } from './i18n'
 
 /**
  * Uma mensagem do chat no estilo do Claude Code: a minha no balão; a do agente direto no fundo, em Markdown;
@@ -23,9 +26,9 @@ export function ChatMessageView({ message, answered = true, busy = false, answer
 
 /** Mensagem do usuário: anexos como miniaturas em cima e só o texto escrito embaixo (o bloco de caminhos fica por baixo dos panos). */
 function UserBody({ body }: { body: string }): React.JSX.Element {
-  const { text, files } = splitAttachmentNote(body)
+  const context = splitChatReplies(body), { text, files } = splitAttachmentNote(context.text), replies = context.replies
   const review = parseReviewContext(text), screenTest = parseScreenTest(text)
-  return <>{files.length > 0 && <AttachmentChips files={files} />}{review ? <ReviewContext {...review} /> : screenTest ? <ScreenTestCard {...screenTest} /> : text && <div className="usertext">{text}</div>}</>
+  return <>{files.length > 0 && <AttachmentChips files={files} />}<ReplyContextCards replies={replies} />{review ? <ReviewContext {...review} /> : screenTest ? <ScreenTestCard {...screenTest} /> : text && <div className="usertext">{text}</div>}</>
 }
 
 export interface ScreenTestData { skill: string; visible: boolean }
@@ -38,9 +41,10 @@ export function parseScreenTest(body: string): ScreenTestData | null {
 
 /** Card do teste na tela: o que será feito e com quais opções (ferramenta, skill, navegador e evidências). */
 function ScreenTestCard({ skill, visible }: ScreenTestData): React.JSX.Element {
-  const rows: Array<[string, string]> = [['Ferramenta', 'Playwright CLI'], ['Skill', skill], ['Navegador', visible ? 'Visível (--headed, com slowMo)' : 'Sem janela (headless)'], ['Evidências', visible ? 'Você acompanha na tela' : 'Screenshot e trace do que falhar']]
-  return <div className="testcard" aria-label="Teste na tela com o Playwright CLI">
-    <div className="testcard-head"><span className="testcard-ico" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="11" rx="2" /><path d="M7 17.5h6M10 14.5v3" /></svg></span><div><b>Testar na tela</b><small>Critérios de aceite que dependem da interface</small></div></div>
+  const s = useT().chat.screenTest
+  const rows: Array<[string, string]> = [[s.tool, 'Playwright CLI'], [s.skill, skill], [s.browser, visible ? s.browserVisible : s.browserHeadless], [s.evidence, visible ? s.evidenceVisible : s.evidenceFailures]]
+  return <div className="testcard" aria-label={s.ariaLabel}>
+    <div className="testcard-head"><span className="testcard-ico" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="2.5" y="3.5" width="15" height="11" rx="2" /><path d="M7 17.5h6M10 14.5v3" /></svg></span><div><b>{s.title}</b><small>{s.subtitle}</small></div></div>
     <dl>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
   </div>
 }
@@ -65,14 +69,15 @@ function LinesIcon(): React.JSX.Element {
 
 /** Contexto visual do comentário: localização compacta e trecho claramente delimitado como código. */
 function ReviewContext({ path, lines, oldCode, code, comment }: ReviewContextData): React.JSX.Element {
+  const r = useT().chat.reviewContext
   return <div className="reviewctx">
-    <div className="reviewctx-meta" aria-label="Contexto da revisão de código">
-      <span className="reviewchip path" title={path}><FileIcon /><span>{path}</span></span>
-      <span className="reviewchip lines"><LinesIcon /><span>{lines}{oldCode ? ' · código antigo' : ''}</span></span>
+    <div className="reviewctx-meta" aria-label={r.contextLabel}>
+      <span className="reviewchip path" data-tip={path}><FileIcon /><span>{path}</span></span>
+      <span className="reviewchip lines"><LinesIcon /><span>{lines}{oldCode ? r.oldCode : ''}</span></span>
     </div>
     <div className="reviewcode">
       <div className="reviewcode-head"><span className="reviewcode-dots" aria-hidden="true"><i /><i /><i /></span><span>diff</span></div>
-      <pre aria-label="Trecho de código selecionado"><code>{code.split('\n').map((line, index) => {
+      <pre aria-label={r.selectedSnippet}><code>{code.split('\n').map((line, index) => {
         const kind = line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : 'ctx'
         return <span key={index} className={kind}>{line || ' '}{index < code.split('\n').length - 1 ? '\n' : ''}</span>
       })}</code></pre>
@@ -88,6 +93,7 @@ const pageSize = 10
  * última e expande para o histórico, que desenha 10 por vez e carrega mais ao rolar para cima.
  */
 function ToolGroup({ items }: { items: ChatMessage[] }): React.JSX.Element {
+  const t = useT()
   const [open, setOpen] = useState(false), [shown, setShown] = useState(pageSize)
   const list = useRef<HTMLDivElement>(null), keep = useRef<{ height: number; top: number } | null>(null), atBottom = useRef(true)
   const visible = items.slice(-shown)
@@ -103,9 +109,9 @@ function ToolGroup({ items }: { items: ChatMessage[] }): React.JSX.Element {
   }
   const toggle = (): void => { setOpen(!open); setShown(pageSize); atBottom.current = true }
   return <div className={`toolgroup ${open ? 'open' : ''}`}>
-    <button type="button" className="toolgroup-head" aria-expanded={open} onClick={toggle}><span>{items.length} ações</span><span className="chev" aria-hidden="true">›</span></button>
+    <button type="button" className="toolgroup-head" aria-expanded={open} onClick={toggle}><span>{t.chat.toolGroup.actions(items.length)}</span><span className="chev" aria-hidden="true">›</span></button>
     {open
-      ? <div className="toolgroup-list" ref={list} onScroll={onScroll}>{shown < items.length && <div className="toolgroup-more">Role para ver as anteriores</div>}{visible.map((m) => <ChatMessageView key={m.id} message={m} />)}</div>
+      ? <div className="toolgroup-list" ref={list} onScroll={onScroll}>{shown < items.length && <div className="toolgroup-more">{t.chat.toolGroup.scrollForPrevious}</div>}{visible.map((m) => <ChatMessageView key={m.id} message={m} />)}</div>
       : <ChatMessageView message={items[items.length - 1]!} />}
   </div>
 }

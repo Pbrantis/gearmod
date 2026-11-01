@@ -5,6 +5,20 @@ import { readManifest, type CardHistoryService } from './history'
 import type { BoardRepository } from './projects'
 
 /**
+ * Pasta do SDD central: prefere a localização nova (`sdd.sourceId` + `sdd.root`, aba SDD do projeto); sem isso configurado,
+ * cai no `sddRoot` legado (`sddPath` ou detecção automática). Evita duplicar a mesma escolha em dois lugares da UI.
+ */
+export function resolvedSddRoot(history: CardHistoryService, board: Pick<BoardRepository, 'get'>, projectId: string, method?: 'native' | 'speckit' | null): string | null {
+  const config = history.config(projectId)
+  if (config.sdd.sourceId) {
+    const source = board.get(projectId).project.sources.find((item) => item.id === config.sdd.sourceId)
+    if (source) return resolve(source.localPath, config.sdd.root || '.')
+  }
+  if (method === 'speckit') return config.sddPath ?? history.detect(projectId).find((item) => item.method === 'speckit')?.path ?? null
+  return sddRoot(history, projectId)
+}
+
+/**
  * Workflow Adapters (docs/09). O planejador do AgentBoard continua só lendo o projeto; quem grava os arquivos no formato nativo de
  * cada método é o app, ao concluir o planejamento, na pasta central do SDD do projeto (uma só, mesmo com vários repositórios).
  */
@@ -20,16 +34,15 @@ export interface MethodAdapter {
 export const methodAdapters: Record<SddMethod, MethodAdapter> = {
   native: {
     method: 'native', label: 'SDD do AgentBoard',
-    instructions: () => 'SDD completo do AgentBoard: Especificação com histórias priorizadas, requisitos RF e critérios de sucesso; Plano com decisões, riscos, contratos e plano de testes; Tasks por fase com critérios de aceite. Use as skills agentboard-especificacao, agentboard-plano e agentboard-tasks.'
+    instructions: () => 'Full AgentBoard SDD: Specification with prioritized stories, RF requirements and success criteria; Plan with decisions, risks, contracts and a test plan; Tasks by phase with acceptance criteria. Use the skills agentboard-especificacao, agentboard-plano and agentboard-tasks.'
   },
   speckit: {
     method: 'speckit', label: 'GitHub Spec Kit',
-    instructions: (_config, sddPath) => `GitHub Spec Kit${sddPath ? ` instalado em ${sddPath}` : ''}. Leia a constituição (.specify/memory/constitution.md) e os modelos nativos (.specify/templates/spec-template.md, plan-template.md e tasks-template.md) e escreva Especificação, Plano e Tasks do card seguindo a estrutura desses modelos (seções e numeração do Spec Kit). Você não roda os comandos /speckit.* nem grava arquivos: ao concluir o planejamento, o AgentBoard grava spec.md, plan.md e tasks.md em ${sddPath ?? '<pasta do SDD>'}/specs/<pasta do card>/. Não crie outra instalação do Spec Kit nos repositórios. Se o modelo de tasks do Spec Kit tiver tarefas só de validação (rodar testes, conferir regressões), elas vão para o "Plano de testes" do Plano, não para as Tasks.`,
-    target: (sddPath, folder) => ({ dir: join(sddPath, 'specs', folder), files: { 'spec.md': ['especificacao'], 'plan.md': ['plano'], 'tasks.md': ['tasks'] } })
+    instructions: () => 'Native GitHub Spec Kit: the stages are the installed skills speckit-specify, speckit-plan and speckit-tasks, run in the card worktree; they produce their own artifacts (spec.md, plan.md, tasks.md of the card feature). Do not imitate the templates, do not use the AgentBoard document tools to write these artifacts and do not generate copies. Follow the skills\' questions and instructions. At the end of each stage say which one is next and wait for the user to ask to continue. Never run speckit-implement here: implementation happens in the implementation chat, after the card is moved. Note: the block enforced by the app rejects the speckit-implement skill and its permissions; code edits by other means depend on the chosen mode and are only prevented by this instruction, not by the app.'
   },
   openspec: {
     method: 'openspec', label: 'OpenSpec',
-    instructions: (_config, sddPath) => `OpenSpec${sddPath ? ` em ${sddPath}` : ''}. Leia openspec/project.md (e openspec/AGENTS.md, se existir) e as specs atuais em openspec/specs/. Escreva a Especificação como proposta de mudança do OpenSpec (Why, What Changes, Impact e os requisitos com cenários "#### Scenario:"), o Plano como design.md e as Tasks como tasks.md. Você não grava arquivos: ao concluir o planejamento, o AgentBoard grava proposal.md, design.md e tasks.md em ${sddPath ?? '<pasta do SDD>'}/openspec/changes/<pasta do card>/. Não crie outra instalação do OpenSpec nos repositórios. Itens do tasks.md que são só validação (rodar testes, conferir regressões) vão para o "Plano de testes" do Plano, não para as Tasks.`,
+    instructions: (_config, sddPath) => `OpenSpec${sddPath ? ` at ${sddPath}` : ''}. Read openspec/project.md (and openspec/AGENTS.md, if it exists) and the current specs in openspec/specs/. Write the Specification as an OpenSpec change proposal (Why, What Changes, Impact and the requirements with "#### Scenario:" scenarios), the Plan as design.md and the Tasks as tasks.md. You do not write files: when planning is concluded, AgentBoard writes proposal.md, design.md and tasks.md to ${sddPath ?? '<SDD folder>'}/openspec/changes/<card folder>/. Do not create another OpenSpec installation in the repositories. Items in tasks.md that are only validation (running tests, checking regressions) go in the Plan's "Test plan", not in the Tasks.`,
     target: (sddPath, folder) => ({ dir: join(sddPath, 'openspec', 'changes', folder), files: { 'proposal.md': ['resumo', 'especificacao'], 'design.md': ['plano'], 'tasks.md': ['tasks'] } })
   },
   custom: {
@@ -37,16 +50,18 @@ export const methodAdapters: Record<SddMethod, MethodAdapter> = {
     instructions: (config) => {
       try {
         const manifest = readManifest(config.customManifest)
-        return `Método personalizado "${manifest.name}" (versão ${manifest.version}). Siga as etapas na ordem; grave o resultado nos documentos do card:\n${manifest.steps.map((step, index) => `${index + 1}. ${step.id}: ${step.description}${step.outputs?.length ? ` (saídas: ${step.outputs.join(', ')})` : ''}${step.commands?.length ? ` (comandos permitidos: ${step.commands.join(', ')})` : ''}`).join('\n')}`
-      } catch (error) { return `Método personalizado indisponível (${error instanceof Error ? error.message : String(error)}). Use o SDD do AgentBoard.` }
+        return `Custom method "${manifest.name}" (version ${manifest.version}). Follow the steps in order; save the result in the card documents:\n${manifest.steps.map((step, index) => `${index + 1}. ${step.id}: ${step.description}${step.outputs?.length ? ` (outputs: ${step.outputs.join(', ')})` : ''}${step.commands?.length ? ` (allowed commands: ${step.commands.join(', ')})` : ''}`).join('\n')}`
+      } catch (error) { return `Custom method unavailable (${error instanceof Error ? error.message : String(error)}). Use AgentBoard SDD.` }
     }
   }
 }
 
 /** O que vai no contexto do planejador para o fluxo do card. */
-export function workflowInstructions(config: WorkflowConfig, sddPath: string | null, workflow: WorkflowKind | null): string | null {
-  if (workflow === 'light') return 'Fluxo curto: sem Especificação, Plano nem Tasks. O card é uma tarefa pequena: descrição do que fazer, implementar e validar.'
-  if (workflow === 'spec') return 'Spec leve: Especificação objetiva com critérios de aceite, Plano técnico curto e Tasks só quando ajudarem. Nada de seções vazias.'
+export function workflowInstructions(config: WorkflowConfig, sddPath: string | null, workflow: WorkflowKind | null, planning = true): string | null {
+  // Fora do planejamento (implementação e teste) a skill speckit-implement é o trabalho do chat: a proibição vale só no planejamento.
+  if (!planning && workflow === 'sdd' && config.complexMethod === 'speckit') return 'Native GitHub Spec Kit: the specification, plan and tasks of the card feature are already in the worktree. This is the implementation chat: the speckit-implement skill is allowed and is what must be run to implement the tasks (spec.md, plan.md and tasks.md of the card feature). Do not imitate the templates or use the AgentBoard document tools to write these artifacts.'
+  if (workflow === 'light') return 'Short workflow: no Specification, Plan or Tasks. The card is a small task: a description of what to do, implement and validate.'
+  if (workflow === 'spec') return 'Light spec: an objective Specification with acceptance criteria, a short technical Plan and Tasks only when they help. No empty sections.'
   if (workflow === 'sdd') return methodAdapters[config.complexMethod].instructions(config, sddPath)
   return null
 }
@@ -67,6 +82,9 @@ type DocName = 'resumo' | 'especificacao' | 'plano' | 'tasks'
  */
 export function exportPlanArtifacts(history: CardHistoryService, board: BoardRepository, cardId: string): { written: string[]; notices: string[] } {
   const card = board.card(cardId), documents = board.documents.get(cardId), written: string[] = [], notices: string[] = []
+  if (history.workflow(cardId) === 'sdd' && history.sddMethod(cardId) === 'speckit') {
+    return { written, notices: ['Spec Kit: os artefatos são os das skills nativas na worktree do card; nenhum artefato paralelo foi gerado.'] }
+  }
   const content = (kinds: Array<DocName>): string => kinds.map((kind) => documents[kind].contentMd.trim()).filter(Boolean).join('\n\n')
   // `shared`: pasta central do SDD, que pode ter conteúdo de outras pessoas; só grava onde o próprio card marcou como sua.
   const write = (dir: string, files: Record<string, Array<DocName>>, shared: boolean): void => {
@@ -78,9 +96,10 @@ export function exportPlanArtifacts(history: CardHistoryService, board: BoardRep
       const file = join(dir, name), temp = `${file}.tmp`; writeFileSync(temp, `${text}\n`, 'utf8'); renameSync(temp, file); written.push(file)
     }
   }
-  if (card.type !== 'minor') write(history.artifactsDir(cardId), { 'spec.md': ['especificacao'], 'plan.md': ['plano'], 'tasks.md': ['tasks'] }, false)
-  const config = history.config(card.projectId), adapter = methodAdapters[config.complexMethod], root = sddRoot(history, card.projectId)
-  if (history.workflow(cardId) === 'sdd' && adapter.target) {
+  if (card.workflow !== 'light') write(history.artifactsDir(cardId), { 'spec.md': ['especificacao'], 'plan.md': ['plano'], 'tasks.md': ['tasks'] }, false)
+  const selectedMethod = history.sddMethod(cardId), adapter = selectedMethod ? methodAdapters[selectedMethod] : null, root = resolvedSddRoot(history, board, card.projectId, selectedMethod)
+  if (history.workflow(cardId) === 'sdd' && !adapter) notices.push('Escolha o método SDD neste card; o projeto não define o método automaticamente.')
+  if (history.workflow(cardId) === 'sdd' && adapter?.target) {
     if (!root) notices.push(`O fluxo SDD usa ${adapter.label}, mas o projeto não tem a pasta do SDD configurada nem detectada; os arquivos ficaram só na pasta de artefatos do card.`)
     else { const target = adapter.target(resolve(root), `${cardId.slice(0, 8)}-${slug(card.title)}`); write(target.dir, target.files, true) }
   }

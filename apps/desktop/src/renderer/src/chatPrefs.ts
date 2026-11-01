@@ -1,9 +1,11 @@
 /** Preferências só do chat, guardadas neste computador: o espaço entre uma mensagem e a seguinte. */
+import { tr } from './i18n'
+
 export type MessageSpacing = 'compact' | 'comfortable' | 'wide'
 export const messageSpacings: Array<{ value: MessageSpacing; label: string; gap: number }> = [
-  { value: 'compact', label: 'Compacto', gap: 12 },
-  { value: 'comfortable', label: 'Confortável', gap: 22 },
-  { value: 'wide', label: 'Amplo', gap: 34 }
+  { value: 'compact', get label() { return tr().chat.messageSpacing.compact }, gap: 12 },
+  { value: 'comfortable', get label() { return tr().chat.messageSpacing.comfortable }, gap: 22 },
+  { value: 'wide', get label() { return tr().chat.messageSpacing.wide }, gap: 34 }
 ]
 const key = 'agentboard.messageSpacing'
 

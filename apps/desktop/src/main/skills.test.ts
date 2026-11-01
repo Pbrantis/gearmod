@@ -19,7 +19,7 @@ async function setup(reviewer?: ConstructorParameters<typeof SkillService>[2]) {
   await mkdir(home, { recursive: true }); await mkdir(repo, { recursive: true })
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
   const profiles = new ProfileRepository(database, home)
-  const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x', useExistingSession: true })
+  const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x' })
   const projects = new ProjectRepository(database, git)
   const project = await projects.create({ name: 'P', localPath: repo, baseBranch: 'dev', profileIds: [claude.id] })
   const events: string[] = []
@@ -74,7 +74,7 @@ describe('SkillService', () => {
     let release = (): void => undefined
     const gate = new Promise<void>((resolve) => { release = resolve })
     const adapter: AgentAdapter = { async run(options) { runs.push(options); await gate; return { sessionId: 's', turnId: null, text: 'ok', status: 'completed', error: null } } }
-    const { home, claude, service, events } = await setup({ adapters: { claude: adapter, codex: adapter }, profile: () => claude })
+    const { home, claude, service, events } = await setup({ adapters: { claude: adapter, codex: adapter, gemini: adapter }, profile: () => claude })
     await mkdir(join(home, '.claude', 'skills', 'revisao'), { recursive: true }); await writeFile(join(home, '.claude', 'skills', 'revisao', 'SKILL.md'), skillMd('revisao', 'Revisa'))
     const result = await service.convert({ scope: 'global', name: 'revisao', from: 'claude', to: 'codex', reviewProfileId: claude.id })
     expect(result).toEqual({ converted: true, reviewing: true })
@@ -114,7 +114,7 @@ describe('SkillService', () => {
     const put = async (dir: string, name: string): Promise<void> => { await mkdir(dir, { recursive: true }); await writeFile(join(dir, 'SKILL.md'), skillMd(name, `Faz ${name}`)) }
     await put(join(repo, '.claude', 'skills', 'velha'), 'velha')
     await put(join(repo, '.agents', 'skills', 'velha'), 'velha')
-    expect((await service.delete({ scope: 'project', projectId: project.id, name: 'velha', provider: 'codex' })).find((item) => item.name === 'velha')?.providers).toEqual({ claude: 'ready', codex: 'none' })
+    expect((await service.delete({ scope: 'project', projectId: project.id, name: 'velha', provider: 'codex' })).find((item) => item.name === 'velha')?.providers).toEqual({ claude: 'ready', codex: 'none', gemini: 'none' })
     expect(await service.delete({ scope: 'project', projectId: project.id, name: 'velha' })).toEqual([])
     await expect(service.delete({ scope: 'project', projectId: project.id, name: 'velha' })).rejects.toThrow('não encontrada')
 
