@@ -376,6 +376,19 @@ describe('commit do agente', () => {
   })
 })
 
+describe('segredo no commit do agente (S13)', () => {
+  it('barra o commit com chave de API real, mas deixa passar .env.example com valor de exemplo', async () => {
+    const { manager, projectId, cardId, chatId, wt } = await setup()
+    manager.setPolicy(projectId, { def: 'auto', rules: [] })
+    await writeFile(join(wt, '.env.example'), 'OPENAI_API_KEY=coloque-sua-chave\n')
+    await writeFile(join(wt, 'config.ts'), 'export const key = "sk-abcdefghijklmnop1234"\n')
+    await expect(manager.agentCommit({ cardId, chatId, message: 'Config' })).rejects.toThrow(/config\.ts:1/)
+    expect((await git(wt, 'rev-list', '--count', 'HEAD')).stdout.trim()).toBe('1')
+    const ok = await manager.agentCommit({ cardId, chatId, message: 'Só o exemplo', files: ['.env.example'] })
+    expect(ok.text).toContain('Commit done')
+  })
+})
+
 describe('conflitos por repositório e worktree', () => {
   it('lista só quem tem operação em andamento e resolve na pasta certa (repositório ou worktree do card)', async () => {
     const { repo, wt, manager, projectId, sourceId, cardId } = await setup()

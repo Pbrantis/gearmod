@@ -175,6 +175,7 @@ export const ptBR = {
     mergeAborted: 'Operação cancelada; a pasta voltou ao que era.',
     conflictsResolved: 'Conflitos resolvidos.',
     recoveryRef: (ref: string) => `Uma cópia do que foi descartado ficou salva em ${ref} (recupere com: git stash apply <ref>).`,
+    secretsFound: (where: string) => `Commit bloqueado: há algo que parece segredo (chave de API, chave privada ou senha) em ${where}. Tire do arquivo (use variável de ambiente ou arquivo ignorado) e peça o commit de novo.`,
     stashDropped: 'Stash apagado.',
     stashAppliedRemoved: 'Stash aplicado e removido.',
     branchCreatedAndOpenedFrom: (local: string, name: string) => `Branch ${local} criada e aberta a partir de ${name}.`,

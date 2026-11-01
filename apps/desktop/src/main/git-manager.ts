@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { scanForSecrets } from './secret-scan'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { defaultGitPolicy, withErrorCode, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule, type GitWorktreeInfo } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
@@ -1062,6 +1063,9 @@ export class GitManager {
       if (paths.length) plan.push({ source, dir: member.path, paths })
     }
     if (!plan.length) throw new Error(tm().git.nothingToCommitInPlan)
+    // S13: segredo no que vai ser commitado barra o commit do agente (automático ou com pedido); o usuário decide pela página Git.
+    const found = (await Promise.all(plan.map(async (item) => (await scanForSecrets(item.dir, item.paths)).map((hit) => `${hit.path}:${hit.line}`)))).flat()
+    if (found.length) throw new Error(tm().git.secretsFound(found.slice(0, 5).join(', ')))
     if (rule === 'auto') {
       const done: string[] = []
       for (const item of plan) {

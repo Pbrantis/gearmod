@@ -8,6 +8,9 @@ const patterns = [
   /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g
 ]
 
+/** Só formatos inconfundíveis (sem a regra genérica `NOME_KEY=valor`): usados para barrar commit. */
+export const highConfidenceSecretPatterns = [patterns[0]!, /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----/, patterns[3]!, patterns[4]!]
+
 export function redact(value: string, limit = 100_000): string {
   let result = value
   for (const pattern of patterns) result = result.replace(pattern, '[redacted]')
