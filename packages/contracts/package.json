@@ -2,6 +2,7 @@
   "name": "@agentboard/contracts",
   "version": "0.1.0",
   "private": true,
+  "license": "PolyForm-Shield-1.0.0",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
