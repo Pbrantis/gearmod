@@ -71,7 +71,6 @@ export class WorktreeService {
   private readonly preparing = new Map<string, Promise<Worktree>>()
 
   private async prepareNow(cardId: string): Promise<Worktree> {
-    const owner = this.ownerOf(cardId)
     const existing = this.get(cardId)
     const alive = existing && await exists(existing.path) ? existing : null
     if (existing && !alive) this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(existing.id)

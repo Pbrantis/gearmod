@@ -18,7 +18,7 @@ export function WorktreeDeleteDialog({ projectId, cardId, sourceId, close, done 
     let alive = true
     void window.agentboard.invoke('git:worktree-info', { projectId, cardId, sourceId }).then((value) => { if (!alive) return; setInfo(value) }, (reason) => { if (alive) { toast.error(t.failed, plainError(reason)); close() } })
     return () => { alive = false }
-  }, [projectId, cardId, sourceId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [projectId, cardId, sourceId])
   if (!info) return null
   const unpushed = info.repos.reduce((sum, repo) => sum + repo.unpushed, 0), files = info.repos.reduce((sum, repo) => sum + repo.files, 0), risky = unpushed > 0 || files > 0
   // Sem commits soltos a branch vai junto por padrão; com commits sem push ela fica, a menos que a pessoa marque.

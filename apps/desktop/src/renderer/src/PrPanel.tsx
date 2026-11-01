@@ -15,7 +15,7 @@ function PrDetail({ sourceId, provider, pr, back, changed }: { sourceId: string;
   const { common, git: { pr: t } } = useT(), decisionLabel = t.decision, reviewLabel = t.review
   const [detail, setDetail] = useState<PullRequestDetail>(), [error, setError] = useState(''), [text, setText] = useState(''), [busy, setBusy] = useState(''), [diff, setDiff] = useState(false)
   const load = (): void => { void window.agentboard.invoke('prs:view', { sourceId, number: pr.number }).then(setDetail, (reason) => setError(message(reason))) }
-  useEffect(load, [sourceId, pr.number]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [sourceId, pr.number])
   const act = async (name: string, run: () => Promise<unknown>, done: string): Promise<void> => {
     setBusy(name)
     try { await run(); setText(''); toast.success(done); load(); changed() } catch (reason) { toast.error(t.failed, message(reason)) } finally { setBusy('') }

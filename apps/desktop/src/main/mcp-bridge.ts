@@ -19,7 +19,7 @@ import type { SddResolver } from './sdd/sdd-resolver'
 import type { SddWriter } from './sdd/sdd-writer'
 import type { CodeIndexService } from './code-index/service'
 import { findCardType } from '@agentboard/contracts'
-import { assessmentTriggerSchema, complexityDimensions, decisionKindSchema, dimensionScoresSchema, evidenceSchema, levelLabels, workflowKindSchema, workflowLabels, type Evidence, type WorkflowKind } from '@agentboard/contracts'
+import { assessmentTriggerSchema, complexityDimensions, decisionKindSchema, dimensionScoresSchema, evidenceSchema, levelLabels, workflowKindSchema, workflowLabels, type Evidence } from '@agentboard/contracts'
 
 export interface McpEndpoint { command: string; args: string[]; env: Record<string, string> }
 export type CardChange = { type: 'document'; kind: CardDocumentKind } | { type: 'task' } | { type: 'moved'; column: string } | { type: 'card' } | { type: 'converted'; cardId: string; chatId: string } | { type: 'constitution' } | { type: 'checklist' } | { type: 'commit' }
@@ -28,13 +28,6 @@ export interface RunReport { written: CardDocumentKind[]; pendingMove: string | 
 type Reply = { ok: true; text: string } | { ok: false; error: string }
 
 const historyTools = new Set(['agentboard_avaliar_complexidade', 'agentboard_escolher_fluxo', 'agentboard_registrar_decisao', 'agentboard_registrar_entendimento', 'agentboard_registrar_exploracao'])
-/** O que o planejador faz depois de cada fluxo escolhido. */
-const workflowNext: Record<WorkflowKind, string> = {
-  light: 'The card is now in the short workflow: write the description of what to do with agentboard_atualizar_card (descricao) and call agentboard_concluir_planejamento.',
-  spec: 'Follow the agentboard-planejamento skill: an objective Specification, Plan and Tasks; then agentboard_concluir_planejamento.',
-  sdd: 'Follow the project\'s configured method (it comes in the context under "metodo") and save the Specification, Plan and Tasks on the card; then agentboard_concluir_planejamento.'
-}
-
 const cardTypeError = (types: Array<{ id: string; name: string }>): string => `tipo must be one of the project's card types: ${types.map((item) => `${item.id} (${item.name})`).join(', ')}. The short workflow is not a type: choose it with agentboard_escolher_fluxo (fluxo light).`
 
 const normalize = (value: string): string => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')

@@ -16,6 +16,7 @@ export class ConnectionManager {
     if (existing) { this.touch(id); return existing }
     this.states.set(id, 'connecting')
     let promise!: Promise<PgSession>
+    // eslint-disable-next-line prefer-const -- a função abaixo lê `promise` depois que ela é atribuída
     promise = (async () => { const config = this.connections.get(id), password = await this.connections.password(id); const session = await this.driver.open(config, password, actor); session.onLost?.(() => { if (this.sessions.get(id) === promise) { this.states.set(id, 'lost'); this.sessions.delete(id); this.clearTimer(id); void session.close().catch(() => undefined); this.scheduleReconnect(id) } }); if (this.sessions.get(id) === promise && this.states.get(id) !== 'lost') this.states.set(id, 'ready'); return session })()
     this.sessions.set(id, promise)
     void promise.catch(() => { if (this.sessions.get(id) === promise) { this.sessions.delete(id); this.clearTimer(id); this.states.set(id, 'error') } })

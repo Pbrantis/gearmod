@@ -208,7 +208,6 @@ export class SpecKitRuntime {
   /** Depois da run: se spec, plan e tasks da feature do card existem, o planejamento está pronto. Devolve o aviso de próxima etapa. */
   afterRun(input: { cardId: string; prompt: string }): string | null {
     if (!this.active(input.cardId)) return null
-    const stage = specKitStageOf(input.prompt)
     this.sync(input.cardId)
     return null // a própria skill diz quando concluiu; o app não escreve "etapa concluída" (a etapa pode ter parado numa pergunta)
   }

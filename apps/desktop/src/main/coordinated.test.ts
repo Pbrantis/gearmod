@@ -214,7 +214,7 @@ describe('Playwright CLI', () => {
     expect(installed.error).toBeNull()
     expect(installed.installs).toEqual([{ sourceId: sources.frontend!.id, repo: 'frontend', path: expect.stringContaining('playwright-cli'), origin: 'local', version: '0.1.5' }])
     expect(calls.some((call) => call.includes('install --no-save --no-package-lock @playwright/cli@0.1.23'))).toBe(true)
-    expect(calls.some((call) => / -D|@latest/.test(call))).toBe(false)
+    expect(calls.some((call) => / -D|@latest/.test(call))).toBe(false)
     expect(calls.some((call) => call.endsWith('install-browser'))).toBe(true)
     expect(calls.some((call) => call.includes('--skills'))).toBe(false)
     expect(installed.log).toContain('nada foi sobrescrito')
