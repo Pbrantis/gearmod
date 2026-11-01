@@ -26,8 +26,15 @@ export function redactSql(sql: string): string {
   return redact(out.replace(/\b(PASSWORD|SECRET|TOKEN)\s+(?!'\[redacted\]')\S+/gi, '$1 [redacted]'), 200_000)
 }
 const historyDays = 30, historyMax = 200, historySqlMax = 20_000
-/** SQL guardado no histórico: completo, para poder reutilizar; só o valor logo depois de PASSWORD, SECRET ou TOKEN fica oculto. */
+const readOnlyCommands = new Set(['SELECT', 'WITH', 'EXPLAIN', 'SHOW', 'BEGIN', 'COMMIT', 'ROLLBACK'])
+/**
+ * SQL guardado no histórico. Consultas de leitura ficam completas, para poder reutilizar; o valor logo depois de PASSWORD, SECRET ou
+ * TOKEN fica oculto. Qualquer outro comando (INSERT, UPDATE, DDL...) perde literais e comentários, porque carrega dados do banco;
+ * um `WITH` com escrita dentro também.
+ */
 export function historySql(sql: string): string {
+  const first = sql.trimStart().match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? ''
+  if (!readOnlyCommands.has(first) || /\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE)\b/i.test(redactSql(sql))) return redactSql(sql).slice(0, historySqlMax)
   return redact(sql.replace(/\b(PASSWORD|SECRET|TOKEN)\s+(?:E?'(?:[^'\\]|\\.|'')*'[^\s;,)]*|\S+)/gi, '$1 [redacted]'), historySqlMax)
 }
 /** Só consultas SQL, as últimas `historyMax` e as dos últimos `historyDays` dias: o histórico vai "morrendo" sozinho. */

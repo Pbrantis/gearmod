@@ -33,9 +33,15 @@ it('guarda o SQL completo no histórico, ocultando só o valor de PASSWORD/SECRE
   expect(historySql("SELECT * FROM users WHERE email = 'a@b.com' AND id = 42 -- nota")).toBe("SELECT * FROM users WHERE email = 'a@b.com' AND id = 42 -- nota")
   const hidden = historySql("ALTER USER x PASSWORD 'my-secret-password'; ALTER ROLE y PASSWORD sk-unquoted")
   expect(hidden).not.toMatch(/my-secret-password|sk-unquoted/)
-  expect(hidden).toContain('ALTER USER x PASSWORD [redacted]; ALTER ROLE')
+  expect(hidden).toContain('ALTER USER x PASSWORD')
   // Aspas dobradas (texto dentro de outro texto, como num DO): nada do segredo pode sobrar.
   expect(historySql("EXECUTE 'ALTER USER x PASSWORD ''segredo1'''")).not.toContain('segredo1')
+})
+it('comandos de escrita não guardam os valores no histórico (S7)', () => {
+  const insert = historySql("INSERT INTO clientes(nome, email) VALUES ('Maria Silva', 'maria@x.com')")
+  expect(insert).not.toMatch(/Maria|maria@x/); expect(insert).toContain('INSERT INTO clientes')
+  expect(historySql("UPDATE clientes SET cpf = '123.456.789-00' WHERE id = 7")).not.toMatch(/123\.456|7/)
+  expect(historySql("WITH x AS (DELETE FROM t WHERE a = 'segredo' RETURNING *) SELECT * FROM x")).not.toContain('segredo')
 })
 it('o histórico guarda só SQL, as últimas 200 e as dos últimos 30 dias', () => {
   const now = Date.parse('2026-10-30T12:00:00Z'), at = (days: number): string => new Date(now - days * 86_400_000).toISOString()

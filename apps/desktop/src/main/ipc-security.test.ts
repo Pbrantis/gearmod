@@ -15,8 +15,8 @@ describe('isTrustedSender', () => {
 
 describe('isLocalAbsolutePath', () => {
   it('recusa caminho de rede e relativo', () => {
-    expect(isLocalAbsolutePath('C:\fotos\a.png')).toBe(true)
-    expect(isLocalAbsolutePath('\\servidor\share\a.png')).toBe(false)
+    expect(isLocalAbsolutePath(String.raw`C:\fotos\a.png`)).toBe(true)
+    expect(isLocalAbsolutePath(String.raw`\\servidor\share\a.png`)).toBe(false)
     expect(isLocalAbsolutePath('//servidor/share/a.png')).toBe(false)
     expect(isLocalAbsolutePath('fotos/a.png')).toBe(false)
   })
