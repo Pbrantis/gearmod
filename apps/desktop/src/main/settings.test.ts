@@ -21,6 +21,16 @@ describe('SettingsRepository', () => {
     database.close()
   })
 
+  it('sem escolha do usuário, o idioma segue o do sistema; a escolha salva vale sobre ele (I3)', async () => {
+    const { database } = await open()
+    expect(new SettingsRepository(database, 'en-US').get().idioma).toBe('en')
+    expect(new SettingsRepository(database, 'pt-BR').get().idioma).toBe('pt-BR')
+    expect(new SettingsRepository(database, 'de').get().idioma).toBe('en')
+    new SettingsRepository(database, 'en-US').update({ idioma: 'pt-BR' })
+    expect(new SettingsRepository(database, 'en-US').get().idioma).toBe('pt-BR')
+    database.close()
+  })
+
   it('fotos do Gravatar começam desligadas e podem ser ligadas (S8)', async () => {
     const { database } = await open()
     const settings = new SettingsRepository(database)

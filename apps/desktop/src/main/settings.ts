@@ -1,12 +1,14 @@
 import { appSettingsSchema, type AppSettings } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 
+export const languageFromLocale = (locale: string): AppSettings['idioma'] => (locale.toLowerCase().startsWith('pt') ? 'pt-BR' : 'en')
 const defaults: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true, fotosGravatar: false }
 const keyOf = (name: keyof AppSettings): string => `app.${name}`
 
 /** Configurações do app em `settings` (chave `app.<nome>`, valor JSON). Valores inválidos voltam ao padrão. */
 export class SettingsRepository {
-  constructor(private readonly database: AppDatabase) {}
+  /** `systemLocale` (ex.: `app.getLocale()`) decide o idioma enquanto o usuário não escolheu um. */
+  constructor(private readonly database: AppDatabase, private readonly systemLocale = 'pt-BR') {}
 
   get(): AppSettings {
     const rows = this.database.db.prepare(`SELECT key, json_value AS value FROM settings WHERE key LIKE 'app.%'`).all() as Array<{ key: string; value: string }>
@@ -14,9 +16,10 @@ export class SettingsRepository {
     for (const row of rows) {
       try { stored[row.key.slice(4)] = JSON.parse(row.value) } catch { /* valor corrompido: usa o padrão */ }
     }
-    const parsed = appSettingsSchema.safeParse({ ...defaults, ...stored })
+    const base = { ...defaults, idioma: languageFromLocale(this.systemLocale) }
+    const parsed = appSettingsSchema.safeParse({ ...base, ...stored })
     if (parsed.success) return parsed.data
-    return { tema: appSettingsSchema.shape.tema.safeParse(stored.tema).data ?? defaults.tema, idioma: appSettingsSchema.shape.idioma.safeParse(stored.idioma).data ?? defaults.idioma, voz: appSettingsSchema.shape.voz.safeParse(stored.voz).data ?? defaults.voz, notificacoes: appSettingsSchema.shape.notificacoes.safeParse(stored.notificacoes).data ?? defaults.notificacoes, retomarSozinho: appSettingsSchema.shape.retomarSozinho.safeParse(stored.retomarSozinho).data ?? defaults.retomarSozinho, fotosGravatar: appSettingsSchema.shape.fotosGravatar.safeParse(stored.fotosGravatar).data ?? defaults.fotosGravatar }
+    return { tema: appSettingsSchema.shape.tema.safeParse(stored.tema).data ?? defaults.tema, idioma: appSettingsSchema.shape.idioma.safeParse(stored.idioma).data ?? base.idioma, voz: appSettingsSchema.shape.voz.safeParse(stored.voz).data ?? defaults.voz, notificacoes: appSettingsSchema.shape.notificacoes.safeParse(stored.notificacoes).data ?? defaults.notificacoes, retomarSozinho: appSettingsSchema.shape.retomarSozinho.safeParse(stored.retomarSozinho).data ?? defaults.retomarSozinho, fotosGravatar: appSettingsSchema.shape.fotosGravatar.safeParse(stored.fotosGravatar).data ?? defaults.fotosGravatar }
   }
 
   update(input: Partial<AppSettings>): AppSettings {
