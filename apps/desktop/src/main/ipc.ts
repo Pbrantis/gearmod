@@ -134,7 +134,7 @@ export function isTrustedSender(event: unknown, devUrl: string | undefined = pro
 }
 
 /** Caminhos de rede (UNC) e de dispositivo disparam autenticação SMB e vazam hash; a pré-visualização só lê disco local. */
-export const isLocalAbsolutePath = (path: string): boolean => isAbsolute(path) && !/^[\/]{2}/.test(path)
+export const isLocalAbsolutePath = (path: string): boolean => isAbsolute(path) && !/^[\\/]{2}/.test(path)
 
 export function registerIpc(ipcMain: IpcMainLike, services: Services): () => void {
   const db = (): DbService => { if (!services.dbManager) throw new Error(tm().ipc.dbUnavailable); return services.dbManager }
