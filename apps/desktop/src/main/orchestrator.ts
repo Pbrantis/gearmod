@@ -183,9 +183,7 @@ export class AgentOrchestrator {
       const planned = job.planning || (free && after.chat.purpose === 'planning')
       const applied = this.writeback?.finish({ runId: job.run.id, cardId: after.cardId, planning: planned, completed: result.status === 'completed', text: result.text, prompt: job.prompt, publish: (type, payload) => publish({ type, payload }) })
       applied?.notices.forEach((body) => this.conversations.addMessage({ chatId: job.chatId, role: 'system', body, status: 'failed' }))
-      if (planned && result.status === 'completed' && after.cardId) {
-        this.conversations.savePlan(after.cardId, context.profile.id, result.text)
-      }
+      // A versão em `plans` nasce quando o usuário inicia a execução (approveCurrentPlan, a partir do documento Plano); cada turno de planejamento não grava mais uma.
       if (sk && result.status === 'completed' && after.cardId) { const next = this.speckit?.afterRun({ cardId: after.cardId, prompt: job.prompt }); if (next) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: next, status: 'complete' }) }
       if (result.status === 'failed' && !result.text && result.error) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: result.error, status: 'failed' })
       this.conversations.updateRun(job.run.id, result.status, result.error, result.turnId)
@@ -203,6 +201,14 @@ export class AgentOrchestrator {
       if (!aborted) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: message, status: 'failed' })
       this.conversations.updateRun(job.run.id, aborted ? 'interrupted' : 'failed', message)
       publish({ type: 'agentboard/run-completed', payload: { chatId: job.chatId, status: aborted ? 'interrupted' : 'failed', error: message } })
+      // Run que termina em erro também fecha o ciclo: o harness confere o que mudou e o encadeamento entre etapas segue.
+      try {
+        const after = this.conversations.context(job.chatId), status = aborted ? 'interrupted' as const : 'failed' as const
+        if (after.cardId && after.chat.purpose !== 'free' && after.chat.purpose !== 'constitution') {
+          if (this.harness) try { (await this.harness.after({ cardId: after.cardId, runId: job.run.id, chatId: job.chatId, purpose: after.chat.purpose, status })).forEach((body) => this.conversations.addMessage({ chatId: job.chatId, role: 'system', body, status: 'failed' })) } catch { /* aviso do harness é best-effort */ }
+          try { this.collab?.afterRun({ cardId: after.cardId, chatId: job.chatId, purpose: after.chat.purpose, status }) } catch { /* encadeamento é best-effort */ }
+        }
+      } catch { /* chat removido */ }
       try { const after = this.conversations.context(job.chatId); this.onFinished?.({ cardId: after.cardId, chatId: job.chatId, runId: job.run.id, purpose: after.chat.purpose, status: aborted ? 'interrupted' : 'failed', error: message }) } catch { /* notificação é best-effort */ }
     } finally { this.permissions.closeRun(job.run.id); if (timer) clearTimeout(timer); this.controllers.delete(job.run.id) }
   }
