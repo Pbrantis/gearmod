@@ -430,7 +430,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       return { deleted: services.board.delete(input.cardId) }
     },
     'cards:set-repos': (input: { cardId: string; sourceIds: string[] | null }) => services.board.setRepos(input.cardId, input.sourceIds),
-    'git:create-prs': (input: { cardId: string; draft: boolean; title?: string; body?: string }) => services.gitManager.createPullRequests(input.cardId, input),
+    'git:create-prs': (input: { cardId: string; draft: boolean; title?: string; body?: string; sourceId?: string }) => services.gitManager.createPullRequests(input.cardId, input),
     'prs:list': (input: { sourceId: string }) => services.pullRequests.list(input.sourceId),
     'prs:view': (input: { sourceId: string; number: number }) => services.pullRequests.view(input.sourceId, input.number),
     'prs:comment': async (input: { sourceId: string; number: number; body: string }) => { await services.pullRequests.comment(input.sourceId, input.number, input.body); return {} },
@@ -503,6 +503,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'quality:status': (input: { cardId: string }) => services.quality.status(input.cardId)
     , 'reviews:prepare-local': (input: { cardId: string }) => services.quality.prepareLocalReview(input.cardId)
     , 'git:repos': (input: { projectId: string }) => services.gitManager.repos(input.projectId)
+    , 'git:worktree-info': (input: { projectId?: string | undefined; cardId: string; sourceId?: string | undefined }) => services.gitManager.worktreeInfo(input.projectId ?? services.gitManager.projectOfCard(input.cardId), input.cardId, input.sourceId)
+    , 'git:worktree-delete': (input: { projectId?: string | undefined; cardId: string; sourceId?: string | undefined; deleteBranch: boolean }) => services.gitManager.deleteWorktree(input.projectId ?? services.gitManager.projectOfCard(input.cardId), input.cardId, input.deleteBranch, input.sourceId)
     , 'git:upstream': (input: { sourceId: string; cardId: string | null }) => services.gitManager.upstream(input.sourceId, input.cardId)
     , 'git:set-upstream': (input: { sourceId: string; cardId: string | null; remote: string; branch: string }) => services.gitManager.setUpstream(input)
     , 'git:detect': (input: { projectId: string }) => services.gitManager.detect(input.projectId)
@@ -522,7 +524,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'git:sync': (input: { sourceId: string; cardId: string | null; action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop'; pull?: 'ff' | 'ff-only' | 'rebase'; force?: boolean }) => services.gitManager.sync(input.sourceId, input.cardId, input.action, input.pull, input.force)
     , 'git:branch-action': (input: { sourceId: string; cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }) => services.gitManager.branchAction(input.sourceId, input)
     , 'git:checkout-remote': (input: { sourceId: string; cardId: string | null; name: string }) => services.gitManager.checkoutRemote(input.sourceId, input.cardId, input.name)
-    , 'git:commit-action': (input: { sourceId: string; cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }) => services.gitManager.commitAction(input.sourceId, input)
+    , 'git:commit-action': (input: { sourceId: string; cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'rebase' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }) => services.gitManager.commitAction(input.sourceId, input)
     , 'git:stash-action': (input: { sourceId: string; cardId?: string | null; action: 'apply' | 'pop' | 'drop'; ref: string }) => services.gitManager.stashAction(input.sourceId, input)
     , 'git:stash-detail': (input: { sourceId: string; cardId: string | null; ref: string; commit: string }) => services.gitManager.stashDetail(input.sourceId, input.cardId, input.ref, input.commit)
     , 'git:stash-rename': (input: { sourceId: string; cardId: string | null; ref: string; commit: string; message: string }) => services.gitManager.renameStash(input.sourceId, input.cardId, input.ref, input.commit, input.message)

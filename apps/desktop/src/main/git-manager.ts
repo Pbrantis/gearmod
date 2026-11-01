@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { realpathSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { defaultGitPolicy, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule } from '@agentboard/contracts'
+import { defaultGitPolicy, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule, type GitWorktreeInfo } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
 import { nativeGit, type GitRunner } from './worktrees'
 import { ApprovalService } from './approvals'
@@ -530,6 +530,69 @@ export class GitManager {
     if (busy !== undefined) throw new Error(tm().git.cardAgentBusy(busy || tm().common.untitled))
   }
 
+  /** O que se perde ao apagar a worktree do card: commits só dela (sem push) e arquivos sem commit, por repositório. */
+  projectOfCard(cardId: string): string {
+    const projectId = this.database.db.prepare('SELECT project_id FROM cards WHERE id = ?').pluck().get(cardId) as string | undefined
+    if (!projectId) throw new Error(tm().common.cardNotFound)
+    return projectId
+  }
+
+  /** Pastas da worktree do card; com `sourceId`, só a do repositório escolhido. */
+  private worktreeMembers(projectId: string, cardId: string, sourceId?: string): Member[] {
+    const all = this.members(projectId, cardId)
+    if (!sourceId) return all
+    const path = this.source(sourceId).path
+    return all.filter((member) => same(member.repoPath, path))
+  }
+
+  async worktreeInfo(projectId: string, cardId: string, sourceId?: string): Promise<GitWorktreeInfo> {
+    const members = this.worktreeMembers(projectId, cardId, sourceId)
+    if (!members.length) throw new Error(tm().git.cardHasNoWorktree)
+    const sharedWith = this.database.db.prepare('SELECT title FROM cards WHERE worktree_card_id = ? ORDER BY title').pluck().all(cardId) as string[]
+    const repos = await Promise.all(members.map(async (member) => {
+      const name = basename(member.repoPath), exists = await isDir(member.path)
+      if (!exists) return { name, branch: member.branch, unpushed: 0, files: 0, exists }
+      const branch = (await this.tryRun(member.path, ['branch', '--show-current']))?.trim() || member.branch
+      const count = (await this.tryRun(member.path, ['rev-list', '--count', ...cardRevs(branch, member.baseRef)]))?.trim()
+      const files = await this.listChanges(member.path).catch(() => [] as GitChange[])
+      return { name, branch, unpushed: Number(count) || 0, files: new Set(files.map((file) => file.path)).size, exists }
+    }))
+    return { cardId, title: members[0]!.title, branch: repos[0]!.branch, sharedWith, repos }
+  }
+
+  /**
+   * Apaga a worktree do card (todas as pastas dela) e libera o espaço. O card e o histórico dele ficam; só o vínculo vira "removida".
+   * A branch local só é apagada se `deleteBranch`; sem isso ela guarda os commits que não foram enviados.
+   */
+  async deleteWorktree(projectId: string, cardId: string, deleteBranch: boolean, sourceId?: string): Promise<{ output: string; keptBranches: string[] }> {
+    const members = this.worktreeMembers(projectId, cardId, sourceId)
+    const worktree = this.database.db.prepare(`SELECT id, path FROM worktrees WHERE card_id = ? AND cleanup_state != 'removed' ORDER BY created_at DESC LIMIT 1`).get(cardId) as { id: string; path: string } | undefined
+    if (!members.length || !worktree) throw new Error(tm().git.cardHasNoWorktree)
+    const busy = this.database.db.prepare(`SELECT c.title FROM cards c WHERE (c.id = ? OR c.worktree_card_id = ?)
+      AND EXISTS (SELECT 1 FROM runs r WHERE r.card_id = c.id AND r.status IN ('queued', 'running')) LIMIT 1`).pluck().get(cardId, cardId) as string | undefined
+    if (busy !== undefined) throw new Error(tm().git.worktreeAgentBusy(busy || tm().common.untitled))
+    const info = await this.worktreeInfo(projectId, cardId, sourceId), kept: string[] = []
+    for (const member of members) {
+      const branch = info.repos.find((repo) => repo.name === basename(member.repoPath))?.branch ?? member.branch
+      await this.tryRun(member.repoPath, ['worktree', 'remove', '--force', member.path])
+      await rm(member.path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }).catch(() => undefined)
+      await this.tryRun(member.repoPath, ['worktree', 'prune'])
+      if (existsSyncDir(member.path)) throw new Error(tm().git.worktreeFolderLocked(member.path))
+      this.database.db.prepare('DELETE FROM worktree_members WHERE worktree_id = ? AND path = ?').run(worktree.id, member.path)
+      if (deleteBranch && await this.tryRun(member.repoPath, ['branch', '-D', branch]) === null && await this.tryRun(member.repoPath, ['show-ref', '--verify', '-q', `refs/heads/${branch}`]) !== null) kept.push(branch)
+    }
+    // Só apagou uma pasta e ainda restam outras: a worktree do card continua valendo.
+    const remaining = this.database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(worktree.id) as number
+    if (remaining > 0) return { output: tm().git.worktreeDeleted(info.title), keptBranches: kept }
+    // A pasta-mãe (uma por card) só some se não for o próprio repositório de ninguém.
+    if (!members.some((member) => same(member.repoPath, worktree.path)) && !existsSyncDir(join(worktree.path, '.git'))) await rm(worktree.path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }).catch(() => undefined)
+    this.database.db.transaction(() => {
+      this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'removed' WHERE id = ?`).run(worktree.id)
+      this.database.db.prepare('UPDATE cards SET worktree_card_id = NULL WHERE worktree_card_id = ?').run(cardId)
+    })()
+    return { output: tm().git.worktreeDeleted(info.title), keptBranches: kept }
+  }
+
   /** Pasta (worktree) onde a branch está aberta, se não for a pasta principal; `null` se não estiver aberta em lugar nenhum. */
   private async worktreeOf(dir: string, branch: string): Promise<string | null> {
     let path = ''
@@ -596,15 +659,7 @@ export class GitManager {
       await this.run(dir, ['push', remoteName, '--delete', branch])
       return { output: tm().git.branchDeletedOnRemote(branch, remoteName) }
     }
-    if (action === 'pull') {
-      await needRemote()
-      if (isHead) return { output: last(await this.run(dir, ['pull', '--ff-only']), tm().git.allUpToDate) }
-      // Branch aberta na worktree de um card: o Git não deixa atualizá-la de fora (fetch name:name), então o pull roda dentro dessa pasta.
-      const inWorktree = await this.worktreeOf(dir, name)
-      if (inWorktree) { this.assertIdle(sourceId, inWorktree); return { output: last(await this.run(inWorktree, ['pull', '--ff-only']), tm().git.allUpToDate) } }
-      const remote = (await this.tryRun(dir, ['config', `branch.${name}.remote`]))?.trim() || 'origin'
-      return { output: last(await this.run(dir, ['fetch', remote, `${name}:${name}`]), tm().git.allUpToDate) }
-    }
+    if (action === 'pull') { await needRemote(); return { output: last(await this.fastForwardBranch(sourceId, dir, name, current), tm().git.allUpToDate) } }
     if (action === 'pull-rebase') {
       await needRemote()
       const place = isHead ? dir : await this.worktreeOf(dir, name)
@@ -616,6 +671,7 @@ export class GitManager {
     if (action === 'rebase-onto' || action === 'merge') {
       if (!current) throw new Error(tm().git.mainFolderDetached)
       if (isHead) throw new Error(tm().git.pickOtherBranch)
+      if (action === 'rebase-onto') await this.updateIfBehind(sourceId, dir, name, current)
       try { return { output: last(await this.run(dir, action === 'merge' ? ['merge', '--no-edit', name] : ['rebase', name]), tm().git.done) } } catch (error) { throw await this.afterFailure(dir, action === 'merge' ? 'merge' : 'rebase', error) }
     }
     if (action === 'create') {
@@ -630,8 +686,24 @@ export class GitManager {
     return { output: tm().git.branchDeleted(name) }
   }
 
-  /** Ações do menu de um commit na pasta principal. Cherry-pick e revert com conflito são desfeitos. */
-  async commitAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }): Promise<{ output: string }> {
+  /** Atualiza a branch local pelo remoto só com fast-forward. Se estiver aberta numa worktree, o pull roda dentro dela (o Git não deixa fazer `fetch name:name` nesse caso). */
+  private async fastForwardBranch(sourceId: string, dir: string, name: string, current: string): Promise<string> {
+    if (current === name) return this.run(dir, ['pull', '--ff-only'])
+    const inWorktree = await this.worktreeOf(dir, name)
+    if (inWorktree) { this.assertIdle(sourceId, inWorktree); return this.run(inWorktree, ['pull', '--ff-only']) }
+    const remote = (await this.tryRun(dir, ['config', `branch.${name}.remote`]))?.trim() || 'origin'
+    return this.run(dir, ['fetch', remote, `${name}:${name}`])
+  }
+
+  /** Antes de um rebase sobre uma branch local, baixa as novidades dela se o upstream estiver à frente (sem upstream ou sem remoto, não faz nada). */
+  private async updateIfBehind(sourceId: string, dir: string, name: string, current: string): Promise<void> {
+    if (await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${name}`]) === null) return
+    const behind = Number((await this.tryRun(dir, ['rev-list', '--count', `${name}..${name}@{upstream}`]))?.trim() ?? 0)
+    if (behind > 0) await this.fastForwardBranch(sourceId, dir, name, current)
+  }
+
+  /** Ações do menu de um commit na pasta principal. Cherry-pick, revert e rebase com conflito ficam abertos para a tela de conflitos, ou são desfeitos se não houver conflito. */
+  async commitAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'rebase' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }): Promise<{ output: string }> {
     const dir = (await this.target(this.source(sourceId), input.cardId ?? null)).dir, { action, hash } = input
     if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
     const name = input.name?.trim() ?? ''
@@ -642,6 +714,19 @@ export class GitManager {
     }
     if (action === 'checkout') { await this.run(dir, ['checkout', '--detach', hash]); return { output: tm().git.mainFolderAtDetached(hash.slice(0, 7)) } }
     if (action.startsWith('reset-')) { await this.run(dir, ['reset', `--${action.slice(6)}`, hash]); return { output: tm().git.branchMovedTo(hash.slice(0, 7), action.slice(6)) } }
+    if (action === 'rebase') {
+      const current = (await this.run(dir, ['branch', '--show-current'])).trim()
+      if (!current) throw new Error(tm().git.mainFolderDetached)
+      // Se o commit é a ponta de uma branch local atrasada em relação ao remoto, baixa essa branch antes e rebaseia sobre a ponta nova.
+      let onto = hash
+      const tips = ((await this.tryRun(dir, ['for-each-ref', '--points-at', hash, '--format=%(refname:short)', 'refs/heads'])) ?? '').split(/\r?\n/).filter((ref) => ref && ref !== current)
+      for (const tip of tips) {
+        const behind = Number((await this.tryRun(dir, ['rev-list', '--count', `${tip}..${tip}@{upstream}`]))?.trim() ?? 0)
+        if (behind > 0) { await this.fastForwardBranch(sourceId, dir, tip, current); onto = (await this.run(dir, ['rev-parse', tip])).trim(); break }
+      }
+      if (onto === (await this.run(dir, ['rev-parse', 'HEAD'])).trim()) throw new Error(tm().git.pickOtherBranch)
+      try { await this.run(dir, ['rebase', onto]); return { output: tm().git.branchRebasedOnto(current, onto.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, 'rebase', error) }
+    }
     try { await this.run(dir, action === 'revert' ? ['revert', '--no-edit', hash] : ['cherry-pick', hash]); return { output: action === 'revert' ? tm().git.commitReverted(hash.slice(0, 7)) : tm().git.commitCherryPicked(hash.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, action as 'cherry-pick' | 'revert', error) }
   }
 
@@ -855,7 +940,7 @@ export class GitManager {
    * Um PR (GitHub, pelo gh) ou MR (GitLab, pelo glab) por repositório do card que tem commits. Só roda quando o usuário pede:
    * publica a branch e abre o PR em rascunho por padrão. Falha num repositório não impede os outros; o resultado diz o que faltou.
    */
-  async createPullRequests(cardId: string, input: { draft: boolean; title?: string; body?: string }): Promise<{ results: Array<{ repo: string; url: string | null; error: string | null }> }> {
+  async createPullRequests(cardId: string, input: { draft: boolean; title?: string; body?: string; sourceId?: string }): Promise<{ results: Array<{ repo: string; url: string | null; error: string | null }> }> {
     const card = this.database.db.prepare('SELECT project_id AS projectId, title FROM cards WHERE id = ?').get(cardId) as { projectId: string; title: string } | undefined
     if (!card) throw new Error(tm().common.cardNotFound)
     const members = this.members(card.projectId, cardId)
@@ -865,7 +950,10 @@ export class GitManager {
     const title = input.title?.trim() || card.title || 'Alterações do AgentBoard'
     const body = input.body ?? `${summary}${members.length > 1 ? `\n\nEste card altera ${members.length} repositórios (${names.join(', ')}); cada um tem o seu PR na mesma branch.` : ''}\n\n_Aberto pelo AgentBoard._`
     const results: Array<{ repo: string; url: string | null; error: string | null }> = []
+    // Com `sourceId`, só esse repositório; sem ele, todos os do card.
+    const only = input.sourceId ? resolve(this.source(input.sourceId).path) : null
     for (const [index, member] of members.entries()) {
+      if (only && resolve(member.repoPath) !== only) continue
       const repo = names[index]!
       try {
         if (member.status === 'failed') throw new Error(tm().git.prWorktreeFailed(member.error ?? ''))

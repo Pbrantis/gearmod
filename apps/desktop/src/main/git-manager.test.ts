@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -232,6 +232,56 @@ describe('GitManager com repositórios reais', () => {
     const graph = await manager.graph(projectId, sourceId)
     expect(graph.rows.filter((item) => item.cardId === cardId).map((item) => item.subject)).toEqual(['Commit do card'])
     expect(graph.branches.local.map((item) => item.name)).toEqual(expect.arrayContaining(['main', 'outra']))
+  })
+})
+
+describe('apagar worktree do card', () => {
+  const folderExists = (path: string): Promise<boolean> => access(path).then(() => true, () => false)
+
+  it('informa commits sem push e arquivos sem commit', async () => {
+    const { manager, projectId, sourceId, cardId, wt, branch } = await setup()
+    expect((await manager.worktreeInfo(projectId, cardId)).repos[0]).toMatchObject({ unpushed: 0, files: 0, branch })
+    await writeFile(join(wt, 'c.txt'), 'c\n'); await manager.commit({ sourceId, cardId, message: 'Commit do card', paths: ['c.txt'] })
+    await writeFile(join(wt, 'solto.txt'), 's\n')
+    expect((await manager.worktreeInfo(projectId, cardId)).repos[0]).toMatchObject({ unpushed: 1, files: 1 })
+  })
+
+  it('apaga a pasta, mantém a branch com commits sem push e preserva o card', async () => {
+    const { manager, database, projectId, sourceId, cardId, wt, branch, repo } = await setup()
+    await writeFile(join(wt, 'c.txt'), 'c\n'); await manager.commit({ sourceId, cardId, message: 'Commit do card', paths: ['c.txt'] })
+    const out = await manager.deleteWorktree(projectId, cardId, false)
+    expect(out.keptBranches).toEqual([])
+    expect(await folderExists(wt)).toBe(false)
+    expect((await git(repo, 'branch', '--list', branch)).stdout).toContain(branch)
+    expect(database.db.prepare('SELECT cleanup_state FROM worktrees WHERE card_id = ?').pluck().get(cardId)).toBe('removed')
+    expect(database.db.prepare('SELECT COUNT(*) FROM cards WHERE id = ?').pluck().get(cardId)).toBe(1)
+    expect((await manager.graph(projectId, sourceId)).worktrees).toEqual([])
+    await expect(manager.deleteWorktree(projectId, cardId, false)).rejects.toThrow()
+  })
+
+  it('apaga a branch junto quando pedido', async () => {
+    const { manager, projectId, cardId, wt, branch, repo } = await setup()
+    await writeFile(join(wt, 'solto.txt'), 's\n')
+    await manager.deleteWorktree(projectId, cardId, true)
+    expect(await folderExists(wt)).toBe(false)
+    expect((await git(repo, 'branch', '--list', branch)).stdout.trim()).toBe('')
+  })
+
+  it('apagar só a pasta de um repositório: sem outras pastas, a worktree inteira sai; com sourceId vindo de card sem projectId', async () => {
+    const { manager, database, projectId, sourceId, cardId, wt } = await setup()
+    expect(manager.projectOfCard(cardId)).toBe(projectId)
+    expect((await manager.worktreeInfo(projectId, cardId, sourceId)).repos).toHaveLength(1)
+    await manager.deleteWorktree(projectId, cardId, false, sourceId)
+    expect(await folderExists(wt)).toBe(false)
+    expect(database.db.prepare('SELECT COUNT(*) FROM worktree_members').pluck().get()).toBe(0)
+    expect(database.db.prepare('SELECT cleanup_state FROM worktrees WHERE card_id = ?').pluck().get(cardId)).toBe('removed')
+  })
+
+  it('recusa enquanto um agente do card está rodando', async () => {
+    const { manager, database, projectId, cardId, wt, chatId, profileId } = await setup()
+    database.db.prepare(`INSERT INTO runs(id, card_id, chat_id, profile_id, status, started_at) VALUES ('11111111-1111-4111-8111-111111111111', ?, ?, ?, 'running', ?)`).run(cardId, chatId, profileId, new Date().toISOString())
+    await expect(manager.deleteWorktree(projectId, cardId, true)).rejects.toThrow(/agente/i)
+    expect(await folderExists(wt)).toBe(true)
   })
 })
 

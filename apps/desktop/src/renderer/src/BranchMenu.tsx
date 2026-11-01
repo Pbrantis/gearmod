@@ -4,7 +4,7 @@ import { tr } from './i18n'
 
 export interface MenuItem<K extends string = string> { key: K; label: string; danger?: boolean; off?: string }
 export type BranchAction = 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote' | 'copy'
-export type CommitMenuAction = 'checkout' | 'cherry-pick' | 'revert' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag' | 'copy'
+export type CommitMenuAction = 'checkout' | 'cherry-pick' | 'revert' | 'rebase' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag' | 'copy'
 export type StashMenuAction = 'apply' | 'pop' | 'drop'
 
 /** Menu do botão direito do Git (branches, commits, stashes): lista de ações com setas, Enter e Esc. */
@@ -64,6 +64,7 @@ export function commitItems(current: string | null): Array<MenuItem<CommitMenuAc
     { key: 'checkout', label: m.openCommit },
     { key: 'cherry-pick', label: m.cherryPick(current), off: none },
     { key: 'revert', label: m.revert(current), off: none },
+    { key: 'rebase', label: m.rebaseHere(current), off: none },
     { key: 'branch', label: m.branchHere },
     { key: 'tag', label: m.tagHere },
     { key: 'reset-soft', label: m.resetSoft, off: none },

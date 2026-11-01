@@ -9,7 +9,8 @@ import { Prec, type Extension } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { openInEditor } from './openInEditor'
 import { plainError } from './NoticeDialog'
-import { Delivery } from './Delivery'
+import { ConfirmDialog } from './ConfirmDialog'
+import { WorktreeDeleteDialog } from './WorktreeDelete'
 import { Select } from './Select'
 import { useAsk } from './useAsk'
 import { useT } from './i18n'
@@ -106,32 +107,39 @@ function CommitFiles({ sourceId, hash, pick }: { sourceId: string; hash: string;
   return <div className="cgcfiles gfiles">{!files ? <small>{common.loading}</small> : files.map((file) => <FileRow key={file.path} file={file} onOpen={() => pick(file.path)} />)}</div>
 }
 
-function RepoSection({ repo, cardId, base, profiles, excluded, setExcluded, reload, openGraph, decided, diff, setDiff }: { repo: GitCardRepo; cardId: string; base: string; profiles: AgentProfile[]; excluded: string[]; setExcluded(value: string[]): void; reload(): Promise<void>; openGraph(): void; decided(request: GitRequest): void; diff?: DiffTarget; setDiff(value: DiffTarget | undefined): void }): React.JSX.Element {
-  const t = useT().git.cardPanel
-  const [error, setError] = useState(''), [busy, setBusy] = useState(false), [openCommit, setOpenCommit] = useState<string>()
+function RepoSection({ repo, cardId, branch, base, profiles, excluded, setExcluded, reload, openGraph, decided, diff, setDiff }: { repo: GitCardRepo; cardId: string; branch: string; base: string; profiles: AgentProfile[]; excluded: string[]; setExcluded(value: string[]): void; reload(): Promise<void>; openGraph(): void; decided(request: GitRequest): void; diff?: DiffTarget; setDiff(value: DiffTarget | undefined): void }): React.JSX.Element {
+  const t = useT().git.cardPanel, td = useT().board.delivery
+  const [error, setError] = useState(''), [busy, setBusy] = useState(false), [openCommit, setOpenCommit] = useState<string>(), [expanded, setExpanded] = useState(false), [confirming, setConfirming] = useState(false), [opening, setOpening] = useState(false)
   const paths = useMemo(() => [...new Set(repo.files.map((file) => file.path))], [repo.files])
   const quiet = !repo.commits.length && !paths.length
   if (quiet) return <></>
   const color = laneColor(1)
   const push = async (): Promise<void> => { setBusy(true); setError(''); try { await window.agentboard.invoke('git:sync', { sourceId: repo.sourceId, cardId, action: 'push' }); await reload() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) } }
-  return <section className="cgrepo"><header>{gitIcons.repo}{repo.name}<span className="cnts">{repo.ahead > 0 && <span className="pillg up">↑ {repo.ahead}</span>}{repo.behind > 0 && <span className="pillg down">↓ {repo.behind}</span>}{paths.length > 0 && <span className="pillg down">{t.uncommitted(paths.length)}</span>}{repo.published && <span className="pillg ok">{t.published}</span>}</span></header>
-    <div className="cgbody"><div className="cgnote" style={{ fontFamily: 'var(--mono)', fontSize: 11.5 }}>{repo.worktreePath}</div>
+  const canPr = repo.ahead > 0 && repo.state === 'active' && !repo.prUrl
+  const openPr = async (): Promise<void> => {
+    setConfirming(false); setOpening(true); setError('')
+    try { const out = await window.agentboard.invoke('git:create-prs', { cardId, draft: true, sourceId: repo.sourceId }); const failed = out.results.find((item) => item.error); if (failed?.error) setError(failed.error); await reload() } catch (reason) { setError(plainError(reason)) } finally { setOpening(false) }
+  }
+  const openLink = (url: string): void => { void window.agentboard.invoke('git:open-pr', { cardId, url }).catch((reason) => setError(plainError(reason))) }
+  return <section className={`cgrepo ${expanded ? 'open' : 'shut'}`}><header><button type="button" className="cgtoggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><span className="cgchev" aria-hidden="true">▸</span>{gitIcons.repo}<span className="cgrname">{repo.name}</span></button><span className="cnts">{repo.ahead > 0 && <span className="pillg up">↑ {repo.ahead}</span>}{repo.behind > 0 && <span className="pillg down">↓ {repo.behind}</span>}{paths.length > 0 && <span className="pillg down">{t.uncommitted(paths.length)}</span>}{repo.published && <span className="pillg ok">{t.published}</span>}</span></header>
+    {expanded && <div className="cgbody"><div className="cgnote" style={{ fontFamily: 'var(--mono)', fontSize: 11.5 }}>{repo.worktreePath}</div>
       <div><div className="cglabel" style={{ marginBottom: 4 }}>{t.cardCommits}</div>{repo.commits.length ? <div className="cgcommits" style={{ '--lc': color } as React.CSSProperties}>
         {repo.commits.map((commit) => { const agent = profiles.find((profile) => profile.id === commit.agentProfileId); return <React.Fragment key={commit.hash}><div className="cgc"><i /><button type="button" className="cgfile" data-tip={t.seeCommitFiles} onClick={() => setOpenCommit(openCommit === commit.hash ? undefined : commit.hash)} style={{ flex: 1, textAlign: 'left' }}>{commit.subject}</button><code>{agent ? `${agent.label} · ` : `${t.you} · `}{commit.short}</code></div>{openCommit === commit.hash && <CommitFiles sourceId={repo.sourceId} hash={commit.hash} pick={(path) => setDiff({ sourceId: repo.sourceId, path, hash: commit.hash })} />}</React.Fragment> })}
         <div className="cgc basec"><i className="base" /><span>{t.baseLabel} <BaseSelect repo={repo} cardId={cardId} base={base} reload={reload} />{repo.behind ? ` · ${t.newOnBase(repo.behind, base)}` : ''}</span><code /></div></div> : <div className="cgnote">{t.noCommitsYet}</div>}</div>
       {repo.request && <CommitAsk request={repo.request} variant="panel" agent={profiles.find((profile) => profile.id === repo.request!.agentProfileId)} onDecided={decided} />}
       {paths.length > 0 && <div className="cgform"><div className="cglabel">{t.uncommittedFiles(paths.length)}</div>
         {paths.map((path) => { const file = repo.files.find((item) => item.path === path)!; const on = !excluded.includes(path)
-          return <label className="cgck" key={path}><GitCheck checked={on} label={path} onChange={(value) => setExcluded(value ? excluded.filter((item) => item !== path) : [...excluded, path])} /><span className={`st ${file.status}`} style={{ fontWeight: 800, fontFamily: 'var(--sans)' }}>{file.status}</span>
+          return <label className="cgck" key={path}><GitCheck checked={on} label={path} onChange={(value) => setExcluded(value ? excluded.filter((item) => item !== path) : [...excluded, path])} /><span className={`st ${file.status}`}>{file.status}</span>
             <button type="button" className="cgfile" data-tip={t.seeChanges} onClick={(e) => { e.preventDefault(); setDiff(diff?.path === path && !diff.hash && diff.sourceId === repo.sourceId ? undefined : { sourceId: repo.sourceId, path }) }}>{path}</button><span className="nums"><span className="p">+{repo.files.filter((item) => item.path === path).reduce((sum, item) => sum + item.additions, 0)}</span> <span className="m">−{repo.files.filter((item) => item.path === path).reduce((sum, item) => sum + item.deletions, 0)}</span></span></label> })}</div>}
       {error && <p className="error">{error}</p>}
-      <div className="cgrow">{repo.hasRemote && repo.ahead > 0 && <button type="button" className="mini secondary" disabled={busy} onClick={() => void push()}>{repo.published ? t.push : t.publishBranch}</button>}<span className="grow1" /><button type="button" className="mini secondary" onClick={openGraph}>{t.seeInGraph}</button></div></div></section>
+      <div className="cgrow">{repo.hasRemote && repo.ahead > 0 && <button type="button" className="mini secondary" disabled={busy} onClick={() => void push()}>{repo.published ? t.push : t.publishBranch}</button>}{repo.prUrl ? <button type="button" className="mini secondary" onClick={() => openLink(repo.prUrl!)}>PR · {repo.prUrl.replace(/^https?:\/\//, '')}</button> : <button type="button" className="mini secondary" disabled={opening || !canPr} onClick={() => setConfirming(true)}>{opening ? td.openingPrs : td.openPrs(1)}</button>}<span className="grow1" /><button type="button" className="mini secondary" onClick={openGraph}>{t.seeInGraph}</button></div></div>}
+    {confirming && <ConfirmDialog eyebrow={td.confirmEyebrow} title={td.confirmTitle(1)} text={td.confirmText(branch, repo.name)} ok={td.publishAndOpen} cancel={() => setConfirming(false)} confirm={() => void openPr()} />}</section>
 }
 
 /** Painel Git do card (botão Chat | Git): a branch de origem e a do card, uma seção por repositório e o commit fixo no rodapé. */
 export function GitCardPanel({ cardId, profiles, openRules, openGraph, diff, setDiff }: { cardId: string; profiles: AgentProfile[]; openRules(): void; openGraph(cardId: string): void; diff?: DiffTarget; setDiff(value: DiffTarget | undefined): void }): React.JSX.Element {
-  const t = useT().git.cardPanel
-  const [data, setData] = useState<GitCard>(), [error, setError] = useState(''), [excluded, setExcluded] = useState<Record<string, string[]>>({}), [message, setMessage] = useState(''), [target, setTarget] = useState<string>(), [busy, setBusy] = useState(false), [done, setDone] = useState('')
+  const T = useT(), t = T.git.cardPanel, tw = T.git.worktreeDelete
+  const [data, setData] = useState<GitCard>(), [error, setError] = useState(''), [excluded, setExcluded] = useState<Record<string, string[]>>({}), [message, setMessage] = useState(''), [target, setTarget] = useState<string>(), [busy, setBusy] = useState(false), [done, setDone] = useState(''), [wtDelete, setWtDelete] = useState(false)
   const alive = useRef(true)
   const load = useCallback(async (): Promise<void> => { try { const next = await window.agentboard.invoke('git:card', { cardId }); if (alive.current) { setData(next); setError('') } } catch (reason) { if (alive.current) setError(plainError(reason)) } }, [cardId])
   useEffect(() => { alive.current = true; void load(); const timer = window.setInterval(() => void load(), 5000); return () => { alive.current = false; window.clearInterval(timer) } }, [load])
@@ -154,14 +162,15 @@ export function GitCardPanel({ cardId, profiles, openRules, openGraph, diff, set
   return <div className="cgwrap"><div className="cgit">
     <div className="cgsum"><div className="br"><span className="bchip base" data-tip={t.baseBranchTip}>{gitIcons.branch}<span>{data.baseBranch ?? '—'}</span></span><span className="barrow" data-tip={t.originatedTip}>→</span><span className="bchip cur" data-tip={t.cardBranchTip}>{gitIcons.branch}<span>{data.branch}</span></span></div>
       <small>{t.sameBranchNote}</small>
+      <button type="button" className="ghost" style={{ justifySelf: 'start', color: 'var(--danger)' }} onClick={() => setWtDelete(true)}>{tw.deleteButton}</button>
       <div className={`cgpol pol-${rule.rule}`}><span className="pd" /><span><span>{t.agentCommit} <b>{ruleLabel(rule.rule)}</b> · {ruleNote(rule.rule)}</span><small>{rule.why}</small></span><button type="button" className="ghost" onClick={openRules}>{t.rules}</button></div></div>
     {!data.repos.some((repo) => repo.commits.length || repo.files.length) && <div className="cgnote">{t.noReposChanged}</div>}
-    <Delivery cardId={cardId} data={data} reload={load} />
-    {data.repos.map((repo) => <RepoSection key={repo.sourceId} repo={repo} cardId={cardId} base={repo.baseRef} profiles={profiles} excluded={excluded[repo.sourceId] ?? []} setExcluded={(value) => setExcluded({ ...excluded, [repo.sourceId]: value })} reload={load} openGraph={() => openGraph(cardId)} decided={() => void load()} diff={diff} setDiff={setDiff} />)}
+    {data.repos.map((repo) => <RepoSection key={repo.sourceId} repo={repo} cardId={cardId} branch={data.branch ?? ''} base={repo.baseRef} profiles={profiles} excluded={excluded[repo.sourceId] ?? []} setExcluded={(value) => setExcluded({ ...excluded, [repo.sourceId]: value })} reload={load} openGraph={() => openGraph(cardId)} decided={() => void load()} diff={diff} setDiff={setDiff} />)}
   </div>
   {targetRepo && <div className="cgfoot"><div className="cglabel">{withFiles.length > 1 ? t.yourCommitIn : t.yourCommit}{withFiles.length > 1 ? ' ' : ''}{withFiles.length > 1 && <Select className="cg-repo-select" label={t.commitRepo} value={targetRepo.sourceId} onChange={setTarget} options={withFiles.map((repo) => ({ value: repo.sourceId, label: repo.name }))} />}</div>
     <textarea className="autogrow" placeholder={t.yourCommitMessage} aria-label={t.yourCommitMessage} value={message} onChange={(e) => setMessage(e.target.value)} />
     {error && <p className="error">{error}</p>}{done && <div className="cgnote">{done}</div>}
     <div className="cgrow"><span className="grow1" /><button type="button" className="mini" disabled={busy} onClick={() => void commit()}>{t.commit}</button></div></div>}
+  {wtDelete && <WorktreeDeleteDialog cardId={cardId} close={() => setWtDelete(false)} done={() => { setWtDelete(false); void load() }} />}
   </div>
 }

@@ -1068,7 +1068,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .ghead{position:sticky;top:0;z-index:2;background:color-mix(in srgb, var(--accent) 7%, #141414);border-bottom:1px solid color-mix(in srgb, var(--accent) 7%, #272727);font-size:10.5px;color:color-mix(in srgb, var(--accent) 7%, #707070);text-transform:uppercase;letter-spacing:.06em;font-weight:700;height:28px}
 .ghead span{padding:0 10px}
 .grow{height:36px;width:100%;background:transparent;color:color-mix(in srgb, var(--accent) 7%, #d6d6d6);border-radius:0;padding:0;font-weight:500;text-align:left;position:relative}
-.grow:hover{background:color-mix(in srgb, var(--accent) 7%, #1b1b1b);filter:none}.grow.on{background:var(--accent-deep)}.grow.dim>*{filter:brightness(.42) saturate(.55)}
+.grow:hover{background:color-mix(in srgb, var(--accent) 7%, #1b1b1b);filter:none}.grow.on{background:var(--accent-deep)}.grow.dim>*:not(.ggraph){filter:brightness(.42) saturate(.55)}
 .grow .gmsg{display:flex;align-items:center;gap:7px;min-width:0;padding:0 10px;font-size:13px}
 .grow .gmsg>span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .grow.wip .gmsg>span.t{font-style:italic;color:#e8c27a}
@@ -1082,7 +1082,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .gdot.gstashdot{border-radius:5px;background:var(--surface);color:var(--lc)}.gstashdot svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8}.gstashlabel{color:var(--accent-strong)}
 .gstashname{background:transparent;color:inherit;font-size:15px;font-weight:700;line-height:1.35;text-align:left;padding:0;overflow-wrap:anywhere}.gstashname svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;opacity:.6}.gstashname:hover{text-decoration:underline}
 .gdotag{position:absolute;right:-7px;bottom:-6px;transform:scale(.62);transform-origin:bottom right}
-.grow.dim .gdot{opacity:1}
+.grow.dim .gdot{opacity:1;filter:brightness(.42) saturate(.55)}
 .grefs{position:relative;height:100%;display:flex;align-items:center;padding-left:8px;min-width:0}
 .grefs::after{content:"";position:absolute;left:calc(100% - 1px);right:-60px;top:50%;height:1.5px;background:var(--lc);opacity:.5;pointer-events:none}
 .grefs:empty::after{display:none}
@@ -2814,3 +2814,8 @@ body:has(.overlay) .viewdock.floating{display:none}
 /* Mensagens de erro com várias linhas (ex.: campos inválidos) quebram onde o texto quebra. */
 .error,.ntoast p{white-space:pre-line}
 :root[data-theme="light"] .teamcard{background:#fff;border-color:var(--border);color:var(--text)}:root[data-theme="light"] .teamdot{border-color:#fff}
+
+.cgtoggle{display:flex;align-items:center;gap:8px;min-width:0;background:transparent;color:inherit;padding:0;font:inherit;font-weight:700;text-align:left;cursor:pointer}.cgtoggle:hover{filter:none;color:var(--accent-strong)}.cgrname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cgchev{display:inline-block;width:10px;font-size:11px;transition:transform .12s;flex:none}.cgrepo.open .cgchev{transform:rotate(90deg)}.cgrepo.shut>header{border-bottom:0}
+.cgform{grid-template-columns:minmax(0,1fr)}.cgck{min-width:0}.cgck .nums{flex:none;margin-left:auto;white-space:nowrap;font-size:11px}.cgck .nums .p{color:#8fd19e}.cgck .nums .m{color:#ff8f86}
+.cgck .st{flex:none;width:14px;text-align:center;font-weight:800;font-family:var(--sans)}.cgck .st.M{color:#e8c27a}.cgck .st.A{color:#8fd19e}.cgck .st.D{color:#ff8f86}.cgck .st.R{color:#8ab4f8}

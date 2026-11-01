@@ -293,6 +293,10 @@ export const gitRowSchema = z.object({
   hash: z.string(), short: z.string(), parents: z.array(z.string()), lane: z.number().int().nonnegative(), author: z.string(), email: z.string(), date: isoDate.nullable(), subject: z.string(),
   refs: z.array(gitRefSchema), cardId: uuid.nullable(), agentProfileId: uuid.nullable(), wip: z.object({ modified: z.number().int(), added: z.number().int(), deleted: z.number().int(), staged: z.number().int(), branch: z.string() }).nullable(), stash: z.object({ ref: z.string(), commit: z.string() }).optional()
 })
+export const gitWorktreeInfoSchema = z.object({
+  cardId: uuid, title: z.string(), branch: z.string(), sharedWith: z.array(z.string()),
+  repos: z.array(z.object({ name: z.string(), branch: z.string(), unpushed: z.number().int().nonnegative(), files: z.number().int().nonnegative(), exists: z.boolean() }))
+})
 export const gitGraphSchema = z.object({
   repo: gitRepoSchema, rows: z.array(gitRowSchema), truncated: z.boolean(),
   branches: z.object({ local: z.array(z.object({ name: z.string(), cardId: uuid.nullable(), head: z.boolean(), ahead: z.number().int().default(0), behind: z.number().int().default(0) })), remote: z.array(z.object({ name: z.string(), cardId: uuid.nullable() })) }),
@@ -500,7 +504,7 @@ export const ipcContracts = {
   , 'collab:answer-question': { input: z.object({ questionId: uuid, answer: z.string().trim().min(1).max(8000) }).strict(), output: collaborationSchema }
   , 'cards:delete': { input: z.object({ cardId: uuid, deleteArtifacts: z.boolean().optional() }).strict(), output: z.object({ deleted: z.boolean() }) }
   , 'cards:set-repos': { input: z.object({ cardId: uuid, sourceIds: z.array(uuid).max(50).nullable() }).strict(), output: cardSchema }
-  , 'git:create-prs': { input: z.object({ cardId: uuid, draft: z.boolean().default(true), title: z.string().trim().max(240).optional(), body: z.string().max(20_000).optional() }).strict(), output: z.object({ results: z.array(z.object({ repo: z.string(), url: z.string().nullable(), error: z.string().nullable() })) }) }
+  , 'git:create-prs': { input: z.object({ cardId: uuid, draft: z.boolean().default(true), title: z.string().trim().max(240).optional(), body: z.string().max(20_000).optional(), sourceId: uuid.optional() }).strict(), output: z.object({ results: z.array(z.object({ repo: z.string(), url: z.string().nullable(), error: z.string().nullable() })) }) }
   , 'prs:list': { input: z.object({ sourceId: uuid }).strict(), output: pullRequestListSchema }
   , 'prs:view': { input: z.object({ sourceId: uuid, number: z.number().int().positive() }).strict(), output: pullRequestDetailSchema }
   , 'prs:comment': { input: z.object({ sourceId: uuid, number: z.number().int().positive(), body: z.string().trim().min(1).max(20_000) }).strict(), output: z.object({}) }
@@ -560,6 +564,8 @@ export const ipcContracts = {
   , 'reviews:prepare-local': { input: cardIdInput, output: reviewSchema }
   , 'reviews:approve-local': { input: z.object({ reviewId: uuid }).strict(), output: reviewSchema }
   , 'git:repos': { input: z.object({ projectId: uuid }).strict(), output: z.array(gitRepoSchema) }
+  , 'git:worktree-info': { input: z.object({ projectId: uuid.optional(), cardId: uuid, sourceId: uuid.optional() }).strict(), output: gitWorktreeInfoSchema }
+  , 'git:worktree-delete': { input: z.object({ projectId: uuid.optional(), cardId: uuid, sourceId: uuid.optional(), deleteBranch: z.boolean() }).strict(), output: z.object({ output: z.string(), keptBranches: z.array(z.string()) }) }
   , 'git:upstream': { input: z.object({ sourceId: uuid, cardId: uuid.nullable() }).strict(), output: z.object({ branch: z.string().nullable(), upstream: z.string().nullable(), remotes: z.array(z.string()) }) }
   , 'git:set-upstream': { input: z.object({ sourceId: uuid, cardId: uuid.nullable(), remote: z.string().min(1).max(100), branch: z.string().min(1).max(250) }).strict(), output: z.object({ upstream: z.string() }) }
   , 'git:detect': { input: z.object({ projectId: uuid }).strict(), output: z.object({ repos: z.array(gitRepoSchema), changed: z.boolean() }) }
@@ -578,7 +584,7 @@ export const ipcContracts = {
   , 'git:rename-commit': { input: z.object({ ...gitTarget, hash: z.string().regex(/^[0-9a-f]{40,64}$/), message: z.string().trim().min(1).max(2000) }).strict(), output: z.object({ hash: z.string() }) }
   , 'git:branch-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete', 'delete-remote']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:checkout-remote': { input: z.object({ ...gitTarget, name: z.string().min(1).max(250) }).strict(), output: z.object({ output: z.string() }) }
-  , 'git:commit-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'cherry-pick', 'revert', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
+  , 'git:commit-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'cherry-pick', 'revert', 'rebase', 'reset-soft', 'reset-mixed', 'reset-hard', 'branch', 'tag']), hash: z.string().regex(/^[0-9a-f]{7,64}$/), name: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:stash-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['apply', 'pop', 'drop']), ref: z.string().regex(/^stash@\{\d+\}$/) }).strict(), output: z.object({ output: z.string(), conflicts: z.number().int().nonnegative().optional() }) }
   , 'git:stash-detail': { input: z.object({ ...gitTarget, ref: z.string().regex(/^stash@\{\d+\}$/), commit: z.string().regex(/^[0-9a-f]{40,64}$/) }).strict(), output: z.object({ files: z.array(gitCommitFileSchema) }) }
   , 'git:stash-rename': { input: z.object({ ...gitTarget, ref: z.string().regex(/^stash@\{\d+\}$/), commit: z.string().regex(/^[0-9a-f]{40,64}$/), message: z.string().trim().min(1).max(500) }).strict(), output: z.object({ ref: z.string(), commit: z.string() }) }
@@ -608,6 +614,7 @@ export type GitPolicy = z.output<typeof gitPolicySchema>
 export type GitRepo = z.output<typeof gitRepoSchema>
 export type GitRow = z.output<typeof gitRowSchema>
 export type GitRef = z.output<typeof gitRefSchema>
+export type GitWorktreeInfo = z.output<typeof gitWorktreeInfoSchema>
 export type GitGraph = z.output<typeof gitGraphSchema>
 export type GitChange = z.output<typeof gitChangeSchema>
 export type GitChanges = z.output<typeof gitChangesSchema>
