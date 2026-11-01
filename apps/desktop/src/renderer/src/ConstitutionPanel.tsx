@@ -42,7 +42,7 @@ export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { pr
     </> : empty ? <div className="cons-empty">
       <b>{t.noneYet}</b>
       <p>{t.noneHint}</p>
-      <div className="cons-actions start"><button type="button" onClick={() => openChat('Crie a Constituição deste projeto a partir do código e do que já é regra nele.')}>{t.createWithAgent}</button><button type="button" className="secondary" onClick={() => setEditing('')}>{t.writeByHand}</button></div>
+      <div className="cons-actions start"><button type="button" onClick={() => openChat('Crie a Constituição deste projeto a partir do código e do que já é regra nele.')}>{t.createWithAgent}</button></div>
     </div> : <>
       <div className="cons-card"><div className="cons-card-t"><b>{heading}</b><span className="ctxchip">{t.version(constitution.version)}</span></div>
         {excerpt && <p>{excerpt}{excerpt.length >= 240 ? '…' : ''}</p>}
@@ -61,7 +61,7 @@ export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { pr
       </div>)}
     </div>}
     {viewing && <div className="overlay full" onMouseDown={(e) => { if (e.target === e.currentTarget && editing === null) closeView() }}><div className="modal wide cons-dialog" role="dialog" aria-label={t.title}>
-      <header><div><div className="eyebrow">{t.dialogEyebrow(constitution.version)}</div><h2>{heading}</h2></div><div className="hdr-actions">{editing === null && <><button type="button" className="mini secondary" onClick={() => setEditing(constitution.contentMd)}>{common.edit}</button><button type="button" className="mini" onClick={() => { closeView(); openChat() }}>{t.chatWithAgent}</button></>}<button type="button" className="x" onClick={closeView} aria-label={common.close}>×</button></div></header>
+      <header><div><div className="eyebrow">{t.dialogEyebrow(constitution.version)}</div><h2>{heading}</h2></div><div className="hdr-actions">{editing === null && <><button type="button" className="mini secondary" onClick={() => { closeView(); openChat() }}>{common.edit}</button><button type="button" className="mini" onClick={() => { closeView(); openChat() }}>{t.chatWithAgent}</button></>}<button type="button" className="x" onClick={closeView} aria-label={common.close}>×</button></div></header>
       {editing !== null ? <><CodeEditor variant="prose" className="in cons-edit cons-dialog-edit" path="constituicao.md" value={editing} options={proseOptions} ariaLabel={t.textLabel} onChange={setEditing} />
         <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>{common.cancel}</button><button type="button" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:save', { projectId, contentMd: editing }))}>{t.saveVersion}</button></div></>
         : <div className="cons-view md cons-dialog-view"><Markdown source={constitution.contentMd} base={{ projectId, cardId: null, path: importable ?? '' }} onOpenReference={() => { closeView(); onOpenReference?.() }} /></div>}
