@@ -115,6 +115,14 @@ describe('AgentBoard MCP server', () => {
     expect(bridge.finish('run-1')).toEqual({ written: ['tasks'], pendingMove: columns[3]!.id })
   })
 
+  it('B2: o chat da Constituição lista agentboard_criar_card, que a skill manda chamar', async () => {
+    const { bridge } = await setup()
+    const client = mcpClient(bridge.register('run-const', null, () => undefined, { id: 'chat-c', purpose: 'constitution' }))
+    await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
+    const names = (await client.request('tools/list').then((reply) => (reply.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)))
+    expect(names).toContain('agentboard_criar_card'); expect(names).toContain('agentboard_escrever_constituicao')
+  })
+
   it('S14: cada papel vê só as ferramentas do papel; o planejador não vê pedir_commit nem checklist_teste', async () => {
     const { bridge, card } = await setup()
     const client = mcpClient(bridge.register('run-plan', card.id, () => undefined, { id: 'chat-1', purpose: 'planning' }))
