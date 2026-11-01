@@ -42,6 +42,7 @@ import type { DbService } from './db/service'
 import type { DbConnectionInput } from './db/connections'
 import type { TableChanges, TableQuery } from './db/sql-builder'
 import { GitFileReader } from './sdd/git-file-reader'
+import { editorCodeQueries, type EditorCodeIndex } from './code-index/editor'
 import { candidate, constitutionMigrationPlan } from './sdd/constitution-migration-plan'
 import { cardTypeUsage, defaultCardTypes, setDefaultCardTypes } from './card-types'
 import type { CardTypeDef, SpecKitState, DecisionKind, DimensionScores, Effort, PermissionMode, SddConfig, WorkflowConfig, WorkflowKind } from '@agentboard/contracts'
@@ -96,6 +97,9 @@ interface Services {
   sddResolver: Pick<SddResolver, 'locate' | 'constitution'>
   sddWriter: Pick<SddWriter, 'write'>
   dbManager?: DbService
+  /** Índice de código para o editor (ir para símbolo, estrutura, definição, quem usa) e as pastas que ele cobre. */
+  codeIndex?: EditorCodeIndex
+  codeRoots?(context: { projectId: string; cardId: string | null }): string[]
   openPath(path: string): Promise<void>
   terminals: TerminalService
   openWindow(target: PopoutTarget, placement: WindowPlacement, point?: { x: number; y: number }): void
@@ -124,6 +128,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     if (worktree && existsSync(worktree.path)) return [...new Set([worktree.path, ...services.worktrees.repositories(cardId!).filter((repo) => repo.status === 'active').map((repo) => repo.path)])]
     return [...new Set([project.localPath, ...project.sources.map((source) => source.localPath)])]
   }
+  // workspaceRoots confere que o card é do projeto antes de o índice abrir qualquer pasta
+  const code = editorCodeQueries(services.codeIndex, (context) => { const roots = workspaceRoots(context); return services.codeRoots?.(context) ?? roots })
   const applyingConstitution = new Set<string>()
   /** Estado do Spec Kit de um card para o chat: permissão escolhida, cartões pendentes e os artefatos REAIS da feature do card. */
   const specKitState = (cardId: string): SpecKitState => {
@@ -389,6 +395,11 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'voice:transcribe': async (input: { wav: Uint8Array; prompt?: string }) => { const settings = services.settings.get(); return { text: await services.voice.transcribe({ wav: input.wav, model: settings.voz, language: settings.idioma === 'en' ? 'en' : 'pt', prompt: input.prompt }) } },
     'usage:list': () => services.usage.list(),
     'usage:history': (input: { granularity: 'day' | 'week' | 'month'; tz: string; groupBy: 'provider' | 'profile' | 'model' | 'project' | 'card' | 'purpose'; from?: string; to?: string }) => services.usage.history(input),
+    'code-index:symbols': (input: { projectId: string; cardId: string | null; query: string; limit?: number }) => code.symbols(input),
+    'code-index:outline': (input: { projectId: string; cardId: string | null; path: string }) => code.outline(input),
+    'code-index:definition': (input: { projectId: string; cardId: string | null; name: string; path?: string }) => code.definition(input),
+    'code-index:references': (input: { projectId: string; cardId: string | null; name: string; path?: string }) => code.references(input),
+    'code-index:status': (input: { projectId: string; cardId: string | null }) => code.status(input),
     'files:read': (input: { chatId: string; path: string }) => {
       const context = services.conversations.context(input.chatId), worktree = context.cardId ? services.worktrees.get(context.cardId) : null
       // Card com worktree: a pasta dela e a de cada repositório dela (é onde o agente trabalha), mesmo que o estado esteja desatualizado.

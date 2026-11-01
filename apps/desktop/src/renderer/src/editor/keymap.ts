@@ -5,7 +5,11 @@ import { foldCode, unfoldCode } from '@codemirror/language'
 import { selectNextOccurrence, selectSelectionMatches } from '@codemirror/search'
 import { tr } from '../i18n'
 
-export interface EditorActions { save(): void; find(): void; replace(): void; goto(): void }
+export interface EditorActions {
+  save(): void; find(): void; replace(): void; goto(): void
+  /** Navegação pelo índice de código: F12, Shift+F12 e Ctrl+Shift+O. */
+  definition?(): void; references?(): void; outline?(): void
+}
 
 /** Ctrl+Shift+Enter: abre uma linha nova acima da atual, já com o recuo dela. */
 export const insertLineAbove: Command = ({ state, dispatch }) => {
@@ -27,7 +31,8 @@ export const shortcutList = (): Array<{ keys: string; label: string }> => {
     { keys: 'Ctrl+Shift+K', label: s.deleteLine }, { keys: 'Ctrl+Enter', label: s.lineBelow }, { keys: 'Ctrl+Shift+Enter', label: s.lineAbove },
     { keys: 'Tab / Shift+Tab', label: s.indent }, { keys: 'Ctrl+] / Ctrl+[', label: s.indent }, { keys: 'Ctrl+/', label: s.commentLine },
     { keys: 'Shift+Alt+A', label: s.commentBlock }, { keys: 'Ctrl+D', label: s.selectNext }, { keys: 'Ctrl+Shift+L', label: s.selectAll },
-    { keys: s.altClick, label: s.addCursor }, { keys: 'Ctrl+L', label: s.selectLine }, { keys: 'Ctrl+Shift+[ / ]', label: s.fold }
+    { keys: s.altClick, label: s.addCursor }, { keys: 'Ctrl+L', label: s.selectLine }, { keys: 'Ctrl+Shift+[ / ]', label: s.fold },
+    { keys: 'Ctrl+T', label: s.symbol }, { keys: 'Ctrl+Shift+O', label: s.outline }, { keys: 'F12', label: s.definition }, { keys: 'Shift+F12', label: s.references }
   ]
 }
 
@@ -44,7 +49,10 @@ export function editorKeymap(actions: EditorActions): Extension {
     { key: 'Mod-/', run: toggleComment }, { key: 'Shift-Alt-a', run: toggleBlockComment },
     { key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }, { key: 'Mod-Shift-l', run: selectSelectionMatches, preventDefault: true },
     { key: 'Mod-l', run: selectLine, preventDefault: true },
-    { key: 'Mod-Shift-[', run: foldCode }, { key: 'Mod-Shift-]', run: unfoldCode }
+    { key: 'Mod-Shift-[', run: foldCode }, { key: 'Mod-Shift-]', run: unfoldCode },
+    ...(actions.definition ? [{ key: 'F12', run: ran(actions.definition), preventDefault: true }] : []),
+    ...(actions.references ? [{ key: 'Shift-F12', run: ran(actions.references), preventDefault: true }] : []),
+    ...(actions.outline ? [{ key: 'Mod-Shift-o', run: ran(actions.outline), preventDefault: true }] : [])
   ]
   return Prec.highest(keymap.of(bindings))
 }

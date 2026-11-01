@@ -80,17 +80,18 @@ const checklists = new ChecklistRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
 // Índice de código (grafo de símbolos) para as ferramentas agentboard_code_*: roda num processo utilitário, aberto no primeiro uso.
 const codeIndex = new CodeIndexService({ dataDir, fork: () => utilityProcess.fork(join(__dirname, 'codeIndexHost.js'), [], { serviceName: 'AgentBoard code index', stdio: 'ignore' }) as unknown as HostProcess })
-/** Pastas que o índice cobre numa conversa: os repositórios da worktree do card, senão as fontes do projeto. */
-const codeRoots = ({ cardId, chatId }: { cardId: string | null; chatId: string }): string[] => {
+/** Pastas que o índice cobre: os repositórios da worktree do card, senão as fontes do projeto. Vale para os agentes e para o editor. */
+const projectCodeRoots = ({ projectId, cardId }: { projectId: string; cardId: string | null }): string[] => {
   const worktree = cardId ? worktrees.get(cardId) : null
   if (cardId && worktree && existsSync(worktree.path)) {
     const members = worktrees.repositories(cardId).filter((repo) => repo.status === 'active').map((repo) => repo.path)
     return members.length ? members : [worktree.path]
   }
-  const project = projects.get(cardId ? board.card(cardId).projectId : conversations.projectOf(chatId))
+  const project = projects.get(projectId)
   const sources = [...new Set(project.sources.map((source) => source.localPath))]
   return sources.length ? sources : [project.localPath]
 }
+const codeRoots = ({ cardId, chatId }: { cardId: string | null; chatId: string }): string[] => projectCodeRoots({ projectId: cardId ? board.card(cardId).projectId : conversations.projectOf(chatId), cardId })
 const quality = new QualityService(database, worktrees)
 const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
 const approvals = new ApprovalService(database)
@@ -388,7 +389,7 @@ app.whenReady().then(async () => {
   await openDatabase()
   setMainLocale(settings.get().idioma)  // só depois de abrir o banco: antes disso as configurações não podem ser lidas
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
   Menu.setApplicationMenu(null)  // sem File/Edit/View/Window/Help: a faixa de cima é do app
   createTray()
   await createWindow()

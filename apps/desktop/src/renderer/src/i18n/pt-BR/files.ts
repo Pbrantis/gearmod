@@ -223,7 +223,29 @@ export const files = {
       addCursor: 'Adicionar cursor',
       selectLine: 'Selecionar linha',
       fold: 'Recolher / expandir trecho',
-      altClick: 'Alt+clique'
+      altClick: 'Alt+clique',
+      symbol: 'Ir para símbolo no projeto',
+      outline: 'Estrutura do arquivo',
+      definition: 'Ir para a definição',
+      references: 'Quem usa'
+    },
+    codeNav: {
+      symbols: 'Símbolos',
+      symbolPlaceholder: 'Buscar função, classe ou tipo no projeto',
+      symbolLabel: 'Nome do símbolo',
+      symbolHint: 'Digite parte do nome de uma função, classe, método ou tipo.',
+      noSymbols: 'Nenhum símbolo encontrado.',
+      failed: 'Não foi possível consultar o índice de código',
+      searching: 'Consultando o índice de código…',
+      outline: 'Estrutura do arquivo',
+      noWord: 'Coloque o cursor sobre um nome para ir à definição ou ver quem usa.',
+      definitionsOf: (name: string) => `Definições de ${name}`,
+      noDefinition: (name: string) => `A definição de ${name} não está no índice de código.`,
+      referencesOf: (name: string, count: number) => `${name}: ${count} ${plural(count, 'uso', 'usos')} no projeto`,
+      noReferences: (name: string) => `Nenhum uso de ${name} encontrado no índice de código.`,
+      inCaller: (caller: string) => `em ${caller}`,
+      results: 'Resultados',
+      close: 'Fechar'
     },
     markdownImages: {
       readFailed: 'Não foi possível ler a imagem',

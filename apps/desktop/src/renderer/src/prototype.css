@@ -2819,3 +2819,9 @@ body:has(.overlay) .viewdock.floating{display:none}
 .cgchev{display:inline-block;width:10px;font-size:11px;transition:transform .12s;flex:none}.cgrepo.open .cgchev{transform:rotate(90deg)}.cgrepo.shut>header{border-bottom:0}
 .cgform{grid-template-columns:minmax(0,1fr)}.cgck{min-width:0}.cgck .nums{flex:none;margin-left:auto;white-space:nowrap;font-size:11px}.cgck .nums .p{color:#8fd19e}.cgck .nums .m{color:#ff8f86}
 .cgck .st{flex:none;width:14px;text-align:center;font-weight:800;font-family:var(--sans)}.cgck .st.M{color:#e8c27a}.cgck .st.A{color:#8fd19e}.cgck .st.D{color:#ff8f86}.cgck .st.R{color:#8ab4f8}
+/* Índice de código no editor: marca do tipo de símbolo (ƒ, C, I...), título das listas do F12 / Shift+F12 e estrutura do arquivo */
+.cnav-kind{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:var(--accent-bg);color:var(--accent-strong,var(--accent));font:600 10px var(--mono)}
+.cnav-kind[data-kind=class],.cnav-kind[data-kind=struct],.cnav-kind[data-kind=interface],.cnav-kind[data-kind=type],.cnav-kind[data-kind=enum]{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.cnav-detail{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font:11px var(--mono)}
+.cnav-title{font-size:12px;font-weight:600;padding:4px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wf-outline.code{width:min(320px,calc(100% - 12px));max-height:420px}.wf-outline.code button{display:flex;align-items:center;gap:6px;flex:none}

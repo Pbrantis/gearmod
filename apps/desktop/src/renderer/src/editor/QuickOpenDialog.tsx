@@ -5,14 +5,17 @@ import { slashed } from './documents'
 import { splitLineSuffix } from './position'
 import { dropRecents, rankPaths } from './quickOpen'
 import { ProjectSearch } from './ProjectSearch'
+import { SymbolSearch } from './CodeNav'
 import { useT } from '../i18n'
+
+export type QuickMode = 'files' | 'content' | 'symbols'
 
 /**
  * Caixa do Ctrl+P: sem texto lista os arquivos recentes; com texto busca no projeto (aproximada) e ordena no renderer.
- * `nome:42` abre já na linha 42.
+ * `nome:42` abre já na linha 42. O modo Símbolos (Ctrl+T) busca no índice de código.
  */
 export function QuickOpen({ context, roots, recents, open, close, initialMode = 'files', initialText = '' }: {
-  context: { projectId: string; cardId: string | null }; roots: ChangeRoot[]; recents: string[]; open(path: string, line?: number, column?: number, length?: number): void; close(): void; initialMode?: 'files' | 'content'; initialText?: string
+  context: { projectId: string; cardId: string | null }; roots: ChangeRoot[]; recents: string[]; open(path: string, line?: number, column?: number, length?: number): void; close(): void; initialMode?: QuickMode; initialText?: string
 }): React.JSX.Element {
   const t = useT(), [text, setText] = useState(initialText), [mode, setMode] = useState(initialMode), [found, setFound] = useState<string[]>([]), [selected, setSelected] = useState(0), [error, setError] = useState('')
   const list = useRef<HTMLDivElement>(null), target = splitLineSuffix(text.trim())
@@ -44,8 +47,8 @@ export function QuickOpen({ context, roots, recents, open, close, initialMode = 
   }
   return <div className="qopen-back" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) close() }}>
     <div className="qopen" role="dialog" aria-modal="true" aria-label={t.files.editor.quickOpen.label} onKeyDown={keyDown}>
-      <div className="qopen-modes" role="tablist" aria-label={t.files.editor.quickOpen.modes}><button type="button" role="tab" aria-selected={mode === 'files'} onClick={() => setMode('files')}>{t.files.editor.quickOpen.files} <small>Ctrl+P</small></button><button type="button" role="tab" aria-selected={mode === 'content'} onClick={() => setMode('content')}>{t.files.editor.quickOpen.content} <small>Ctrl+Shift+F</small></button><button type="button" className="qopen-close" aria-label={t.files.editor.quickOpen.closeSearch} onClick={close}>×</button></div>
-      {mode === 'content' ? <ProjectSearch context={context} roots={roots} seed={{ text, at: 1 }} onQueryChange={setText} open={(path, line, column, length) => { close(); open(path, line, column, length) }} /> : <><input autoFocus className="in" placeholder={t.files.editor.quickOpen.placeholder} aria-label={t.files.editor.quickOpen.nameLabel} value={text} onChange={(event) => setText(event.target.value)} />
+      <div className="qopen-modes" role="tablist" aria-label={t.files.editor.quickOpen.modes}><button type="button" role="tab" aria-selected={mode === 'files'} onClick={() => setMode('files')}>{t.files.editor.quickOpen.files} <small>Ctrl+P</small></button><button type="button" role="tab" aria-selected={mode === 'content'} onClick={() => setMode('content')}>{t.files.editor.quickOpen.content} <small>Ctrl+Shift+F</small></button><button type="button" role="tab" aria-selected={mode === 'symbols'} onClick={() => setMode('symbols')}>{t.files.editor.codeNav.symbols} <small>Ctrl+T</small></button><button type="button" className="qopen-close" aria-label={t.files.editor.quickOpen.closeSearch} onClick={close}>×</button></div>
+      {mode === 'symbols' ? <SymbolSearch context={context} text={text} setText={setText} open={(path, line) => { close(); open(path, line) }} /> : mode === 'content' ? <ProjectSearch context={context} roots={roots} seed={{ text, at: 1 }} onQueryChange={setText} open={(path, line, column, length) => { close(); open(path, line, column, length) }} /> : <><input autoFocus className="in" placeholder={t.files.editor.quickOpen.placeholder} aria-label={t.files.editor.quickOpen.nameLabel} value={text} onChange={(event) => setText(event.target.value)} />
       <div className="qopen-list" role="listbox" ref={list}>
         {!target.path && ranked.length > 0 && <p className="qopen-note">{t.files.editor.quickOpen.recents}</p>}
         {ranked.map((item, index) => { const folder = folderOf(item.path), repo = labels[item.path]?.repo; return <button key={item.path} type="button" role="option" aria-selected={index === selected} className={`qopen-item ${index === selected ? 'on' : ''}`} data-tip={item.path} onMouseEnter={() => setSelected(index)} onClick={() => choose(index)}>

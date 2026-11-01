@@ -4,7 +4,7 @@ import { EditorView } from '@codemirror/view'
 import { findNext, findPrevious, replaceAll, replaceNext } from '@codemirror/search'
 import { Markdown } from '../markdown'
 import { markdownImages } from './markdownImages'
-import { headingTrail, markdownHeadings, type Heading } from './markdownOutline'
+import { headingTrail, markdownHeadings } from './markdownOutline'
 import { DiffIcon } from '../icons'
 import { FileFind, GoToLine, fileMatches, type FindOptions } from '../FileFind'
 import { fileKind } from '../FileAppearance'
@@ -22,6 +22,8 @@ import { languageName } from './languages'
 import { detectIndent, normalizeEol, parseGoto } from './position'
 import { cursorInfo, isHtml, isMarkdown, nameOf, readViewState, slashed, writeViewState, type Document } from './documents'
 import type { Preferences } from './preferences'
+import { CodeNavDialog, KindMark, type NavItem } from './CodeNav'
+import { nameAtCursor, symbolTrail, type OutlineItem } from './codeNavigation'
 import { useT } from '../i18n'
 
 export type PaneCommand = { type: 'find' | 'replace' | 'goto' | 'toggle-find'; at: number }
@@ -41,13 +43,15 @@ export interface FilePaneProps {
   selectionText?: React.MutableRefObject<(() => string) | null>
   /** Raízes do projeto: uma imagem solta que já está nelas vira só um link relativo. */
   roots?: Array<{ path: string }>
+  /** Abre outro arquivo numa linha (ir para a definição, quem usa); sem isso só navega dentro do arquivo aberto. */
+  openAt?(path: string, line: number): void
 }
 
 /**
  * Área de um arquivo aberto: cabeçalho de ações, localizar/substituir, ir para linha, editor, diff, prévia, comentário de linhas e barra de status.
  * `full` é o modo Arquivos (dentro de uma aba); `focused` é o painel ao lado do chat, que abre no diff e só edita depois de "Editar".
  */
-export function FilePane({ doc, mode, context, preferences, changePreferences, change, root, commentCardId, commentTarget, update, save, reload, afterComment, error, loading, setError, command, jump, onJumped, repoName, headerEnd, closeDocument, restore, selectionText, roots }: FilePaneProps): React.JSX.Element {
+export function FilePane({ doc, mode, context, preferences, changePreferences, change, root, commentCardId, commentTarget, update, save, reload, afterComment, error, loading, setError, command, jump, onJumped, repoName, headerEnd, closeDocument, restore, selectionText, roots, openAt }: FilePaneProps): React.JSX.Element {
   const t = useT(), focused = mode === 'focused'
   const view = useRef<EditorView | null>(null), codeBox = useRef<HTMLDivElement>(null), statusBox = useRef<HTMLSpanElement>(null), searchField = useRef<HTMLInputElement>(null), commentField = useRef<HTMLTextAreaElement>(null), pickDrag = useRef<number | null>(null)
   const [find, setFind] = useState(false), [needle, setNeedle] = useState(''), [findOptions, setFindOptions] = useState<FindOptions>({ caseSensitive: false, wholeWord: false, regex: false }), [matchIndex, setMatchIndex] = useState(-1), [replaceOpen, setReplaceOpen] = useState(false), [replacement, setReplacement] = useState('')
@@ -89,8 +93,28 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   }
   /** O botão de comentar acompanha a última linha escolhida, também ao rolar. */
   const placeButton = (): void => { const editor = liveView(), box = codeBox.current, picked = linesRef.current; if (!editor || !box || !picked) return; const line = editor.state.doc.line(Math.min(Math.max(...picked) + 1, editor.state.doc.lines)); setButtonTop(Math.max(4, Math.round(editor.documentTop + editor.lineBlockAt(line.from).bottom - box.getBoundingClientRect().top - 14))) }
-  const actions = useRef({ save: (): void => undefined, find: (): void => undefined, replace: (): void => undefined, goto: (): void => undefined, place: (): void => undefined })
-  actions.current = { save: () => { void save(doc.path) }, find: () => showFind(), replace: () => showFind(true), goto: showGoto, place: placeButton }
+  // Índice de código: estrutura do arquivo (relida depois de salvar) e as listas do F12 / Shift+F12.
+  const [codeOutline, setCodeOutline] = useState<OutlineItem[]>([]), [nav, setNav] = useState<{ title: string; items: NavItem[]; note?: string } | null>(null)
+  const goItem = (item: { path: string; line: number }): void => { if (slashed(item.path) === slashed(doc.path)) gotoLine(item.line); else openAt?.(item.path, item.line) }
+  const lookUp = async (what: 'definition' | 'references'): Promise<void> => {
+    const editor = liveView(), codeNav = t.files.editor.codeNav
+    if (!editor) return
+    const name = nameAtCursor(editor.state)
+    if (!name) { setNav({ title: what === 'definition' ? t.files.editor.shortcuts.definition : t.files.editor.shortcuts.references, items: [], note: codeNav.noWord }); return }
+    try {
+      if (what === 'definition') {
+        const found = await window.agentboard.invoke('code-index:definition', { ...context, name, path: doc.path })
+        // Uma só definição: vai direto, como no VS Code; várias abrem a lista.
+        if (found.length === 1) { goItem(found[0]!); return }
+        setNav({ title: codeNav.definitionsOf(name), items: found.map((hit) => ({ path: hit.path, relative: hit.relative, line: hit.line, title: hit.qname || hit.name, kind: hit.kind, detail: hit.signature.slice(0, 80) })), note: codeNav.noDefinition(name) })
+      } else {
+        const found = await window.agentboard.invoke('code-index:references', { ...context, name, path: doc.path })
+        setNav({ title: codeNav.referencesOf(name, found.length), items: found.map((hit) => ({ path: hit.path, relative: hit.relative, line: hit.line, title: hit.caller })), note: codeNav.noReferences(name) })
+      }
+    } catch { setNav({ title: name, items: [], note: codeNav.failed }) }
+  }
+  const actions = useRef({ save: (): void => undefined, find: (): void => undefined, replace: (): void => undefined, goto: (): void => undefined, place: (): void => undefined, definition: (): void => undefined, references: (): void => undefined, outline: (): void => undefined })
+  actions.current = { save: () => { void save(doc.path) }, find: () => showFind(), replace: () => showFind(true), goto: showGoto, place: placeButton, definition: () => { void lookUp('definition') }, references: () => { void lookUp('references') }, outline: () => { if (outlineItems.length) setOutlineOpen(true) } }
   const extensions = useMemo<Extension[]>(() => [
     hiddenSearch,
     linePicker((index, extend) => pickLine(index, extend), (index) => { if (pickDrag.current !== null) setLines([pickDrag.current, index]) }, () => { pickDrag.current = null }),
@@ -102,12 +126,23 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
       setComposing(false); setLines([text.lineAt(from).number - 1, text.lineAt(text.sliceString(to - 1, to) === '\n' ? to - 1 : to).number - 1])
     }),
     EditorView.domEventHandlers({ scroll: () => { actions.current.place() } }),
-    editorKeymap({ save: () => actions.current.save(), find: () => actions.current.find(), replace: () => actions.current.replace(), goto: () => actions.current.goto() })
+    editorKeymap({ save: () => actions.current.save(), find: () => actions.current.find(), replace: () => actions.current.replace(), goto: () => actions.current.goto(), definition: () => actions.current.definition(), references: () => actions.current.references(), outline: () => actions.current.outline() })
   ], [])
   const markdown = isMarkdown(doc.path)
   const headings = useMemo(() => markdown ? markdownHeadings(doc.content) : [], [markdown, doc.content])
-  const trail = useMemo(() => markdown && !doc.preview ? headingTrail(headings, cursor.line) : [], [markdown, doc.preview, headings, cursor.line])
-  const goHeading = (heading: Heading): void => { setOutlineOpen(false); if (doc.preview) previewRef.current?.querySelector(`[data-line="${heading.line - 1}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else gotoLine(heading.line) }
+  const codeFile = !markdown && !doc.binary && !doc.truncated && fileKind(doc.path) !== 'image'
+  useEffect(() => {
+    setCodeOutline([])
+    if (!codeFile) return
+    let alive = true
+    // Depois de salvar, espera o índice reler o arquivo (o watcher dele tem um pequeno atraso).
+    const timer = window.setTimeout(() => { void window.agentboard.invoke('code-index:outline', { ...context, path: doc.path }).then((found) => { if (alive) setCodeOutline(found.map((hit) => ({ line: hit.line, endLine: hit.endLine, text: hit.name, depth: hit.depth, kind: hit.kind }))) }).catch(() => undefined) }, 700)
+    return () => { alive = false; window.clearTimeout(timer) }
+  }, [codeFile, doc.path, doc.saved, context.projectId, context.cardId])
+  const outlineItems = useMemo<OutlineItem[]>(() => markdown ? headings.map((heading) => ({ line: heading.line, endLine: heading.line, text: heading.text, depth: heading.level - 1 })) : codeOutline, [markdown, headings, codeOutline])
+  const trail = useMemo<Array<{ line: number; text: string }>>(() => doc.preview ? [] : markdown ? headingTrail(headings, cursor.line) : symbolTrail(codeOutline, cursor.line), [markdown, doc.preview, headings, codeOutline, cursor.line])
+  const outlineLabel = markdown ? t.files.editor.pane.outline : t.files.editor.codeNav.outline
+  const goHeading = (heading: { line: number }): void => { setOutlineOpen(false); if (doc.preview) previewRef.current?.querySelector(`[data-line="${heading.line - 1}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else gotoLine(heading.line) }
   /** Colar ou soltar imagem só no Markdown editável: grava em `imagens/` e insere o link. */
   const editorExtensions = useMemo<Extension[]>(() => markdown && !readOnly ? [...extensions, markdownImages({
     markdownPath: doc.path, fail: (message) => setError(message), droppedPath: (file) => { try { return window.agentboard.getDroppedFilePath(file) } catch { return '' } },
@@ -161,7 +196,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   const reviewTarget = { path: doc.relative, send: async (prompt: string): Promise<boolean> => { try { await window.agentboard.invoke('workspace:comment', { ...context, cardId: commentCardId, text: prompt }); afterComment(); return true } catch (reason) { setError(plainError(reason)); return false } } }
   const actionsRow = <>
     {!doc.binary && !doc.truncated && <>
-      {markdown && headings.length > 0 && <span className="wf-outlinewrap" ref={outlineBox}><button type="button" className="wf-iconchip" aria-label={t.files.editor.pane.outline} aria-expanded={outlineOpen} data-tip={t.files.editor.pane.outline} onClick={() => setOutlineOpen(!outlineOpen)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M7 10h9M10 15h6" /></svg></button>{outlineOpen && <div className="popmenu wf-outline" role="menu" aria-label={t.files.editor.pane.outline}>{headings.map((heading) => <button key={heading.line} type="button" role="menuitem" style={{ paddingLeft: 8 + (heading.level - 1) * 12 }} onClick={() => goHeading(heading)}>{heading.text}</button>)}</div>}</span>}
+      {outlineItems.length > 0 && <span className="wf-outlinewrap" ref={outlineBox}><button type="button" className="wf-iconchip" aria-label={outlineLabel} aria-expanded={outlineOpen} data-tip={markdown ? outlineLabel : `${outlineLabel} (Ctrl+Shift+O)`} onClick={() => setOutlineOpen(!outlineOpen)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M7 10h9M10 15h6" /></svg></button>{outlineOpen && <div className={`popmenu wf-outline ${markdown ? '' : 'code'}`} role="menu" aria-label={outlineLabel}>{outlineItems.map((item) => <button key={`${item.line}:${item.text}`} type="button" role="menuitem" style={{ paddingLeft: 8 + item.depth * 12 }} onClick={() => goHeading(item)}>{!markdown && <KindMark kind={item.kind} />}{item.text}</button>)}</div>}</span>}
       {previewable && <button type="button" className="wf-iconchip" aria-label={doc.preview ? t.files.editor.pane.viewSource : t.files.editor.pane.preview} data-tip={doc.preview ? t.files.editor.pane.viewSource : t.files.editor.pane.preview} onClick={() => update(doc.path, { preview: !doc.preview })}><svg viewBox="0 0 20 20" aria-hidden="true">{doc.preview ? <path d="m7 5-5 5 5 5m6-10 5 5-5 5" /> : <><path d="M1 10s3-6 9-6 9 6 9 6-3 6-9 6-9-6-9-6z" /><circle cx="10" cy="10" r="2.5" /></>}</svg></button>}
       {!focused && doc.diffView && canDiff && <button type="button" className="wf-iconchip" aria-label={preferences.diffLayout === 'split' ? t.files.editor.diff.oneColumnLabel : t.files.editor.diff.sideBySideLabel} data-tip={preferences.diffLayout === 'split' ? t.files.editor.diff.oneColumn : t.files.editor.diff.sideBySide} onClick={() => changePreferences({ diffLayout: preferences.diffLayout === 'split' ? 'unified' : 'split' })}><svg viewBox="0 0 20 20" aria-hidden="true">{preferences.diffLayout === 'split' ? <path d="M3 4h14v12H3zM3 8h14" /> : <path d="M3 4h14v12H3zM10 4v12" />}</svg></button>}
       {canDiff && <button type="button" className={`wf-iconchip ${doc.diffView ? 'on' : ''}`} aria-label={doc.diffView ? (focused ? t.files.editor.pane.viewCode : t.files.editor.pane.editFile) : t.files.editor.pane.viewChanges} data-tip={doc.diffView ? (focused ? t.files.editor.pane.viewCode : t.files.editor.pane.editFile) : t.files.editor.pane.viewChangesTip} onClick={() => update(doc.path, { diffView: !doc.diffView })}><DiffIcon /></button>}
@@ -196,6 +231,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
         <button type="button" className="sendbtn tip" data-tip={t.files.editor.diff.sendTip} aria-label={t.files.editor.diff.send} disabled={!comment.trim()} onClick={() => void sendComment()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg></button></div>
       {commentError && <p className="error">{commentError}</p>}</div>}
     {doc.truncated && <p className="wf-note">{t.files.editor.pane.truncated}</p>}
+    {nav && <CodeNavDialog title={nav.title} items={nav.items} note={nav.note} open={goItem} close={() => { setNav(null); window.setTimeout(() => liveView()?.focus(), 0) }} />}
     {discarding && doc.conflict && <ConfirmDialog eyebrow={t.files.editor.pane.reloadDisk.eyebrow} title={t.files.editor.pane.reloadDisk.title} text={t.files.editor.pane.reloadDisk.text(nameOf(doc.path))} ok={t.files.editor.pane.reloadDisk.ok} danger cancel={() => setDiscarding(false)} confirm={() => { setDiscarding(false); update(doc.path, { content: doc.conflict!.content, saved: doc.conflict!.content, disk: doc.conflict!.disk, eol: doc.conflict!.eol, conflict: undefined }) }} />}
     <footer className="wf-status"><b className={`wf-state ${doc.binary || doc.truncated ? '' : dirty ? 'dirty' : 'saved'}`}>{doc.binary ? t.files.editor.pane.status.binary : doc.truncated || doc.locked ? t.files.editor.pane.status.readOnly : dirty ? t.files.editor.pane.status.unsaved : focused && !edit ? t.files.editor.pane.status.readOnly : t.files.editor.pane.status.saved}</b>{doc.notice && <em className="wf-notice" role="status">{doc.notice}</em>}<span>{preferences.autosave ? t.files.editor.pane.status.autosave : t.files.editor.pane.status.saveHint}{!doc.binary && !(doc.preview && fileKind(doc.path) === 'image') && <> · {t.files.editor.pane.status.cursor(cursor.line, cursor.column, cursor.ranges, cursor.selected)} · <span className="wf-statusmenubox" ref={statusBox}><button type="button" className="wf-statusbtn" data-tip={t.files.editor.pane.status.indentTip} aria-expanded={indentMenu} onClick={() => setIndentMenu(!indentMenu)}>{indent.kind === 'tab' ? t.files.editor.pane.status.tab : t.files.editor.pane.status.spaces(preferences.tabSize)}</button>{indentMenu && <span className="popmenu wf-statusmenu" role="menu" aria-label={t.files.editor.pane.status.indentMenu}>{[2, 4, 8].map((size) => <button key={size} type="button" role="menuitemradio" aria-checked={preferences.tabSize === size} className={preferences.tabSize === size ? 'on' : ''} onClick={() => { changePreferences({ tabSize: size }); setIndentMenu(false) }}>{t.files.editor.pane.status.spacesCount(size)}</button>)}</span>}</span> · {doc.eol === 'crlf' ? 'CRLF' : 'LF'} · {languageName(doc.path)}</>}</span></footer>
   </div>

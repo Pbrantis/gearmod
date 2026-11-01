@@ -351,6 +351,9 @@ const dbCellSchema = z.object({ t: z.string().nullable(), big: z.literal(true).o
 export type DbConnection = z.output<typeof dbConnectionSchema>
 export type SddLocation = z.output<typeof sddLocationSchema>
 export type ConstitutionView = z.output<typeof constitutionViewSchema>
+/** Símbolo do índice de código para o editor: `path` absoluto, `relative` à pasta indexada. */
+const codeSymbolSchema = z.object({ name: z.string(), qname: z.string(), kind: z.string(), path: z.string(), relative: z.string(), line: z.number().int(), endLine: z.number().int(), signature: z.string() })
+export type CodeSymbol = z.output<typeof codeSymbolSchema>
 
 export const ipcContracts = {
   'app:info': { input: z.undefined(), output: appInfoSchema },
@@ -479,6 +482,11 @@ export const ipcContracts = {
   , 'cards:usage': { input: cardIdInput, output: cardUsageSchema }
   , 'cards:checklist': { input: cardIdInput, output: cardChecklistSchema }
   , 'cards:checklist-toggle': { input: z.object({ cardId: uuid, line: z.number().int().min(0).max(100_000), text: z.string().min(1).max(2000), checked: z.boolean() }).strict(), output: cardChecklistSchema }
+  , 'code-index:symbols': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(200).optional() }).strict(), output: z.array(codeSymbolSchema) }
+  , 'code-index:outline': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.array(codeSymbolSchema.extend({ depth: z.number().int().nonnegative() })) }
+  , 'code-index:definition': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), name: z.string().trim().min(1).max(200), path: z.string().min(1).max(4096).optional() }).strict(), output: z.array(codeSymbolSchema) }
+  , 'code-index:references': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), name: z.string().trim().min(1).max(200), path: z.string().min(1).max(4096).optional() }).strict(), output: z.array(z.object({ path: z.string(), relative: z.string(), line: z.number().int(), caller: z.string() })) }
+  , 'code-index:status': { input: z.object({ projectId: uuid, cardId: uuid.nullable() }).strict(), output: z.object({ enabled: z.boolean(), roots: z.array(z.object({ root: z.string(), files: z.number().int(), symbols: z.number().int(), indexedAt: z.number().nullable(), ms: z.number().nullable() })) }) }
   , 'files:read': { input: z.object({ chatId: uuid, path: z.string().trim().min(1).max(2048) }).strict(), output: z.object({ path: z.string(), relative: z.string(), content: z.string(), truncated: z.boolean(), size: z.number(), binary: z.boolean() }) }
   , 'workspace:roots': { input: z.object({ projectId: uuid, cardId: uuid.nullable() }).strict(), output: z.array(z.object({ path: z.string(), name: z.string(), branch: z.string().nullable(), worktree: z.boolean(), primary: z.boolean(), cardId: uuid.nullable(), cardTitle: z.string().nullable() })) }
   , 'workspace:external': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096), target: z.enum(['explorer', 'default', 'vscode']) }).strict(), output: z.object({}) }

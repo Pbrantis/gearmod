@@ -205,7 +205,29 @@ export const files: typeof source = {
       addCursor: 'Add cursor',
       selectLine: 'Select line',
       fold: 'Fold / unfold',
-      altClick: 'Alt+click'
+      altClick: 'Alt+click',
+      symbol: 'Go to symbol in project',
+      outline: 'File outline',
+      definition: 'Go to definition',
+      references: 'Find usages'
+    },
+    codeNav: {
+      symbols: 'Symbols',
+      symbolPlaceholder: 'Search for a function, class or type in the project',
+      symbolLabel: 'Symbol name',
+      symbolHint: 'Type part of the name of a function, class, method or type.',
+      noSymbols: 'No symbols found.',
+      failed: 'Could not query the code index',
+      searching: 'Querying the code index…',
+      outline: 'File outline',
+      noWord: 'Place the cursor on a name to go to its definition or find its usages.',
+      definitionsOf: (name: string) => `Definitions of ${name}`,
+      noDefinition: (name: string) => `The definition of ${name} is not in the code index.`,
+      referencesOf: (name: string, count: number) => `${name}: ${count} ${plural(count, 'usage', 'usages')} in the project`,
+      noReferences: (name: string) => `No usages of ${name} found in the code index.`,
+      inCaller: (caller: string) => `in ${caller}`,
+      results: 'Results',
+      close: 'Close'
     },
     markdownImages: {
       readFailed: 'Could not read the image',
