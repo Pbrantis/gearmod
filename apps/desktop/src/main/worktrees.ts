@@ -62,6 +62,16 @@ export class WorktreeService {
   async prepare(cardId: string): Promise<Worktree> {
     const owner = this.ownerOf(cardId)
     if (owner !== cardId) return this.prepare(owner)
+    // Duas runs do mesmo card não podem disputar o `worktree add`: a segunda espera a primeira e reaproveita o resultado.
+    const running = this.preparing.get(cardId)
+    const next = (running ?? Promise.resolve()).catch(() => undefined).then(() => this.prepareNow(cardId))
+    this.preparing.set(cardId, next)
+    try { return await next } finally { if (this.preparing.get(cardId) === next) this.preparing.delete(cardId) }
+  }
+  private readonly preparing = new Map<string, Promise<Worktree>>()
+
+  private async prepareNow(cardId: string): Promise<Worktree> {
+    const owner = this.ownerOf(cardId)
     const existing = this.get(cardId)
     const alive = existing && await exists(existing.path) ? existing : null
     if (existing && !alive) this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(existing.id)

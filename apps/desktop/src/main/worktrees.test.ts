@@ -46,6 +46,10 @@ describe('WorktreeService', () => {
     expect((await service.snapshot(second.id)).status).not.toContain('change.txt')
     expect((await service.prepare(first.id)).id).toBe(one.id)
     expect(one.path.length).toBeLessThan(data.length + 16)
+    // Duas runs do mesmo card preparando ao mesmo tempo não disputam o `worktree add` (D5).
+    const concurrent = board.create({ projectId: project.id, columnId: column.id, title: 'Concorrente', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const [a, b] = await Promise.all([service.prepare(concurrent.id), service.prepare(concurrent.id)])
+    expect(a.id).toBe(b.id)
     // Uma tentativa anterior que falhou deixou a branch presa numa worktree pela metade: a próxima solta e recria.
     const accented = board.create({ projectId: project.id, columnId: column.id, title: 'Botão de reset', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const stale = join(data, 'worktrees', 'antiga'), branch = `agentboard/botao-de-reset-${accented.id.slice(0, 8)}`
