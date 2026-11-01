@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { realpathSync, statSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { defaultGitPolicy, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule, type GitWorktreeInfo } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
@@ -92,7 +93,7 @@ export type ConflictOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 
 
 export class GitManager {
   private readonly approvals: ApprovalService
-  constructor(private readonly database: AppDatabase, private readonly git: GitRunner = nativeGit, private readonly cli: CliRunner = nativeCli, approvals?: ApprovalService) {
+  constructor(private readonly database: AppDatabase, private readonly git: GitRunner = nativeGit, private readonly cli: CliRunner = nativeCli, approvals?: ApprovalService, private readonly trashItem?: (path: string) => Promise<void>) {
     this.approvals = approvals ?? new ApprovalService(database)
   }
 
@@ -430,7 +431,11 @@ export class GitManager {
     for (const path of paths) {
       const literal = `:(literal)${path}`
       if (await this.tryRun(target.dir, ['ls-files', '--error-unmatch', '--', literal]) !== null) await this.run(target.dir, ['restore', '--worktree', '--', literal])
-      else await unlink(await this.inside(sourceId, cardId, path))
+      else {
+        // Arquivo novo não existe no Git: vai para a Lixeira do sistema (quando o app a oferece), não é apagado de vez.
+        const file = await this.inside(sourceId, cardId, path)
+        if (this.trashItem) await this.trashItem(file); else await unlink(file)
+      }
     }
     return this.changes(sourceId, cardId)
   }
@@ -464,9 +469,17 @@ export class GitManager {
     const args = ['commit']
     if (subject) args.push('-m', subject, ...(description ? ['-m', description] : []))
     if (input.amend) args.push('--amend', ...(subject ? [] : ['--no-edit']))
+    // Lista longa não cabe na linha de comando do Windows: vai por arquivo (separada por NUL), sempre com --only para não levar o resto do index.
+    let listDir: string | null = null
     if (paths.length && paths.length <= 400) args.push('--only', '--', ...paths)
-    else if (!paths.length && !input.amend && !(await this.run(dir, ['diff', '--cached', '--name-only'])).trim()) throw new Error(tm().git.nothingStaged)
-    await this.run(dir, args)
+    else if (paths.length) {
+      listDir = await mkdtemp(join(tmpdir(), 'agentboard-paths-'))
+      const list = join(listDir, 'paths')
+      await writeFile(list, `${paths.join('\0')}\0`, 'utf8')
+      args.push('--only', `--pathspec-from-file=${list}`, '--pathspec-file-nul')
+    }
+    else if (!input.amend && !(await this.run(dir, ['diff', '--cached', '--name-only'])).trim()) throw new Error(tm().git.nothingStaged)
+    try { await this.run(dir, args) } finally { if (listDir) await rm(listDir, { recursive: true, force: true }).catch(() => undefined) }
     return (await this.run(dir, ['rev-parse', 'HEAD'])).trim()
   }
 
@@ -587,7 +600,7 @@ export class GitManager {
       await this.tryRun(member.repoPath, ['worktree', 'prune'])
       if (existsSyncDir(member.path)) throw new Error(tm().git.worktreeFolderLocked(member.path))
       this.database.db.prepare('DELETE FROM worktree_members WHERE worktree_id = ? AND path = ?').run(worktree.id, member.path)
-      if (deleteBranch && await this.tryRun(member.repoPath, ['branch', '-D', branch]) === null && await this.tryRun(member.repoPath, ['show-ref', '--verify', '-q', `refs/heads/${branch}`]) !== null) kept.push(branch)
+      if (deleteBranch && await this.tryRun(member.repoPath, ['branch', '-d', branch]) === null && await this.tryRun(member.repoPath, ['show-ref', '--verify', '-q', `refs/heads/${branch}`]) !== null) kept.push(branch)
     }
     // Só apagou uma pasta e ainda restam outras: a worktree do card continua valendo.
     const remaining = this.database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(worktree.id) as number
@@ -721,7 +734,12 @@ export class GitManager {
       await this.run(dir, ['checkout', '-b', name, hash]); return { output: tm().git.branchCreatedAtOpened(name, hash.slice(0, 7)) }
     }
     if (action === 'checkout') { await this.run(dir, ['checkout', '--detach', hash]); return { output: tm().git.mainFolderAtDetached(hash.slice(0, 7)) } }
-    if (action.startsWith('reset-')) { await this.run(dir, ['reset', `--${action.slice(6)}`, hash]); return { output: tm().git.branchMovedTo(hash.slice(0, 7), action.slice(6)) } }
+    if (action.startsWith('reset-')) {
+      // Reset hard descarta o que não foi commitado: antes, guarda uma cópia recuperável (o commit antigo continua no reflog).
+      const saved = action === 'reset-hard' ? await this.saveRecovery(dir, 'reset') : null
+      await this.run(dir, ['reset', `--${action.slice(6)}`, hash])
+      return { output: `${tm().git.branchMovedTo(hash.slice(0, 7), action.slice(6))}${saved ? ` ${tm().git.recoveryRef(saved)}` : ''}` }
+    }
     if (action === 'rebase') {
       const current = (await this.run(dir, ['branch', '--show-current'])).trim()
       if (!current) throw new Error(tm().git.mainFolderDetached)
@@ -736,6 +754,14 @@ export class GitManager {
       try { await this.run(dir, ['rebase', onto]); return { output: tm().git.branchRebasedOnto(current, onto.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, 'rebase', error) }
     }
     try { await this.run(dir, action === 'revert' ? ['revert', '--no-edit', hash] : ['cherry-pick', hash]); return { output: action === 'revert' ? tm().git.commitReverted(hash.slice(0, 7)) : tm().git.commitCherryPicked(hash.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, action as 'cherry-pick' | 'revert', error) }
+  }
+
+  /** Guarda em `refs/agentboard/backup/*` o que uma ação destrutiva vai descartar (alterações do `git stash create`, ou o stash indicado). Devolve o nome da ref. */
+  private async saveRecovery(dir: string, kind: 'reset' | 'stash', stashRef?: string): Promise<string | null> {
+    const commit = (kind === 'stash' ? await this.tryRun(dir, ['rev-parse', '--verify', stashRef!]) : await this.tryRun(dir, ['stash', 'create']))?.trim()
+    if (!commit) return null
+    const ref = `refs/agentboard/backup/${kind}-${new Date().toISOString().replace(/[:.]/g, '-')}`
+    return await this.tryRun(dir, ['update-ref', ref, commit]) === null ? null : ref
   }
 
   /** Falha de merge/rebase/cherry-pick/revert: com conflito a operação fica aberta para a tela de conflitos; sem conflito é desfeita. */
@@ -841,7 +867,11 @@ export class GitManager {
   async stashAction(sourceId: string, input: { cardId?: string | null; action: 'apply' | 'pop' | 'drop'; ref: string }): Promise<{ output: string; conflicts?: number }> {
     const dir = (await (input.action === 'drop' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))).dir
     if (!/^stash@\{\d+\}$/.test(input.ref)) throw new Error(tm().git.invalidStash)
-    if (input.action === 'drop') { await this.run(dir, ['stash', 'drop', input.ref]); return { output: tm().git.stashDropped } }
+    if (input.action === 'drop') {
+      const saved = await this.saveRecovery(dir, 'stash', input.ref)
+      await this.run(dir, ['stash', 'drop', input.ref])
+      return { output: `${tm().git.stashDropped}${saved ? ` ${tm().git.recoveryRef(saved)}` : ''}` }
+    }
     return this.applyStash(dir, ['stash', input.action, input.ref], input.action === 'pop' ? tm().git.stashAppliedRemoved : tm().git.stashApplied)
   }
 

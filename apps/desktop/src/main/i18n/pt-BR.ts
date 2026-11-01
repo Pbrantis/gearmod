@@ -174,6 +174,7 @@ export const ptBR = {
     done: 'Pronto.',
     mergeAborted: 'Operação cancelada; a pasta voltou ao que era.',
     conflictsResolved: 'Conflitos resolvidos.',
+    recoveryRef: (ref: string) => `Uma cópia do que foi descartado ficou salva em ${ref} (recupere com: git stash apply <ref>).`,
     stashDropped: 'Stash apagado.',
     stashAppliedRemoved: 'Stash aplicado e removido.',
     branchCreatedAndOpenedFrom: (local: string, name: string) => `Branch ${local} criada e aberta a partir de ${name}.`,

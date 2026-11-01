@@ -205,6 +205,31 @@ describe('GitManager com repositórios reais', () => {
     await expect(manager.stage(sourceId, null, [], true)).resolves.toBeDefined()
   })
 
+  it('commit com mais de 400 caminhos continua levando só eles (D4)', async () => {
+    const { manager, sourceId, cardId, wt } = await setup()
+    const names = Array.from({ length: 450 }, (_, i) => `arq-${i}.txt`)
+    await Promise.all(names.map((name) => writeFile(join(wt, name), 'x\n')))
+    await writeFile(join(wt, 'fora.txt'), 'f\n')
+    await git(wt, 'add', 'fora.txt')
+    await manager.commit({ sourceId, cardId, message: 'Muitos arquivos', paths: names })
+    expect((await git(wt, 'show', '--name-only', '--format=', 'HEAD')).stdout.split('\n').filter(Boolean)).toHaveLength(450)
+    expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toEqual(['fora.txt'])
+  })
+
+  it('reset hard e apagar stash deixam uma cópia recuperável (D3)', async () => {
+    const { manager, sourceId, cardId, wt } = await setup()
+    const head = (await git(wt, 'rev-parse', 'HEAD')).stdout.trim()
+    await writeFile(join(wt, 'README.md'), 'alterado e nao commitado\n')
+    const reset = await manager.commitAction(sourceId, { cardId, action: 'reset-hard', hash: head })
+    expect(reset.output).toContain('refs/agentboard/backup/reset-')
+    expect(await readFile(join(wt, 'README.md'), 'utf8')).not.toContain('alterado')
+    const ref = (await git(wt, 'for-each-ref', '--format=%(refname)', 'refs/agentboard/backup/')).stdout.trim()
+    expect((await git(wt, 'show', `${ref}:README.md`)).stdout).toContain('alterado e nao commitado')
+    await writeFile(join(wt, 'README.md'), 'para o stash\n'); await manager.sync(sourceId, cardId, 'stash')
+    const dropped = await manager.stashAction(sourceId, { cardId, action: 'drop', ref: 'stash@{0}' })
+    expect(dropped.output).toContain('refs/agentboard/backup/stash-')
+  })
+
   it('publica a branch do card, vê o painel e atualiza com fetch e pull', async () => {
     const { manager, projectId, root, sourceId, cardId, wt, branch, repo } = await setup()
     const remote = join(root, 'remote.git'); await mkdir(remote); await exec('git', ['init', '--bare', '-b', 'main', remote])

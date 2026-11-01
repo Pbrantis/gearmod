@@ -175,6 +175,7 @@ export const en: typeof ptBR = {
     done: 'Done.',
     mergeAborted: 'Operation cancelled; the folder is back to how it was.',
     conflictsResolved: 'Conflicts resolved.',
+    recoveryRef: (ref: string) => `A copy of what was discarded is saved as ${ref} (recover it with: git stash apply <ref>).`,
     stashDropped: 'Stash dropped.',
     stashAppliedRemoved: 'Stash applied and removed.',
     branchCreatedAndOpenedFrom: (local: string, name: string) => `Branch ${local} created and checked out from ${name}.`,
