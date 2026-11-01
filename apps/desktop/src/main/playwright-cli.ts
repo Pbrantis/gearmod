@@ -25,11 +25,13 @@ const browserReady = (): boolean => {
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH && process.env.PLAYWRIGHT_BROWSERS_PATH !== '0' ? process.env.PLAYWRIGHT_BROWSERS_PATH : process.platform === 'win32' ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'ms-playwright') : process.platform === 'darwin' ? join(homedir(), 'Library', 'Caches', 'ms-playwright') : join(homedir(), '.cache', 'ms-playwright')
   try { return readdirSync(root).some((name) => /^chromium(_headless_shell)?-/.test(name)) } catch { return false }
 }
+/** Versão fixa: a instalação não segue `latest` sozinha. */
+const cliVersion = '0.1.23'
 const quote = (path: string): string => process.platform === 'win32' ? `"${path}"` : path
 
 /**
  * Playwright CLI oficial (`@playwright/cli`, comando `playwright-cli`) como capacidade opcional do testador (docs/09, fase 11).
- * Só detecta e, quando o usuário confirma na tela, instala localmente num repositório (`npm install -D`). Nunca instala global.
+ * Só detecta e, quando o usuário confirma na tela, instala localmente num repositório (`npm install --no-save`, sem mexer no package.json). Nunca instala global.
  */
 export class PlaywrightCliService {
   private log = ''
@@ -64,7 +66,8 @@ export class PlaywrightCliService {
     try {
       if (!(await this.commands.run('node', ['--version'], source.path, 15_000).then(() => true, () => false))) throw new Error(tm().playwrightCli.nodeNotFound)
       if (!existsSync(join(source.path, 'package.json'))) throw new Error(tm().playwrightCli.noPackageJson(source.name))
-      await step('npm install -D @playwright/cli@latest', process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '-D', '@playwright/cli@latest'], 10 * 60_000)
+      // `--no-save --no-package-lock`: só põe o pacote em node_modules; o package.json e o lockfile do repositório do usuário não mudam.
+      await step(`npm install --no-save @playwright/cli@${cliVersion}`, process.platform === 'win32' ? 'npm.cmd' : 'npm', ['install', '--no-save', '--no-package-lock', `@playwright/cli@${cliVersion}`], 10 * 60_000)
       if (!existsSync(bin(source.path))) throw new Error(tm().playwrightCli.binNotFound)
       if (input.browser) await step('playwright-cli install-browser', quote(bin(source.path)), ['install-browser'], 15 * 60_000)
       for (const skill of [...new Set(input.skills)]) {

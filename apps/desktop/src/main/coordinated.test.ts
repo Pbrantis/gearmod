@@ -200,7 +200,7 @@ describe('Playwright CLI', () => {
       calls.push([command, ...args].join(' '))
       if (command === 'node') return 'v22.1.0'
       if (command === 'where' || command === 'which') throw new Error('not found')
-      if (args[0] === 'install' && args[1] === '-D') { mkdirSync(join(front, 'node_modules', '.bin'), { recursive: true }); writeFileSync(binPath, ''); mkdirSync(join(front, 'node_modules', '@playwright', 'cli'), { recursive: true }); writeFileSync(join(front, 'node_modules', '@playwright', 'cli', 'package.json'), '{"version":"0.1.5"}') }
+      if (args[0] === 'install' && args.includes('--no-save')) { mkdirSync(join(front, 'node_modules', '.bin'), { recursive: true }); writeFileSync(binPath, ''); mkdirSync(join(front, 'node_modules', '@playwright', 'cli'), { recursive: true }); writeFileSync(join(front, 'node_modules', '@playwright', 'cli', 'package.json'), '{"version":"0.1.5"}') }
       return 'ok'
     } }
     const service = new PlaywrightCliService(database, history, runner)
@@ -213,7 +213,8 @@ describe('Playwright CLI', () => {
     const installed = await service.install({ projectId: project.id, sourceId: sources.frontend!.id, browser: true, skills: ['claude'] })
     expect(installed.error).toBeNull()
     expect(installed.installs).toEqual([{ sourceId: sources.frontend!.id, repo: 'frontend', path: expect.stringContaining('playwright-cli'), origin: 'local', version: '0.1.5' }])
-    expect(calls.some((call) => call.includes('install -D @playwright/cli@latest'))).toBe(true)
+    expect(calls.some((call) => call.includes('install --no-save --no-package-lock @playwright/cli@0.1.23'))).toBe(true)
+    expect(calls.some((call) => / -D|@latest/.test(call))).toBe(false)
     expect(calls.some((call) => call.endsWith('install-browser'))).toBe(true)
     expect(calls.some((call) => call.includes('--skills'))).toBe(false)
     expect(installed.log).toContain('nada foi sobrescrito')
