@@ -39,14 +39,6 @@ export function specKitStageOf(prompt: string): SpecKitStage | null {
 /** Próxima etapa que o usuário pode pedir; o app nunca a dispara sozinho. */
 export const specKitNextStage: Record<SpecKitStage, SpecKitStage | null> = { specify: 'plan', clarify: 'plan', checklist: 'tasks', analyze: 'implement', plan: 'tasks', tasks: 'implement', implement: null }
 
-export function specKitNextNotice(stage: SpecKitStage): string {
-  const next = specKitNextStage[stage]
-  if (!next) return `Etapa ${stage} concluída.`
-  return next === 'implement'
-    ? 'Etapa tasks concluída. O planejamento está completo quando especificação, plano e tasks existirem; a implementação acontece no chat de implementação (peça “implementar” aqui para mover o card).'
-    : `Etapa ${stage} concluída. A próxima é ${next}${stage === 'specify' ? ' (ou clarify, para esclarecer pontos em aberto antes)' : ''}: peça para continuar quando quiser (nada avança sozinho).`
-}
-
 /** Modo do agente para a escolha do usuário. Cada provedor tem semântica própria; os textos abaixo dizem a verdade de cada um. */
 export function specKitMode(provider: Provider, permission: SpecKitPermission): PermissionMode {
   if (provider === 'claude') return permission === 'manual' ? 'manual' : 'accept_edits'

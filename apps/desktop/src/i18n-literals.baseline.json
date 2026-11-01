@@ -15,7 +15,6 @@
   "main/migrations.ts": 4,
   "main/orchestrator.ts": 2,
   "main/skills.ts": 1,
-  "main/speckit.ts": 3,
   "main/tasks.ts": 2,
   "main/tool-updates.ts": 1,
   "main/usage-ledger.ts": 2,

@@ -4,7 +4,7 @@ const patterns = [
   /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z]+)? PRIVATE KEY-----/g,
   /\b(?:[A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)|KEY|DATABASE_URL)\s*=\s*[^\s'"`]+/g,
   // senha dentro de URL de conexão (postgres://usuario:senha@host)
-  /([a-z][a-z0-9+.-]*:\/\/[^\s:\/@]+:)[^\s@\/]+(?=@)/gi,
+  /([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/gi,
   /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g
 ]
 
