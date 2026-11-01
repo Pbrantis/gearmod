@@ -12,5 +12,15 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: ['@agentboard/contracts', 'zod'] })],
     build: { rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } } }
   },
-  renderer: { plugins: [react()] }
+  renderer: {
+    plugins: [
+      react(),
+      {
+        // O servidor de desenvolvimento precisa de localhost/ws para o HMR; o app empacotado não precisa de nenhum dos dois.
+        name: 'agentboard-production-csp',
+        apply: 'build',
+        transformIndexHtml: (html) => html.replace(" http://localhost:* ws://localhost:*", '')
+      }
+    ]
+  }
 })

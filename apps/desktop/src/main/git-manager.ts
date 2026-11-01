@@ -97,6 +97,9 @@ export class GitManager {
     this.approvals = approvals ?? new ApprovalService(database)
   }
 
+  /** Chamado depois que uma pasta de worktree some (o índice de código para de observá-la). */
+  onFolderRemoved?: (path: string) => void
+
   private async run(dir: string, args: string[]): Promise<string> {
     try { return (await this.git.run(['-c', 'core.quotepath=false', '-C', dir, ...args])).stdout } catch (error) { throw new Error(friendlyError(error)) }
   }
@@ -600,6 +603,7 @@ export class GitManager {
       await this.tryRun(member.repoPath, ['worktree', 'prune'])
       if (existsSyncDir(member.path)) throw new Error(tm().git.worktreeFolderLocked(member.path))
       this.database.db.prepare('DELETE FROM worktree_members WHERE worktree_id = ? AND path = ?').run(worktree.id, member.path)
+      try { this.onFolderRemoved?.(member.path) } catch { /* o índice é informativo */ }
       if (deleteBranch && await this.tryRun(member.repoPath, ['branch', '-d', branch]) === null && await this.tryRun(member.repoPath, ['show-ref', '--verify', '-q', `refs/heads/${branch}`]) !== null) kept.push(branch)
     }
     // Só apagou uma pasta e ainda restam outras: a worktree do card continua valendo.

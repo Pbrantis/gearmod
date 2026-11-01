@@ -37,4 +37,9 @@ describe('redactObject', () => {
     expect(redactObject(42)).toBe(42)
     expect(redactObject('sk-abcdefghijk')).toBe('[redacted]')
   })
+  it('S12: pega chave da Groq, chave do Google e senha dentro de URL de conexão', () => {
+    const text = redact('groq gsk_abcdefghijklmnopqrstuvwx google AIzaSyA1234567890abcdefghijklmnopqrstu db postgres://app:s3nh4-forte@localhost:5432/app fim')
+    expect(text).not.toMatch(/gsk_|AIza|s3nh4/); expect(text).toContain('fim')
+    expect(redact('abra https://exemplo.com/caminho e http://localhost:3000/x')).toBe('abra https://exemplo.com/caminho e http://localhost:3000/x')
+  })
 })

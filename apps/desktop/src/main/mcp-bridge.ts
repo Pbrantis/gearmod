@@ -202,15 +202,17 @@ export class McpBridge {
         if (typeof args.coluna !== 'string' || (args.quando !== 'agora' && args.quando !== 'ao_terminar')) return { ok: false, error: 'provide coluna and quando ("agora" or "ao_terminar")' }
         const column = this.findColumn(run.cardId, args.coluna)
         if (!column) return { ok: false, error: `Column not found: ${args.coluna}` }
-        if (args.quando === 'ao_terminar') { run.pendingMove = column.id; return { ok: true, text: `The card will move to ${column.label} when this run ends.` } }
-        const movePolicyDenied = this.policyDenied(run, 'move'); if (movePolicyDenied) return { ok: false, error: movePolicyDenied }
-        // S05 (atrás da flag, ou quando a política do projeto manda perguntar): o movimento imediato vira pedido pendente; a Done continua sujeita ao gate quando o usuário aprovar.
-        if ((this.deps.agentMoveApproval || this.policyDecision(run, 'move') === 'ask') && this.deps.approvals) {
+        // A política vale para os dois momentos: o movimento "ao terminar" também não escapa de deny nem de ask.
+        const moveDecision = this.policyDecision(run, 'move')
+        if (moveDecision === 'deny') return { ok: false, error: 'Blocked by the project policy (move).' }
+        // S05 (atrás da flag, ou quando a política do projeto manda perguntar): o movimento vira pedido pendente; a Done continua sujeita ao gate quando o usuário aprovar.
+        if ((this.deps.agentMoveApproval || moveDecision === 'ask') && this.deps.approvals) {
           const card = board.card(run.cardId)
           const approval = this.deps.approvals.request({ kind: 'agent-move', subjectRef: run.cardId, payload: { columnId: column.id, columnLabel: column.label }, requestedActor: 'agent', runId: run.runId, cardId: run.cardId, projectId: card.projectId })
           run.notify({ type: 'card' })
           return { ok: true, text: `Request to move to ${column.label} registered (${approval.id}), awaiting the user's approval on the card.` }
         }
+        if (args.quando === 'ao_terminar') { run.pendingMove = column.id; return { ok: true, text: `The card will move to ${column.label} when this run ends.` } }
         board.move(run.cardId, column.id, null, 'agent'); run.notify({ type: 'moved', column: column.label })
         return { ok: true, text: `Card moved to ${column.label}.` }
       }

@@ -101,6 +101,7 @@ const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath()
 const approvals = new ApprovalService(database)
 const policy = new PolicyEngine(database)
 const gitManager = new GitManager(database, undefined, undefined, approvals, (path) => fileActions.trashItem(path))
+gitManager.onFolderRemoved = (path) => { void codeIndex.forget(path).catch(() => undefined) }
 const pullRequests = new PullRequestService(database)
 const history = new CardHistoryService(database, dataDir)
 const sddResolver = new SddResolver(history, board, projects, worktrees)

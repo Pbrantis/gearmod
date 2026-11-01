@@ -153,6 +153,9 @@ describe('AgentBoard MCP server', () => {
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     const moved = await client.call('agentboard_mover_card', { coluna: 'Doing', quando: 'agora' })
     expect(moved.isError).toBe(true); expect(moved.content[0]!.text).toContain('policy')
+    // B9: "ao terminar" também respeita a política
+    const later = await client.call('agentboard_mover_card', { coluna: 'Doing', quando: 'ao_terminar' })
+    expect(later.isError).toBe(true); expect(later.content[0]!.text).toContain('policy')
     expect(board.card(card.id).columnId).toBe(columns[1]!.id)
     expect(approvals.list(card.id)).toHaveLength(0)
     const events = database.db.prepare("SELECT json FROM card_events WHERE card_id = ? AND type = 'policy.decided'").all(card.id) as Array<{ json: string }>
