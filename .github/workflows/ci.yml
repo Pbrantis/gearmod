@@ -13,6 +13,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Regras de commit do CONTRIBUTING.md: prefixo feature/improvement/bugfix/hotfix e nada de Co-Authored-By.
+  commit-messages:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Commit messages and pull request title follow CONTRIBUTING.md
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feature|improvement|bugfix|hotfix): [^ ]'
+          bad=0
+          while IFS= read -r line; do
+            subject="${line#* }"
+            if ! printf '%s' "$subject" | grep -Eq "$pattern"; then
+              echo "::error::Commit ${line%% *} must start with feature:, improvement:, bugfix: or hotfix: (see CONTRIBUTING.md): $subject"
+              bad=1
+            fi
+          done < <(git log --no-merges --format='%h %s' "$BASE..$HEAD")
+          if git log --no-merges --format='%B' "$BASE..$HEAD" | grep -qi '^co-authored-by:'; then
+            echo "::error::Remove the Co-Authored-By trailers from the commit messages (see CONTRIBUTING.md)."
+            bad=1
+          fi
+          if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
+            echo "::error::The pull request title must use the same format as a commit title (see CONTRIBUTING.md)."
+            bad=1
+          fi
+          exit "$bad"
+
   check:
     # O app é Windows-only (node-pty, NSIS) e os testes de Git/shell rodam no mesmo sistema do produto.
     runs-on: windows-latest

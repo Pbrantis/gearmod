@@ -33,8 +33,43 @@ pnpm test
 
 ## Commits and pull requests
 
-- Small, focused commits with a clear message.
-- Describe what changed and why in the pull request, and how you tested it.
+### Commit messages
+
+Write commit messages in English, with one of these prefixes:
+
+| Prefix | Use it for |
+|---|---|
+| `feature:` | A new capability the user can see or use. |
+| `improvement:` | An enhancement to something that exists: UX polish, performance, refactoring, docs, tests, build and tooling. |
+| `bugfix:` | A fix for a defect. |
+| `hotfix:` | An urgent fix for something broken in a released version. Use it rarely. |
+
+Rules:
+
+- **Title:** `<prefix>: <summary>`, in sentence case, up to about 72 characters, with no period at the end. Say what the change does, for example `bugfix: Center the page arrows in the table pager`.
+- **Body (optional):** a blank line after the title, then short bullets with what changed and why. Wrap lines at about 100 characters.
+- **One topic per commit.** If a commit needs two prefixes, split it.
+- **No trailers** such as `Co-Authored-By:` and no references to other repositories' issues or pull requests.
+- If a commit mixes kinds, use the prefix of the main change.
+
+```
+feature: Slash skill picker in free chats
+
+- Typing "/" lists the agent's skills, as in card chats
+- The chosen skill applies to that message
+```
+
+### Branches
+
+Name branches after the kind of change: `feature/<short-name>`, `improvement/<short-name>`, `fix/<short-name>` or `hotfix/<short-name>`, in lowercase with hyphens (for example `fix/pager-arrows`). GearMod uses the same prefixes for the branches it creates for cards.
+
+Open pull requests against `dev`. `main` only receives what is ready for a release.
+
+### Pull requests
+
+- Use the same format as a commit title for the pull request title.
+- Describe what changed and why, and how you tested it (commands you ran, screens you checked).
+- Keep pull requests small and focused; CI must pass before review.
 
 ## Contribution terms
 
