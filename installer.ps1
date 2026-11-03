@@ -18,7 +18,7 @@ $running = Get-Process -Name GearMod -ErrorAction SilentlyContinue |
   Where-Object { $_.Path -and $_.Path.StartsWith($unpacked, [StringComparison]::OrdinalIgnoreCase) }
 if ($running) {
   Write-Host "Fechando $($running.Count) processo(s) do GearMod que estavam travando o build..."
-  $running | Stop-Process -Force
+  $running | Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
 }
 

@@ -10,7 +10,8 @@ if (-not (Test-Path (Join-Path $origem 'GearMod.exe'))) { throw "Build nao encon
 $rodando = Get-Process -Name GearMod -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($destino, [StringComparison]::OrdinalIgnoreCase) }
 if ($rodando) {
   Write-Host 'Fechando a homologada atual...'
-  $rodando | Stop-Process -Force
+  # Algum processo do app pode já ter saído entre a listagem e o encerramento: isso não é erro.
+  $rodando | Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
 }
 
