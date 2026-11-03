@@ -12,7 +12,7 @@
 ## What GearMod does not promise
 
 - **It is not a sandbox.** An agent runs with your user's permissions and can read and write anything your account can, within the permission mode you chose. Modes such as "Ignore permissions" approve everything; use them only in a disposable environment. The app does not isolate agents from each other or from your system.
-- **It does not scan for secrets** in what an agent writes or commits. Review diffs before you push.
+- **It does not guarantee that secrets stay out of your commits.** When an agent asks to commit, GearMod scans the files for unmistakable secrets (provider API keys, private keys, JWTs, passwords in connection URLs) and blocks the commit if it finds one. The scan is a safety net, not a guarantee: it skips files over 1 MB and binary files, does not catch secrets in other formats, and does not check commits you make yourself. Review diffs before you push.
 - **The code is not audited.** Treat third-party MCP servers, skills and agent CLIs as code you are choosing to trust.
 - **Optional features reach the network when you turn them on:** Groq dictation (sends audio to Groq with your key), author photos from Gravatar (sends a hash of commit e-mails; off by default), the update check for agent CLIs, and whatever MCP servers or agents you configure.
 
