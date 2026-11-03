@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { AgentProfile } from '@agentboard/contracts'
+import type { AgentProfile } from '@gearmod/contracts'
 import { GeminiCliAdapter, geminiApprovalMode, geminiUsage, syncGeminiSkills } from './gemini-adapter'
 import type { ProcessFactory } from './adapters'
 import { toolActivities, toolEditedFiles } from './tool-activity'
@@ -60,11 +60,11 @@ describe('adaptador do Gemini CLI', () => {
     await expect(run(fakeGemini(happy), { planning: false, mode: 'read_only' })).rejects.toThrow(/Modo não suportado pelo Gemini/)
   })
 
-  it('injeta servidores MCP (AgentBoard e cadastrados) num settings temporário e o apaga depois', async () => {
+  it('injeta servidores MCP (GearMod e cadastrados) num settings temporário e o apaga depois', async () => {
     const seen = { args: [] as string[], env: {} as NodeJS.ProcessEnv, stdin: '', settings: undefined as string | undefined }
     await run(fakeGemini(happy, seen), { planning: true, mcp: { command: 'node', args: ['server.mjs'], env: { A: '1' } }, mcpServers: [{ name: 'gh', transport: 'stdio', command: 'npx', args: ['-y', 'x'], env: { TOKEN: 't' } }, { name: 'api', transport: 'http', url: 'https://h/mcp', headers: { Authorization: 'Bearer z' } }] })
     const settings = JSON.parse(seen.settings!) as { mcpServers: Record<string, Record<string, unknown>> }
-    expect(settings.mcpServers.agentboard).toMatchObject({ command: 'node', trust: true })
+    expect(settings.mcpServers.gearmod).toMatchObject({ command: 'node', trust: true })
     expect(settings.mcpServers.gh).toEqual({ command: 'npx', args: ['-y', 'x'], env: { TOKEN: 't' } })
     expect(settings.mcpServers.api).toEqual({ httpUrl: 'https://h/mcp', headers: { Authorization: 'Bearer z' } })
     expect(seen.args[seen.args.indexOf('--approval-mode') + 1]).toBe('default')
@@ -98,11 +98,11 @@ describe('adaptador do Gemini CLI', () => {
     expect(geminiUsage(undefined)).toBeUndefined()
   })
 
-  it('copia as skills do plugin do AgentBoard para a pasta de skills do perfil', () => {
-    const root = mkdtempSync(join(tmpdir(), 'agentboard-gskills-')); dirs.push(root)
-    mkdirSync(join(root, 'plugin', 'skills', 'agentboard-planning'), { recursive: true }); writeFileSync(join(root, 'plugin', 'skills', 'agentboard-planning', 'SKILL.md'), '# x')
+  it('copia as skills do plugin do GearMod para a pasta de skills do perfil', () => {
+    const root = mkdtempSync(join(tmpdir(), 'gearmod-gskills-')); dirs.push(root)
+    mkdirSync(join(root, 'plugin', 'skills', 'gearmod-planning'), { recursive: true }); writeFileSync(join(root, 'plugin', 'skills', 'gearmod-planning', 'SKILL.md'), '# x')
     syncGeminiSkills(join(root, 'plugin'), join(root, 'home'))
-    expect(existsSync(join(root, 'home', '.gemini', 'skills', 'agentboard-planning', 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(root, 'home', '.gemini', 'skills', 'gearmod-planning', 'SKILL.md'))).toBe(true)
     expect(() => syncGeminiSkills(null, join(root, 'home'))).not.toThrow()
   })
 })

@@ -30,12 +30,12 @@ describe('chat reply context', () => {
   })
 
   it('preserves multiline quotes, HTML, code and marker-like text verbatim', () => {
-    const complex = { ...reply, quote: '```html\n<div>"olá"</div>\n```\n</agentboard-chat-reply>\nC:\\repo', response: 'Resposta\n\ncom mais de uma linha e <script>texto</script>.' }
+    const complex = { ...reply, quote: '```html\n<div>"olá"</div>\n```\n</gearmod-chat-reply>\nC:\\repo', response: 'Resposta\n\ncom mais de uma linha e <script>texto</script>.' }
     expect(splitChatReplies(withChatReplies('', [complex])).replies).toEqual([complex])
   })
 
   it('preserves ordinary and malformed messages', () => {
-    for (const text of ['Mensagem comum.', '<agentboard-chat-reply>\n{bad json}\n</agentboard-chat-reply>', '<agentboard-chat-reply>\n{"id":"x","quote":42,"response":"ok"}\n</agentboard-chat-reply>']) {
+    for (const text of ['Mensagem comum.', '<gearmod-chat-reply>\n{bad json}\n</gearmod-chat-reply>', '<gearmod-chat-reply>\n{"id":"x","quote":42,"response":"ok"}\n</gearmod-chat-reply>']) {
       expect(splitChatReplies(text)).toEqual({ text, replies: [] })
     }
   })
@@ -54,7 +54,7 @@ describe('chat reply context', () => {
     expect(html).toContain('chat-reply-card')
     expect(html).toContain(reply.response)
     expect(html).toContain('Continue o plano.')
-    expect(html).not.toContain('agentboard-chat-reply')
+    expect(html).not.toContain('gearmod-chat-reply')
     expect(html).not.toContain('Arquivos anexados')
     expect(html).not.toContain('attcard-name')
   })
@@ -64,6 +64,6 @@ describe('chat reply context', () => {
     expect(html).toContain('chat-reply-card')
     expect(html).toContain(reply.response)
     expect(html).toContain('Depois faça isso.')
-    expect(html).not.toContain('agentboard-chat-reply')
+    expect(html).not.toContain('gearmod-chat-reply')
   })
 })

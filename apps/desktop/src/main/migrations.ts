@@ -112,12 +112,12 @@ CREATE INDEX idx_events_run ON run_events(run_id, seq);
 export const migrations: readonly Migration[] = [
   {
     version: 1,
-    checksum: 'sha256:agentboard-schema-v1-2026-10-20',
+    checksum: 'sha256:gearmod-schema-v1-2026-10-20',
     up(db) { db.exec(initialSchema) }
   },
   {
     version: 2,
-    checksum: 'sha256:agentboard-project-sources-v2-2026-10-20',
+    checksum: 'sha256:gearmod-project-sources-v2-2026-10-20',
     up(db) {
       db.exec(`
         CREATE TABLE project_sources (
@@ -136,7 +136,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 3,
-    checksum: 'sha256:agentboard-remove-automatic-profiles-v3-2026-10-20',
+    checksum: 'sha256:gearmod-remove-automatic-profiles-v3-2026-10-20',
     up(db) {
       db.exec(`
         DELETE FROM agent_profiles
@@ -160,7 +160,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 4,
-    checksum: 'sha256:agentboard-multi-repo-worktrees-v4-2026-10-20',
+    checksum: 'sha256:gearmod-multi-repo-worktrees-v4-2026-10-20',
     up(db) {
       db.exec(`
         CREATE TABLE worktree_members (
@@ -174,7 +174,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 5,
-    checksum: 'sha256:agentboard-agent-color-v5-2026-10-21',
+    checksum: 'sha256:gearmod-agent-color-v5-2026-10-21',
     up(db) {
       db.exec(`
         ALTER TABLE agent_profiles ADD COLUMN color TEXT NOT NULL DEFAULT '#aeb9ff';
@@ -184,7 +184,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 6,
-    checksum: 'sha256:agentboard-backlog-and-no-mr-v6-2026-10-21',
+    checksum: 'sha256:gearmod-backlog-and-no-mr-v6-2026-10-21',
     up(db) {
       // Colunas Backlog/To do/Doing/Test/Done. A linha 'mr' fica no banco (volta segura, o histórico aponta para ela), mas sai do quadro.
       const projects = db.prepare('SELECT id FROM projects').all() as { id: string }[]
@@ -213,7 +213,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 7,
-    checksum: 'sha256:agentboard-card-documents-v7-2026-10-21',
+    checksum: 'sha256:gearmod-card-documents-v7-2026-10-21',
     up(db) {
       db.exec(`
         CREATE TABLE card_documents (
@@ -246,7 +246,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 8,
-    checksum: 'sha256:agentboard-card-viewed-v8-2026-10-21',
+    checksum: 'sha256:gearmod-card-viewed-v8-2026-10-21',
     up(db) {
       // viewed_at marca quando o usuário viu o resultado da última execução (destaque de "terminado"); o que já existe conta como visto.
       db.exec(`ALTER TABLE cards ADD COLUMN viewed_at TEXT; UPDATE cards SET viewed_at = datetime('now');`)
@@ -254,7 +254,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 9,
-    checksum: 'sha256:agentboard-agent-config-v9-2026-10-21',
+    checksum: 'sha256:gearmod-agent-config-v9-2026-10-21',
     up(db) {
       db.exec(`
         CREATE TABLE card_agent_settings (
@@ -273,12 +273,12 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 10,
-    checksum: 'sha256:agentboard-chat-skill-v10-2026-10-21',
+    checksum: 'sha256:gearmod-chat-skill-v10-2026-10-21',
     up(db) { db.exec('ALTER TABLE chats ADD COLUMN skill_name TEXT; ALTER TABLE chats ADD COLUMN skill_path TEXT;') }
   },
   {
     version: 11,
-    checksum: 'sha256:agentboard-usage-snapshots-v11-2026-10-21',
+    checksum: 'sha256:gearmod-usage-snapshots-v11-2026-10-21',
     up(db) {
       db.exec(`CREATE TABLE agent_usage_snapshots (
         profile_id TEXT NOT NULL REFERENCES agent_profiles(id) ON DELETE CASCADE, window TEXT NOT NULL,
@@ -288,7 +288,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 12,
-    checksum: 'sha256:agentboard-test-purpose-v12-2026-10-21',
+    checksum: 'sha256:gearmod-test-purpose-v12-2026-10-21',
     up(db) {
       // A finalidade "test" (agente de teste) entra na tabela; o CHECK antigo só aceitava planning/execution, então a tabela é recriada.
       db.exec(`
@@ -306,7 +306,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 13,
-    checksum: 'sha256:agentboard-collaboration-v13-2026-10-21',
+    checksum: 'sha256:gearmod-collaboration-v13-2026-10-21',
     up(db) {
       // Comunicação entre as etapas: dúvidas (dev/teste → planejador → usuário) e propostas de mudança (esperam autorização).
       // Os documentos Dúvidas e Mudanças são gerados a partir destas tabelas; card_documents é recriada para aceitar os dois tipos novos.
@@ -338,7 +338,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 14,
-    checksum: 'sha256:agentboard-plan-ready-v14-2026-10-21',
+    checksum: 'sha256:gearmod-plan-ready-v14-2026-10-21',
     up(db) {
       // O planejador declara o plano concluído (ferramenta/marcador); antes disso o card só "está em planejamento". Cards antigos com Plano escrito seguem prontos.
       db.exec(`ALTER TABLE cards ADD COLUMN plan_ready_at TEXT;
@@ -347,7 +347,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 15,
-    checksum: 'sha256:agentboard-free-chat-v15-2026-10-21',
+    checksum: 'sha256:gearmod-free-chat-v15-2026-10-21',
     disableForeignKeys: true,
     up(db) {
       // Chat livre: conversa sem card. runs.card_id passa a aceitar NULL (recriação da tabela, mantendo run_events/test_runs/approvals) e o chat ganha um título.
@@ -368,7 +368,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 16,
-    checksum: 'sha256:agentboard-profile-removed-v16-2026-10-21',
+    checksum: 'sha256:gearmod-profile-removed-v16-2026-10-21',
     up(db) {
       // Remover um agente com histórico só o desativa: some das listas e não executa mais, mas os cards e chats seguem mostrando quem executou.
       db.exec('ALTER TABLE agent_profiles ADD COLUMN removed_at TEXT;')
@@ -376,7 +376,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 17,
-    checksum: 'sha256:agentboard-card-base-branch-v17-2026-10-22',
+    checksum: 'sha256:gearmod-card-base-branch-v17-2026-10-22',
     up(db) {
       // Branch base escolhida ao iniciar a execução: a worktree do card nasce a partir dela (vazio = a branch atual de cada repositório).
       db.exec('ALTER TABLE cards ADD COLUMN base_branch TEXT;')
@@ -384,7 +384,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 18,
-    checksum: 'sha256:agentboard-run-tokens-v18-2026-10-22',
+    checksum: 'sha256:gearmod-run-tokens-v18-2026-10-22',
     up(db) {
       // Tokens gastos por execução (somados por etapa do card): lidos de novo, vindos do cache e escritos pelo agente.
       db.exec(`ALTER TABLE runs ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0;
@@ -394,7 +394,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 19,
-    checksum: 'sha256:agentboard-constitution-v19-2026-10-21',
+    checksum: 'sha256:gearmod-constitution-v19-2026-10-21',
     up(db) {
       // Constituição do projeto (opcional): texto atual, versões e as mudanças que os agentes sugerem fora do chat dela.
       db.exec(`CREATE TABLE project_constitutions (
@@ -411,7 +411,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 20,
-    checksum: 'sha256:agentboard-project-icon-v20-2026-10-21',
+    checksum: 'sha256:gearmod-project-icon-v20-2026-10-21',
     up(db) {
       // Ícone do projeto (imagem em data URL) no lugar da inicial na barra lateral.
       db.exec('ALTER TABLE projects ADD COLUMN icon TEXT;')
@@ -419,7 +419,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 21,
-    checksum: 'sha256:agentboard-test-checklist-v21-2026-10-21',
+    checksum: 'sha256:gearmod-test-checklist-v21-2026-10-21',
     up(db) {
       // Checklist do testador: o que ele vai verificar, marcado conforme verifica (aparece ao lado do chat do teste).
       db.exec(`CREATE TABLE card_checklists (
@@ -429,7 +429,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 22,
-    checksum: 'sha256:agentboard-project-order-v22-2026-10-21',
+    checksum: 'sha256:gearmod-project-order-v22-2026-10-21',
     up(db) {
       // Ordem dos projetos na barra lateral (o usuário arrasta). Começa na ordem de antes: o mais recente em cima.
       db.exec(`ALTER TABLE projects ADD COLUMN sort_order INTEGER;
@@ -438,7 +438,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 23,
-    checksum: 'sha256:agentboard-auto-resume-v23-2026-10-21',
+    checksum: 'sha256:gearmod-auto-resume-v23-2026-10-21',
     up(db) {
       // Retomadas agendadas para quando o limite de uso do agente voltar.
       db.exec(`CREATE TABLE auto_resumes (
@@ -450,7 +450,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 24,
-    checksum: 'sha256:agentboard-git-manager-v24-2026-10-22',
+    checksum: 'sha256:gearmod-git-manager-v24-2026-10-22',
     up(db) {
       // Gerenciador Git: regra de commit do agente por projeto (JSON), pedidos de commit esperando o usuário e quem (agente) fez cada commit.
       db.exec(`ALTER TABLE projects ADD COLUMN git_policy TEXT;
@@ -464,7 +464,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 25,
-    checksum: 'sha256:agentboard-change-sent-v25-2026-10-22',
+    checksum: 'sha256:gearmod-change-sent-v25-2026-10-22',
     up(db) {
       // Mudança autorizada só deixa de lembrar o usuário quando foi mandada ao desenvolvedor (automático ao fim do planejador, ou pelo botão). As já aplicadas contam como enviadas.
       db.exec(`ALTER TABLE card_changes ADD COLUMN sent_at TEXT;
@@ -473,7 +473,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 26,
-    checksum: 'sha256:agentboard-assessments-v26-2026-10-23',
+    checksum: 'sha256:gearmod-assessments-v26-2026-10-23',
     up(db) {
       // Complexity Engine e rastreabilidade (docs/09): avaliações versionadas (nunca sobrescritas), decisões, eventos espelhados em
       // history.jsonl, fluxo escolhido do card, configuração de workflow do projeto e métricas por execução (só o que o agente informa).
@@ -505,7 +505,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 27,
-    checksum: 'sha256:agentboard-coordinated-worktrees-v27-2026-10-23',
+    checksum: 'sha256:gearmod-coordinated-worktrees-v27-2026-10-23',
     up(db) {
       // Worktrees coordenados: repositórios envolvidos no card (vazio = todos, como antes), estado de cada repositório da worktree
       // (falha parcial não derruba os outros) e o PR de cada um. Uso do Playwright CLI por execução, para comparar custo.
@@ -518,7 +518,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 28,
-    checksum: 'sha256:agentboard-checklist-marks-v28-2026-10-26',
+    checksum: 'sha256:gearmod-checklist-marks-v28-2026-10-26',
     up(db) {
       // Quem marcou cada item do checklist de teste (usuário ou agente) e quando: JSON { "<texto do item>": { by, at } }.
       db.exec(`ALTER TABLE card_checklists ADD COLUMN marks TEXT;`)
@@ -526,7 +526,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 29,
-    checksum: 'sha256:agentboard-shared-worktree-v29-2026-10-27',
+    checksum: 'sha256:gearmod-shared-worktree-v29-2026-10-27',
     up(db) {
       // Card que usa a worktree de outro card (em vez de criar a sua): guarda quem é o dono. Vazio = o card tem a própria.
       db.exec(`ALTER TABLE cards ADD COLUMN worktree_card_id TEXT;`)
@@ -534,7 +534,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 30,
-    checksum: 'sha256:agentboard-usage-ledger-v30-2026-10-28',
+    checksum: 'sha256:gearmod-usage-ledger-v30-2026-10-28',
     up(db) {
       db.exec(`
         CREATE TABLE usage_ledger (
@@ -561,7 +561,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 31,
-    checksum: 'sha256:agentboard-usage-ledger-backfill-v31-2026-10-28',
+    checksum: 'sha256:gearmod-usage-ledger-backfill-v31-2026-10-28',
     up(db) {
       db.exec(`INSERT OR IGNORE INTO usage_ledger (
         id, at, run_id, seq, source, provider, profile_id, model_configured, project_id, project_name, card_id, card_title, purpose,
@@ -575,7 +575,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 32,
-    checksum: 'sha256:agentboard-quota-snapshots-v32-2026-10-28',
+    checksum: 'sha256:gearmod-quota-snapshots-v32-2026-10-28',
     up(db) {
       db.exec(`
         CREATE TABLE quota_snapshots (
@@ -597,7 +597,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 33,
-    checksum: 'sha256:agentboard-approval-records-v33-2026-10-28',
+    checksum: 'sha256:gearmod-approval-records-v33-2026-10-28',
     up(db) {
       db.exec(`
         CREATE TABLE approval_records (
@@ -613,7 +613,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 34,
-    checksum: 'sha256:agentboard-quota-account-key-v34-2026-10-28',
+    checksum: 'sha256:gearmod-quota-account-key-v34-2026-10-28',
     up(db) {
       db.exec(`CREATE INDEX quota_snapshots_profile_lookup ON quota_snapshots(profile_id, provider, bucket, captured_at);
         CREATE INDEX agent_profiles_account_key ON agent_profiles(account_key) WHERE account_key IS NOT NULL;`)
@@ -621,12 +621,12 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 35,
-    checksum: 'sha256:agentboard-effective-model-v35-2026-10-29',
+    checksum: 'sha256:gearmod-effective-model-v35-2026-10-29',
     up(db) { db.exec('ALTER TABLE runs ADD COLUMN model_effective TEXT;') }
   },
   {
     version: 36,
-    checksum: 'sha256:agentboard-billing-hint-commit-approval-v36-2026-10-29',
+    checksum: 'sha256:gearmod-billing-hint-commit-approval-v36-2026-10-29',
     up(db) {
       db.exec(`ALTER TABLE agent_profiles ADD COLUMN api_key_source_hint TEXT;
         ALTER TABLE git_commit_requests ADD COLUMN approval_id TEXT;`)
@@ -634,7 +634,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 37,
-    checksum: 'sha256:agentboard-env-passthrough-v37-2026-10-29',
+    checksum: 'sha256:gearmod-env-passthrough-v37-2026-10-29',
     up(db) {
       db.exec(`ALTER TABLE agent_profiles ADD COLUMN env_passthrough TEXT NOT NULL DEFAULT '[]';`)
       // O resultado da migração não pode depender do ambiente da máquina na hora do upgrade: ela não lê variáveis de ambiente.
@@ -643,7 +643,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 38,
-    checksum: 'sha256:agentboard-db-manager-v38-2026-10-29',
+    checksum: 'sha256:gearmod-db-manager-v38-2026-10-29',
     up(db) {
       db.exec(`CREATE TABLE db_connections (
         id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -661,7 +661,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 39,
-    checksum: 'sha256:agentboard-mcp-registry-v39-2026-10-30',
+    checksum: 'sha256:gearmod-mcp-registry-v39-2026-10-30',
     up(db) {
       db.exec(`CREATE TABLE mcp_servers (
         id TEXT PRIMARY KEY, scope TEXT NOT NULL CHECK(scope IN ('global','project')),
@@ -682,7 +682,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 40,
-    checksum: 'sha256:agentboard-db-server-parent-v40-2026-10-30',
+    checksum: 'sha256:gearmod-db-server-parent-v40-2026-10-30',
     up(db) {
       // Servidor = conexão raiz (parent_id nulo); banco = conexão filha que herda host, usuário, SSL, ambiente e senha do servidor.
       db.exec(`ALTER TABLE db_connections ADD COLUMN parent_id TEXT REFERENCES db_connections(id) ON DELETE CASCADE;
@@ -691,7 +691,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 41,
-    checksum: 'sha256:agentboard-db-server-first-database-v41-2026-10-30',
+    checksum: 'sha256:gearmod-db-server-first-database-v41-2026-10-30',
     up(db) {
       // O servidor é só o contêiner: conexões antigas, sem nenhum banco dentro, passam a mostrar o próprio banco como filho.
       const roots = db.prepare(`SELECT * FROM db_connections r WHERE r.parent_id IS NULL AND NOT EXISTS (SELECT 1 FROM db_connections c WHERE c.parent_id = r.id)`).all() as Array<Record<string, unknown>>
@@ -701,7 +701,7 @@ export const migrations: readonly Migration[] = [
   },
   {
     version: 42,
-    checksum: 'sha256:agentboard-card-types-v42-2026-10-31',
+    checksum: 'sha256:gearmod-card-types-v42-2026-10-31',
     up(db) {
       // Tipos de card cadastráveis por projeto (JSON; nulo = segue a lista padrão). "Tarefa pequena" deixa de ser tipo: vira o fluxo curto.
       db.exec(`ALTER TABLE projects ADD COLUMN card_types TEXT;

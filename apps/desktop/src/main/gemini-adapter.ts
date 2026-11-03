@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline'
 import { dirname, join } from 'node:path'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import type { PermissionMode } from '@agentboard/contracts'
+import type { PermissionMode } from '@gearmod/contracts'
 import { applyEnvPolicy } from './env-policy'
 import { geminiMcpServers } from './mcp-registry'
 import { redact, redactObject } from './redaction'
@@ -13,7 +13,7 @@ import { tm } from './i18n'
 
 type JsonObject = Record<string, unknown>
 
-/** Modos do AgentBoard → `--approval-mode` do Gemini CLI. O modo não interativo não tem aprovação por ação: o que pediria confirmação é negado. */
+/** Modos do GearMod → `--approval-mode` do Gemini CLI. O modo não interativo não tem aprovação por ação: o que pediria confirmação é negado. */
 export const geminiApprovalMode: Partial<Record<PermissionMode, string>> = { plan: 'plan', manual: 'default', accept_edits: 'auto_edit', auto: 'yolo', bypass: 'yolo' }
 
 /** Uso do `result` do Gemini: `input` já exclui o cache; `cached` é a parte lida do cache. */
@@ -24,7 +24,7 @@ export function geminiUsage(stats: unknown): RunTokens | undefined {
   return { input, cached, output: count('output_tokens') }
 }
 
-/** Copia as skills do plugin do AgentBoard para a pasta de skills do perfil (o Gemini só descobre skills em pastas conhecidas). */
+/** Copia as skills do plugin do GearMod para a pasta de skills do perfil (o Gemini só descobre skills em pastas conhecidas). */
 export function syncGeminiSkills(pluginDir: string | null | undefined, configDir: string): void {
   if (!pluginDir || !configDir) return
   const from = join(pluginDir, 'skills'), to = join(configDir, '.gemini', 'skills')
@@ -40,9 +40,9 @@ export class GeminiCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
-    // Modo Padrão (manual): protocolo ACP, para que cada ação pendente apareça na tela de permissões do AgentBoard.
+    // Modo Padrão (manual): protocolo ACP, para que cada ação pendente apareça na tela de permissões do GearMod.
     if (!options.planning && options.mode === 'manual' && options.requestPermission) return runGeminiAcp(this.processes, options)
-    // Com as ferramentas do AgentBoard ligadas, o planejamento roda no modo padrão (leitura livre; escrita e shell negados) e confia só no servidor do AgentBoard.
+    // Com as ferramentas do GearMod ligadas, o planejamento roda no modo padrão (leitura livre; escrita e shell negados) e confia só no servidor do GearMod.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
     const approval = options.planning ? (readOnlyPlanning ? 'default' : 'plan') : geminiApprovalMode[options.mode ?? 'manual']
     if (!approval) throw new Error(tm().adapters.unsupportedGeminiMode(String(options.mode)))
@@ -50,11 +50,11 @@ export class GeminiCliAdapter implements AgentAdapter {
     if (options.model) args.push('--model', options.model)
     if (options.sessionId) args.push('--resume', options.sessionId)
     for (const dir of new Set((options.attachments ?? []).map((path) => dirname(path)))) args.push('--include-directories', dir)
-    const servers = { ...geminiMcpServers(options.mcpServers ?? []), ...(options.mcp ? { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env, trust: true } } : {}) }
+    const servers = { ...geminiMcpServers(options.mcpServers ?? []), ...(options.mcp ? { gearmod: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env, trust: true } } : {}) }
     let settingsDir: string | null = null
     const env: NodeJS.ProcessEnv = { ...applyEnvPolicy(options.profile, process.env), GEMINI_CLI_HOME: options.profile.configDir, GEMINI_CLI_TRUST_WORKSPACE: 'true', ...options.env }
     if (Object.keys(servers).length) {
-      settingsDir = mkdtempSync(join(tmpdir(), 'agentboard-gemini-'))
+      settingsDir = mkdtempSync(join(tmpdir(), 'gearmod-gemini-'))
       const file = join(settingsDir, 'settings.json')
       writeFileSync(file, JSON.stringify({ mcpServers: servers }), { mode: 0o600 })
       env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = file

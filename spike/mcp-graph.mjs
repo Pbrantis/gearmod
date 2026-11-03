@@ -63,7 +63,7 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
   let m
   try { m = JSON.parse(line) } catch { return }
   if (m.id === undefined) return
-  if (m.method === 'initialize') return send({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'agentboard-graph', version: '0.2.0' } } })
+  if (m.method === 'initialize') return send({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'gearmod-graph', version: '0.2.0' } } })
   if (m.method === 'ping') return send({ jsonrpc: '2.0', id: m.id, result: {} })
   if (m.method === 'tools/list') return send({ jsonrpc: '2.0', id: m.id, result: { tools: Object.entries(TOOLS).map(([name, t]) => ({ name, ...t, annotations: { readOnlyHint: true } })) } })
   if (m.method === 'tools/call') {

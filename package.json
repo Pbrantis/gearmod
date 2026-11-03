@@ -1,5 +1,5 @@
 {
-  "name": "agentboard",
+  "name": "gearmod",
   "version": "0.1.0",
   "private": true,
   "license": "PolyForm-Shield-1.0.0",
@@ -12,13 +12,13 @@
   },
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "postinstall": "pnpm --filter @agentboard/desktop rebuild:native",
-    "dev": "pnpm --filter @agentboard/desktop dev",
+    "postinstall": "pnpm --filter @gearmod/desktop rebuild:native",
+    "dev": "pnpm --filter @gearmod/desktop dev",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "build": "pnpm -r build",
-    "dist": "pnpm --filter @agentboard/desktop dist",
+    "dist": "pnpm --filter @gearmod/desktop dist",
     "notices": "node scripts/third-party-notices.mjs",
     "codex:types": "node scripts/generate-codex-types.mjs"
   }

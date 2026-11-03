@@ -9,11 +9,11 @@ interface Candidate { cardId: string; title: string; branch: string; path: strin
 export function LinkWorktreeDialog({ cardId, close, linked }: { cardId: string; close(): void; linked(): void }): React.JSX.Element {
   const { board: t, common } = useT()
   const [items, setItems] = useState<Candidate[]>(), [error, setError] = useState(''), [busy, setBusy] = useState<string>()
-  useEffect(() => { void window.agentboard.invoke('worktrees:candidates', { cardId }).then(setItems).catch(() => setItems([])) }, [cardId])
+  useEffect(() => { void window.gearmod.invoke('worktrees:candidates', { cardId }).then(setItems).catch(() => setItems([])) }, [cardId])
   useEscape(close)
   const pick = (item: Candidate): void => {
     setBusy(item.cardId); setError('')
-    void window.agentboard.invoke('worktrees:link', { cardId, fromCardId: item.cardId }).then(() => { window.dispatchEvent(new Event('agentboard:board-changed')); linked() }).catch((reason: unknown) => { setError(plainError(reason)); setBusy(undefined) })
+    void window.gearmod.invoke('worktrees:link', { cardId, fromCardId: item.cardId }).then(() => { window.dispatchEvent(new Event('gearmod:board-changed')); linked() }).catch((reason: unknown) => { setError(plainError(reason)); setBusy(undefined) })
   }
   return <div className="overlay top" role="dialog" aria-label={t.linkWorktree.title} onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}>
     <div className="modal" style={{ width: 'min(520px,100%)' }}>

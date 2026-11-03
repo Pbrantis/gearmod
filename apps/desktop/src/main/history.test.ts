@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { cardHistorySchema, complexityLevel, defaultComplexityLimits, defaultComplexityWeights, defaultWorkflowConfig, recommendedWorkflow, weightedTotal, type DimensionScores } from '@agentboard/contracts'
+import { cardHistorySchema, complexityLevel, defaultComplexityLimits, defaultComplexityWeights, defaultWorkflowConfig, recommendedWorkflow, weightedTotal, type DimensionScores } from '@gearmod/contracts'
 import { AgentContextService } from './agent-context'
 import { AppDatabase } from './database'
 import { CardHistoryService, readArtifactHistory, readHead, redact } from './history'
@@ -28,7 +28,7 @@ function fakeRepo(path: string, hash: string): void {
 }
 
 async function setup(repos: string[] = ['frontend']) {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-history-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-history-')); roots.push(root)
   for (const [index, name] of repos.entries()) fakeRepo(join(root, name), String(index + 1).repeat(40))
   const git = { validate: async () => undefined, branches: async () => ['main'], inspect: async (localPath: string) => ({ localPath, name: 'workspace', repositories: repos.map((name) => ({ localPath: join(root, name), name, currentBranch: 'main', branches: ['main'] })) }) }
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); closers.push(() => database.close())
@@ -117,7 +117,7 @@ describe('Complexity Engine', () => {
     history.selectWorkflow(card.id, 'sdd', { actor: 'user' }, '', 'user', 'native')
     expect(history.history(card.id)).toMatchObject({ recommendedSddMethod: 'speckit', sddMethod: 'native' })
     const context = new AgentContextService(board, new SettingsRepository(database), null, undefined, undefined, history)
-    expect(await context.block(card.id)).toContain('Full AgentBoard SDD')
+    expect(await context.block(card.id)).toContain('Full GearMod SDD')
     database.db.exec('DELETE FROM card_assessments; DELETE FROM card_decisions; DELETE FROM card_events;')
     history.rebuild(card.id)
     expect(history.history(card.id)).toMatchObject({ workflow: 'sdd', recommendedSddMethod: 'speckit', sddMethod: 'native' })
@@ -173,7 +173,7 @@ describe('Artefatos versionáveis', () => {
     const { history, card, project, root } = await setup()
     assess(history, card.id, low)
     expect(() => history.setConfig(project.id, { ...defaultWorkflowConfig, artifactsDir: 'docs/cards' })).toThrow(/caminho absoluto/)
-    const target = join(root, 'docs-repo', 'agentboard')
+    const target = join(root, 'docs-repo', 'gearmod')
     history.setConfig(project.id, { ...defaultWorkflowConfig, artifactsDir: target })
     expect(history.artifactsDir(card.id).startsWith(target)).toBe(true)
     expect(readFileSync(join(history.artifactsDir(card.id), 'history.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1)
@@ -256,25 +256,25 @@ describe('Ferramentas MCP e contexto', () => {
     const approvals = new ApprovalService(database)
     const bridge = new McpBridge({ board, context, serverScript: 'unused', history, approvals })
     const changes: string[] = []
-    const token = bridge.register('00000000-0000-4000-8000-000000000001', card.id, (change) => changes.push(change.type), { id: '00000000-0000-4000-8000-000000000002', purpose: 'planning' }).env.AGENTBOARD_TOKEN!
+    const token = bridge.register('00000000-0000-4000-8000-000000000001', card.id, (change) => changes.push(change.type), { id: '00000000-0000-4000-8000-000000000002', purpose: 'planning' }).env.GEARMOD_TOKEN!
     const call = (tool: string, args: Record<string, unknown>) => (bridge as unknown as { handle(token: string, tool: string, args: Record<string, unknown>): { ok: boolean; text?: string; error?: string } }).handle(token, tool, args)
-    expect(call('agentboard_assess_complexity', { notas: { escopo: 4 }, confianca: 'alta', motivo: 'x' })).toMatchObject({ ok: false })
-    const first = call('agentboard_assess_complexity', { notas: { escopo: 1, acoplamento: 0, incerteza: 1, risco: 0, novidade: 0, validacao: 1 }, justificativas: { escopo: 'Um componente' }, confianca: 'media', motivo: 'Discovery inicial', evidencias: [{ tipo: 'file', referencia: 'src/App.tsx', linha: 10 }] })
+    expect(call('gearmod_assess_complexity', { notas: { escopo: 4 }, confianca: 'alta', motivo: 'x' })).toMatchObject({ ok: false })
+    const first = call('gearmod_assess_complexity', { notas: { escopo: 1, acoplamento: 0, incerteza: 1, risco: 0, novidade: 0, validacao: 1 }, justificativas: { escopo: 'Um componente' }, confianca: 'media', motivo: 'Discovery inicial', evidencias: [{ tipo: 'file', referencia: 'src/App.tsx', linha: 10 }] })
     expect(first).toMatchObject({ ok: true }); expect(first.text).toContain('5 points')
-    expect(call('agentboard_choose_workflow', { fluxo: 'light', confirmado_pelo_usuario: false })).toMatchObject({ ok: true })
+    expect(call('gearmod_choose_workflow', { fluxo: 'light', confirmado_pelo_usuario: false })).toMatchObject({ ok: true })
     const proposed = approvals.list(card.id)[0]!
     expect(proposed.status).toBe('requested')
     approvals.decide(proposed.id, true)
     history.selectWorkflow(card.id, 'light', { actor: 'user' }, '', 'user')
     // O fluxo curto não muda o tipo do card: vem do workflow escolhido.
     expect(board.card(card.id)).toMatchObject({ type: card.type, workflow: 'light', sddMethod: null })
-    expect(call('agentboard_assess_complexity', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'user-correction', motivo: 'x' })).toMatchObject({ ok: false })
-    expect(call('agentboard_assess_complexity', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'new-dependency', motivo: 'Descobri que o backend também muda' }).text).toContain('before 5; +9')
+    expect(call('gearmod_assess_complexity', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'user-correction', motivo: 'x' })).toMatchObject({ ok: false })
+    expect(call('gearmod_assess_complexity', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'new-dependency', motivo: 'Descobri que o backend também muda' }).text).toContain('before 5; +9')
     const currentDecisions = history.decisions(card.id).filter((item) => item.status !== 'superseded').map((item) => item.number)
-    expect(call('agentboard_record_decision', { decisao: 'Usar FCM', origem: 'agente', tipo: 'technical' })).toMatchObject({ ok: false })
-    expect(call('agentboard_record_decision', { decisao: 'Usar FCM', origem: 'agente', tipo: 'technical', decisoes_revisadas: currentDecisions })).toMatchObject({ ok: true })
-    expect(call('agentboard_choose_workflow', { fluxo: 'sdd', confirmado_pelo_usuario: false })).toMatchObject({ ok: false })
-    expect(call('agentboard_choose_workflow', { fluxo: 'sdd', metodo: 'speckit', motivo: 'Funcionalidade nova', confirmado_pelo_usuario: false })).toMatchObject({ ok: true })
+    expect(call('gearmod_record_decision', { decisao: 'Usar FCM', origem: 'agente', tipo: 'technical' })).toMatchObject({ ok: false })
+    expect(call('gearmod_record_decision', { decisao: 'Usar FCM', origem: 'agente', tipo: 'technical', decisoes_revisadas: currentDecisions })).toMatchObject({ ok: true })
+    expect(call('gearmod_choose_workflow', { fluxo: 'sdd', confirmado_pelo_usuario: false })).toMatchObject({ ok: false })
+    expect(call('gearmod_choose_workflow', { fluxo: 'sdd', metodo: 'speckit', motivo: 'Funcionalidade nova', confirmado_pelo_usuario: false })).toMatchObject({ ok: true })
     expect(history.history(card.id)).toMatchObject({ recommendedSddMethod: 'speckit', sddMethod: null })
     expect(changes.filter((type) => type === 'card').length).toBeGreaterThanOrEqual(4)
     const block = await context.block(card.id)

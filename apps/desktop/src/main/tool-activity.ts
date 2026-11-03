@@ -7,7 +7,7 @@ export interface ToolActivity { title: string; detail: string }
 /** Resumo de uma ferramenta usada pelo agente (para a linha cinza do chat): título curto + detalhe que aparece ao expandir. */
 function describe(name: string, input: Json): ToolActivity {
   const target = [input.file_path, input.path, input.pattern, input.command, input.url, input.query].find((value) => typeof value === 'string') as string | undefined
-  const label = name.replace(/^mcp__agentboard__/, '')
+  const label = name.replace(/^mcp__gearmod__/, '')
   return { title: short(target ? `${label} ${target}` : label, 90), detail: short(JSON.stringify(input, null, 2), 800) }
 }
 

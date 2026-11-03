@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { ChatPurpose, UsageWindow } from '@agentboard/contracts'
+import type { ChatPurpose, UsageWindow } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { getMainLocale, tm } from './i18n'
 

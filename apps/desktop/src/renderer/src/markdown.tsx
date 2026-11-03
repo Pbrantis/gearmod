@@ -47,7 +47,7 @@ function MdImage({ alt, src }: { alt: string; src: string }): React.JSX.Element 
     if (!base || /^[a-z][a-z0-9+.-]*:/i.test(src.replace(/^[A-Za-z]:[\\/]/, ''))) { setUrl(''); return }
     const path = resolveRelative(base.path, src), key = `${base.projectId}|${base.cardId}|${path}`
     let alive = true
-    const request = imageCache.get(key) ?? window.agentboard.invoke('workspace:image', { projectId: base.projectId, cardId: base.cardId, path })
+    const request = imageCache.get(key) ?? window.gearmod.invoke('workspace:image', { projectId: base.projectId, cardId: base.cardId, path })
     imageCache.set(key, request)
     void request.then((data) => { if (alive) setUrl(data) }).catch(() => { imageCache.delete(key); if (alive) setFailed(true) })
     return () => { alive = false }
@@ -69,7 +69,7 @@ function FileRef({ target, children, code }: { target: string; children: React.R
   const t = useT(), open = React.useContext(FileOpenContext), files = React.useContext(MarkdownFiles), resolved = files?.paths.get(target)
   if (resolved && files) return <button type="button" className={`mdFile ${code ? 'code' : ''}`} data-tip={resolved.directory ? t.shell.markdown.showFolder(resolved.path) : t.shell.markdown.openFile(resolved.path)} onClick={(event) => { event.stopPropagation(); files.open(target) }} onDoubleClick={(event) => event.stopPropagation()}>{children}</button>
   const ok = !files && open && (code ? isFileCode(target) : isFileLink(target))
-  if (!ok && !code && /^(https?:\/\/|mailto:)/i.test(target)) return <a className="mdLink ext" href={target} data-tip={target} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void window.agentboard.invoke('app:open-link', { url: target }).catch((reason: unknown) => toast.error(t.shell.markdown.couldNotOpenLink, plainError(reason))) }}>{children}</a>
+  if (!ok && !code && /^(https?:\/\/|mailto:)/i.test(target)) return <a className="mdLink ext" href={target} data-tip={target} onClick={(event) => { event.preventDefault(); event.stopPropagation(); void window.gearmod.invoke('app:open-link', { url: target }).catch((reason: unknown) => toast.error(t.shell.markdown.couldNotOpenLink, plainError(reason))) }}>{children}</a>
   if (!ok) return code ? <code>{children}</code> : <span className="mdLink" data-tip={target}>{children}</span>
   return <button type="button" className={`mdFile ${code ? 'code' : ''}`} data-tip={t.shell.markdown.open(target)} onClick={() => open(target.replace(/^file:\/\/\/?/i, '').replace(/^\/([A-Za-z]:)/, '$1'))}>{children}</button>
 }
@@ -124,7 +124,7 @@ export function Markdown({ source, onToggle, base, runnable = true, onOpenRefere
     const withoutFences = source.replace(/^\s*(```|~~~)[^\n]*\n[\s\S]*?^\s*\1[^\n]*$/gm, ''), candidates = new Set<string>()
     for (const match of withoutFences.matchAll(/`([^`\n]+)`|(?<!!)\[[^\]]+\]\(([^)]+)\)/g)) { const value = (match[1] ?? match[2] ?? '').trim(); if (value.length <= 4096 && (match[2] ? isFileLink(value) : /^[\w@.~/\\:-]{2,}$/.test(value))) candidates.add(value) }
     let alive = true; setPaths(new Map())
-    const timer = window.setTimeout(() => { if (candidates.size) void window.agentboard.invoke('workspace:resolve-references', { projectId: context.projectId, cardId: context.cardId, ...(context.path ? { markdownPath: context.path } : {}), targets: [...candidates].slice(0, 200) }).then((items) => { if (alive) setPaths(new Map(items.map((item) => [item.target, item]))) }).catch(() => undefined) }, 250)
+    const timer = window.setTimeout(() => { if (candidates.size) void window.gearmod.invoke('workspace:resolve-references', { projectId: context.projectId, cardId: context.cardId, ...(context.path ? { markdownPath: context.path } : {}), targets: [...candidates].slice(0, 200) }).then((items) => { if (alive) setPaths(new Map(items.map((item) => [item.target, item]))) }).catch(() => undefined) }, 250)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [source, context?.projectId, context?.cardId, context?.path])
   // Aceita quebras do Windows (CRLF): o `\r` no fim da linha impedia de reconhecer títulos e listas.
@@ -174,6 +174,6 @@ export function Markdown({ source, onToggle, base, runnable = true, onOpenRefere
     while (i < lines.length && lines[i]!.trim() && (i === start || !isSpecial(lines[i]!))) { body.push(lines[i]!.trim()); i += 1 }
     blocks.push(<p key={`b${start}`}>{inline(body.join(' '), `b${start}`)}</p>)
   }
-  const files = context ? { paths, open: (target: string): void => { const item = paths.get(target); if (!item) return; onOpenReference?.(); const suffix = /(?::\d+(?::\d+)?|#L?\d+(?:-L?\d+)?)$/.exec(target)?.[0] ?? ''; const line = suffix.startsWith('#') ? `:${suffix.match(/\d+/)?.[0]}` : suffix; window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path: item.path + (item.directory ? '' : line), directory: item.directory } })) } } : null
+  const files = context ? { paths, open: (target: string): void => { const item = paths.get(target); if (!item) return; onOpenReference?.(); const suffix = /(?::\d+(?::\d+)?|#L?\d+(?:-L?\d+)?)$/.exec(target)?.[0] ?? ''; const line = suffix.startsWith('#') ? `:${suffix.match(/\d+/)?.[0]}` : suffix; window.dispatchEvent(new CustomEvent('gearmod:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path: item.path + (item.directory ? '' : line), directory: item.directory } })) } } : null
   return <MarkdownBase.Provider value={context}><MarkdownFiles.Provider value={files}>{blocks.length ? blocks : <p className="mdEmpty">{t.shell.markdown.nothingWritten}</p>}</MarkdownFiles.Provider></MarkdownBase.Provider>
 }

@@ -1,7 +1,7 @@
-import type { AgentBoardApi } from '@agentboard/contracts'
+import type { GearModApi } from '@gearmod/contracts'
 
 declare global {
-  interface Window { agentboard: AgentBoardApi }
+  interface Window { gearmod: GearModApi }
 }
 
 export {}

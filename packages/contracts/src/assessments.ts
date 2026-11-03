@@ -17,9 +17,9 @@ export const dimensionScoresSchema = z.object({ escopo: score, acoplamento: scor
 export const dimensionWeightsSchema = z.object({ escopo: weight, acoplamento: weight, incerteza: weight, risco: weight, novidade: weight, validacao: weight }).strict()
 export const complexityLevelSchema = z.enum(['simple', 'medium', 'complex'])
 export const confidenceSchema = z.enum(['low', 'medium', 'high'])
-/** Fluxo do card: `light` = tarefa pequena (implementar e validar); `spec` = Especificação, Plano e Tasks do AgentBoard; `sdd` = método configurado do projeto. */
+/** Fluxo do card: `light` = tarefa pequena (implementar e validar); `spec` = Especificação, Plano e Tasks do GearMod; `sdd` = método configurado do projeto. */
 export const workflowKindSchema = z.enum(['light', 'spec', 'sdd'])
-/** Método usado no fluxo `sdd`. `native` = o SDD completo do AgentBoard; os demais leem a pasta central configurada. */
+/** Método usado no fluxo `sdd`. `native` = o SDD completo do GearMod; os demais leem a pasta central configurada. */
 export const sddMethodSchema = z.enum(['native', 'speckit', 'openspec', 'custom'])
 /** Por que a avaliação foi (re)feita. Reavaliar só nestes gatilhos, nunca a cada mensagem. */
 export const assessmentTriggerSchema = z.enum(['initial', 'requirements-changed', 'new-dependency', 'risk', 'architecture', 'scope', 'failures', 'user-correction'])
@@ -37,7 +37,7 @@ export const assessmentSchema = z.object({
 export const decisionKindSchema = z.enum(['requirement', 'scope', 'assumption', 'technical', 'workflow', 'other'])
 /** `proposed` = recomendação do agente; `approved` = decidido pelo usuário; `superseded` = trocada por outra decisão. */
 export const decisionSchema = z.object({ id: uuid, cardId: uuid, number: z.number().int().positive(), kind: decisionKindSchema, statement: z.string(), rationale: z.string(), status: z.enum(['proposed', 'approved', 'superseded']), actor: z.enum(['agent', 'user']), supersedesId: uuid.nullable(), createdAt: isoDate })
-/** Entendimento da demanda (skill agentboard-discovery): o que o planejamento precisa saber, sem documentação extensa. */
+/** Entendimento da demanda (skill gearmod-discovery): o que o planejamento precisa saber, sem documentação extensa. */
 export const discoveryBriefSchema = z.object({
   objetivo: z.string().max(4000), motivacao: z.string().max(4000).default(''), escopo: z.array(z.string().max(1000)).max(50).default([]), exclusoes: z.array(z.string().max(1000)).max(50).default([]),
   criterios: z.array(z.string().max(1000)).max(50).default([]), pendencias: z.array(z.string().max(1000)).max(50).default([]), contextoTecnico: z.string().max(8000).default(''), prontidao: z.enum(['pronto', 'precisa-esclarecer']), registradoEm: isoDate.optional()
@@ -78,7 +78,7 @@ export const sddConfigSchema = z.object({
   constitution: z.object({ native: z.string().max(512), speckit: z.string().max(512) }).strict(),
   featuresDir: z.string().max(512)
 }).strict()
-export const defaultSddConfig: SddConfig = { method: 'native', sourceId: null, root: '', constitution: { native: '.agentboard/constitution.md', speckit: '.specify/memory/constitution.md' }, featuresDir: 'specs' }
+export const defaultSddConfig: SddConfig = { method: 'native', sourceId: null, root: '', constitution: { native: '.gearmod/constitution.md', speckit: '.specify/memory/constitution.md' }, featuresDir: 'specs' }
 export type SddConfig = z.output<typeof sddConfigSchema>
 
 export const workflowConfigSchema = z.object({

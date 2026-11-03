@@ -1,6 +1,6 @@
-# Gera somente o executável portátil do AgentBoard.
+# Gera somente o executável portátil do GearMod.
 # Uso: powershell -File build.ps1   (ou .\build.ps1 no PowerShell)
-# Saída: apps\desktop\dist\win-unpacked\AgentBoard.exe
+# Saída: apps\desktop\dist\win-unpacked\GearMod.exe
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
@@ -12,12 +12,12 @@ if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
   $env:PATH = "$shim;$env:PATH"
 }
 
-# Um AgentBoard.exe aberto (mesmo em segundo plano) trava a pasta dist\win-unpacked e o build falha.
+# Um GearMod.exe aberto (mesmo em segundo plano) trava a pasta dist\win-unpacked e o build falha.
 $unpacked = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked'
-$running = Get-Process -Name AgentBoard -ErrorAction SilentlyContinue |
+$running = Get-Process -Name GearMod -ErrorAction SilentlyContinue |
   Where-Object { $_.Path -and $_.Path.StartsWith($unpacked, [StringComparison]::OrdinalIgnoreCase) }
 if ($running) {
-  Write-Host "Fechando $($running.Count) processo(s) do AgentBoard que estavam travando o build..."
+  Write-Host "Fechando $($running.Count) processo(s) do GearMod que estavam travando o build..."
   $running | Stop-Process -Force
   Start-Sleep -Seconds 2
 }
@@ -37,4 +37,4 @@ finally {
   Pop-Location
 }
 
-Get-Item (Join-Path $unpacked 'AgentBoard.exe') | Select-Object FullName, LastWriteTime
+Get-Item (Join-Path $unpacked 'GearMod.exe') | Select-Object FullName, LastWriteTime

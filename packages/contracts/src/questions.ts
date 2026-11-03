@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 /**
  * Perguntas com opções que o agente faz ao usuário (como o AskUserQuestion do Claude Code). Viajam dentro da mensagem do agente
- * num bloco ```agentboard-perguntas com JSON, tanto pela ferramenta MCP quanto escritas direto no texto (agentes sem MCP).
+ * num bloco ```gearmod-perguntas com JSON, tanto pela ferramenta MCP quanto escritas direto no texto (agentes sem MCP).
  */
 export const questionOptionSchema = z.object({ rotulo: z.string().trim().min(1).max(120), descricao: z.string().trim().max(400).optional() })
 export const userQuestionSchema = z.object({
@@ -15,7 +15,7 @@ export const questionBlockSchema = z.object({ perguntas: z.array(userQuestionSch
 export type UserQuestion = z.output<typeof userQuestionSchema>
 export type QuestionBlock = z.output<typeof questionBlockSchema>
 
-export const questionFence = 'agentboard-perguntas'
+export const questionFence = 'gearmod-perguntas'
 const fencePattern = new RegExp('```' + questionFence + '\\s*\\n([\\s\\S]*?)\\n```', 'g')
 
 /** Texto da mensagem do agente com o bloco de perguntas: `intro` (opcional) + bloco. */

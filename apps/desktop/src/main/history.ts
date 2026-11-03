@@ -7,7 +7,7 @@ import {
   levelLabels, normalizeLegacySdd, recommendedWorkflow, triggerLabels, weightedTotal, workflowConfigSchema, workflowLabels,
   type Assessment, type AssessmentTrigger, type CardComplexity, type CardHistory, type Confidence, type Decision, type DecisionKind, type DimensionScores, type DiscoveryBrief,
   type Evidence, type Exploration, type HistoryEvent, type HistoryEventType, type SddDetection, type WorkflowConfig, type WorkflowKind
-} from '@agentboard/contracts'
+} from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { redact, redactObject } from './redaction'
 import { tm } from './i18n'
@@ -221,7 +221,7 @@ export class CardHistoryService {
     const previous = this.decisions(cardId).filter((item) => item.kind === 'workflow' && item.status !== 'superseded').at(-1)
     this.db.prepare('UPDATE cards SET workflow = ? WHERE id = ?').run(workflow, cardId)
     this.insertEvent(this.event(cardId, 'workflow.selected', source, { workflow, method: workflow === 'sdd' ? method ?? null : null, recommended, followsRecommendation: recommended === workflow, reason: redact(reason) }))
-    this.decide(cardId, { kind: 'workflow', statement: `Fluxo: ${workflowLabels[workflow]}${workflow === 'sdd' && method ? ` — ${method === 'native' ? 'SDD do AgentBoard' : 'GitHub Spec Kit'}` : ''}`, rationale: reason || (recommended && recommended !== workflow ? `Diferente do recomendado (${workflowLabels[recommended]}).` : ''), actor: decidedBy, status: decidedBy === 'user' ? 'approved' : 'proposed', supersedes: previous?.id ?? null, source })
+    this.decide(cardId, { kind: 'workflow', statement: `Fluxo: ${workflowLabels[workflow]}${workflow === 'sdd' && method ? ` — ${method === 'native' ? 'SDD do GearMod' : 'GitHub Spec Kit'}` : ''}`, rationale: reason || (recommended && recommended !== workflow ? `Diferente do recomendado (${workflowLabels[recommended]}).` : ''), actor: decidedBy, status: decidedBy === 'user' ? 'approved' : 'proposed', supersedes: previous?.id ?? null, source })
   }
 
   workflow(cardId: string): WorkflowKind | null { return (this.db.prepare('SELECT workflow FROM cards WHERE id = ?').pluck().get(cardId) as WorkflowKind | null | undefined) ?? null }
@@ -513,7 +513,7 @@ function runTable(runs: RunRow[]): string {
 }
 
 function discoveryMarkdown(title: string, history: CardHistory): string {
-  const current = history.assessments.at(-1), lines = [`# Discovery — ${title || 'card sem título'}`, '', '> Gerado pelo AgentBoard a partir de `history.jsonl` (fonte versionável). Não edite à mão: as mudanças entram como eventos.', '']
+  const current = history.assessments.at(-1), lines = [`# Discovery — ${title || 'card sem título'}`, '', '> Gerado pelo GearMod a partir de `history.jsonl` (fonte versionável). Não edite à mão: as mudanças entram como eventos.', '']
   if (history.discovery) {
     const brief = history.discovery, list = (items: string[]): string => items.length ? items.map((item) => `- ${item}`).join('\n') : '- (nenhum)'
     lines.push('## Entendimento', '', `**Objetivo:** ${brief.objetivo}`, '', brief.motivacao ? `**Motivação:** ${brief.motivacao}\n` : '', '### Escopo', list(brief.escopo), '', '### Fora do escopo', list(brief.exclusoes), '', '### Critérios de aceite', list(brief.criterios), '', '### Pendências', list(brief.pendencias), '', brief.contextoTecnico ? `### Contexto técnico\n${brief.contextoTecnico}\n` : '', `**Prontidão:** ${brief.prontidao === 'pronto' ? 'pronto para planejar' : 'precisa esclarecer'}`, '')

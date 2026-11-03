@@ -13,7 +13,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-exec-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-exec-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
   const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
   const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects), conversations = new ConversationRepository(database)
@@ -34,14 +34,14 @@ describe('ExecutionService', () => {
     expect(run.status).toBe('running')
     expect(board.card(card.id).columnId).toBe(columns[2]!.id)
     expect(conversations.listPlans(card.id)[0]).toMatchObject({ status: 'approved', contentMd: '## Plano\nFazer' })
-    expect(started[0]).toMatchObject({ planning: false }); expect(started[0]!.prompt).toBe('Use the agentboard-implement skill to implement this card.'); expect(started[0]!.notice).toBe('▶ Usando a skill agentboard-implement')
+    expect(started[0]).toMatchObject({ planning: false }); expect(started[0]!.prompt).toBe('Use the gearmod-implement skill to implement this card.'); expect(started[0]!.notice).toBe('▶ Usando a skill gearmod-implement')
     expect(board.card(card.id).run).toMatchObject({ state: 'running', runId: run.id })
     expect(() => service.start(card.id, { profileId: profile.id, model: null, effort: null, mode: 'auto' })).toThrow('já tem um agente')
     conversations.updateRun(run.id, 'interrupted', 'Interrompido pelo usuário')
     expect(board.card(card.id).run.state).toBe('paused')
     service.resume(card.id)
     expect(conversations.listChats(board.card(card.id).projectId, card.id).filter((chat) => chat.purpose === 'execution')).toHaveLength(1)
-    expect(started[1]!.chatId).toBe(started[0]!.chatId); expect(started[1]!.prompt).toContain('agentboard-implement'); expect(started[1]!.prompt).toContain('where it left off')
+    expect(started[1]!.chatId).toBe(started[0]!.chatId); expect(started[1]!.prompt).toContain('gearmod-implement'); expect(started[1]!.prompt).toContain('where it left off')
     database.close()
   })
 
@@ -53,7 +53,7 @@ describe('ExecutionService', () => {
     expect(() => service.start(card.id, { profileId: profile.id, model: null, effort: null, mode: 'auto' }, 'test')).toThrow('não tem etapa de teste')
     service.start(card.id, { profileId: profile.id, model: null, effort: null, mode: 'auto' })
     expect(conversations.listPlans(card.id)).toHaveLength(0)
-    expect(started[0]!.prompt).toBe('Use the agentboard-small skill to do this card in the short workflow from start to finish.'); expect(started[0]!.notice).toBe('▶ Usando a skill agentboard-small')
+    expect(started[0]!.prompt).toBe('Use the gearmod-small skill to do this card in the short workflow from start to finish.'); expect(started[0]!.notice).toBe('▶ Usando a skill gearmod-small')
     database.close()
   })
 
@@ -71,7 +71,7 @@ describe('test step and chat reset', () => {
     const exec = service.start(card.id, { profileId: codex.id, model: null, effort: null, mode: 'auto' })
     conversations.updateRun(exec.id, 'completed', null)
     const testRun = service.start(card.id, { profileId: codex.id, model: null, effort: null, mode: 'auto' }, 'test')
-    expect(started[1]!.prompt).toBe('Use the agentboard-test skill to test this card.'); expect(started[0]!.chatId).not.toBe(started[1]!.chatId)
+    expect(started[1]!.prompt).toBe('Use the gearmod-test skill to test this card.'); expect(started[0]!.chatId).not.toBe(started[1]!.chatId)
     expect(board.card(card.id).run).toMatchObject({ state: 'running', purpose: 'test', runId: testRun.id })
     conversations.updateRun(testRun.id, 'interrupted', 'x')
     expect(() => service.start(card.id, { profileId: claude.id, model: null, effort: null, mode: 'accept_edits' }, 'test')).toThrow('reinicia o chat')

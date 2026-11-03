@@ -16,7 +16,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 
 describe('WorktreeService', () => {
   it('discovers sibling repositories and accepts a folder without Git', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-sources-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-sources-')); roots.push(root)
     const workspace = join(root, 'workspace'), front = join(workspace, 'front'), back = join(workspace, 'back'), plain = join(root, 'plain')
     await mkdir(workspace); await mkdir(plain)
     await exec('git', ['init', '-b', 'front-dev', front]); await exec('git', ['init', '-b', 'back-dev', back])
@@ -27,9 +27,9 @@ describe('WorktreeService', () => {
   })
 
   it('creates independent persistent worktrees and reports their diffs', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-worktree-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-worktree-')); roots.push(root)
     const repo = join(root, 'repo'), data = join(root, 'data')
-    await exec('git', ['init', '-b', 'dev', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'AgentBoard Test'])
+    await exec('git', ['init', '-b', 'dev', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'GearMod Test'])
     await writeFile(join(repo, 'README.md'), '# fixture'); await exec('git', ['-C', repo, 'add', 'README.md']); await exec('git', ['-C', repo, 'commit', '-m', 'fixture'])
     const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
@@ -86,9 +86,9 @@ describe('WorktreeService', () => {
   }, 20_000)
 
   it('creates the worktree from the base branch chosen for the card (falls back to the current one when it does not exist)', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-basebranch-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-basebranch-')); roots.push(root)
     const repo = join(root, 'repo'), data = join(root, 'data')
-    await exec('git', ['init', '-b', 'dev', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'AgentBoard Test'])
+    await exec('git', ['init', '-b', 'dev', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'GearMod Test'])
     await writeFile(join(repo, 'README.md'), '# fixture'); await exec('git', ['-C', repo, 'add', 'README.md']); await exec('git', ['-C', repo, 'commit', '-m', 'fixture'])
     await exec('git', ['-C', repo, 'branch', 'release'])
     const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()
@@ -107,12 +107,12 @@ describe('WorktreeService', () => {
   })
 
   it('G07 ensureMember: adiciona um repositório fora de cards.repo_ids, é idempotente e resiste a duas chamadas concorrentes', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-ensure-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-ensure-')); roots.push(root)
     const workspace = join(root, 'ws'), app = join(workspace, 'app'), docs = join(workspace, 'docs'), data = join(root, 'data')
     await mkdir(workspace, { recursive: true })
     for (const dir of [app, docs]) {
       await exec('git', ['init', '-b', 'main', dir])
-      await exec('git', ['-C', dir, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', dir, 'config', 'user.name', 'AgentBoard Test'])
+      await exec('git', ['-C', dir, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', dir, 'config', 'user.name', 'GearMod Test'])
       await writeFile(join(dir, 'README.md'), '# fixture'); await exec('git', ['-C', dir, 'add', 'README.md']); await exec('git', ['-C', dir, 'commit', '-m', 'fixture'])
     }
     const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()

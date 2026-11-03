@@ -1,5 +1,5 @@
 {
-  "name": "@agentboard/desktop",
+  "name": "@gearmod/desktop",
   "version": "0.1.0",
   "private": true,
   "license": "PolyForm-Shield-1.0.0",
@@ -22,7 +22,7 @@
     "dist": "pnpm run build && electron-builder --win nsis"
   },
   "dependencies": {
-    "@agentboard/contracts": "workspace:*",
+    "@gearmod/contracts": "workspace:*",
     "@vscode/tree-sitter-wasm": "0.3.1",
     "better-sqlite3": "^12.4.1",
     "node-pty": "^1.1.0",
@@ -77,8 +77,8 @@
     "vitest": "^4.0.3"
   },
   "build": {
-    "appId": "com.agentboard.desktop",
-    "productName": "AgentBoard",
+    "appId": "dev.gearmod.desktop",
+    "productName": "GearMod",
     "asar": true,
     "npmRebuild": false,
     "asarUnpack": [
@@ -96,12 +96,12 @@
     ],
     "extraResources": [
       {
-        "from": "resources/agentboard-plugin",
-        "to": "agentboard-plugin"
+        "from": "resources/gearmod-plugin",
+        "to": "gearmod-plugin"
       },
       {
-        "from": "resources/agentboard-mcp",
-        "to": "agentboard-mcp"
+        "from": "resources/gearmod-mcp",
+        "to": "gearmod-mcp"
       },
       {
         "from": "resources/tray",
@@ -137,7 +137,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "AgentBoard-Setup-${version}-${arch}.${ext}"
+      "artifactName": "GearMod-Setup-${version}-${arch}.${ext}"
     }
   }
 }

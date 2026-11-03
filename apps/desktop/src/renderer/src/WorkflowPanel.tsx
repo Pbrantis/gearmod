@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { complexityDimensions, type WorkflowConfig } from '@agentboard/contracts'
+import { complexityDimensions, type WorkflowConfig } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { Checkbox } from './Checkbox'
 import { useT } from './i18n'
@@ -12,21 +12,21 @@ export function WorkflowPanel({ projectId }: { projectId: string }): React.JSX.E
   const [config, setConfig] = useState<WorkflowConfig>(), [defaultDir, setDefaultDir] = useState(''), [message, setMessage] = useState('')
   const [editArt, setEditArt] = useState(false), [saveState, setSaveState] = useState<'' | 'saving' | 'saved'>(''), lastSaved = React.useRef('')
   const take = (state: { config: WorkflowConfig; defaultArtifactsDir: string }): void => { lastSaved.current = JSON.stringify(state.config); setConfig(state.config); setDefaultDir(state.defaultArtifactsDir) }
-  useEffect(() => { void window.agentboard.invoke('workflow:get', { projectId }).then(take).catch((reason) => setMessage(plainError(reason))) }, [projectId])
+  useEffect(() => { void window.gearmod.invoke('workflow:get', { projectId }).then(take).catch((reason) => setMessage(plainError(reason))) }, [projectId])
   // Salva sozinho ~0,7 s depois da última mudança; o que o servidor devolve só atualiza as detecções, para não mexer no que está sendo digitado.
   useEffect(() => {
     if (!config || JSON.stringify(config) === lastSaved.current) return
     const snapshot = JSON.stringify(config)
     const timer = window.setTimeout(() => {
       setSaveState('saving'); setMessage('')
-      void window.agentboard.invoke('workflow:set', { projectId, config }).then((state) => { lastSaved.current = snapshot; setDefaultDir(state.defaultArtifactsDir); setSaveState('saved') }).catch((reason) => { setSaveState(''); setMessage(plainError(reason)) })
+      void window.gearmod.invoke('workflow:set', { projectId, config }).then((state) => { lastSaved.current = snapshot; setDefaultDir(state.defaultArtifactsDir); setSaveState('saved') }).catch((reason) => { setSaveState(''); setMessage(plainError(reason)) })
     }, 700)
     return () => window.clearTimeout(timer)
   }, [config, projectId])
   if (!config) return <p className="cx-muted">{message || common.loading}</p>
   const set = (patch: Partial<WorkflowConfig>): void => setConfig({ ...config, ...patch })
-  const choose = async (): Promise<void> => { try { const path = await window.agentboard.invoke('projects:choose-directory', { projectId }); if (path) set({ artifactsDir: path }) } catch (reason) { setMessage(plainError(reason)) } }
-  const openFolder = (): void => { void window.agentboard.invoke('workflow:open-path', { projectId, which: 'artifacts' }).catch((reason) => setMessage(plainError(reason))) }
+  const choose = async (): Promise<void> => { try { const path = await window.gearmod.invoke('projects:choose-directory', { projectId }); if (path) set({ artifactsDir: path }) } catch (reason) { setMessage(plainError(reason)) } }
+  const openFolder = (): void => { void window.gearmod.invoke('workflow:open-path', { projectId, which: 'artifacts' }).catch((reason) => setMessage(plainError(reason))) }
   const harness = config.harness, setHarness = (patch: Partial<WorkflowConfig['harness']>): void => set({ harness: { ...harness, ...patch } })
   const optional = (value: string): number | null => value.trim() === '' ? null : Number(value)
   const max = complexityDimensions.reduce((sum, dimension) => sum + 3 * config.weights[dimension], 0)

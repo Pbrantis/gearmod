@@ -14,7 +14,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-collab-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-collab-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
   const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
   const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects), conversations = new ConversationRepository(database)

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Prec } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
-import { destructiveStatements, type DestructiveStatement, type IpcOutput } from '@agentboard/contracts'
+import { destructiveStatements, type DestructiveStatement, type IpcOutput } from '@gearmod/contracts'
 import { ConfirmDialog } from './ConfirmDialog'
 import { plainError } from './NoticeDialog'
 import { CodeEditor } from './editor/CodeEditor'
@@ -18,11 +18,11 @@ import { dateLocale, useT } from './i18n'
 export function DbSqlView({ connectionId, databases, setConnection, allowWrite, production = false, database = '', sql, setSql }: { connectionId: string; databases: Array<{ value: string; label: string }>; setConnection(id: string): void; allowWrite: boolean; production?: boolean; database?: string; sql: string; setSql(value: string): void }): React.JSX.Element {
   const t = useT()
   const req = useDbRequest(connectionId), [result, setResult] = useState<IpcOutput<'db:query:run'>>(), [dialog, setDialog] = useState<DbInfoKind>(), [ran, setRan] = useState(''), [sort, setSort] = useState<{ index: number; dir: 'asc' | 'desc' } | null>(null)
-  const [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('agentboard.db.sqlHeight')) || 220 } catch { return 220 } })
+  const [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('gearmod.db.sqlHeight')) || 220 } catch { return 220 } })
   const box = useRef<HTMLDivElement>(null), execute = useRef<() => void>(() => undefined), cancel = useRef<() => void>(() => undefined)
   const keys = useMemo(() => [Prec.high(keymap.of([{ key: 'Mod-Enter', run: () => { execute.current(); return true } }, { key: 'Escape', run: () => { cancel.current(); return true } }]))], [])
   const [danger, setDanger] = useState<{ text: string; found: DestructiveStatement[] }>(), [typed, setTyped] = useState('')
-  const execSql = async (text: string, confirmDestructive?: string): Promise<void> => { const id = req.start(); try { const output = await window.agentboard.invoke('db:query:run', { connectionId, requestId: id, sql: text, limit: 1000, ...(confirmDestructive ? { confirmDestructive } : {}) }); if (req.current(id)) { setResult(output); setRan(text); setSort(null) } } catch (reason) { if (req.current(id)) req.setError(plainError(reason)) } finally { req.finish(id) } }
+  const execSql = async (text: string, confirmDestructive?: string): Promise<void> => { const id = req.start(); try { const output = await window.gearmod.invoke('db:query:run', { connectionId, requestId: id, sql: text, limit: 1000, ...(confirmDestructive ? { confirmDestructive } : {}) }); if (req.current(id)) { setResult(output); setRan(text); setSort(null) } } catch (reason) { if (req.current(id)) req.setError(plainError(reason)) } finally { req.finish(id) } }
   // Com escrita liberada, DROP/TRUNCATE/ALTER ... DROP e DELETE/UPDATE sem WHERE pedem confirmação; em produção, digitando o nome do banco.
   const run = async (text = sql): Promise<void> => {
     const found = allowWrite ? destructiveStatements(text) : []
@@ -35,7 +35,7 @@ export function DbSqlView({ connectionId, databases, setConnection, allowWrite, 
   const startDrag = (event: React.PointerEvent): void => {
     event.preventDefault(); const startY = event.clientY, start = height, limit = Math.max(120, (box.current?.clientHeight ?? 600) - 120); let last = start
     const move = (item: PointerEvent): void => { last = Math.max(90, Math.min(limit, start + item.clientY - startY)); setHeight(last) }
-    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); try { localStorage.setItem('agentboard.db.sqlHeight', String(last)) } catch { /* preferência local */ } }
+    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); try { localStorage.setItem('gearmod.db.sqlHeight', String(last)) } catch { /* preferência local */ } }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
   // Cada aba executa no banco escolhido nela; ao trocar de banco o resultado anterior deixa de valer.

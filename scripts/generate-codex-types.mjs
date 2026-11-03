@@ -11,7 +11,7 @@ const codex = process.env.CODEX_BIN || 'codex'
 const shell = process.platform === 'win32'
 
 const version = execFileSync(codex, ['--version'], { encoding: 'utf8', shell }).trim()
-const work = mkdtempSync(join(tmpdir(), 'agentboard-codex-ts-'))
+const work = mkdtempSync(join(tmpdir(), 'gearmod-codex-ts-'))
 try {
   execFileSync(codex, ['app-server', 'generate-ts', '--out', work], { stdio: 'inherit', shell })
   if (!readdirSync(work).length) throw new Error('A CLI do Codex não gerou nenhum arquivo.')

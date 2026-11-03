@@ -24,7 +24,7 @@ describe('tasks só de verificação', () => {
   })
 
   it('o agente não grava Tasks com elas; o usuário pode', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-tasks-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-tasks-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { CardDocument, CardDocumentKind, CardDocuments, DocumentVersion } from '@agentboard/contracts'
-import { cardDocumentKinds } from '@agentboard/contracts'
+import type { CardDocument, CardDocumentKind, CardDocuments, DocumentVersion } from '@gearmod/contracts'
+import { cardDocumentKinds } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { setTaskChecked, validateTasks, verificationOnlyTasks } from './tasks'
 import { tm } from './i18n'

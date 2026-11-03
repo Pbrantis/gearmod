@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { isOutdated, type ToolVersions } from '@agentboard/contracts'
+import { isOutdated, type ToolVersions } from '@gearmod/contracts'
 import { tr } from './i18n'
 
 let pending: Promise<ToolVersions> | null = null
@@ -9,7 +9,7 @@ let last: ToolVersions | undefined
 /** Últimas versões publicadas (cache de 24 h no processo principal); nunca trava a tela e falha em silêncio quando não há internet. */
 export function loadLatest(force = false): Promise<ToolVersions> {
   if (!force && pending) return pending
-  const request = force ? window.agentboard.invoke('tools:latest', { force: true }) : window.agentboard.invoke('tools:cached', undefined)
+  const request = force ? window.gearmod.invoke('tools:latest', { force: true }) : window.gearmod.invoke('tools:cached', undefined)
   pending = request.then((result) => { last = result; listeners.forEach((listener) => listener(result)); return result })
   void pending.catch(() => { pending = null })
   return pending

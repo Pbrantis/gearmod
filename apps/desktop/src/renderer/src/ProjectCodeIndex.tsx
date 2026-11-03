@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { CodeIndexStatus, Project } from '@agentboard/contracts'
+import type { CodeIndexStatus, Project } from '@gearmod/contracts'
 import { Switch } from './Switch'
 import { plainError } from './NoticeDialog'
 import { shortAgo } from './gitView'
@@ -14,14 +14,14 @@ export function ProjectCodeIndex({ project }: { project: Project }): React.JSX.E
   const [queue, setQueue] = useState<{ roots: string[]; done: number } | null>(null)
   useEffect(() => {
     let alive = true
-    void window.agentboard.invoke('code-index:status', { projectId: project.id, cardId: null }).then((value) => { if (alive) setStatus(value) }).catch((reason) => { if (alive) setError(plainError(reason)) })
+    void window.gearmod.invoke('code-index:status', { projectId: project.id, cardId: null }).then((value) => { if (alive) setStatus(value) }).catch((reason) => { if (alive) setError(plainError(reason)) })
     return () => { alive = false }
   }, [project.id])
   const run = async (action: () => Promise<CodeIndexStatus>): Promise<void> => {
     setBusy(true); setError('')
     try { setStatus(await action()) } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
-  const toggle = (enabled: boolean): void => { setStatus((current) => current ? { ...current, enabled } : current); void run(() => window.agentboard.invoke('code-index:set-enabled', { projectId: project.id, enabled })) }
+  const toggle = (enabled: boolean): void => { setStatus((current) => current ? { ...current, enabled } : current); void run(() => window.gearmod.invoke('code-index:set-enabled', { projectId: project.id, enabled })) }
   /** Indexa as pastas uma por vez para a tela mostrar quem está indexando, quem espera e quantas já terminaram. */
   const reindex = async (): Promise<void> => {
     if (!status) return
@@ -30,7 +30,7 @@ export function ProjectCodeIndex({ project }: { project: Project }): React.JSX.E
     try {
       for (const [index, root] of roots.entries()) {
         setQueue({ roots, done: index })
-        setStatus(await window.agentboard.invoke('code-index:reindex', { projectId: project.id, root }))
+        setStatus(await window.gearmod.invoke('code-index:reindex', { projectId: project.id, root }))
       }
     } catch (reason) { setError(plainError(reason)) } finally { setBusy(false); setQueue(null) }
   }

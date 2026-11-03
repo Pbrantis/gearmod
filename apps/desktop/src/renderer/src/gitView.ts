@@ -1,4 +1,4 @@
-import type { GitRef, GitRow, GitRule } from '@agentboard/contracts'
+import type { GitRef, GitRow, GitRule } from '@gearmod/contracts'
 import { tr } from './i18n'
 
 /** Cores das faixas do grafo, na ordem da faixa. */

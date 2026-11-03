@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { PolicyAction, PolicyRule } from '@agentboard/contracts'
+import type { PolicyAction, PolicyRule } from '@gearmod/contracts'
 import { AppDatabase } from './database'
 import { decide, PolicyEngine } from './policy'
 
@@ -27,7 +27,7 @@ describe('PolicyEngine', () => {
   const roots: string[] = [], databases: AppDatabase[] = []
   afterEach(async () => { while (databases.length) databases.pop()!.close(); while (roots.length) await rm(roots.pop()!, { recursive: true, force: true }) })
   async function setup(): Promise<AppDatabase> {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-policy-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-policy-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), 'test'); databases.push(database); await database.open()
     database.db.prepare("INSERT INTO projects(id,name,local_path,base_branch,created_at,updated_at) VALUES ('p','P','C:/p','main','now','now')").run()
     database.db.prepare("INSERT INTO board_columns(id,project_id,label,sort_order,semantic_state) VALUES ('c','p','Todo',0,'todo')").run()

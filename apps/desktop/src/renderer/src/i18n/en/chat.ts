@@ -60,7 +60,7 @@ export const chat: typeof source = {
   },
   approval: {
     switchWorkflow: (workflow: string) => `Switch the workflow to ${workflow}`,
-    sddNative: 'Full SDD — AgentBoard SDD',
+    sddNative: 'Full SDD — GearMod SDD',
     sddSpecKit: 'Full SDD — GitHub Spec Kit',
     sddNoMethod: 'Full SDD — method not chosen',
     workflowLight: 'Short workflow',

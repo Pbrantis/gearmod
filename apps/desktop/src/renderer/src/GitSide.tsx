@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import type { GitGraph, PullRequestList, PullRequestSummary } from '@agentboard/contracts'
+import type { GitGraph, PullRequestList, PullRequestSummary } from '@gearmod/contracts'
 import { useT } from './i18n'
 import { PrAccessNotice } from './PrPanel'
 
@@ -7,7 +7,7 @@ type Node<T> = { type: 'item'; item: T; label: string } | { type: 'folder'; name
 type LocalBranch = GitGraph['branches']['local'][number]
 type RemoteBranch = GitGraph['branches']['remote'][number]
 type Icons = Record<'branch' | 'cloud' | 'pc' | 'folder' | 'stash' | 'tree', React.JSX.Element>
-const heightsKey = 'agentboard.gitSideHeights', openKey = 'agentboard.gitSideOpen'
+const heightsKey = 'gearmod.gitSideHeights', openKey = 'gearmod.gitSideOpen'
 const loadOpen = (): { shut: Record<string, boolean>; folders: Record<string, boolean> } => { try { const saved = JSON.parse(localStorage.getItem(openKey) ?? '{}') as { shut?: Record<string, boolean>; folders?: Record<string, boolean> }; return { shut: saved.shut ?? {}, folders: saved.folders ?? {} } } catch { return { shut: {}, folders: {} } } }
 const loadHeights = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem(heightsKey) ?? '{}') as Record<string, number> } catch { return {} } }
 const syncArrow = (direction: 'up' | 'down'): React.JSX.Element => <svg viewBox="0 0 16 16" aria-hidden="true"><path d={direction === 'down' ? 'M8 3v8M4.5 7.5 8 11l3.5-3.5M3.5 13.5h9' : 'M8 13V5M4.5 8.5 8 5l3.5 3.5M3.5 2.5h9'} /></svg>

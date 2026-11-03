@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defaultWorkflowConfig } from '@agentboard/contracts'
+import { defaultWorkflowConfig } from '@gearmod/contracts'
 import { AppDatabase } from '../database'
 import { CardHistoryService } from '../history'
 import { BoardRepository, GitService, ProfileRepository, ProjectRepository } from '../projects'
@@ -17,16 +17,16 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = (dir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> => exec('git', ['-C', dir, ...args])
 
 async function workspace() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-sddresolver-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-sddresolver-')); roots.push(root)
   const ws = join(root, 'ws'), app = join(ws, 'app'), docs = join(ws, 'docs'), data = join(root, 'data')
   await mkdir(ws, { recursive: true })
   for (const dir of [app, docs]) {
     await exec('git', ['init', '-b', 'main', dir])
-    await git(dir, 'config', 'user.email', 'test@example.invalid'); await git(dir, 'config', 'user.name', 'AgentBoard Test')
+    await git(dir, 'config', 'user.email', 'test@example.invalid'); await git(dir, 'config', 'user.name', 'GearMod Test')
   }
-  await mkdir(join(app, '.agentboard'), { recursive: true }); await writeFile(join(app, '.agentboard', 'constitution.md'), 'Constitution do app na main')
+  await mkdir(join(app, '.gearmod'), { recursive: true }); await writeFile(join(app, '.gearmod', 'constitution.md'), 'Constitution do app na main')
   await git(app, 'add', '.'); await git(app, 'commit', '-m', 'inicial')
-  await mkdir(join(docs, 'sdd', '.agentboard'), { recursive: true }); await writeFile(join(docs, 'sdd', '.agentboard', 'constitution.md'), 'Constitution dos docs, fora da raiz')
+  await mkdir(join(docs, 'sdd', '.gearmod'), { recursive: true }); await writeFile(join(docs, 'sdd', '.gearmod', 'constitution.md'), 'Constitution dos docs, fora da raiz')
   await git(docs, 'add', '.'); await git(docs, 'commit', '-m', 'inicial')
   const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()
   const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
@@ -53,7 +53,7 @@ describe('SddResolver.locate', () => {
     history.setConfig(project.id, { ...defaultWorkflowConfig, sdd: { ...defaultWorkflowConfig.sdd, sourceId: sources.docs!.id, root: 'sdd' } })
     const view = await resolver.constitution({ projectId: project.id })
     expect(view.content).toBe('Constitution dos docs, fora da raiz')
-    expect(view.path).toBe('sdd/.agentboard/constitution.md')
+    expect(view.path).toBe('sdd/.gearmod/constitution.md')
     database.close()
   })
 
@@ -87,7 +87,7 @@ describe('SddResolver.locate', () => {
     const withWorktree = await resolver.locate({ projectId: project.id, cardId: card.id })
     expect(withWorktree.via).toBe('worktree')
     const member = worktrees.repositories(card.id)[0]!
-    await writeFile(join(member.path, '.agentboard', 'constitution.md'), 'editado na worktree, sem commit')
+    await writeFile(join(member.path, '.gearmod', 'constitution.md'), 'editado na worktree, sem commit')
     const view = await resolver.constitution({ projectId: project.id, cardId: card.id })
     expect(view.content).toBe('editado na worktree, sem commit')
     expect(view.via).toBe('worktree')
@@ -98,7 +98,7 @@ describe('SddResolver.locate', () => {
     const { resolver, board, card, project, app, sources, database } = await workspace()
     board.setRepos(card.id, [sources.app!.id])
     await git(app, 'checkout', '-b', 'outra-branch')
-    await writeFile(join(app, '.agentboard', 'constitution.md'), 'Constitution na outra branch')
+    await writeFile(join(app, '.gearmod', 'constitution.md'), 'Constitution na outra branch')
     await git(app, 'add', '.'); await git(app, 'commit', '-m', 'outra versão')
     await git(app, 'checkout', 'main')
     expect((await resolver.constitution({ projectId: project.id, cardId: card.id })).content).toBe('Constitution do app na main')

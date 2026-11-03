@@ -1,13 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
-import type { PermissionMode } from '@agentboard/contracts'
+import type { PermissionMode } from '@gearmod/contracts'
 import type { Approval, ApprovalService } from './approvals'
 import { specKitSkill, type SpecKitStage } from './spec-tools'
 import { setTaskChecked } from './tasks'
 import { tm } from './i18n'
 
 /**
- * Integração nativa do GitHub Spec Kit (ADR-018). O AgentBoard não imita modelos nem grava artefatos do método: dispara a skill
+ * Integração nativa do GitHub Spec Kit (ADR-018). O GearMod não imita modelos nem grava artefatos do método: dispara a skill
  * instalada (`/speckit-*` no Claude, `$speckit-*` no Codex) na worktree do card, amarra a feature do card pelo mecanismo da
  * v1.2.5 (`.specify/feature.json` + `SPECIFY_FEATURE_DIRECTORY`, lidos em `scripts/bash/common.sh`) e só LÊ o que as skills geraram.
  */

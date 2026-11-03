@@ -1,4 +1,4 @@
-import type { PullRequestDetail, PullRequestList, PullRequestSummary } from '@agentboard/contracts'
+import type { PullRequestDetail, PullRequestList, PullRequestSummary } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { nativeCli, type CliRunner } from './git-manager'
 import { nativeGit, type GitRunner } from './worktrees'

@@ -9,10 +9,10 @@ export const shortcutDefaults: Record<ShortcutId, string> = { toggleSidebar: 'Ct
 /** Combinações que o sistema, os campos de texto ou o próprio app já usam: não podem ser escolhidas. */
 const reserved = new Set(['Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+A', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+F', 'Ctrl+S', 'Ctrl+W', 'Ctrl+R', 'Ctrl+T', 'Ctrl+N', 'F5', 'F12', 'Shift+F12'])
 
-const storeKey = 'agentboard.shortcuts'
-export const shortcutsChangedEvent = 'agentboard:shortcuts-changed'
+const storeKey = 'gearmod.shortcuts'
+export const shortcutsChangedEvent = 'gearmod:shortcuts-changed'
 /** Disparado quando um atalho é acionado; `detail.id` diz qual. Quem trata a ação escuta este evento. */
-export const shortcutEvent = 'agentboard:shortcut'
+export const shortcutEvent = 'gearmod:shortcut'
 
 export function loadShortcuts(): Record<ShortcutId, string> {
   try {

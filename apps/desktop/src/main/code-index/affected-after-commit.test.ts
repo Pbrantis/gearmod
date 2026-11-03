@@ -14,17 +14,17 @@ afterEach(async () => {
 const git = (root: string, ...args: string[]): string => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true })
 const write = async (root: string, path: string, content: string): Promise<void> => { await mkdir(dirname(join(root, path)), { recursive: true }); await writeFile(join(root, path), content) }
 
-describe('agentboard_code_affected_tests depois de um commit (B7)', () => {
+describe('gearmod_code_affected_tests depois de um commit (B7)', () => {
   it('continua achando os testes dos arquivos já commitados na branch, não só os do git status', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-affected-')); dirs.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-affected-')); dirs.push(root)
     git(root, 'init', '-b', 'main'); git(root, 'config', 'user.email', 't@example.invalid'); git(root, 'config', 'user.name', 'T'); git(root, 'config', 'core.autocrlf', 'false')
     await write(root, 'src/soma.ts', 'export const soma = (a: number, b: number): number => a + b\n')
     await write(root, 'src/soma.test.ts', "import { soma } from './soma'\nexport const ok = soma(1, 2)\n")
     git(root, 'add', '.'); git(root, 'commit', '-m', 'base')
-    git(root, 'checkout', '-b', 'agentboard/card')
+    git(root, 'checkout', '-b', 'gearmod/card')
     await write(root, 'src/soma.ts', 'export const soma = (a: number, b: number): number => b + a\n')
     git(root, 'commit', '-am', 'muda soma')
-    const index = new CodeIndex(join(await mkdtemp(join(tmpdir(), 'agentboard-affected-db-')), 'index.sqlite')); indexes.push(index)
+    const index = new CodeIndex(join(await mkdtemp(join(tmpdir(), 'gearmod-affected-db-')), 'index.sqlite')); indexes.push(index)
     await index.index(root)
     const text = index.q(root).affected()
     expect(text).not.toContain('Nothing changed')

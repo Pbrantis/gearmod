@@ -15,7 +15,7 @@ import { CardUsageExport } from './card-usage-export'
 const exec = promisify(execFile), roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 it('exporta somente quando habilitado e apenas na worktree do repositório SDD separado', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-usage-export-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-usage-export-')); roots.push(root)
   const code = join(root, 'code'), docs = join(root, 'docs'), data = join(root, 'data')
   for (const repo of [code, docs]) {
     await exec('git', ['init', '-b', 'main', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 't@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'Test'])

@@ -537,12 +537,12 @@ export class Queries {
       used += block.length
       shown++
     }
-    if (skipped.length) out += `Also relevant (no code here, use agentboard_code_node): ${skipped.slice(0, 10).join(', ')}\n`
+    if (skipped.length) out += `Also relevant (no code here, use gearmod_code_node): ${skipped.slice(0, 10).join(', ')}\n`
     return out
   }
 
   private exploreOutline(picked: SymbolRow[], fileOrder: string[], score: Map<number, number>, wantsTests: boolean, inFlow: Set<number>): string {
-    let out = '**Where things are** (exact lines; open only what you need with Read offset/limit or agentboard_code_node codigo=true)\n\n'
+    let out = '**Where things are** (exact lines; open only what you need with Read offset/limit or gearmod_code_node codigo=true)\n\n'
     for (const path of fileOrder.slice(0, 15)) {
       if (isTest(path) && !wantsTests) continue
       out += `\`${path}\`\n${picked.filter((item) => item.path === path).sort((a, b) => a.line - b.line).map((item) => `  ${item.line}-${item.end_line} ${item.kind} ${item.qname}${item.kind === 'const' ? '' : ` — ${item.signature.slice(0, 120)}`}${item.doc ? `\n      ${item.doc.slice(0, 110)}` : ''}`).join('\n')}\n`

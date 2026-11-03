@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { IpcOutput } from '@agentboard/contracts'
+import type { IpcOutput } from '@gearmod/contracts'
 import { FileTypeIcon } from '../FileAppearance'
 import { plainError } from '../NoticeDialog'
 import { slashed, nameOf } from './documents'
@@ -24,7 +24,7 @@ export function ProjectSearch({ context, roots, seed, open, onQueryChange }: {
     if (!query.trim()) { setData(undefined); setError(''); setBusy(false); return }
     let alive = true; setBusy(true)
     const timer = window.setTimeout(() => {
-      void window.agentboard.invoke('workspace:grep', { ...context, query, ...options, ...(include.trim() ? { include: include.trim() } : {}) })
+      void window.gearmod.invoke('workspace:grep', { ...context, query, ...options, ...(include.trim() ? { include: include.trim() } : {}) })
         .then((result) => { if (alive) { setData(result); setError('') } }).catch((reason) => { if (alive) { setData(undefined); setError(plainError(reason)) } }).finally(() => { if (alive) setBusy(false) })
     }, 300)
     return () => { alive = false; window.clearTimeout(timer) }

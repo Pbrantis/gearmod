@@ -1,4 +1,4 @@
-# Constituição do AgentBoard
+# Constituição do GearMod
 
 **Versão:** 1.0.0 · **Ratificada em:** 2026-10-30
 
@@ -56,7 +56,7 @@ Os componentes citados estão em `apps/desktop/src/renderer/src/`.
 
 ## VII. Renderer só fala com o main pelo contrato
 
-- O renderer **DEVE** chamar o main só por `window.agentboard.invoke`, com o canal tipado em `@agentboard/contracts`. **NÃO DEVE** usar `ipcRenderer`, `require('electron')` ou Node direto.
+- O renderer **DEVE** chamar o main só por `window.gearmod.invoke`, com o canal tipado em `@gearmod/contracts`. **NÃO DEVE** usar `ipcRenderer`, `require('electron')` ou Node direto.
 - Canal novo **DEVE** ter o tipo de entrada e saída no contrato e teste no main.
 - **Por quê:** o contrato é o que mantém os dois lados conferidos pelo TypeScript e o renderer isolado do sistema.
 

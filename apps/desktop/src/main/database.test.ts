@@ -8,13 +8,13 @@ import { latestSchemaVersion, type Migration } from './migrations'
 import { NoteRepository } from './repository'
 
 const roots: string[] = []
-async function tempRoot(): Promise<string> { const root = await mkdtemp(join(tmpdir(), 'agentboard-')); roots.push(root); return root }
+async function tempRoot(): Promise<string> { const root = await mkdtemp(join(tmpdir(), 'gearmod-')); roots.push(root); return root }
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 
 describe('AppDatabase', () => {
   it('preserves records and ids across a restart', async () => {
     const root = await tempRoot()
-    const path = join(root, 'agentboard.sqlite')
+    const path = join(root, 'gearmod.sqlite')
     const first = new AppDatabase(path, '0.1.0')
     await first.open()
     const created = new NoteRepository(first).create('sobrevive ao reinício')
@@ -29,7 +29,7 @@ describe('AppDatabase', () => {
 
   it('rolls back the complete migration batch when an upgrade fails', async () => {
     const root = await tempRoot()
-    const path = join(root, 'agentboard.sqlite')
+    const path = join(root, 'gearmod.sqlite')
     const v1: Migration = { version: 1, checksum: 'v1', up: (db) => db.exec('CREATE TABLE durable(id TEXT PRIMARY KEY)') }
     const initial = new AppDatabase(path, '0.1.0', [v1])
     await initial.open()
@@ -47,7 +47,7 @@ describe('AppDatabase', () => {
 
   it('runs the pre-upgrade hook before applying a new schema', async () => {
     const root = await tempRoot()
-    const path = join(root, 'agentboard.sqlite')
+    const path = join(root, 'gearmod.sqlite')
     const v1: Migration = { version: 1, checksum: 'v1', up: (db) => db.exec('CREATE TABLE item(id TEXT PRIMARY KEY)') }
     const v2: Migration = { version: 2, checksum: 'v2', up: (db) => db.exec('ALTER TABLE item ADD COLUMN title TEXT') }
     const first = new AppDatabase(path, '0.1.0', [v1]); await first.open(); first.close()
@@ -62,7 +62,7 @@ describe('AppDatabase', () => {
 describe('BackupService', () => {
   it('backs up a WAL database plus attachments and restores verified content', async () => {
     const root = await tempRoot()
-    const path = join(root, 'agentboard.sqlite')
+    const path = join(root, 'gearmod.sqlite')
     const database = new AppDatabase(path, '0.1.0'); await database.open()
     const notes = new NoteRepository(database)
     const original = notes.create('valor original')
@@ -82,7 +82,7 @@ describe('BackupService', () => {
   })
 
   it('se a cópia dos anexos falhar, o banco e os anexos atuais ficam como estavam (D2)', async () => {
-    const root = await tempRoot(); const path = join(root, 'agentboard.sqlite')
+    const root = await tempRoot(); const path = join(root, 'gearmod.sqlite')
     const database = new AppDatabase(path, '0.1.0'); await database.open()
     const notes = new NoteRepository(database), backups = new BackupService(root, '0.1.0')
     await mkdir(join(root, 'attachments'), { recursive: true }); await writeFile(join(root, 'attachments', 'a.txt'), 'atual')
@@ -98,10 +98,10 @@ describe('BackupService', () => {
   })
 
   it('rejects a database whose backup checksum was changed', async () => {
-    const root = await tempRoot(); const path = join(root, 'agentboard.sqlite')
+    const root = await tempRoot(); const path = join(root, 'gearmod.sqlite')
     const database = new AppDatabase(path, '0.1.0'); await database.open()
     const backups = new BackupService(root, '0.1.0'); const backup = await backups.create(database.db, 'test'); database.close()
-    await writeFile(join(root, 'backups', backup.id, 'agentboard.sqlite'), 'tampered')
+    await writeFile(join(root, 'backups', backup.id, 'gearmod.sqlite'), 'tampered')
     await expect(backups.restore(backup.id, path)).rejects.toThrow('checksum')
   })
 })

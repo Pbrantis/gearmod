@@ -1,9 +1,9 @@
 // Confere as respostas do benchmark contra o gabarito do conjunto (spike/bench-sets/<set>.json).
-// Uso: node spike/bench-check.mjs <pasta-dos-resultados> [set]   (padrão: agentboard)
+// Uso: node spike/bench-check.mjs <pasta-dos-resultados> [set]   (padrão: gearmod)
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const [dir, set = 'agentboard'] = process.argv.slice(2)
+const [dir, set = 'gearmod'] = process.argv.slice(2)
 const cfg = JSON.parse(readFileSync(new URL(`./bench-sets/${set}.json`, import.meta.url), 'utf8'))
 const facts = Object.fromEntries(Object.entries(cfg.facts).map(([q, list]) => [q, list.map(([label, re, bad]) => [label, new RegExp(re), !!bad])]))
 const rows = {}

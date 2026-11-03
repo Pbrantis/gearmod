@@ -12,7 +12,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 
 describe('ConversationRepository', () => {
   it('persists chats, messages, runs and ordered sanitized events', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-chat-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-chat-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'Repo', repositories: [{ localPath, name: 'Repo', currentBranch: 'dev', branches: ['dev'] }] }) })
@@ -38,7 +38,7 @@ describe('ConversationRepository', () => {
   })
 
   it('rejects a profile outside the project allowlist', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-chat-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-chat-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'Repo', repositories: [{ localPath, name: 'Repo', currentBranch: 'dev', branches: ['dev'] }] }) })
@@ -49,7 +49,7 @@ describe('ConversationRepository', () => {
   })
 
   it('deletes project chats but protects chats linked to cards', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-chat-delete-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-chat-delete-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'Repo', repositories: [{ localPath, name: 'Repo', currentBranch: 'dev', branches: ['dev'] }] }) })

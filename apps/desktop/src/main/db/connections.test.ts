@@ -8,7 +8,7 @@ const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 const secure = { isEncryptionAvailable: () => true, encryptString: (value: string) => Buffer.from(value.split('').reverse().join('')), decryptString: (value: Buffer) => value.toString().split('').reverse().join('') }
 it('mantém senha fora do SQLite e exige confirmação para escrita externa', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-db-connections-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-db-connections-')); roots.push(root)
   const db = new AppDatabase(join(root, 'db.sqlite'), '0.1'); await db.open()
   try {
     db.db.prepare("INSERT INTO projects(id,name,local_path,base_branch,created_at,updated_at) VALUES ('p','P','x','main','now','now')").run()
@@ -27,7 +27,7 @@ it('mantém senha fora do SQLite e exige confirmação para escrita externa', as
   } finally { db.close() }
 })
 it('permite senha só em memória quando não existe cofre seguro', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-db-session-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-db-session-')); roots.push(root)
   const db = new AppDatabase(join(root, 'db.sqlite'), '0.1'); await db.open()
   try {
     db.db.prepare("INSERT INTO projects(id,name,local_path,base_branch,created_at,updated_at) VALUES ('p','P','x','main','now','now')").run()
@@ -40,7 +40,7 @@ it('permite senha só em memória quando não existe cofre seguro', async () => 
   } finally { db.close() }
 })
 it('banco herda host, usuário e senha do servidor e some junto com ele', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-db-parent-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-db-parent-')); roots.push(root)
   const db = new AppDatabase(join(root, 'db.sqlite'), '0.1'); await db.open()
   try {
     db.db.prepare("INSERT INTO projects(id,name,local_path,base_branch,created_at,updated_at) VALUES ('p','P','x','main','now','now')").run()

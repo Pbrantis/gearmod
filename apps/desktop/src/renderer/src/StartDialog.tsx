@@ -1,6 +1,6 @@
-import { providerLabels } from '@agentboard/contracts'
+import { providerLabels } from '@gearmod/contracts'
 import React, { useEffect, useState } from 'react'
-import { defaultPermissionMode, permissionModes, type AgentConfig, type AgentProfile, type Card } from '@agentboard/contracts'
+import { defaultPermissionMode, permissionModes, type AgentConfig, type AgentProfile, type Card } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { CheckIcon } from './icons'
 import { ModelMenu, useAgentConfig, permissionModeText } from './ModelMenu'
@@ -13,14 +13,14 @@ import { useT } from './i18n'
 export function StartDialog({ card, purpose, profiles, close, start }: { card: Card; purpose: 'execution' | 'test'; profiles: AgentProfile[]; close(): void; start(config: AgentConfig, baseBranch?: string): Promise<void> }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.start
   const [lockedId, setLockedId] = useState<string>()
-  useEffect(() => { void window.agentboard.invoke('chats:list', { projectId: card.projectId, cardId: card.id }).then((items) => setLockedId(items.find((item) => item.purpose === purpose)?.profileId)).catch(() => undefined) }, [card.id, card.projectId, purpose])
+  useEffect(() => { void window.gearmod.invoke('chats:list', { projectId: card.projectId, cardId: card.id }).then((items) => setLockedId(items.find((item) => item.purpose === purpose)?.profileId)).catch(() => undefined) }, [card.id, card.projectId, purpose])
   const state = useAgentConfig(card.id, purpose, profiles, lockedId)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   // Worktree: nova (padrão) ou a de outro card do projeto (só se este card ainda não tem uma).
   const [others, setOthers] = useState<Array<{ cardId: string; title: string; branch: string }>>([]), [from, setFrom] = useState('new')
-  useEffect(() => { if (!card.workspace) void window.agentboard.invoke('worktrees:candidates', { cardId: card.id }).then(setOthers).catch(() => undefined) }, [card.id, card.workspace])
+  useEffect(() => { if (!card.workspace) void window.gearmod.invoke('worktrees:candidates', { cardId: card.id }).then(setOthers).catch(() => undefined) }, [card.id, card.workspace])
   const [branches, setBranches] = useState<{ branches: string[]; current: string | null; selected: string | null; locked: boolean }>(), [branch, setBranch] = useState('')
-  useEffect(() => { void window.agentboard.invoke('cards:branches', { cardId: card.id }).then((info) => { setBranches(info); setBranch(info.selected ?? info.current ?? info.branches[0] ?? '') }).catch(() => undefined) }, [card.id])
+  useEffect(() => { void window.gearmod.invoke('cards:branches', { cardId: card.id }).then((info) => { setBranches(info); setBranch(info.selected ?? info.current ?? info.branches[0] ?? '') }).catch(() => undefined) }, [card.id])
   useEscape(close)
   const profile = profiles.find((item) => item.id === state.config?.profileId)
   const modes = profile ? permissionModes[profile.provider].filter((item) => item.purposes.includes(purpose)).map((item) => ({ ...item, ...permissionModeText(profile.provider, item) })) : []
@@ -38,6 +38,6 @@ export function StartDialog({ card, purpose, profiles, close, start }: { card: C
     <div className="sectitle" style={{ marginBottom: 8 }}>{purpose === 'test' ? t.testHow : t.runHow}</div>
     <div className="stack" style={{ gap: 8 }}>{modes.map((item) => <button type="button" key={item.id} disabled={item.needsApprovalUi} data-tip={item.needsApprovalUi ? t.needsApprovalUi : undefined} className={`startopt ${state.config?.mode === item.id ? 'sel' : ''}`} onClick={() => void state.update({ mode: item.id })}><span className="mo-t"><b>{item.label}</b>{item.recommended && <em>{t.recommended}</em>}{item.dangerous && <em>{t.careful}</em>}<small>{item.description}</small></span><span className="mo-r">{state.config?.mode === item.id && <CheckIcon />}</span></button>)}</div>
     {(error || state.error) && <p className="error" style={{ marginTop: 10 }}>{error || state.error}</p>}
-    <div className="actions"><button type="button" className="secondary" onClick={close}>{common.cancel}</button><button type="button" disabled={busy || !state.config} onClick={() => { if (!state.config) return; setBusy(true); setError(''); const config = state.config; void (from === 'new' ? Promise.resolve() : window.agentboard.invoke('worktrees:link', { cardId: card.id, fromCardId: from }).then(() => undefined)).then(() => start(config, from === 'new' && branches && !branches.locked && branch ? branch : undefined)).catch((reason: unknown) => { setError(plainError(reason)); setBusy(false) }) }}>{busy ? t.starting : t.startButton}</button></div>
+    <div className="actions"><button type="button" className="secondary" onClick={close}>{common.cancel}</button><button type="button" disabled={busy || !state.config} onClick={() => { if (!state.config) return; setBusy(true); setError(''); const config = state.config; void (from === 'new' ? Promise.resolve() : window.gearmod.invoke('worktrees:link', { cardId: card.id, fromCardId: from }).then(() => undefined)).then(() => start(config, from === 'new' && branches && !branches.locked && branch ? branch : undefined)).catch((reason: unknown) => { setError(plainError(reason)); setBusy(false) }) }}>{busy ? t.starting : t.startButton}</button></div>
   </div></div>
 }

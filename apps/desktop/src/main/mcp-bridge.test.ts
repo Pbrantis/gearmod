@@ -18,16 +18,16 @@ import { seedProfiles } from './test-helpers'
 import { ApprovalService } from './approvals'
 import { PolicyEngine } from './policy'
 import { CardHistoryService } from './history'
-import { defaultWorkflowConfig } from '@agentboard/contracts'
+import { defaultWorkflowConfig } from '@gearmod/contracts'
 
 const roots: string[] = []
 const closers: Array<() => Promise<void>> = []
 afterEach(async () => { await Promise.all(closers.splice(0).map((close) => close())); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
-const serverScript = join(__dirname, '..', '..', 'resources', 'agentboard-mcp', 'server.mjs')
+const serverScript = join(__dirname, '..', '..', 'resources', 'gearmod-mcp', 'server.mjs')
 
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
   const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
   const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
@@ -51,7 +51,7 @@ function mcpClient(endpoint: { command: string; args: string[]; env: Record<stri
   return { request, call }
 }
 
-describe('AgentBoard MCP server', () => {
+describe('GearMod MCP server', () => {
   it('não grava documentos paralelos nem conclui planejamento de Spec Kit pelo MCP ou por marcadores', async () => {
     const { board, card, database, root } = await setup()
     const history = new CardHistoryService(database, root)
@@ -60,9 +60,9 @@ describe('AgentBoard MCP server', () => {
     const bridge = new McpBridge({ board, context, serverScript, runtime: process.execPath, history })
     await bridge.listen(); closers.push(() => bridge.close())
     const client = mcpClient(bridge.register('run-speckit', card.id, () => undefined, { id: 'chat', purpose: 'planning' }))
-    expect((await client.call('agentboard_write_document', { tipo: 'especificacao', markdown: '# Spec' })).isError).toBe(true)
-    expect((await client.call('agentboard_finish_planning', {})).isError).toBe(true)
-    new AgentWriteback(board, bridge).finish({ runId: 'run-speckit', cardId: card.id, planning: true, completed: true, text: '<!-- agentboard:documento tipo=especificacao -->\n# Paralelo\n<!-- /agentboard:documento -->\n<!-- agentboard:planejamento-concluido -->', publish: () => undefined })
+    expect((await client.call('gearmod_write_document', { tipo: 'especificacao', markdown: '# Spec' })).isError).toBe(true)
+    expect((await client.call('gearmod_finish_planning', {})).isError).toBe(true)
+    new AgentWriteback(board, bridge).finish({ runId: 'run-speckit', cardId: card.id, planning: true, completed: true, text: '<!-- gearmod:documento tipo=especificacao -->\n# Paralelo\n<!-- /gearmod:documento -->\n<!-- gearmod:planejamento-concluido -->', publish: () => undefined })
     expect(board.documents.read(card.id, 'especificacao')).toBe('')
     expect(board.card(card.id).hasPlan).toBe(false)
   })
@@ -71,10 +71,10 @@ describe('AgentBoard MCP server', () => {
     const approvals = new ApprovalService(database)
     const context = new AgentContextService(board, new SettingsRepository(database), null)
     const bridge = new McpBridge({ board, context, serverScript, runtime: process.execPath, conversations: { projectOf: () => project.id, convertToPlanning: () => undefined }, approvals,
-      sddResolver: { constitution: async () => ({ path: '.agentboard/constitution.md', content: 'antes', blobSha: 'abc', baseBlobSha: 'abc', headBlobSha: 'abc', state: 'in-sync', method: 'native', via: 'ref' }), locate: async () => ({ repo: 'repo', rootAbs: 'repo', ref: 'main', via: 'ref', sourceId: project.id, method: 'native', worktreeBranch: null }) } })
+      sddResolver: { constitution: async () => ({ path: '.gearmod/constitution.md', content: 'antes', blobSha: 'abc', baseBlobSha: 'abc', headBlobSha: 'abc', state: 'in-sync', method: 'native', via: 'ref' }), locate: async () => ({ repo: 'repo', rootAbs: 'repo', ref: 'main', via: 'ref', sourceId: project.id, method: 'native', worktreeBranch: null }) } })
     await bridge.listen(); closers.push(() => bridge.close())
     const client = mcpClient(bridge.register('run-proposal', card.id, () => undefined, { id: 'chat', purpose: 'constitution' }))
-    const result = await client.call('agentboard_write_constitution', { markdown: 'depois\n' })
+    const result = await client.call('gearmod_write_constitution', { markdown: 'depois\n' })
     expect(result.isError).toBe(false)
     expect(result.content[0]!.text).toContain('has not been changed yet')
     expect(approvals.list(card.id)[0]).toMatchObject({ kind: 'constitution-apply', status: 'requested', payload: { before: 'antes', content: 'depois\n', expectBlobSha: 'abc' } })
@@ -84,43 +84,43 @@ describe('AgentBoard MCP server', () => {
     const changes: CardChange[] = []
     const client = mcpClient(bridge.register('run-1', card.id, (change) => changes.push(change)))
     const init = await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
-    expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('agentboard')
+    expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('gearmod')
     const listed = await client.request('tools/list')
-    // Sem índice de código no bridge, as ferramentas agentboard_code_* não aparecem (ver code-index/mcp-code-tools.test.ts).
+    // Sem índice de código no bridge, as ferramentas gearmod_code_* não aparecem (ver code-index/mcp-code-tools.test.ts).
     // S14: run-1 é 'execution' (padrão de register()); tools/list devolve só as ferramentas desse papel, não as 23 do catálogo inteiro.
-    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['agentboard_read_skill', 'agentboard_card_context', 'agentboard_write_document', 'agentboard_mark_task', 'agentboard_update_card', 'agentboard_propose_change', 'agentboard_ask_planner', 'agentboard_read_constitution', 'agentboard_propose_constitution', 'agentboard_move_card', 'agentboard_request_commit', 'agentboard_record_understanding', 'agentboard_record_exploration', 'agentboard_assess_complexity', 'agentboard_choose_workflow', 'agentboard_set_repositories', 'agentboard_record_decision'])
+    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['gearmod_read_skill', 'gearmod_card_context', 'gearmod_write_document', 'gearmod_mark_task', 'gearmod_update_card', 'gearmod_propose_change', 'gearmod_ask_planner', 'gearmod_read_constitution', 'gearmod_propose_constitution', 'gearmod_move_card', 'gearmod_request_commit', 'gearmod_record_understanding', 'gearmod_record_exploration', 'gearmod_assess_complexity', 'gearmod_choose_workflow', 'gearmod_set_repositories', 'gearmod_record_decision'])
 
-    expect((await client.call('agentboard_card_context', {})).content[0]!.text).toContain('"titulo": "MCP"')
-    const bad = await client.call('agentboard_write_document', { tipo: 'tasks', markdown: 'sem itens' })
+    expect((await client.call('gearmod_card_context', {})).content[0]!.text).toContain('"titulo": "MCP"')
+    const bad = await client.call('gearmod_write_document', { tipo: 'tasks', markdown: 'sem itens' })
     expect(bad.isError).toBe(true); expect(bad.content[0]!.text).toContain('T001')
-    expect((await client.call('agentboard_write_document', { tipo: 'tasks', markdown: '## Tasks\n- [ ] T001 Primeira\n  - [ ] Critério' })).isError).toBe(false)
+    expect((await client.call('gearmod_write_document', { tipo: 'tasks', markdown: '## Tasks\n- [ ] T001 Primeira\n  - [ ] Critério' })).isError).toBe(false)
     expect(board.documents.get(card.id).tasks.updatedBy).toBe('agent')
-    expect((await client.call('agentboard_mark_task', { linha: 2, feito: true })).isError).toBe(false)
+    expect((await client.call('gearmod_mark_task', { linha: 2, feito: true })).isError).toBe(false)
     expect(board.card(card.id).tasks).toEqual({ done: 1, total: 1 })
-    expect((await client.call('agentboard_update_card', { titulo: 'Novo título', prioridade: 'urgent' })).isError).toBe(false)
+    expect((await client.call('gearmod_update_card', { titulo: 'Novo título', prioridade: 'urgent' })).isError).toBe(false)
     expect(board.card(card.id)).toMatchObject({ title: 'Novo título', priority: 'urgent', type: 'task', description: 'Resumo' })
-    expect((await client.call('agentboard_update_card', { tipo: 'invalido' })).isError).toBe(true)
+    expect((await client.call('gearmod_update_card', { tipo: 'invalido' })).isError).toBe(true)
     // Tipo vem da lista do projeto (id ou nome); o erro lista os válidos e lembra que o fluxo curto não é tipo.
-    const minor = await client.call('agentboard_update_card', { tipo: 'minor' })
+    const minor = await client.call('gearmod_update_card', { tipo: 'minor' })
     expect(minor.isError).toBe(true); expect(JSON.stringify(minor.content)).toContain('feature (Feature), bug (Bug), improvement (Improvement)'); expect(JSON.stringify(minor.content)).toContain('fluxo light')
-    expect((await client.call('agentboard_update_card', { tipo: 'Improvement' })).isError).toBe(false)
+    expect((await client.call('gearmod_update_card', { tipo: 'Improvement' })).isError).toBe(false)
     expect(board.card(card.id).type).toBe('improvement')
     board.update({ cardId: card.id, type: 'task', title: 'Novo título', description: 'Resumo', priority: 'urgent', acceptanceCriteria: [] })
-    const moved = await client.call('agentboard_move_card', { coluna: 'Doing', quando: 'agora' })
+    const moved = await client.call('gearmod_move_card', { coluna: 'Doing', quando: 'agora' })
     expect(moved.content[0]!.text).toContain('Doing'); expect(board.card(card.id).columnId).toBe(columns[2]!.id)
-    const refused = await client.call('agentboard_move_card', { coluna: 'Done', quando: 'agora' })
+    const refused = await client.call('gearmod_move_card', { coluna: 'Done', quando: 'agora' })
     expect(refused.isError).toBe(true); expect(refused.content[0]!.text).toContain('Testes automatizados')
     expect(changes.map((change) => change.type)).toEqual(['document', 'task', 'card', 'card', 'moved'])
-    await client.call('agentboard_move_card', { coluna: 'test', quando: 'ao_terminar' })
+    await client.call('gearmod_move_card', { coluna: 'test', quando: 'ao_terminar' })
     expect(bridge.finish('run-1')).toEqual({ written: ['tasks'], pendingMove: columns[3]!.id })
   })
 
-  it('B2: o chat da Constituição lista agentboard_create_card, que a skill manda chamar', async () => {
+  it('B2: o chat da Constituição lista gearmod_create_card, que a skill manda chamar', async () => {
     const { bridge } = await setup()
     const client = mcpClient(bridge.register('run-const', null, () => undefined, { id: 'chat-c', purpose: 'constitution' }))
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     const names = (await client.request('tools/list').then((reply) => (reply.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)))
-    expect(names).toContain('agentboard_create_card'); expect(names).toContain('agentboard_write_constitution')
+    expect(names).toContain('gearmod_create_card'); expect(names).toContain('gearmod_write_constitution')
   })
 
   it('S14: cada papel vê só as ferramentas do papel; o planejador não vê request_commit nem test_checklist', async () => {
@@ -128,16 +128,16 @@ describe('AgentBoard MCP server', () => {
     const client = mcpClient(bridge.register('run-plan', card.id, () => undefined, { id: 'chat-1', purpose: 'planning' }))
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     const names = (await client.request('tools/list').then((reply) => (reply.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)))
-    expect(names).toContain('agentboard_finish_planning'); expect(names).toContain('agentboard_answer_question')
-    expect(names).not.toContain('agentboard_request_commit'); expect(names).not.toContain('agentboard_test_checklist'); expect(names).not.toContain('agentboard_create_card')
+    expect(names).toContain('gearmod_finish_planning'); expect(names).toContain('gearmod_answer_question')
+    expect(names).not.toContain('gearmod_request_commit'); expect(names).not.toContain('gearmod_test_checklist'); expect(names).not.toContain('gearmod_create_card')
     expect(names.length).toBeLessThan(23)
     // A lista não é a única barreira: mesmo fora dela, o handle() do app recusa com o aviso certo (é ele quem decide, não o filtro).
-    const refused = await client.call('agentboard_request_commit', { mensagem: 'x' })
+    const refused = await client.call('gearmod_request_commit', { mensagem: 'x' })
     expect(refused.isError).toBe(true)
   })
 
   it('S11: regra deny do PolicyEngine bloqueia mover e escolher fluxo antes de qualquer pedido de aprovação', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
     const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
@@ -151,10 +151,10 @@ describe('AgentBoard MCP server', () => {
     closers.push(async () => { await bridge.close(); database.close() })
     const client = mcpClient(bridge.register('run-1', card.id, () => undefined))
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
-    const moved = await client.call('agentboard_move_card', { coluna: 'Doing', quando: 'agora' })
+    const moved = await client.call('gearmod_move_card', { coluna: 'Doing', quando: 'agora' })
     expect(moved.isError).toBe(true); expect(moved.content[0]!.text).toContain('policy')
     // B9: "ao terminar" também respeita a política
-    const later = await client.call('agentboard_move_card', { coluna: 'Doing', quando: 'ao_terminar' })
+    const later = await client.call('gearmod_move_card', { coluna: 'Doing', quando: 'ao_terminar' })
     expect(later.isError).toBe(true); expect(later.content[0]!.text).toContain('policy')
     expect(board.card(card.id).columnId).toBe(columns[1]!.id)
     expect(approvals.list(card.id)).toHaveLength(0)
@@ -163,7 +163,7 @@ describe('AgentBoard MCP server', () => {
   })
 
   it('S9: regra ask explícita não libera sozinha: o movimento vira pedido de aprovação', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
     const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
@@ -177,7 +177,7 @@ describe('AgentBoard MCP server', () => {
     closers.push(async () => { await bridge.close(); database.close() })
     const client = mcpClient(bridge.register('run-1', card.id, () => undefined))
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
-    const moved = await client.call('agentboard_move_card', { coluna: 'Doing', quando: 'agora' })
+    const moved = await client.call('gearmod_move_card', { coluna: 'Doing', quando: 'agora' })
     expect(moved.isError).toBeFalsy(); expect(moved.content[0]!.text).toContain('awaiting')
     expect(board.card(card.id).columnId).toBe(columns[1]!.id)
     expect(approvals.list(card.id)).toHaveLength(1)
@@ -186,7 +186,7 @@ describe('AgentBoard MCP server', () => {
   })
 
   it('S05 atrás da flag: movimento imediato vira pedido pendente, só aplicado após aprovação', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
     const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
@@ -198,7 +198,7 @@ describe('AgentBoard MCP server', () => {
     closers.push(async () => { await bridge.close(); database.close() })
     const client = mcpClient(bridge.register('run-1', card.id, () => undefined))
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
-    const reply = await client.call('agentboard_move_card', { coluna: 'Doing', quando: 'agora' })
+    const reply = await client.call('gearmod_move_card', { coluna: 'Doing', quando: 'agora' })
     expect(reply.isError).toBe(false); expect(reply.content[0]!.text).toContain("awaiting the user's approval")
     expect(board.card(card.id).columnId).toBe(columns[1]!.id)
     const pending = approvals.list(card.id).find((item) => item.kind === 'agent-move' && item.status === 'requested')!
@@ -212,7 +212,7 @@ describe('AgentBoard MCP server', () => {
     const endpoint = bridge.register('run-2', card.id, () => undefined)
     bridge.finish('run-2')
     const client = mcpClient(endpoint)
-    const answer = await client.call('agentboard_card_context', {})
+    const answer = await client.call('gearmod_card_context', {})
     expect(answer.isError).toBe(true); expect(answer.content[0]!.text).toContain('already ended')
   })
 })
@@ -232,7 +232,7 @@ describe('card title', () => {
     writeback.begin('run-t', blank.id, () => undefined)
     const events: string[] = []
     writeback.finish({ runId: 'run-t', cardId: blank.id, planning: true, completed: true, text: 'ok', prompt: 'Quero planejar o painel de uso. Com Codex e Claude', publish: (type) => events.push(type) })
-    expect(board.card(blank.id).title).toBe('Quero planejar o painel de uso'); expect(events).toContain('agentboard/card-updated')
+    expect(board.card(blank.id).title).toBe('Quero planejar o painel de uso'); expect(events).toContain('gearmod/card-updated')
     writeback.begin('run-n', card.id, () => undefined)
     writeback.finish({ runId: 'run-n', cardId: card.id, planning: true, completed: true, text: 'ok', prompt: 'Outro pedido qualquer', publish: () => undefined })
     expect(board.card(card.id).title).toBe('MCP')
@@ -241,7 +241,7 @@ describe('card title', () => {
 
 describe('Plano B and writeback', () => {
   it('extracts documents between markers', () => {
-    const text = 'Pronto.\n<!-- agentboard:documento tipo=especificacao -->\n## Especificação\nTexto\n<!-- /agentboard:documento -->\n<!-- agentboard:documento tipo=invalido -->x<!-- /agentboard:documento -->'
+    const text = 'Pronto.\n<!-- gearmod:documento tipo=especificacao -->\n## Especificação\nTexto\n<!-- /gearmod:documento -->\n<!-- gearmod:documento tipo=invalido -->x<!-- /gearmod:documento -->'
     expect(extractDocuments(text)).toEqual([{ kind: 'especificacao', markdown: '## Especificação\nTexto' }])
   })
 
@@ -250,22 +250,22 @@ describe('Plano B and writeback', () => {
     const writeback = new AgentWriteback(board, bridge), events: string[] = []
     const endpoint = writeback.begin('run-3', card.id, (type) => events.push(type))
     const client = mcpClient(endpoint)
-    await client.call('agentboard_move_card', { coluna: 'To do', quando: 'ao_terminar' })
-    const outcome = writeback.finish({ runId: 'run-3', cardId: card.id, planning: true, completed: true, publish: (type) => events.push(type), text: '<!-- agentboard:documento tipo=plano -->\n## Plano\nFazer\n<!-- /agentboard:documento -->\n<!-- agentboard:documento tipo=tasks -->\nsem itens\n<!-- /agentboard:documento -->' })
+    await client.call('gearmod_move_card', { coluna: 'To do', quando: 'ao_terminar' })
+    const outcome = writeback.finish({ runId: 'run-3', cardId: card.id, planning: true, completed: true, publish: (type) => events.push(type), text: '<!-- gearmod:documento tipo=plano -->\n## Plano\nFazer\n<!-- /gearmod:documento -->\n<!-- gearmod:documento tipo=tasks -->\nsem itens\n<!-- /gearmod:documento -->' })
     expect(board.documents.read(card.id, 'plano')).toBe('## Plano\nFazer')
     expect(outcome.wroteDocuments).toBe(true); expect(outcome.notices[0]).toContain('tasks não foi gravado')
     expect(board.card(card.id).columnId).toBe(columns[1]!.id)
-    expect(events).toContain('agentboard/card-updated')
+    expect(events).toContain('gearmod/card-updated')
     const another = writeback.begin('run-4', card.id, () => undefined)
-    expect(another.env.AGENTBOARD_TOKEN).not.toBe(endpoint.env.AGENTBOARD_TOKEN)
+    expect(another.env.GEARMOD_TOKEN).not.toBe(endpoint.env.GEARMOD_TOKEN)
     expect(board.card(card.id).hasPlan).toBe(false)
-    expect((await mcpClient(another).call('agentboard_finish_planning', {})).isError).toBe(true)
+    expect((await mcpClient(another).call('gearmod_finish_planning', {})).isError).toBe(true)
   })
 })
 
 describe('collaboration tools', () => {
   it('lets the developer ask and propose, the planner answer and escalate, and refuses the wrong role', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-collab-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-collab-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects), conversations = new ConversationRepository(database)
@@ -279,18 +279,18 @@ describe('collaboration tools', () => {
     const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), null), serverScript, runtime: process.execPath, collab }); await bridge.listen()
     closers.push(async () => { await bridge.close(); database.close() })
     const developer = mcpClient(bridge.register('r-dev', card.id, () => undefined, { id: dev.id, purpose: 'execution' }))
-    expect((await developer.call('agentboard_ask_planner', { pergunta: 'Qual lib de datas?' })).content[0]!.text).toContain('D001')
-    expect((await developer.call('agentboard_propose_change', { titulo: 'Cache', o_que_muda: 'Adicionar cache', motivo: 'Lento' })).content[0]!.text).toContain('M001')
-    expect((await developer.call('agentboard_propose_change', { titulo: 'só título' })).isError).toBe(true)
-    expect((await developer.call('agentboard_answer_question', { numero: 1, resposta: 'x' })).isError).toBe(true)
-    expect((await developer.call('agentboard_write_document', { tipo: 'duvidas', markdown: 'x' })).isError).toBe(true)
+    expect((await developer.call('gearmod_ask_planner', { pergunta: 'Qual lib de datas?' })).content[0]!.text).toContain('D001')
+    expect((await developer.call('gearmod_propose_change', { titulo: 'Cache', o_que_muda: 'Adicionar cache', motivo: 'Lento' })).content[0]!.text).toContain('M001')
+    expect((await developer.call('gearmod_propose_change', { titulo: 'só título' })).isError).toBe(true)
+    expect((await developer.call('gearmod_answer_question', { numero: 1, resposta: 'x' })).isError).toBe(true)
+    expect((await developer.call('gearmod_write_document', { tipo: 'duvidas', markdown: 'x' })).isError).toBe(true)
     expect(board.card(card.id).pending).toEqual({ changes: 1, questions: 0, commits: 0, toSend: 0 })
     collab.afterRun({ cardId: card.id, chatId: dev.id, purpose: 'execution', status: 'completed' })
     const planner = mcpClient(bridge.register('r-plan', card.id, () => undefined, { id: planning.id, purpose: 'planning' }))
-    expect((await planner.call('agentboard_ask_planner', { pergunta: 'eu?' })).isError).toBe(true)
-    expect((await planner.call('agentboard_propose_change', { titulo: 'a', o_que_muda: 'b', motivo: 'c' })).isError).toBe(true)
-    expect((await planner.call('agentboard_answer_question', { numero: 1, resposta: 'Use date-fns.' })).isError).toBe(false)
-    expect((await planner.call('agentboard_ask_user', { numero: 1, pergunta: 'x' })).isError).toBe(true)
+    expect((await planner.call('gearmod_ask_planner', { pergunta: 'eu?' })).isError).toBe(true)
+    expect((await planner.call('gearmod_propose_change', { titulo: 'a', o_que_muda: 'b', motivo: 'c' })).isError).toBe(true)
+    expect((await planner.call('gearmod_answer_question', { numero: 1, resposta: 'Use date-fns.' })).isError).toBe(false)
+    expect((await planner.call('gearmod_ask_user', { numero: 1, pergunta: 'x' })).isError).toBe(true)
     collab.afterRun({ cardId: card.id, chatId: planning.id, purpose: 'planning', status: 'completed' })
     expect(started.map((action) => action.chatId)).toEqual([planning.id, dev.id]); expect(started[1]!.prompt).toContain('Use date-fns.')
   })
@@ -305,14 +305,14 @@ describe('collaboration tools', () => {
     const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), null), serverScript, runtime: process.execPath, git: { agentCommit: async (input) => { asked.push(input); if (input.message === 'recusa') throw new Error('Commit do agente desligado na branch main'); return { rule: 'ask', text: 'Pedido de commit registrado.' } } } }); await bridge.listen()
     closers.push(async () => { await bridge.close() })
     const developer = mcpClient(bridge.register('r-dev', card.id, (change) => changes.push(change), { id: dev.id, purpose: 'execution' }))
-    const ok = await developer.call('agentboard_request_commit', { mensagem: 'Cria a tela', arquivos: ['a.txt'], repositorio: 'repo' })
+    const ok = await developer.call('gearmod_request_commit', { mensagem: 'Cria a tela', arquivos: ['a.txt'], repositorio: 'repo' })
     expect(ok).toMatchObject({ isError: false }); expect(ok.content[0]!.text).toContain('Pedido de commit registrado')
     expect(asked).toEqual([{ cardId: card.id, chatId: dev.id, message: 'Cria a tela', files: ['a.txt'], repo: 'repo' }]); expect(changes).toEqual([{ type: 'commit' }])
-    expect((await developer.call('agentboard_request_commit', { mensagem: 'recusa' }))).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('desligado') }] })
-    expect((await developer.call('agentboard_request_commit', {})).isError).toBe(true)
-    expect((await developer.call('agentboard_request_commit', { mensagem: 'x', arquivos: 'a.txt' })).isError).toBe(true)
+    expect((await developer.call('gearmod_request_commit', { mensagem: 'recusa' }))).toMatchObject({ isError: true, content: [{ text: expect.stringContaining('desligado') }] })
+    expect((await developer.call('gearmod_request_commit', {})).isError).toBe(true)
+    expect((await developer.call('gearmod_request_commit', { mensagem: 'x', arquivos: 'a.txt' })).isError).toBe(true)
     const planner = mcpClient(bridge.register('r-plan', card.id, () => undefined, { id: plan.id, purpose: 'planning' }))
-    expect((await planner.call('agentboard_request_commit', { mensagem: 'x' })).content[0]!.text).toContain('developer')
+    expect((await planner.call('gearmod_request_commit', { mensagem: 'x' })).content[0]!.text).toContain('developer')
     expect(asked).toHaveLength(2)
   })
 })

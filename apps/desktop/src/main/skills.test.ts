@@ -14,7 +14,7 @@ const git = { validate: async () => undefined, branches: async () => ['dev'], in
 const skillMd = (name: string, description: string, body = 'Siga o CLAUDE.md do projeto e a pasta .claude/skills.') => `---\nname: ${name}\ndescription: ${description}\nallowed-tools: Bash\n---\n\n${body}\n`
 
 async function setup(reviewer?: ConstructorParameters<typeof SkillService>[2]) {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-skills-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-skills-')); roots.push(root)
   const home = join(root, 'home'), repo = join(root, 'repo')
   await mkdir(home, { recursive: true }); await mkdir(repo, { recursive: true })
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)

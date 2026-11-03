@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { VoiceStatus } from '@agentboard/contracts'
+import type { VoiceStatus } from '@gearmod/contracts'
 import { encodeWav } from './wav'
 import { plainError } from './NoticeDialog'
 import { startVoiceInstall, useVoiceInstall } from './voiceStore'
@@ -12,8 +12,8 @@ export function useDictation(onText: (text: string) => void, hint?: string): { s
   const t = useT().chat.dictation
   const [status, setStatus] = useState<VoiceStatus>(), [recording, setRecording] = useState(false), [transcribing, setTranscribing] = useState(false), [error, setError] = useState('')
   const recorder = useRef<MediaRecorder | undefined>(undefined), chunks = useRef<Blob[]>([]), stream = useRef<MediaStream | undefined>(undefined), timer = useRef<number | undefined>(undefined)
-  const refresh = useCallback(async () => { try { setStatus(await window.agentboard.invoke('voice:status', undefined)) } catch (reason) { setError(plainError(reason)) } }, [])
-  useEffect(() => { void refresh(); const changed = (): void => { setError(''); void refresh() }; window.addEventListener('agentboard:voice-changed', changed); return () => window.removeEventListener('agentboard:voice-changed', changed) }, [refresh])
+  const refresh = useCallback(async () => { try { setStatus(await window.gearmod.invoke('voice:status', undefined)) } catch (reason) { setError(plainError(reason)) } }, [])
+  useEffect(() => { void refresh(); const changed = (): void => { setError(''); void refresh() }; window.addEventListener('gearmod:voice-changed', changed); return () => window.removeEventListener('gearmod:voice-changed', changed) }, [refresh])
   const installation = useVoiceInstall()
   useEffect(() => { if (installation.done) void refresh() }, [installation.done, refresh])
   const progress = installation.installing ? t.downloading(installation.item || t.program, installation.percent === null ? `${installation.megabytes} MB` : `${installation.percent}%`) : ''
@@ -27,7 +27,7 @@ export function useDictation(onText: (text: string) => void, hint?: string): { s
       const context = new AudioContext({ sampleRate: 16000 })
       const audio = await context.decodeAudioData(await blob.arrayBuffer()); await context.close()
       const wav = encodeWav(audio.getChannelData(0), 16000)
-      const { text } = await window.agentboard.invoke('voice:transcribe', { wav, prompt: hint })
+      const { text } = await window.gearmod.invoke('voice:transcribe', { wav, prompt: hint })
       if (text) onText(text); else setError(tr().chat.dictation.notUnderstood)
     } catch (reason) { setError(plainError(reason)) } finally { setTranscribing(false) }
   }, [hint, onText])

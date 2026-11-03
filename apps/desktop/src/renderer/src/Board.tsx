@@ -4,7 +4,7 @@ import { ColumnMenu } from './ColumnMenu'
 import { useToolsPending } from './ToolsPanel'
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { AgentProfile, AgentPurpose, Card, CardTypeDef, Chat, ProjectBoard } from '@agentboard/contracts'
+import type { AgentProfile, AgentPurpose, Card, CardTypeDef, Chat, ProjectBoard } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { CardChat } from './CardChat'
 import { CardContextMenu } from './CardContextMenu'
@@ -89,8 +89,8 @@ function CardTile({ card, types, state, agent, agents, dropLabel, dragProps, onP
 }
 
 type ProjectView = 'board' | 'chats' | 'git' | 'db'
-const dockPinKey = 'agentboard.viewDockPinned'
-const dockPointKey = 'agentboard.viewDockPoint'
+const dockPinKey = 'gearmod.viewDockPinned'
+const dockPointKey = 'gearmod.viewDockPoint'
 const readDockPoint = (): { x: number; y: number } | null => { try { const value = JSON.parse(localStorage.getItem(dockPointKey) ?? 'null') as { x?: unknown; y?: unknown } | null; return value && typeof value.x === 'number' && typeof value.y === 'number' ? { x: value.x, y: value.y } : null } catch { return null } }
 
 /** Seletor de visão destacável: o próprio menu é a alça para mover o dock. */
@@ -136,7 +136,7 @@ function ViewDock({ projectId, view, select, databaseEnabled, gitAlert, onDropPr
     }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  const openViewWindow = (kind: ProjectView): void => { setMenu(undefined); void window.agentboard.invoke('windows:open', { kind, projectId, placement: 'new' }) }
+  const openViewWindow = (kind: ProjectView): void => { setMenu(undefined); void window.gearmod.invoke('windows:open', { kind, projectId, placement: 'new' }) }
   const context = (event: React.MouseEvent, kind: ProjectView): void => { event.preventDefault(); event.stopPropagation(); setMenu({ x: Math.min(event.clientX, window.innerWidth - 220), y: Math.min(event.clientY, window.innerHeight - 104), kind }) }
   return <div ref={dock} className={`viewdock ${pinned ? 'pinned' : 'floating'} ${!point ? 'default' : ''} ${snapping ? 'snapping' : ''}`} style={!pinned && point ? { left: point.x, top: point.y } : undefined}>
     <div className="viewtoggle" role="group" aria-label={t.dock.projectView} onPointerDown={beginMove} onClickCapture={(event) => { if (moved.current) { event.preventDefault(); event.stopPropagation(); moved.current = false } }}>
@@ -167,7 +167,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const [draft, setDraft] = useState<Draft>(), [chatCard, setChatCardState] = useState<Card>(), [chatPurpose, setChatPurpose] = useState<AgentPurpose>('planning'), [starting, setStartingState] = useState<{ card: Card; purpose: 'execution' | 'test' }>(), [choosing, setChoosing] = useState<string>(), [stopping, setStopping] = useState<Card>(), [pendingCard, setPendingCard] = useState<Card>(), [assessing, setAssessing] = useState<Card>()
   /** Manda ao desenvolvedor cada mudança já autorizada do card que ainda não foi enviada. */
   const sendChanges = async (cardId: string): Promise<void> => {
-    try { const { changes } = await window.agentboard.invoke('collab:list', { cardId }); for (const change of changes) if ((change.status === 'accepted' || change.status === 'applied') && !change.sentAt) await window.agentboard.invoke('collab:send-change', { changeId: change.id }); await refresh() } catch (reason) { say(plainError(reason), 'error') }
+    try { const { changes } = await window.gearmod.invoke('collab:list', { cardId }); for (const change of changes) if ((change.status === 'accepted' || change.status === 'applied') && !change.sentAt) await window.gearmod.invoke('collab:send-change', { changeId: change.id }); await refresh() } catch (reason) { say(plainError(reason), 'error') }
   }
   const [gate, setGate] = useState<{ cardId: string; columnId: string; beforeCardId: string | null; stage: 'test' | 'review' }>(), [dragId, setDragId] = useState<string>(), [dropOn, setDropOn] = useState<string>(), [overColumn, setOverColumn] = useState<string>()
   const [boardQuery, setBoardQuery] = useState(''), [priorityFilter, setPriorityFilter] = useState<Card['priority'] | ''>(''), [typeFilter, setTypeFilter] = useState<string>(''), [agentFilter, setAgentFilter] = useState('')
@@ -182,7 +182,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const [archivingColumn, setArchivingColumn] = useState<string>(), toolsPending = useToolsPending(board.project.id)
   const archiveColumn = async (columnId: string): Promise<void> => {
     const targets = board.cards.filter((card) => !card.archivedAt && card.columnId === columnId)
-    const results = await Promise.allSettled(targets.map((card) => window.agentboard.invoke('cards:archive', { cardId: card.id })))
+    const results = await Promise.allSettled(targets.map((card) => window.gearmod.invoke('cards:archive', { cardId: card.id })))
     const failed = results.filter((item) => item.status === 'rejected').length
     say(failed ? t.view.archivePartial(targets.length - failed, failed) : t.view.cardsArchived(targets.length), failed ? 'error' : undefined)
     await refresh()
@@ -190,7 +190,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const prs = usePullRequests(board.project.id)
   const [chatsOpen, setChatsOpen] = useState(pop?.kind === 'chats'), [gitOpen, setGitOpen] = useState(pop?.kind === 'git'), [gitCardId, setGitCardId] = useState<string>(), [gitFocus, setGitFocus] = useState<{ cardId: string; at: number }>()
   const [dbOpen, setDbOpen] = useState(pop?.kind === 'db'), [databaseEnabled, setDatabaseEnabled] = useState(false), [dropPreview, setDropPreview] = useState(false)
-  useEffect(() => { void window.agentboard.invoke('db:feature-enabled', undefined).then(setDatabaseEnabled).catch(() => undefined) }, [])
+  useEffect(() => { void window.gearmod.invoke('db:feature-enabled', undefined).then(setDatabaseEnabled).catch(() => undefined) }, [])
   const [menu, setMenu] = useState<{ x: number; y: number; card: Card }>(), [deleting, setDeleting] = useState<Card>()
   // Excluiu o card (pelo menu, pelo editor ou por outro caminho) com o chat dele aberto: fecha o chat junto.
   useEffect(() => { if (chatCard && !board.cards.some((item) => item.id === chatCard.id)) setChatCardState(undefined) }, [board.cards, chatCard])
@@ -201,7 +201,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
     const open = (next: AgentPurpose): void => { setChatCardState(card); setDraftPlan(undefined); setFreeChat(undefined); setChatPurpose(next); setChatInstance((value) => value + 1) }
     if (!card) { setChatCardState(undefined); setDraftPlan(undefined); return }
     // Fluxo curto tem um chat só: abre o que existe (o do planejamento, se foi ele que trabalhou), não uma etapa que nunca teve conversa.
-    if (card.workflow === 'light' && card.id) { const fallback = purpose ?? chatMode(board, card); void window.agentboard.invoke('chats:list', { projectId: board.project.id, cardId: card.id }).then((items) => { const steps = items.map((item) => item.purpose).filter((value): value is AgentPurpose => value === 'planning' || value === 'execution' || value === 'test'); open(steps.find((value) => value === 'execution') ?? steps[0] ?? fallback) }).catch(() => open(fallback)); return }
+    if (card.workflow === 'light' && card.id) { const fallback = purpose ?? chatMode(board, card); void window.gearmod.invoke('chats:list', { projectId: board.project.id, cardId: card.id }).then((items) => { const steps = items.map((item) => item.purpose).filter((value): value is AgentPurpose => value === 'planning' || value === 'execution' || value === 'test'); open(steps.find((value) => value === 'execution') ?? steps[0] ?? fallback) }).catch(() => open(fallback)); return }
     open(purpose ?? chatMode(board, card))
   }
   const openFree = (chat?: Chat): void => { setChatCardState(undefined); setFreeChat({ chat, key: Date.now(), mode: chat?.purpose === 'constitution' ? 'constitution' : 'free' }) }
@@ -215,7 +215,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
     if (!constitutionRequest || constitutionRequest.projectId !== board.project.id) return
     const { prompt } = constitutionRequest
     constitutionHandled()
-    void window.agentboard.invoke('chats:list', { projectId: board.project.id, cardId: null }).catch(() => [] as Chat[]).then((items) => {
+    void window.gearmod.invoke('chats:list', { projectId: board.project.id, cardId: null }).catch(() => [] as Chat[]).then((items) => {
       setChatsOpen(false); setChatCardState(undefined)
       setFreeChat({ chat: items.find((item) => item.purpose === 'constitution'), key: Date.now(), mode: 'constitution', prompt })
     })
@@ -229,7 +229,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
       targetHandled(); setChatsOpen(false); setChatCard(card, openTarget.purpose === 'planning' || openTarget.purpose === 'execution' || openTarget.purpose === 'test' ? openTarget.purpose : undefined)
     } else if (openTarget.chatId) {
       const chatId = openTarget.chatId
-      targetHandled(); void window.agentboard.invoke('chats:list', { projectId: board.project.id }).then((items) => { const chat = items.find((item) => item.id === chatId); if (chat) { setChatsOpen(false); openFree(chat) } })
+      targetHandled(); void window.gearmod.invoke('chats:list', { projectId: board.project.id }).then((items) => { const chat = items.find((item) => item.id === chatId); if (chat) { setChatsOpen(false); openFree(chat) } })
     }
   }, [openTarget, board.project.id, board.cards])
   // O chat livre virou planejamento de um card novo: espera o quadro atualizar e abre o chat do card (o mesmo chat, agora de planejamento).
@@ -242,16 +242,16 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const openCardGit = (cardId: string): void => { const card = board.cards.find((item) => item.id === cardId); if (!card) return; const mode = chatMode(board, card); setGitCardId(cardId); setChatsOpen(false); setChatCard(card, mode === 'planning' ? 'execution' : mode) }
   // Ações do usuário que deram certo ou erraram, e o que o agente fez sozinho (notificação).
   const say = (text: string, kind: 'success' | 'error' | 'notify' = 'success'): void => { if (kind === 'error') toast.error(t.view.couldNotComplete, text); else if (kind === 'notify') toast.notify(text); else toast.success(text) }
-  useEffect(() => { const again = (): void => void refresh(); window.addEventListener('agentboard:board-changed', again); return () => window.removeEventListener('agentboard:board-changed', again) }, [refresh])
+  useEffect(() => { const again = (): void => void refresh(); window.addEventListener('gearmod:board-changed', again); return () => window.removeEventListener('gearmod:board-changed', again) }, [refresh])
   // O agente mexeu na worktree de outro card: oferece usar a mesma (uma pergunta por card e dono, enquanto o app está aberto).
   const [foreign, setForeign] = useState<{ cardId: string; ownerCardId: string; ownerTitle: string }>(), asked = useRef(new Set<string>())
-  useEffect(() => window.agentboard.onRunEvent((event) => {
-    if (event.eventType !== 'agentboard/worktree-foreign') return
+  useEffect(() => window.gearmod.onRunEvent((event) => {
+    if (event.eventType !== 'gearmod/worktree-foreign') return
     const info = event.payload as { cardId: string; ownerCardId: string; ownerTitle: string }, key = `${info.cardId}:${info.ownerCardId}`
     if (!asked.current.has(key)) { asked.current.add(key); setForeign(info) }
   }), [])
-  useEffect(() => window.agentboard.onRunEvent((event) => {
-    if (!['agentboard/card-updated', 'agentboard/run-started', 'agentboard/run-completed'].includes(event.eventType)) return
+  useEffect(() => window.gearmod.onRunEvent((event) => {
+    if (!['gearmod/card-updated', 'gearmod/run-started', 'gearmod/run-completed'].includes(event.eventType)) return
     if (event.payload.type === 'moved') say(t.view.agentMovedCard(String(event.payload.column)), 'notify')
     void refresh()
   }), [refresh])
@@ -260,21 +260,21 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
     try {
       // Indo para Done sem teste automatizado aprovado e revisão: pergunta antes, em vez de só dar erro.
       if (!skipGate && before && before.columnId !== columnId && board.columns.find((column) => column.id === columnId)?.semanticState === 'done') {
-        const quality = await window.agentboard.invoke('quality:status', { cardId })
+        const quality = await window.gearmod.invoke('quality:status', { cardId })
         const passed = quality.test?.status === 'passed', reviewed = quality.review?.state === 'approved' || quality.review?.state === 'merged'
         if (!passed || !reviewed) { setGate({ cardId, columnId, beforeCardId, stage: passed ? 'review' : 'test' }); return }
       }
-      const moved = await window.agentboard.invoke('cards:move', { cardId, columnId, beforeCardId, skipGate })
+      const moved = await window.gearmod.invoke('cards:move', { cardId, columnId, beforeCardId, skipGate })
       if (before && before.priority !== moved.priority) say(t.view.priorityChanged(t.priority[moved.priority]))
     } catch (reason) { say(plainError(reason), 'error') }
     await refresh()
   }
   const runGateTests = (card: Card): void => {
-    let command = ''; try { command = localStorage.getItem(`agentboard.testCommand.${board.project.id}`) ?? '' } catch { /* sem comando salvo */ }
+    let command = ''; try { command = localStorage.getItem(`gearmod.testCommand.${board.project.id}`) ?? '' } catch { /* sem comando salvo */ }
     const parts = command.trim().split(/\s+/).filter(Boolean)
     if (!parts.length) { setChatCard(card, 'test'); say(t.view.setTestCommand, 'notify'); return }
     say(t.view.runningTests, 'notify')
-    void window.agentboard.invoke('tests:run', { cardId: card.id, executable: parts[0]!, args: parts.slice(1) }).then((run) => { if (run.status === 'passed') say(t.view.testsPassed); else say(t.view.testsFailed, 'error'); return refresh() }).catch((reason: unknown) => say(plainError(reason), 'error'))
+    void window.gearmod.invoke('tests:run', { cardId: card.id, executable: parts[0]!, args: parts.slice(1) }).then((run) => { if (run.status === 'passed') say(t.view.testsPassed); else say(t.view.testsFailed, 'error'); return refresh() }).catch((reason: unknown) => say(plainError(reason), 'error'))
   }
   const dropLabel = (target: Card): string | undefined => { const dragged = board.cards.find((card) => card.id === dragId); if (!dragged || dragged.id === target.id) return undefined; return dragged.priority === target.priority ? t.view.samePriority : t.view.becomesPriority(t.priority[target.priority]) }
   const edit = (card: Card): Draft => ({ id: card.id, columnId: card.columnId, sourceId: card.sourceId, title: card.title, type: card.type, priority: card.priority, workflow: card.workflow })
@@ -284,7 +284,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   // Quadro/Chats/Git, o botão de janela e a engrenagem ficam na barra de título (portais nos espaços dela); sem os espaços, ficam aqui no cabeçalho.
   const gearControl = <button type="button" className={slots?.gear ? 'ibtn tip tb-gearbtn' : 'iconbtn'} data-tip={t.view.configureProject} aria-label={t.view.configureProject} onClick={() => onProjectConfig()}>{toolsPending && <i className="gear-dot" aria-hidden="true" />}{slots?.gear ? <SettingsIcon /> : '⚙'}</button>
   const currentView: ProjectView = gitOpen ? 'git' : dbOpen ? 'db' : chatsOpen ? 'chats' : 'board'
-  const selectView = (value: ProjectView): void => { setDraft(undefined); window.dispatchEvent(new Event('agentboard:select-view')); setChatsOpen(value === 'chats'); setGitOpen(value === 'git'); setDbOpen(value === 'db') }
+  const selectView = (value: ProjectView): void => { setDraft(undefined); window.dispatchEvent(new Event('gearmod:select-view')); setChatsOpen(value === 'chats'); setGitOpen(value === 'git'); setDbOpen(value === 'db') }
   const popMenu = currentView === 'db' ? null : <PopMenu target={{ kind: currentView, projectId: board.project.id }} />
   const viewControls = <><ViewDock projectId={board.project.id} view={currentView} select={selectView} databaseEnabled={databaseEnabled} gitAlert={prs.total > 0} onDropPreview={setDropPreview} />{dropPreview && slots?.view && <ViewDockDropPreview databaseEnabled={databaseEnabled} />}{slots?.view && slots?.gear && gearControl}{!slots?.tray && popMenu}</>
   return <div className="content">
@@ -297,29 +297,29 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
         <header>{column.label}<span className="colTools"><b data-tip={filtering ? t.view.cardsVisible(cards.length, allCards.length) : undefined}>{filtering ? `${cards.length}/${allCards.length}` : cards.length}</b><ColumnMenu label={column.label} count={allCards.length} add={() => setChoosing(column.id)} archiveAll={() => setArchivingColumn(column.id)} /></span></header>
         {cards.map((card) => <CardTile key={card.id} card={card} types={cardTypes} onComplexity={() => setAssessing(card)} state={column.semanticState} agent={history.find((profile) => profile.id === (card.run.profileId ?? card.execProfileId))} agents={card.agentIds.map((id) => history.find((profile) => profile.id === id)).filter((profile): profile is AgentProfile => Boolean(profile))} dropLabel={dropOn === card.id ? dropLabel(card) : undefined}
           onPending={() => setPendingCard(card)} onSend={() => void sendChanges(card.id)} onGit={() => openCardGit(card.id)} onOpen={() => setDraft(edit(card))} onChat={() => setChatCard(card)} onPlan={() => setChatCard(card)} onStart={() => setStartingState({ card, purpose: 'execution' })} onTest={() => setStartingState({ card, purpose: 'test' })} onStop={() => setStopping(card)}
-          onResume={() => void window.agentboard.invoke('cards:resume', { cardId: card.id, purpose: card.run.purpose === 'test' ? 'test' : card.run.purpose === 'execution' ? 'execution' : undefined }).then(refresh).catch((reason: unknown) => say(plainError(reason), 'error'))}
-          onArchive={() => void window.agentboard.invoke('cards:archive', { cardId: card.id }).then(() => { say(t.view.cardArchived); return refresh() })}
+          onResume={() => void window.gearmod.invoke('cards:resume', { cardId: card.id, purpose: card.run.purpose === 'test' ? 'test' : card.run.purpose === 'execution' ? 'execution' : undefined }).then(refresh).catch((reason: unknown) => say(plainError(reason), 'error'))}
+          onArchive={() => void window.gearmod.invoke('cards:archive', { cardId: card.id }).then(() => { say(t.view.cardArchived); return refresh() })}
           dragProps={{ draggable: true, onContextMenu: (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, card }) }, onDragStart: (e) => { e.dataTransfer.setData('card', card.id); setDragId(card.id) }, onDragEnd: clear, onDragOver: (e) => { e.preventDefault(); e.stopPropagation(); setDropOn(card.id) }, onDrop: (e) => { e.stopPropagation(); const id = e.dataTransfer.getData('card'); clear(); if (id && id !== card.id) void move(id, column.id, card.id) } }} />)}
         {filtering && !cards.length && allCards.length > 0 && <p className="board-filter-empty">{t.view.noCardMatchesFilters}</p>}<button className="add" onClick={() => setChoosing(column.id)}>{t.view.addCard}</button>
       </section>
     })}</div></>}
     {choosing && <NewCardDialog close={() => setChoosing(undefined)} manual={() => { setDraft(blankDraft(choosing, cardTypes[0]?.id ?? 'feature')); setChoosing(undefined) }} plan={() => { const columnId = choosing; setChoosing(undefined); setChatCardState(undefined); setFreeChat(undefined); setChatPurpose('planning'); setChatInstance(Date.now()); setDraftPlan({ columnId }) }} />}
     {draft && <CardEditor projectId={board.project.id} sources={board.project.sources} profiles={allowed} cardTypes={cardTypes} pending={draft.id ? (board.cards.find((item) => item.id === draft.id)?.pending) : undefined} onPending={() => { const card = board.cards.find((item) => item.id === draft.id); if (card) setPendingCard(card) }} draft={draft} close={() => setDraft(undefined)} saved={async () => { setDraft(undefined); await refresh() }} openChat={draft.id ? (purpose) => { const card = board.cards.find((item) => item.id === draft.id); setDraft(undefined); if (card) setChatCard(card, purpose) } : undefined} onStart={draft.id ? (purpose) => { const card = board.cards.find((item) => item.id === draft.id); setDraft(undefined); if (card) setStartingState({ card, purpose }) } : undefined} />}
-    {starting && <StartDialog card={starting.card} purpose={starting.purpose} profiles={allowed} close={() => setStartingState(undefined)} start={async (config, baseBranch) => { await window.agentboard.invoke('cards:start', { cardId: starting.card.id, config, purpose: starting.purpose, baseBranch }); setStartingState(undefined); await refresh(); setChatCard(starting.card, starting.purpose) }} />}
+    {starting && <StartDialog card={starting.card} purpose={starting.purpose} profiles={allowed} close={() => setStartingState(undefined)} start={async (config, baseBranch) => { await window.gearmod.invoke('cards:start', { cardId: starting.card.id, config, purpose: starting.purpose, baseBranch }); setStartingState(undefined); await refresh(); setChatCard(starting.card, starting.purpose) }} />}
     {gate && (() => { const card = board.cards.find((item) => item.id === gate.cardId); if (!card) return null; return <ConfirmDialog eyebrow={t.view.gate.eyebrow} title={card.title || t.newCard} text={gate.stage === 'test' ? t.view.gate.textTest : t.view.gate.textReview} ok={gate.stage === 'test' ? t.view.gate.runTests : t.view.gate.openChanges} secondary={{ label: t.view.gate.moveAnyway, run: () => { const next = gate; setGate(undefined); void move(next.cardId, next.columnId, next.beforeCardId, true) } }} cancel={() => setGate(undefined)} confirm={() => { const next = gate; setGate(undefined); if (next.stage === 'test') runGateTests(card); else setChatCard(card, 'test') }} /> })()}
-    {stopping && <ConfirmDialog eyebrow={t.view.stop.eyebrow} title={t.view.stop.title} text={t.view.stop.text} ok={t.view.stop.ok} danger cancel={() => setStopping(undefined)} confirm={() => { const card = stopping; setStopping(undefined); if (card.run.runId) void window.agentboard.invoke('agents:cancel', { runId: card.run.runId }).then(refresh).catch((reason: unknown) => say(plainError(reason), 'error')) }} />}
+    {stopping && <ConfirmDialog eyebrow={t.view.stop.eyebrow} title={t.view.stop.title} text={t.view.stop.text} ok={t.view.stop.ok} danger cancel={() => setStopping(undefined)} confirm={() => { const card = stopping; setStopping(undefined); if (card.run.runId) void window.gearmod.invoke('agents:cancel', { runId: card.run.runId }).then(refresh).catch((reason: unknown) => say(plainError(reason), 'error')) }} />}
     {assessing && <AssessmentDialog card={fresh(assessing)} close={() => setAssessing(undefined)} changed={() => void refresh()} />}
     {pendingCard && <PendingDialog card={fresh(pendingCard)} close={() => setPendingCard(undefined)} changed={() => void refresh()} />}
     {menu && <CardContextMenu x={menu.x} y={menu.y} card={menu.card} close={() => setMenu(undefined)} open={() => { const card = menu.card; setMenu(undefined); setDraft(edit(card)) }} chat={() => { const card = menu.card; setMenu(undefined); setChatCard(card) }} git={() => { const card = menu.card; setMenu(undefined); openCardGit(card.id) }} remove={() => { const card = menu.card; setMenu(undefined); setDeleting(card) }} />}
-    {foreign && <ConfirmDialog eyebrow={t.view.foreign.eyebrow} title={t.view.foreign.title} text={t.view.foreign.text(foreign.ownerTitle)} ok={t.view.foreign.ok} cancel={() => setForeign(undefined)} confirm={() => { const info = foreign; setForeign(undefined); void window.agentboard.invoke('worktrees:link', { cardId: info.cardId, fromCardId: info.ownerCardId }).then(() => refresh()).catch((reason: unknown) => say(plainError(reason), 'error')) }} />}
+    {foreign && <ConfirmDialog eyebrow={t.view.foreign.eyebrow} title={t.view.foreign.title} text={t.view.foreign.text(foreign.ownerTitle)} ok={t.view.foreign.ok} cancel={() => setForeign(undefined)} confirm={() => { const info = foreign; setForeign(undefined); void window.gearmod.invoke('worktrees:link', { cardId: info.cardId, fromCardId: info.ownerCardId }).then(() => refresh()).catch((reason: unknown) => say(plainError(reason), 'error')) }} />}
     {archivingColumn && <ConfirmDialog eyebrow={t.view.archiveColumn.eyebrow} title={t.view.archiveColumn.title(board.columns.find((column) => column.id === archivingColumn)?.label)} text={t.view.archiveColumn.text(active.filter((card) => card.columnId === archivingColumn).length)} ok={t.view.archiveColumn.ok} cancel={() => setArchivingColumn(undefined)} confirm={() => { const id = archivingColumn; setArchivingColumn(undefined); void archiveColumn(id) }} />}
-    {deleting && <DeleteCardDialog title={deleting.title || t.newCard} cancel={() => setDeleting(undefined)} confirm={(deleteArtifacts) => { const card = deleting; setDeleting(undefined); void window.agentboard.invoke('cards:delete', { cardId: card.id, deleteArtifacts }).then(() => { say(t.view.cardDeleted); return refresh() }).catch((reason: unknown) => say(plainError(reason), 'error')) }} />}
+    {deleting && <DeleteCardDialog title={deleting.title || t.newCard} cancel={() => setDeleting(undefined)} confirm={(deleteArtifacts) => { const card = deleting; setDeleting(undefined); void window.gearmod.invoke('cards:delete', { cardId: card.id, deleteArtifacts }).then(() => { say(t.view.cardDeleted); return refresh() }).catch((reason: unknown) => say(plainError(reason), 'error')) }} />}
     </main>
     {chatCard && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setChatCard(undefined)} allowed={() => void refresh()} openSettings={() => { setChatCard(undefined); openSettings() }} />}
     {freeChat && allowed.length > 0 && <FreeChat key={freeChat.key} mode={freeChat.mode} prompt={freeChat.prompt} project={board.project} profiles={allowed} chat={freeChat.chat} close={() => { setFreeChat(undefined) }} changed={() => void refresh()} onConverted={(cardId) => { void refresh().then(() => setOpenAfterRefresh(cardId)) }} />}
     {freeChat && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setFreeChat(undefined)} allowed={() => void refresh()} openSettings={() => { setFreeChat(undefined); openSettings() }} />}
     {draftPlan && allowed.length === 0 && <NoAgentDialog project={board.project} profiles={profiles} close={() => setDraftPlan(undefined)} allowed={() => void refresh()} openSettings={() => { setDraftPlan(undefined); openSettings() }} />}
     {(chatCard || draftPlan) && allowed.length > 0 && <CardChat key={`chat-${chatInstance}-${chatPurpose}`} project={board.project} card={chatCard ? fresh(chatCard) : draftCard(board, draftPlan!.columnId)} board={board} profiles={history} columnLabel={chatCard ? columnLabel(chatCard) : board.columns.find((column) => column.id === draftPlan?.columnId)?.label ?? ''} mode={chatPurpose} onSwitch={setChatPurpose} close={() => { setChatCard(undefined); setDraftPlan(undefined); setGitCardId(undefined) }} openEdit={(card) => setDraft(edit(card))} initialView={gitCardId === chatCard?.id ? 'git' : 'chat'} openRules={() => onProjectConfig('git')} openGraph={(id) => { setChatCardState(undefined); setGitCardId(undefined); setChatsOpen(false); setGitOpen(true); setGitFocus({ cardId: id, at: Date.now() }) }}
-      ensureCard={draftPlan && !chatCard ? async () => { const created = await window.agentboard.invoke('cards:create', { projectId: board.project.id, columnId: draftPlan.columnId, title: '', description: '', type: cardTypes[0]?.id ?? 'feature', priority: 'medium', acceptanceCriteria: [] }); await refresh(); setDraftPlan(undefined); setChatCardState(created); return created } : undefined} />}
+      ensureCard={draftPlan && !chatCard ? async () => { const created = await window.gearmod.invoke('cards:create', { projectId: board.project.id, columnId: draftPlan.columnId, title: '', description: '', type: cardTypes[0]?.id ?? 'feature', priority: 'medium', acceptanceCriteria: [] }); await refresh(); setDraftPlan(undefined); setChatCardState(created); return created } : undefined} />}
   </div>
 }

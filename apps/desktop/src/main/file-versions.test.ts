@@ -14,9 +14,9 @@ const exec = promisify(execFile), temporary: string[] = []
 afterEach(async () => { await Promise.all(temporary.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 const none = { git: nativeGit, baseFor: async () => null }
 async function repository(): Promise<{ root: string; repo: string }> {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'agentboard-versions-'))); temporary.push(root)
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'gearmod-versions-'))); temporary.push(root)
   const repo = join(root, 'repo')
-  await exec('git', ['init', '-b', 'dev', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'AgentBoard Test'])
+  await exec('git', ['init', '-b', 'dev', repo]); await exec('git', ['-C', repo, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', repo, 'config', 'user.name', 'GearMod Test'])
   await writeFile(join(repo, 'a.txt'), 'antes\n'); await writeFile(join(repo, 'gone.txt'), 'vai sumir\n')
   await exec('git', ['-C', repo, 'add', '.']); await exec('git', ['-C', repo, 'commit', '-m', 'base'])
   return { root, repo }

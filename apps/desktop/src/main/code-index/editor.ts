@@ -1,5 +1,5 @@
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import type { CodeSymbol } from '@agentboard/contracts'
+import type { CodeSymbol } from '@gearmod/contracts'
 import type { CodeIndexService } from './service'
 import type { SymbolHit } from './query'
 import type { RootStatus } from './code-index'

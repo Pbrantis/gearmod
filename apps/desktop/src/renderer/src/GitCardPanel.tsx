@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { AgentProfile, GitCard, GitCardRepo, GitCommitFile, GitRequest } from '@agentboard/contracts'
+import type { AgentProfile, GitCard, GitCardRepo, GitCommitFile, GitRequest } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { gitIcons, GitCheck, FileRow } from './GitPage'
 import { laneColor, ruleLabel, ruleNote, shortAgo } from './gitView'
@@ -19,9 +19,9 @@ import { SparkIcon, TrashIcon } from './icons'
 /** Pedidos de commit do agente deste card (pendentes e os últimos decididos); recarrega quando o card muda. */
 export function useGitRequests(cardId: string): { items: GitRequest[]; reload(): Promise<void> } {
   const [items, setItems] = useState<GitRequest[]>([])
-  const reload = useCallback(async (): Promise<void> => { if (!cardId) return setItems([]); try { setItems(await window.agentboard.invoke('git:requests', { cardId })) } catch { /* o chat segue sem o aviso */ } }, [cardId])
+  const reload = useCallback(async (): Promise<void> => { if (!cardId) return setItems([]); try { setItems(await window.gearmod.invoke('git:requests', { cardId })) } catch { /* o chat segue sem o aviso */ } }, [cardId])
   useEffect(() => { void reload() }, [reload])
-  useEffect(() => window.agentboard.onRunEvent((event) => { if (['agentboard/card-updated', 'agentboard/run-completed'].includes(event.eventType)) void reload() }), [reload])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if (['gearmod/card-updated', 'gearmod/run-completed'].includes(event.eventType)) void reload() }), [reload])
   return { items, reload }
 }
 
@@ -31,7 +31,7 @@ export function CommitAsk({ request, agent, branch, ruleWhy, onDecided, openGit,
   const [editing, setEditing] = useState(false), [message, setMessage] = useState(request.message), [error, setError] = useState(request.error ?? ''), [busy, setBusy] = useState(false)
   const decide = async (decision: 'allow' | 'deny'): Promise<void> => {
     setBusy(true); setError('')
-    try { onDecided(await window.agentboard.invoke('git:request-decide', { requestId: request.id, decision, message: decision === 'allow' && message.trim() !== request.message ? message.trim() : undefined })) } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
+    try { onDecided(await window.gearmod.invoke('git:request-decide', { requestId: request.id, decision, message: decision === 'allow' && message.trim() !== request.message ? message.trim() : undefined })) } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
   return <div className={variant === 'chat' ? 'cask' : 'cgprop'}>
     <div className="cgprop-h">{agent && <AgentIcon profile={agent} size="sm" tip={false} />}<b>{variant === 'chat' ? t.wantsCommit(branch) : t.agentWantsCommit(agent?.label ?? t.theAgent)}</b><small>{variant === 'chat' ? t.asksPermission(ruleWhy ?? t.projectRule) : shortAgo(request.createdAt)}</small></div>
@@ -58,8 +58,8 @@ export function CommitAsks({ cardId, branch, profiles, openGit }: { cardId: stri
 function BaseSelect({ repo, cardId, base, reload }: { repo: GitCardRepo; cardId: string; base: string; reload(): Promise<void> }): React.JSX.Element {
   const t = useT().git.cardPanel
   const [options, setOptions] = useState<string[]>([]), [error, setError] = useState('')
-  const load = (): void => { if (!options.length) void window.agentboard.invoke('git:base-options', { sourceId: repo.sourceId }).then(setOptions).catch(() => undefined) }
-  const change = async (value: string): Promise<void> => { try { await window.agentboard.invoke('git:set-base', { cardId, sourceId: repo.sourceId, baseRef: value }); setError(''); await reload() } catch (reason) { setError(plainError(reason)) } }
+  const load = (): void => { if (!options.length) void window.gearmod.invoke('git:base-options', { sourceId: repo.sourceId }).then(setOptions).catch(() => undefined) }
+  const change = async (value: string): Promise<void> => { try { await window.gearmod.invoke('git:set-base', { cardId, sourceId: repo.sourceId, baseRef: value }); setError(''); await reload() } catch (reason) { setError(plainError(reason)) } }
   const list = options.includes(base) ? options : [base, ...options]
   return <span className="basepick" onMouseEnter={load} onFocus={load}><Select label={t.originOf(repo.name)} className="ghostsel" value={base} options={list.map((name) => ({ value: name, label: name }))} onChange={(value) => void change(value)} />{error && <small className="cx-warn">{error}</small>}</span>
 }
@@ -76,12 +76,12 @@ export function DiffPane({ cardId, target, close, ask, style }: { cardId: string
   useEffect(() => { setError('') }, [sourceId, cardId, path, hash, version])
   const edit = (): void => {
     setLoadingFile(true); setError('')
-    void window.agentboard.invoke('git:file-read', { sourceId, cardId, path }).then((out) => { setOriginal(out.content); setDraft(out.content) }).catch((reason: unknown) => setError(plainError(reason))).finally(() => setLoadingFile(false))
+    void window.gearmod.invoke('git:file-read', { sourceId, cardId, path }).then((out) => { setOriginal(out.content); setDraft(out.content) }).catch((reason: unknown) => setError(plainError(reason))).finally(() => setLoadingFile(false))
   }
   const save = (): void => {
     if (draft === undefined) return
     setSaving(true); setError('')
-    void window.agentboard.invoke('git:file-write', { sourceId, cardId, path, content: draft }).then(() => { setDraft(undefined); setVersion((value) => value + 1) }).catch((reason: unknown) => setError(plainError(reason))).finally(() => setSaving(false))
+    void window.gearmod.invoke('git:file-write', { sourceId, cardId, path, content: draft }).then(() => { setDraft(undefined); setVersion((value) => value + 1) }).catch((reason: unknown) => setError(plainError(reason))).finally(() => setSaving(false))
   }
   const editing = draft !== undefined, dirty = editing && draft !== original
   const saveRef = useRef(save); saveRef.current = () => { if (dirty) save() }
@@ -104,7 +104,7 @@ export function DiffPane({ cardId, target, close, ask, style }: { cardId: string
 function CommitFiles({ sourceId, hash, pick }: { sourceId: string; hash: string; pick(path: string): void }): React.JSX.Element {
   const common = useT().common
   const [files, setFiles] = useState<GitCommitFile[]>()
-  useEffect(() => { void window.agentboard.invoke('git:commit-detail', { sourceId, hash }).then((out) => setFiles(out.files)).catch(() => setFiles([])) }, [sourceId, hash])
+  useEffect(() => { void window.gearmod.invoke('git:commit-detail', { sourceId, hash }).then((out) => setFiles(out.files)).catch(() => setFiles([])) }, [sourceId, hash])
   return <div className="cgcfiles gfiles">{!files ? <small>{common.loading}</small> : files.map((file) => <FileRow key={file.path} file={file} onOpen={() => pick(file.path)} />)}</div>
 }
 
@@ -124,14 +124,14 @@ function CommitBox({ repos, cardId, excluded, reload, onDone, onCancel, onSeeFil
     if (value) {
       if (message.trim() || amendTargets.length !== 1) return
       const target = amendTargets[0]!.repo
-      void window.agentboard.invoke('git:changes', { sourceId: target.sourceId, cardId }).then((out) => { if (out.lastMessage) { setLastMessage(out.lastMessage); setMessage((current) => current.trim() ? current : out.lastMessage) } }).catch((reason) => setError(plainError(reason)))
+      void window.gearmod.invoke('git:changes', { sourceId: target.sourceId, cardId }).then((out) => { if (out.lastMessage) { setLastMessage(out.lastMessage); setMessage((current) => current.trim() ? current : out.lastMessage) } }).catch((reason) => setError(plainError(reason)))
     } else if (lastMessage && message.trim() === lastMessage.trim()) { setMessage(''); setLastMessage('') }
   }
   const suggest = async (): Promise<void> => {
     const main = [...ready].sort((a, b) => b.paths.length - a.paths.length)[0]
     if (!main) return setError(t.checkOneFile)
     setSuggesting(true); setError('')
-    try { setMessage((await window.agentboard.invoke('git:suggest-message', { sourceId: main.repo.sourceId, cardId, paths: main.paths })).message) } catch (reason) { setError(plainError(reason)) } finally { setSuggesting(false) }
+    try { setMessage((await window.gearmod.invoke('git:suggest-message', { sourceId: main.repo.sourceId, cardId, paths: main.paths })).message) } catch (reason) { setError(plainError(reason)) } finally { setSuggesting(false) }
   }
   const commit = async (): Promise<void> => {
     const targets = amend ? amendTargets : ready
@@ -140,7 +140,7 @@ function CommitBox({ repos, cardId, excluded, reload, onDone, onCancel, onSeeFil
     setBusy(true); setError(''); setDone('')
     let created = 0, last = ''
     try {
-      for (const item of targets) { const out = await window.agentboard.invoke('git:commit', { sourceId: item.repo.sourceId, cardId, message: message.trim(), paths: item.paths, ...(amend ? { amend: true } : {}) }); created += 1; last = out.hash.slice(0, 7) }
+      for (const item of targets) { const out = await window.gearmod.invoke('git:commit', { sourceId: item.repo.sourceId, cardId, message: message.trim(), paths: item.paths, ...(amend ? { amend: true } : {}) }); created += 1; last = out.hash.slice(0, 7) }
       setMessage(''); setAmend(false); setLastMessage(''); setDone(created > 1 ? t.commitCreatedIn(created) : t.commitCreated(last)); onDone?.()
     } catch (reason) { setError(plainError(reason)) } finally { setBusy(false); await reload() }
   }
@@ -162,13 +162,13 @@ function RepoSection({ repo, cardId, branch, base, profiles, excluded, setExclud
   const quiet = !repo.commits.length && !paths.length
   if (quiet) return <></>
   const color = laneColor(1)
-  const push = async (): Promise<void> => { setBusy(true); setError(''); try { await window.agentboard.invoke('git:sync', { sourceId: repo.sourceId, cardId, action: 'push' }); await reload() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) } }
+  const push = async (): Promise<void> => { setBusy(true); setError(''); try { await window.gearmod.invoke('git:sync', { sourceId: repo.sourceId, cardId, action: 'push' }); await reload() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) } }
   const canPr = repo.ahead > 0 && repo.state === 'active' && !repo.prUrl
   const openPr = async (): Promise<void> => {
     setConfirming(false); setOpening(true); setError('')
-    try { const out = await window.agentboard.invoke('git:create-prs', { cardId, draft: true, sourceId: repo.sourceId }); const failed = out.results.find((item) => item.error); if (failed?.error) setError(failed.error); await reload() } catch (reason) { setError(plainError(reason)) } finally { setOpening(false) }
+    try { const out = await window.gearmod.invoke('git:create-prs', { cardId, draft: true, sourceId: repo.sourceId }); const failed = out.results.find((item) => item.error); if (failed?.error) setError(failed.error); await reload() } catch (reason) { setError(plainError(reason)) } finally { setOpening(false) }
   }
-  const openLink = (url: string): void => { void window.agentboard.invoke('git:open-pr', { cardId, url }).catch((reason) => setError(plainError(reason))) }
+  const openLink = (url: string): void => { void window.gearmod.invoke('git:open-pr', { cardId, url }).catch((reason) => setError(plainError(reason))) }
   return <section className={`cgrepo ${expanded ? 'open' : 'shut'}`}><header><button type="button" className="cgtoggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><span className="cgchev" aria-hidden="true">▸</span>{gitIcons.repo}<span className="cgrname">{repo.name}</span></button><span className="cnts">{repo.ahead > 0 && <span className="pillg up">↑ {repo.ahead}</span>}{repo.behind > 0 && <span className="pillg down">↓ {repo.behind}</span>}{paths.length > 0 && <span className="pillg down">{t.uncommitted(paths.length)}</span>}{repo.published && <span className="pillg ok">{t.published}</span>}</span></header>
     {expanded && <div className="cgbody"><div className="cgnote" style={{ fontFamily: 'var(--mono)', fontSize: 11.5 }}>{repo.worktreePath}</div>
       <div><div className="cglabel" style={{ marginBottom: 4 }}>{t.cardCommits}</div>{repo.commits.length ? <div className="cgcommits" style={{ '--lc': color } as React.CSSProperties}>
@@ -189,12 +189,12 @@ export function GitCardPanel({ cardId, profiles, openRules, openGraph, diff, set
   const T = useT(), t = T.git.cardPanel, tw = T.git.worktreeDelete
   const [data, setData] = useState<GitCard>(), [error, setError] = useState(''), [excluded, setExcluded] = useState<Record<string, string[]>>({}), [target, setTarget] = useState<string>(), [wtDelete, setWtDelete] = useState(false)
   const alive = useRef(true)
-  const load = useCallback(async (): Promise<void> => { try { const next = await window.agentboard.invoke('git:card', { cardId }); if (alive.current) { setData(next); setError('') } } catch (reason) { if (alive.current) setError(plainError(reason)) } }, [cardId])
+  const load = useCallback(async (): Promise<void> => { try { const next = await window.gearmod.invoke('git:card', { cardId }); if (alive.current) { setData(next); setError('') } } catch (reason) { if (alive.current) setError(plainError(reason)) } }, [cardId])
   useEffect(() => { alive.current = true; void load(); const timer = window.setInterval(() => void load(), 5000); return () => { alive.current = false; window.clearInterval(timer) } }, [load])
-  useEffect(() => window.agentboard.onRunEvent((event) => { if (['agentboard/card-updated', 'agentboard/run-completed', 'agentboard/tool-activity'].includes(event.eventType)) void load() }), [load])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if (['gearmod/card-updated', 'gearmod/run-completed', 'gearmod/tool-activity'].includes(event.eventType)) void load() }), [load])
   if (error && !data) return <div className="cgwrap"><div className="cgit"><p className="error">{error}</p></div></div>
   if (!data) return <div className="cgwrap"><div className="cgit"><div className="cgnote">{t.loadingCardGit}</div></div></div>
-  if (!data.branch) return <div className="cgwrap"><div className="cgit"><div className="cgsum"><div className="br">{gitIcons.branch}<em>{t.noBranchYet}</em></div><p className="cgnote">{t.noBranchA}<b>agentboard/…</b>{t.noBranchB}</p></div></div></div>
+  if (!data.branch) return <div className="cgwrap"><div className="cgit"><div className="cgsum"><div className="br">{gitIcons.branch}<em>{t.noBranchYet}</em></div><p className="cgnote">{t.noBranchA}<b>gearmod/…</b>{t.noBranchB}</p></div></div></div>
   const withFiles = data.repos.filter((repo) => repo.files.length > 0)
   const targetRepo = withFiles.find((repo) => repo.sourceId === target) ?? withFiles[0]
   const commitRepos = target === ALL_REPOS && withFiles.length > 1 ? withFiles : targetRepo ? [targetRepo] : []

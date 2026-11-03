@@ -12,7 +12,7 @@ const set = (patch: Partial<VoiceInstall>): void => { state = { ...state, ...pat
 function listen(): void {
   if (listening) return
   listening = true
-  window.agentboard.onRunEvent((event) => {
+  window.gearmod.onRunEvent((event) => {
     if (event.eventType !== 'voice/progress') return
     const { item, received, total } = event.payload as { item: string | null; received?: number; total?: number | null }
     if (item) set({ installing: true, item, percent: total ? Math.round(((received ?? 0) / total) * 100) : null, megabytes: Math.round((received ?? 0) / 1048576) })
@@ -23,12 +23,12 @@ export async function startVoiceInstall(): Promise<void> {
   listen()
   if (state.installing) return
   set({ installing: true, done: false, error: '', item: '', percent: null })
-  try { await window.agentboard.invoke('voice:install', undefined); set({ installing: false, done: true, percent: 100 }) }
+  try { await window.gearmod.invoke('voice:install', undefined); set({ installing: false, done: true, percent: 100 }) }
   catch (reason) { set({ installing: false, error: plainError(reason) }) }
 }
 
 /** Avisa os chats abertos que o modo de ditado ou a chave mudou, para não ficarem com o status antigo. */
-export const notifyVoiceChanged = (): void => { window.dispatchEvent(new Event('agentboard:voice-changed')) }
+export const notifyVoiceChanged = (): void => { window.dispatchEvent(new Event('gearmod:voice-changed')) }
 
 export const dismissVoiceInstall = (): void => set({ done: false, error: '' })
 

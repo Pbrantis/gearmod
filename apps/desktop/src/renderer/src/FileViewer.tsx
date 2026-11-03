@@ -3,7 +3,7 @@ import { useAsk } from './useAsk'
 import { useT } from './i18n'
 
 const viewerMin = 320
-const stored = (): number => { try { return Number(localStorage.getItem('agentboard.viewerWidth')) || 520 } catch { return 520 } }
+const stored = (): number => { try { return Number(localStorage.getItem('gearmod.viewerWidth')) || 520 } catch { return 520 } }
 const viewerState = { width: stored() }
 const clampViewer = (value: number, chatWidth: number): number => Math.max(viewerMin, Math.min(window.innerWidth - chatWidth - 260, value))
 
@@ -31,7 +31,7 @@ export function useFileViewer(chatWidth: number, setChatWidth: (value: number) =
     const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); finish?.() }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  const remember = (): void => { try { localStorage.setItem('agentboard.viewerWidth', String(viewerState.width)) } catch { /* só vale nesta sessão */ } }
+  const remember = (): void => { try { localStorage.setItem('gearmod.viewerWidth', String(viewerState.width)) } catch { /* só vale nesta sessão */ } }
   // Borda de fora: muda só a largura do arquivo. Divisor do meio: troca espaço entre o chat e o arquivo, mantendo o total.
   const startResize = drag((x) => { const next = clampViewer(window.innerWidth - x - chatWidth, chatWidth); viewerState.width = next; setWidthState(next) }, remember)
   const startSplit = drag((x) => {

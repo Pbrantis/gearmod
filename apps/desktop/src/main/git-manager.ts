@@ -6,7 +6,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, unlink, writeFil
 import { tmpdir } from 'node:os'
 import { scanForSecrets } from './secret-scan'
 import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
-import { defaultGitPolicy, withErrorCode, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule, type GitWorktreeInfo } from '@agentboard/contracts'
+import { defaultGitPolicy, withErrorCode, gitPolicySchema, type GitCard, type GitChange, type GitChanges, type GitCommitFile, type GitGraph, type GitPolicy, type GitRef, type GitRepo, type GitRequest, type GitRow, type GitRule, type GitWorktreeInfo } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { nativeGit, type GitRunner } from './worktrees'
 import { ApprovalService } from './approvals'
@@ -123,10 +123,10 @@ export class GitManager {
     return { head: (await this.tryRun(dir, ['rev-parse', '-q', '--verify', 'HEAD']))?.trim() || null, branch: (await this.tryRun(dir, ['symbolic-ref', '-q', '--short', 'HEAD']))?.trim() || null }
   }
 
-  /** Prende os hashes em `refs/agentboard/undo/<id>-<n>` para o `git gc` não levar o que o refazer ainda usa. Devolve as refs criadas. */
+  /** Prende os hashes em `refs/gearmod/undo/<id>-<n>` para o `git gc` não levar o que o refazer ainda usa. Devolve as refs criadas. */
   private async pin(dir: string, id: string, hashes: string[]): Promise<string[]> {
     const refs: string[] = []
-    for (const hash of new Set(hashes)) { const ref = `refs/agentboard/undo/${id}-${refs.length}`; if (await this.tryRun(dir, ['update-ref', ref, hash]) !== null) refs.push(ref) }
+    for (const hash of new Set(hashes)) { const ref = `refs/gearmod/undo/${id}-${refs.length}`; if (await this.tryRun(dir, ['update-ref', ref, hash]) !== null) refs.push(ref) }
     return refs
   }
 
@@ -204,7 +204,7 @@ export class GitManager {
     this.swept.add(source.id)
     const live = this.undo.all()
     const held = new Set(live.flatMap((entry) => entry.pins))
-    for (const ref of ((await this.tryRun(source.path, ['for-each-ref', '--format=%(refname)', 'refs/agentboard/undo'])) ?? '').split(/\r?\n/).filter(Boolean)) if (!held.has(ref)) await this.tryRun(source.path, ['update-ref', '-d', ref])
+    for (const ref of ((await this.tryRun(source.path, ['for-each-ref', '--format=%(refname)', 'refs/gearmod/undo'])) ?? '').split(/\r?\n/).filter(Boolean)) if (!held.has(ref)) await this.tryRun(source.path, ['update-ref', '-d', ref])
     if (this.backupDir && !this.backupsSwept) {
       this.backupsSwept = true
       const keep = new Set(live.map((entry) => entry.id))
@@ -347,8 +347,8 @@ export class GitManager {
     if (!card || !wt) return null
     const { rule } = this.ruleFor(card.projectId, wt.branch)
     if (rule === 'never') return `Do not commit on this branch (${wt.branch}): leave the changes in the worktree, the user does the committing. Do not run git commit.`
-    if (rule === 'auto') return 'When you close each task, commit with the agentboard_request_commit tool (short message in the language given in `idioma`, imperative mood). Do not run git commit directly.'
-    return 'To commit, ask with the agentboard_request_commit tool (message and files): the user authorizes it on the card. Do not run git commit directly.'
+    if (rule === 'auto') return 'When you close each task, commit with the gearmod_request_commit tool (short message in the language given in `idioma`, imperative mood). Do not run git commit directly.'
+    return 'To commit, ask with the gearmod_request_commit tool (message and files): the user authorizes it on the card. Do not run git commit directly.'
   }
 
   private latestWorktree(cardId: string): { id: string; branch: string } | undefined {
@@ -628,7 +628,7 @@ export class GitManager {
     let listDir: string | null = null
     if (paths.length && paths.length <= 400) args.push('--only', '--', ...paths)
     else if (paths.length) {
-      listDir = await mkdtemp(join(tmpdir(), 'agentboard-paths-'))
+      listDir = await mkdtemp(join(tmpdir(), 'gearmod-paths-'))
       const list = join(listDir, 'paths')
       await writeFile(list, `${paths.join('\0')}\0`, 'utf8')
       args.push('--only', `--pathspec-from-file=${list}`, '--pathspec-file-nul')
@@ -964,11 +964,11 @@ ${diff}`
     try { await this.run(dir, action === 'revert' ? ['revert', '--no-edit', hash] : ['cherry-pick', hash]); return { output: action === 'revert' ? tm().git.commitReverted(hash.slice(0, 7)) : tm().git.commitCherryPicked(hash.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, action as 'cherry-pick' | 'revert', error) }
   }
 
-  /** Guarda em `refs/agentboard/backup/*` o que uma ação destrutiva vai descartar (alterações do `git stash create`, ou o stash indicado). Devolve o nome da ref. */
+  /** Guarda em `refs/gearmod/backup/*` o que uma ação destrutiva vai descartar (alterações do `git stash create`, ou o stash indicado). Devolve o nome da ref. */
   private async saveRecovery(dir: string, kind: 'reset' | 'stash', stashRef?: string): Promise<string | null> {
     const commit = (kind === 'stash' ? await this.tryRun(dir, ['rev-parse', '--verify', stashRef!]) : await this.tryRun(dir, ['stash', 'create']))?.trim()
     if (!commit) return null
-    const ref = `refs/agentboard/backup/${kind}-${new Date().toISOString().replace(/[:.]/g, '-')}`
+    const ref = `refs/gearmod/backup/${kind}-${new Date().toISOString().replace(/[:.]/g, '-')}`
     return await this.tryRun(dir, ['update-ref', ref, commit]) === null ? null : ref
   }
 
@@ -1131,7 +1131,7 @@ ${diff}`
     const source = this.source(sourceId)
     const out = await this.tryRun(source.path, ['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes/origin'])
     const cardBranches = new Set(this.database.db.prepare('SELECT branch FROM worktrees').pluck().all() as string[])
-    return [...new Set((out ?? '').split(/\r?\n/).map((line) => line.trim()).filter((name) => name && name !== 'origin' && name !== 'origin/HEAD' && !name.startsWith('agentboard/') && !cardBranches.has(name) && !cardBranches.has(name.replace(/^origin\//, ''))))]
+    return [...new Set((out ?? '').split(/\r?\n/).map((line) => line.trim()).filter((name) => name && name !== 'origin' && name !== 'origin/HEAD' && !name.startsWith('gearmod/') && !cardBranches.has(name) && !cardBranches.has(name.replace(/^origin\//, ''))))]
   }
 
   /** Troca a origem de UM repositório do card (a dos outros não muda): os commits do card passam a ser contados a partir dela. */
@@ -1199,8 +1199,8 @@ ${diff}`
     if (!members.length) throw new Error(tm().git.cardHasNoWorktreeYet)
     const names = members.map((member) => member.repoPath.split(/[\\/]/).pop() ?? member.repoPath)
     const summary = (this.database.db.prepare("SELECT content_md FROM card_documents WHERE card_id = ? AND kind = 'resumo'").pluck().get(cardId) as string | undefined)?.trim() ?? ''
-    const title = input.title?.trim() || card.title || 'Alterações do AgentBoard'
-    const body = input.body ?? `${summary}${members.length > 1 ? `\n\nEste card altera ${members.length} repositórios (${names.join(', ')}); cada um tem o seu PR na mesma branch.` : ''}\n\n_Aberto pelo AgentBoard._`
+    const title = input.title?.trim() || card.title || 'Alterações do GearMod'
+    const body = input.body ?? `${summary}${members.length > 1 ? `\n\nEste card altera ${members.length} repositórios (${names.join(', ')}); cada um tem o seu PR na mesma branch.` : ''}\n\n_Aberto pelo GearMod._`
     const results: Array<{ repo: string; url: string | null; error: string | null }> = []
     // Com `sourceId`, só esse repositório; sem ele, todos os do card.
     const only = input.sourceId ? resolve(this.source(input.sourceId).path) : null

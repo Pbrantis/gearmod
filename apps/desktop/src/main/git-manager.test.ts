@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defaultGitPolicy, errorCodeOf } from '@agentboard/contracts'
+import { defaultGitPolicy, errorCodeOf } from '@gearmod/contracts'
 import { ConversationRepository } from './conversations'
 import { AppDatabase } from './database'
 import { assignLanes, friendlyError, GitManager, resolveRule } from './git-manager'
@@ -18,10 +18,10 @@ afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await 
 const git = (dir: string, ...args: string[]): Promise<{ stdout: string }> => exec('git', ['-C', dir, ...args])
 
 async function setup(): Promise<{ root: string; repo: string; database: AppDatabase; manager: GitManager; projectId: string; sourceId: string; cardId: string; wt: string; branch: string; chatId: string; profileId: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-gitm-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-gitm-')); roots.push(root)
   const repo = join(root, 'repo'), data = join(root, 'data')
   await exec('git', ['init', '-b', 'main', repo])
-  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'AgentBoard Test'); await git(repo, 'config', 'core.autocrlf', 'false')
+  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'GearMod Test'); await git(repo, 'config', 'core.autocrlf', 'false')
   await writeFile(join(repo, 'README.md'), '# fixture\n'); await git(repo, 'add', 'README.md'); await git(repo, 'commit', '-m', 'primeiro')
   const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open(); opened.push(database)
   const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
@@ -62,7 +62,7 @@ describe('assignLanes', () => {
 
 describe('regra de commit do agente', () => {
   it('padrão do projeto: pedir permissão, exceção nunca em main, develop e release/*', () => {
-    expect(resolveRule(defaultGitPolicy, 'agentboard/tela-1234')).toEqual({ rule: 'ask', why: 'padrão do projeto' })
+    expect(resolveRule(defaultGitPolicy, 'gearmod/tela-1234')).toEqual({ rule: 'ask', why: 'padrão do projeto' })
     expect(resolveRule(defaultGitPolicy, 'main')).toEqual({ rule: 'never', why: 'exceção da branch main' })
     expect(resolveRule(defaultGitPolicy, 'develop').rule).toBe('never')
     expect(resolveRule(defaultGitPolicy, 'release/1.2').rule).toBe('never')
@@ -70,9 +70,9 @@ describe('regra de commit do agente', () => {
   })
 
   it('a primeira exceção que bater vence e * cobre qualquer trecho', () => {
-    const policy = { def: 'auto' as const, rules: [{ pattern: 'agentboard/*-x', rule: 'never' as const }, { pattern: 'agentboard/*', rule: 'ask' as const }, { pattern: '  ', rule: 'never' as const }] }
-    expect(resolveRule(policy, 'agentboard/a-x').rule).toBe('never')
-    expect(resolveRule(policy, 'agentboard/a-y').rule).toBe('ask')
+    const policy = { def: 'auto' as const, rules: [{ pattern: 'gearmod/*-x', rule: 'never' as const }, { pattern: 'gearmod/*', rule: 'ask' as const }, { pattern: '  ', rule: 'never' as const }] }
+    expect(resolveRule(policy, 'gearmod/a-x').rule).toBe('never')
+    expect(resolveRule(policy, 'gearmod/a-y').rule).toBe('ask')
     expect(resolveRule(policy, 'feature/z').rule).toBe('auto')
   })
 
@@ -158,7 +158,7 @@ describe('GitManager com repositórios reais', () => {
     const graph = await manager.graph(projectId, sourceId)
     const commits = graph.rows.filter((row) => !row.wip && !row.stash)
     expect(commits.map((row) => row.subject)).toEqual(['Card: cria a.txt', 'primeiro'])
-    expect(commits[0]).toMatchObject({ cardId, author: 'AgentBoard Test', agentProfileId: null }); expect(commits[0]!.refs.some((ref) => ref.name === branch)).toBe(true)
+    expect(commits[0]).toMatchObject({ cardId, author: 'GearMod Test', agentProfileId: null }); expect(commits[0]!.refs.some((ref) => ref.name === branch)).toBe(true)
     expect(commits[1]!.cardId).toBeNull(); expect(commits[1]!.refs).toContainEqual({ name: 'main', kind: 'head' })
     const wips = graph.rows.filter((row) => row.wip)
     expect(wips.map((row) => row.cardId)).toEqual([null, cardId])
@@ -222,13 +222,13 @@ describe('GitManager com repositórios reais', () => {
     const head = (await git(wt, 'rev-parse', 'HEAD')).stdout.trim()
     await writeFile(join(wt, 'README.md'), 'alterado e nao commitado\n')
     const reset = await manager.commitAction(sourceId, { cardId, action: 'reset-hard', hash: head })
-    expect(reset.output).toContain('refs/agentboard/backup/reset-')
+    expect(reset.output).toContain('refs/gearmod/backup/reset-')
     expect(await readFile(join(wt, 'README.md'), 'utf8')).not.toContain('alterado')
-    const ref = (await git(wt, 'for-each-ref', '--format=%(refname)', 'refs/agentboard/backup/')).stdout.trim()
+    const ref = (await git(wt, 'for-each-ref', '--format=%(refname)', 'refs/gearmod/backup/')).stdout.trim()
     expect((await git(wt, 'show', `${ref}:README.md`)).stdout).toContain('alterado e nao commitado')
     await writeFile(join(wt, 'README.md'), 'para o stash\n'); await manager.sync(sourceId, cardId, 'stash')
     const dropped = await manager.stashAction(sourceId, { cardId, action: 'drop', ref: 'stash@{0}' })
-    expect(dropped.output).toContain('refs/agentboard/backup/stash-')
+    expect(dropped.output).toContain('refs/gearmod/backup/stash-')
   })
 
   it('publica a branch do card, vê o painel e atualiza com fetch e pull', async () => {
@@ -340,7 +340,7 @@ describe('commit do agente', () => {
   it('pedir permissão: registra o pedido, autoriza, commita só os arquivos e marca o agente como autor', async () => {
     const { manager, projectId, sourceId, cardId, chatId, wt, profileId, database } = await setup()
     await writeFile(join(wt, 'a.txt'), 'a\n'); await writeFile(join(wt, 'b.txt'), 'b\n')
-    expect(manager.agentRule(cardId)).toContain('agentboard_request_commit')
+    expect(manager.agentRule(cardId)).toContain('gearmod_request_commit')
     const asked = await manager.agentCommit({ cardId, chatId, message: 'Cria a e b\n\nDetalhes', files: ['a.txt'] })
     expect(asked.rule).toBe('ask')
     const [request] = manager.requests(cardId)

@@ -20,5 +20,5 @@ export function quitPrompt(running: number): QuitPrompt | null {
 export const hiddenNotice = { get title() { return tm().background.hiddenTitle }, get body() { return tm().background.hiddenBody } }
 
 export function trayTooltip(running: number): string {
-  return running > 0 ? `AgentBoard · ${tm().background.agentsWorking(running)}` : 'AgentBoard'
+  return running > 0 ? `GearMod · ${tm().background.agentsWorking(running)}` : 'GearMod'
 }

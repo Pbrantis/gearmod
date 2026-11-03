@@ -1,11 +1,11 @@
-import type { CardChecklist } from '@agentboard/contracts'
+import type { CardChecklist } from '@gearmod/contracts'
 import { dateLocale, tr } from './i18n'
 
-export const checklistEvent = 'agentboard:checklist'
+export const checklistEvent = 'gearmod:checklist'
 
 /** O usuário marca ou desmarca um item do checklist do teste; as outras telas que mostram o checklist recebem o novo estado. */
 export async function toggleChecklist(cardId: string, line: number, text: string, checked: boolean): Promise<CardChecklist> {
-  const next = await window.agentboard.invoke('cards:checklist-toggle', { cardId, line, text, checked })
+  const next = await window.gearmod.invoke('cards:checklist-toggle', { cardId, line, text, checked })
   window.dispatchEvent(new CustomEvent(checklistEvent, { detail: next }))
   return next
 }

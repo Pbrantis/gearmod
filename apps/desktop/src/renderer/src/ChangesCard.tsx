@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { errorCodeOf, withoutErrorCode, type Review, type TestRun } from '@agentboard/contracts'
+import { errorCodeOf, withoutErrorCode, type Review, type TestRun } from '@gearmod/contracts'
 import { parseChanges, type FileChange } from './changes'
 import { CheckIcon, DiffIcon, ExpandIcon, RefreshIcon } from './icons'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -7,7 +7,7 @@ import { plainError } from './NoticeDialog'
 import { LinkWorktreeDialog } from './LinkWorktreeDialog'
 import { useT } from './i18n'
 
-const commandKey = (projectId: string): string => `agentboard.testCommand.${projectId}`
+const commandKey = (projectId: string): string => `gearmod.testCommand.${projectId}`
 const readCommand = (projectId: string): string => { try { return localStorage.getItem(commandKey(projectId)) ?? '' } catch { return '' } }
 
 /**
@@ -27,7 +27,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
     loading.current = true
     if (!silent) setWorking('refresh')
     try {
-      const [snapshot, quality] = await Promise.all([window.agentboard.invoke('worktrees:snapshot', { cardId }), window.agentboard.invoke('quality:status', { cardId })])
+      const [snapshot, quality] = await Promise.all([window.gearmod.invoke('worktrees:snapshot', { cardId }), window.gearmod.invoke('quality:status', { cardId })])
       setFiles(snapshot.exists ? parseChanges(snapshot) : []); setTest(quality.test); setReview(quality.review); setError(''); setNoWorktree(false)
     } catch (reason) {
       // Card sem worktree (ainda não executou, ou o trabalho foi feito na de outro card): não é erro, só oferece vincular.
@@ -41,7 +41,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
   useEffect(() => {
     const again = (): void => { if (!document.hidden) void refresh(true) }
     const timer = window.setInterval(again, 6000)
-    const off = window.agentboard.onRunEvent((event) => { if (['agentboard/card-updated', 'agentboard/run-completed'].includes(event.eventType)) again() })
+    const off = window.gearmod.onRunEvent((event) => { if (['gearmod/card-updated', 'gearmod/run-completed'].includes(event.eventType)) again() })
     window.addEventListener('focus', again)
     return () => { window.clearInterval(timer); off(); window.removeEventListener('focus', again) }
   }, [refresh])
@@ -52,18 +52,18 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
     setCommand(nextCommand); setDraftCommand(nextCommand)
     try { localStorage.setItem(commandKey(projectId), nextCommand) } catch { /* só conveniência */ }
     setWorking('test'); setError('')
-    try { setTest(await window.agentboard.invoke('tests:run', { cardId, executable: parts[0]!, args: parts.slice(1) })) } catch (reason) { setError(plainError(reason)) } finally { setWorking('') }
+    try { setTest(await window.gearmod.invoke('tests:run', { cardId, executable: parts[0]!, args: parts.slice(1) })) } catch (reason) { setError(plainError(reason)) } finally { setWorking('') }
   }
   const approve = async (): Promise<void> => {
     setWorking('review'); setError('')
     try {
-      const prepared = review ?? await window.agentboard.invoke('reviews:prepare-local', { cardId })
-      setReview(prepared.state === 'open' ? await window.agentboard.invoke('reviews:approve-local', { reviewId: prepared.id }) : prepared)
+      const prepared = review ?? await window.gearmod.invoke('reviews:prepare-local', { cardId })
+      setReview(prepared.state === 'open' ? await window.gearmod.invoke('reviews:approve-local', { reviewId: prepared.id }) : prepared)
     } catch (reason) { setError(plainError(reason)) } finally { setWorking('') }
   }
 
   /** Abre a visualização ampliada na área principal, só com os arquivos alterados (no lugar do chat). */
-  const showAll = (): void => { if (files?.length) window.dispatchEvent(new CustomEvent('agentboard:open-changes', { detail: { projectId, cardId, files } })) }
+  const showAll = (): void => { if (files?.length) window.dispatchEvent(new CustomEvent('gearmod:open-changes', { detail: { projectId, cardId, files } })) }
   const added = files?.reduce((sum, item) => sum + item.added, 0) ?? 0, removed = files?.reduce((sum, item) => sum + item.removed, 0) ?? 0
   const passed = test?.status === 'passed', approved = review?.state === 'approved' || review?.state === 'merged'
   const configure = (action: 'save' | 'run'): void => { setDraftCommand(command); setConfiguring(action) }
@@ -84,7 +84,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
         : files.length ? <><span className="ch-add">+{added}</span><span className="ch-del">−{removed}</span><span className="ch-muted">{t.fileCount(files.length)}</span><span className="chev chev-box" aria-hidden="true"><svg className="chev-svg" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" /></svg></span></>
           : <span className="ch-muted">{t.noChangesYet}</span>}
     </button>
-    {shared && <p className="ch-muted ch-shared">{t.usingWorktreeOf(shared)} · <button type="button" className="linklike" onClick={() => void window.agentboard.invoke('worktrees:link', { cardId, fromCardId: null }).then(() => { window.dispatchEvent(new Event('agentboard:board-changed')); void refresh() })}>{t.unlink}</button></p>}
+    {shared && <p className="ch-muted ch-shared">{t.usingWorktreeOf(shared)} · <button type="button" className="linklike" onClick={() => void window.gearmod.invoke('worktrees:link', { cardId, fromCardId: null }).then(() => { window.dispatchEvent(new Event('gearmod:board-changed')); void refresh() })}>{t.unlink}</button></p>}
     {!shared && noWorktree && <button type="button" className="mini secondary ch-link" onClick={() => setPicking(true)}>{t.useOtherWorktree}</button>}
     {picking && <LinkWorktreeDialog cardId={cardId} close={() => setPicking(false)} linked={() => { setPicking(false); void refresh() }} />}
     <div className="ch-steps">

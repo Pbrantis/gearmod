@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { AgentProfile, SkillEntry, SkillScope } from '@agentboard/contracts'
+import type { AgentProfile, SkillEntry, SkillScope } from '@gearmod/contracts'
 import { ProviderLogo } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
 import { tasks } from './backgroundTasks'
@@ -21,14 +21,14 @@ export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope
   const [skills, setSkills] = useState<SkillEntry[]>([]), [loaded, setLoaded] = useState(false), [error, setError] = useState(''), [importing, setImporting] = useState(false), [converting, setConverting] = useState<{ name: string; to: 'claude' | 'codex' | 'gemini' }>()
   const [source, setSource] = useState(''), [name, setName] = useState(''), [origin, setOrigin] = useState<'claude' | 'codex'>('claude'), [reviewer, setReviewer] = useState(''), [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'one' | 'folder'>('one'), [menu, setMenu] = useState(false), [open, setOpen] = useState<string>(), [deleting, setDeleting] = useState<SkillEntry>(), [notice, setNotice] = useState('')
-  const load = useCallback(async () => { try { setSkills(await window.agentboard.invoke('skills:list', { scope, projectId })); setLoaded(true); setError('') } catch (reason) { setError(plainError(reason)) } }, [scope, projectId])
+  const load = useCallback(async () => { try { setSkills(await window.gearmod.invoke('skills:list', { scope, projectId })); setLoaded(true); setError('') } catch (reason) { setError(plainError(reason)) } }, [scope, projectId])
   useEffect(() => { void load() }, [load])
-  useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType.startsWith('skills/review-')) void load() }), [load])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType.startsWith('skills/review-')) void load() }), [load])
   const guard = async (action: () => Promise<void>, process?: { title: string; detail: string }): Promise<void> => {
     setBusy(true); setError('')
     try { if (process) await tasks.track(process, action).promise; else await action() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
-  const choose = async (): Promise<void> => { const picked = await window.agentboard.invoke(mode === 'folder' ? 'skills:choose-folder' : 'skills:choose-source', undefined); if (!picked) return; setSource(picked); if (mode === 'one' && !name) setName(slug(picked.replace(/[\\/]SKILL\.md$/i, '').split(/[\\/]/).pop() ?? '')) }
+  const choose = async (): Promise<void> => { const picked = await window.gearmod.invoke(mode === 'folder' ? 'skills:choose-folder' : 'skills:choose-source', undefined); if (!picked) return; setSource(picked); if (mode === 'one' && !name) setName(slug(picked.replace(/[\\/]SKILL\.md$/i, '').split(/[\\/]/).pop() ?? '')) }
   const running = skills.find((skill) => skill.providers.claude === 'converting' || skill.providers.codex === 'converting' || skill.providers.gemini === 'converting')
   return <>
     <div className="skhead"><span className="sk-count" data-tip={scope === 'project' ? ts.projectTip : ts.globalTip}>{loaded ? ts.found(skills.length) : error ? ts.cannotLoad : ts.loading}<span> · {scope === 'project' ? ts.scopeProject : ts.scopeGlobal}</span></span>{!importing && <span className="impmenu"><button type="button" className="mini" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>{ts.importMenu}</button>{menu && <div className="modemenu impdrop" role="menu"><button type="button" role="menuitem" className="modeopt" onClick={() => { setMenu(false); setMode('one'); setImporting(true); setSource(''); setName('') }}><span className="mo-t"><b>{ts.oneSkill}</b><small>{ts.oneSkillHint}</small></span></button><button type="button" role="menuitem" className="modeopt" onClick={() => { setMenu(false); setMode('folder'); setImporting(true); setSource(''); setName('') }}><span className="mo-t"><b>{ts.folderSkills}</b><small>{ts.folderSkillsHint}</small></span></button></div>}</span>}</div>
@@ -37,8 +37,8 @@ export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope
       {mode === 'one' && <label className="f">{t.common.name}<input className="in" value={name} placeholder={ts.namePlaceholder} onChange={(e) => setName(slug(e.target.value))} /></label>}
       <div className="f"><span>{mode === 'folder' ? ts.whichAgentFolder : ts.whichAgentOne}</span><div className="provcards">{offered.map((provider) => <button type="button" key={provider} className={origin === provider ? 'sel' : ''} onClick={() => setOrigin(provider)}><i className={`av lg ${provider}`}><ProviderLogo provider={provider} /></i><span><b>{providerName[provider]}</b><small>{providerMaker[provider]}</small></span></button>)}</div></div>
       <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setImporting(false)}>{t.common.cancel}</button><button type="button" disabled={busy || !source || (mode === 'one' && !name)} onClick={() => void guard(async () => {
-        if (mode === 'folder') { const result = await window.agentboard.invoke('skills:import-folder', { scope, projectId, folderPath: source, provider: origin }); setSkills(result.skills); setNotice(ts.imported(result.imported.length, result.skipped.length)) }
-        else setSkills(await window.agentboard.invoke('skills:import', { scope, projectId, sourcePath: source, name, provider: origin }))
+        if (mode === 'folder') { const result = await window.gearmod.invoke('skills:import-folder', { scope, projectId, folderPath: source, provider: origin }); setSkills(result.skills); setNotice(ts.imported(result.imported.length, result.skipped.length)) }
+        else setSkills(await window.gearmod.invoke('skills:import', { scope, projectId, sourcePath: source, name, provider: origin }))
         setImporting(false) }, { title: mode === 'folder' ? ts.importFolderTitle : ts.importOneTitle(name), detail: source })}>{ts.import}</button></div></div>}
     <div className="stack sklist" style={{ gap: 8 }}>{loaded && skills.length === 0 && !importing ? <div className="emptyBox">{scope === 'project' ? ts.emptyProject : ts.emptyGlobal}</div> : skills.map((skill) => {
       const from = skill.providers.claude === 'ready' ? 'claude' : skill.providers.codex === 'ready' ? 'codex' : 'gemini'
@@ -58,12 +58,12 @@ export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope
         {running?.name === skill.name && <div className="running"><div className="row"><span className="spin" /><b>{ts.convertingReviewing}</b></div><div className="bar"><i /></div><span style={{ fontSize: 11, color: 'var(--accent)' }}>{ts.agentChecks}</span></div>}
         {converting?.name === skill.name && <div className="convbox"><p>{ts.convertIntro()[0]}<b>{skill.name}</b>{ts.convertIntro()[1]}<b>{providerName[converting.to]}</b>{ts.convertIntro()[2]}</p>
           <div className="agentbar col2"><Select label={ts.reviewerAgent} value={reviewer} onChange={setReviewer} options={[{ value: '', label: ts.noReview }, ...profiles.map((item) => ({ value: item.id, label: `${item.label} · ${providerName[item.provider]}` }))]} /></div>
-          <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setConverting(undefined)}>{t.common.cancel}</button><button type="button" disabled={busy} onClick={() => void guard(async () => { await window.agentboard.invoke('skills:convert', { scope, projectId, name: skill.name, from, to: converting.to, reviewProfileId: reviewer || undefined }); setConverting(undefined); await load() }, { title: ts.convertTitle(skill.name), detail: ts.convertDetail(providerName[from], providerName[converting.to]) })}>{ts.convertAndReview}</button></div></div>}
+          <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setConverting(undefined)}>{t.common.cancel}</button><button type="button" disabled={busy} onClick={() => void guard(async () => { await window.gearmod.invoke('skills:convert', { scope, projectId, name: skill.name, from, to: converting.to, reviewProfileId: reviewer || undefined }); setConverting(undefined); await load() }, { title: ts.convertTitle(skill.name), detail: ts.convertDetail(providerName[from], providerName[converting.to]) })}>{ts.convertAndReview}</button></div></div>}
       </div>
     })}</div>
     {scope === 'project' && globalCount !== undefined && <p className="foot">{ts.footGlobal}</p>}
     {notice && <p className="hint" role="status" style={{ marginTop: 10 }}>{notice}</p>}
     {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
-    {deleting && <ConfirmDialog eyebrow={ts.deleteSkill} title={deleting.name} text={ts.deleteText(Object.values(deleting.providers).filter((state) => state === 'ready').length > 1, deleting.origin ?? '')} ok={t.common.delete} danger cancel={() => setDeleting(undefined)} confirm={() => { const target = deleting; setDeleting(undefined); void guard(async () => { try { setSkills(await window.agentboard.invoke('skills:delete', { scope, projectId, name: target.name })); setOpen(undefined) } catch (reason) { throw new Error(plainError(reason)) } }) }} />}
+    {deleting && <ConfirmDialog eyebrow={ts.deleteSkill} title={deleting.name} text={ts.deleteText(Object.values(deleting.providers).filter((state) => state === 'ready').length > 1, deleting.origin ?? '')} ok={t.common.delete} danger cancel={() => setDeleting(undefined)} confirm={() => { const target = deleting; setDeleting(undefined); void guard(async () => { try { setSkills(await window.gearmod.invoke('skills:delete', { scope, projectId, name: target.name })); setOpen(undefined) } catch (reason) { throw new Error(plainError(reason)) } }) }} />}
   </>
 }

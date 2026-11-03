@@ -1,21 +1,21 @@
 ---
-name: agentboard-test
-description: Tests an AgentBoard card by checking the Tasks and acceptance criteria against what was implemented, in the card's worktree. Use when AgentBoard asks to test the card.
+name: gearmod-test
+description: Tests an GearMod card by checking the Tasks and acceptance criteria against what was implemented, in the card's worktree. Use when GearMod asks to test the card.
 ---
 
-# Test card (AgentBoard)
+# Test card (GearMod)
 
 Write everything you produce for the user — documents, headings, labels, descriptive IDs, questions and chat replies — in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language.
 
 Test this card in the current worktree: check the Tasks and acceptance criteria in the context against what was implemented.
 
-- **Retesting a card that already has a checklist:** read it first (call `agentboard_test_checklist` without `markdown`). Keep the same items and wording, uncheck them all (`- [ ]`, dropping any old "failed" note) and verify each one again, marking as you go. Add items only for what is new in the card and remove only what no longer applies. Never rebuild the checklist from scratch: the user's history of each item depends on it.
-- Before starting (no checklist yet), build the checklist of what you will verify and save it with `agentboard_test_checklist` (`- [ ] ...` items, one per verification: tests, lint, typecheck, each acceptance criterion you will check, diff review). As you finish each item, save the checklist again with it marked (`- [x]`); if it failed, leave `- [ ]` and append ` — failed: <reason>` (the word "failed" in the language of `idioma`; pt-BR: ` — falhou: <motivo>`). The user follows this checklist next to the chat.
-- Run the project's tests, lint and typecheck, review the diff and point out whatever fails, with the reason and where. `agentboard_code_affected_tests` lists the tests that depend on the changed files, and `agentboard_code_impact` shows what else a changed symbol reaches (regressions to check).
+- **Retesting a card that already has a checklist:** read it first (call `gearmod_test_checklist` without `markdown`). Keep the same items and wording, uncheck them all (`- [ ]`, dropping any old "failed" note) and verify each one again, marking as you go. Add items only for what is new in the card and remove only what no longer applies. Never rebuild the checklist from scratch: the user's history of each item depends on it.
+- Before starting (no checklist yet), build the checklist of what you will verify and save it with `gearmod_test_checklist` (`- [ ] ...` items, one per verification: tests, lint, typecheck, each acceptance criterion you will check, diff review). As you finish each item, save the checklist again with it marked (`- [x]`); if it failed, leave `- [ ]` and append ` — failed: <reason>` (the word "failed" in the language of `idioma`; pt-BR: ` — falhou: <motivo>`). The user follows this checklist next to the chat.
+- Run the project's tests, lint and typecheck, review the diff and point out whatever fails, with the reason and where. `gearmod_code_affected_tests` lists the tests that depend on the changed files, and `gearmod_code_impact` shows what else a changed symbol reaches (regressions to check).
 - Use the Plan's test plan and the Tasks' criteria as your script: run the whole suite, check each listed regression and validate each criterion.
-- Judge the automated tests the developer wrote: do the ones the test plan asks for exist? Do they really cover the criterion (not empty, not just "doesn't break")? A missing or weak test becomes a failed item in the checklist with the reason; you do not write their code. Anything not in the documents that needs testing becomes a proposal with `agentboard_propose_change`.
-- Mark with `agentboard_mark_task` only what you actually verified. When finished, update the Summary with `agentboard_write_document` saying whether it is ready or what is missing.
-- If you have a question the documents do not answer, use `agentboard_ask_planner`, continue only with what does not depend on it and end the execution: the app resumes you with the answer.
+- Judge the automated tests the developer wrote: do the ones the test plan asks for exist? Do they really cover the criterion (not empty, not just "doesn't break")? A missing or weak test becomes a failed item in the checklist with the reason; you do not write their code. Anything not in the documents that needs testing becomes a proposal with `gearmod_propose_change`.
+- Mark with `gearmod_mark_task` only what you actually verified. When finished, update the Summary with `gearmod_write_document` saying whether it is ready or what is missing.
+- If you have a question the documents do not answer, use `gearmod_ask_planner`, continue only with what does not depend on it and end the execution: the app resumes you with the answer.
 - Do not change the code unless the user asks, and do not move the card to another column.
 
 ## On-screen tests with Playwright
@@ -36,7 +36,7 @@ Use Playwright to check the acceptance criteria that can only be verified on scr
 - **No window by default (headless).** Keep `video`/`trace`/`screenshot` on only for failures (`--trace=retain-on-failure`) and record in the checklist the path of the trace or screenshot of each failure (`npx playwright show-trace <file>` opens the trace).
 - **If the user asks to watch** ("see the browser", "show it on screen"): run with `--headed` and, if possible, `slowMo: 400` in `launchOptions`, to give time to follow. `--ui` mode only if the user asks, because it opens an interactive window that waits for them.
 - **Need the application server running?** Start the project's development command in the background, wait for the port to respond and stop the process when finished. Do not leave a server running.
-- **Browsers missing, or Playwright not in the project at all?** Do not install anything on your own: downloading browsers is ~150 MB. Tell the user (or open a proposal with `agentboard_propose_change`) and continue with what can be tested without it.
+- **Browsers missing, or Playwright not in the project at all?** Do not install anything on your own: downloading browsers is ~150 MB. Tell the user (or open a proposal with `gearmod_propose_change`) and continue with what can be tested without it.
 - Test the screen the way the user uses it (click, type, wait for the visible result), not the implementation internals. Mark the task only when the criterion was actually observed.
 
-- **Reassessment:** if validation turns out much harder than the card's assessment predicted, or the same tests fail again after a fix, reassess with `agentboard_assess_complexity` (trigger `failures` or `risk`).
+- **Reassessment:** if validation turns out much harder than the card's assessment predicted, or the same tests fail again after a fix, reassess with `gearmod_assess_complexity` (trigger `failures` or `risk`).

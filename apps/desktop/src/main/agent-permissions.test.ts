@@ -13,7 +13,7 @@ describe('run-scoped agent permissions', () => {
     expect(broker.decide('run-a', request.id, false)).toBe(false)
     expect(await pending).toBe(true)
     expect(broker.list('chat-a')).toEqual([])
-    expect(events).toEqual(['agentboard/permission-requested', 'agentboard/permission-resolved'])
+    expect(events).toEqual(['gearmod/permission-requested', 'gearmod/permission-resolved'])
   })
   it('denies all pending requests on abort or run completion without affecting another run', async () => {
     const broker = new AgentPermissions(), controller = new AbortController()

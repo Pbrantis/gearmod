@@ -1,4 +1,4 @@
-import type { CardDocumentKind, ChatPurpose } from '@agentboard/contracts'
+import type { CardDocumentKind, ChatPurpose } from '@gearmod/contracts'
 import { extractDocuments, type McpBridge, type McpEndpoint } from './mcp-bridge'
 import type { BoardRepository } from './projects'
 
@@ -19,7 +19,7 @@ export class AgentWriteback {
   constructor(private readonly board: BoardRepository, private readonly bridge: McpBridge) {}
 
   begin(runId: string, cardId: string | null, publish: Publish, chat?: { id: string; purpose: ChatPurpose }): McpEndpoint {
-    return this.bridge.register(runId, cardId, (change) => publish('agentboard/card-updated', { cardId, ...change }), chat)
+    return this.bridge.register(runId, cardId, (change) => publish('gearmod/card-updated', { cardId, ...change }), chat)
   }
 
   /** Devolve avisos (em português) para mostrar no chat quando algo não pôde ser aplicado. */
@@ -34,12 +34,12 @@ export class AgentWriteback {
         try { this.board.documents.write(input.cardId, document.kind, document.markdown, 'agent'); written.add(document.kind) }
         catch (error) { notices.push(`O documento ${document.kind} não foi gravado: ${error instanceof Error ? error.message : String(error)}`) }
       }
-      if (input.planning && !specKit && /<!--\s*agentboard:planejamento-concluido\s*-->/.test(input.text)) {
+      if (input.planning && !specKit && /<!--\s*gearmod:planejamento-concluido\s*-->/.test(input.text)) {
         const missing = this.board.markPlanReady(input.cardId)
         if (missing.length) notices.push(`O planejamento não foi dado como concluído: faltam ${missing.join(', ')}.`)
       }
       if (report.pendingMove) {
-        try { const moved = this.board.move(input.cardId, report.pendingMove, null, 'agent'); input.publish('agentboard/card-updated', { cardId: input.cardId, type: 'moved', column: this.board.get(moved.projectId).columns.find((column) => column.id === moved.columnId)?.label ?? '' }) }
+        try { const moved = this.board.move(input.cardId, report.pendingMove, null, 'agent'); input.publish('gearmod/card-updated', { cardId: input.cardId, type: 'moved', column: this.board.get(moved.projectId).columns.find((column) => column.id === moved.columnId)?.label ?? '' }) }
         catch (error) { notices.push(`O card não foi movido: ${error instanceof Error ? error.message : String(error)}`) }
       }
     }
@@ -49,10 +49,10 @@ export class AgentWriteback {
       const title = card.title.trim() ? '' : titleFromPrompt(input.prompt)
       if (title) {
         this.board.update({ cardId: input.cardId, type: card.type, title, description: card.description, priority: card.priority, acceptanceCriteria: card.acceptanceCriteria.map(({ body, checked }) => ({ body, checked })) })
-        input.publish('agentboard/card-updated', { cardId: input.cardId, type: 'card' })
+        input.publish('gearmod/card-updated', { cardId: input.cardId, type: 'card' })
       }
     }
-    if (written.size) input.publish('agentboard/card-updated', { cardId: input.cardId, type: 'document' })
+    if (written.size) input.publish('gearmod/card-updated', { cardId: input.cardId, type: 'document' })
     return { notices, wroteDocuments: written.size > 0 }
   }
 }

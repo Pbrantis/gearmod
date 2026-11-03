@@ -33,7 +33,7 @@ export class FileWatchService {
       item.timer = null
       if (type === 'rename') { item.watcher?.close(); item.watcher = null; if (existsSync(path)) this.start(path, item) }
       const deleted = !existsSync(path)
-      this.emit('agentboard/file-changed', deleted ? { path, deleted: true } : { path })
+      this.emit('gearmod/file-changed', deleted ? { path, deleted: true } : { path })
     }, this.delay)
   }
 }

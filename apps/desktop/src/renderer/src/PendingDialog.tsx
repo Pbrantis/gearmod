@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { Card, Change, Collaboration, Question } from '@agentboard/contracts'
+import type { Card, Change, Collaboration, Question } from '@gearmod/contracts'
 import { useEscape } from './useEscape'
 import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
@@ -40,7 +40,7 @@ function QuestionItem({ question, busy, answer }: { question: Question; busy: bo
 /** Pendências do card: mudanças propostas que esperam autorização (aceitar, recusar ou sugerir outra visão) e perguntas que só o usuário responde. */
 export function PendingDialog({ card, close, changed }: { card: Card; close(): void; changed(): void }): React.JSX.Element {
   const t = useT(), [data, setData] = useState<Collaboration>(), [busy, setBusy] = useState(false), [error, setError] = useState('')
-  const load = useCallback(async () => { try { setData(await window.agentboard.invoke('collab:list', { cardId: card.id })) } catch (reason) { setError(plainError(reason)) } }, [card.id])
+  const load = useCallback(async () => { try { setData(await window.gearmod.invoke('collab:list', { cardId: card.id })) } catch (reason) { setError(plainError(reason)) } }, [card.id])
   useEffect(() => { void load() }, [load])
   useEscape(close)
   const run = async (action: () => Promise<Collaboration>): Promise<void> => { setBusy(true); setError(''); try { setData(await action()); changed() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) } }
@@ -50,9 +50,9 @@ export function PendingDialog({ card, close, changed }: { card: Card; close(): v
     <header><div><div className="eyebrow">{t.shell.pending.authorizeChanges}</div><h2>{card.title || t.shell.pending.newCard}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
     <p style={{ marginBottom: 12, fontSize: 13 }}>{t.shell.pending.intro}</p>
     <div className="stack" style={{ gap: 10 }}>
-      {changes.map((change) => <ChangeItem key={change.id} change={change} busy={busy} decide={(decision, note) => void run(() => window.agentboard.invoke('collab:decide-change', { changeId: change.id, decision, note }))} />)}
-      {toSend.map((change) => <SendItem key={change.id} change={change} busy={busy} send={() => void run(() => window.agentboard.invoke('collab:send-change', { changeId: change.id }))} />)}
-      {questions.map((question) => <QuestionItem key={question.id} question={question} busy={busy} answer={(text) => void run(() => window.agentboard.invoke('collab:answer-question', { questionId: question.id, answer: text }))} />)}
+      {changes.map((change) => <ChangeItem key={change.id} change={change} busy={busy} decide={(decision, note) => void run(() => window.gearmod.invoke('collab:decide-change', { changeId: change.id, decision, note }))} />)}
+      {toSend.map((change) => <SendItem key={change.id} change={change} busy={busy} send={() => void run(() => window.gearmod.invoke('collab:send-change', { changeId: change.id }))} />)}
+      {questions.map((question) => <QuestionItem key={question.id} question={question} busy={busy} answer={(text) => void run(() => window.gearmod.invoke('collab:answer-question', { questionId: question.id, answer: text }))} />)}
       {data && !changes.length && !questions.length && !toSend.length && <div className="emptyBox">{t.shell.pending.nothingWaiting}</div>}
     </div>
     {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}

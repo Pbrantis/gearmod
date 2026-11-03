@@ -9,7 +9,7 @@ import { tm } from './i18n'
 
 /**
  * Gemini CLI em modo ACP (Agent Client Protocol, JSON-RPC 2.0 em linhas por stdio), usado no modo "Padrão" para que cada ação
- * pendente apareça na tela de permissões do AgentBoard. Formatos: docs/GEMINI-ACP.md (esquema v1 do protocolo).
+ * pendente apareça na tela de permissões do GearMod. Formatos: docs/GEMINI-ACP.md (esquema v1 do protocolo).
  * Fluxo: initialize → (authenticate se pedir) → session/new ou session/load → session/prompt; o agente manda `session/update`
  * (notificação) e `session/request_permission` (requisição que o app responde com a opção escolhida pelo usuário).
  */
@@ -17,12 +17,12 @@ type Json = Record<string, unknown>
 const asObject = (value: unknown): Json => (value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {})
 
 /** Servidores MCP no formato do `session/new`: stdio não tem `type`; http leva `type: "http"`; env e cabeçalhos são listas nome/valor. */
-export function acpMcpServers(servers: McpRunServer[], agentboard?: { command: string; args: string[]; env: Record<string, string> }): Json[] {
+export function acpMcpServers(servers: McpRunServer[], gearmod?: { command: string; args: string[]; env: Record<string, string> }): Json[] {
   const pairs = (record: Record<string, string>): Array<{ name: string; value: string }> => Object.entries(record).map(([name, value]) => ({ name, value }))
   const all: Json[] = servers.map((server) => server.transport === 'stdio'
     ? { name: server.name, command: server.command, args: server.args, env: pairs(server.env) }
     : { type: 'http', name: server.name, url: server.url, headers: pairs(server.headers) })
-  if (agentboard) all.unshift({ name: 'agentboard', command: agentboard.command, args: agentboard.args, env: pairs(agentboard.env) })
+  if (gearmod) all.unshift({ name: 'gearmod', command: gearmod.command, args: gearmod.args, env: pairs(gearmod.env) })
   return all
 }
 
@@ -95,7 +95,7 @@ export async function runGeminiAcp(processes: ProcessFactory, options: AgentRunO
       return
     }
     // Qualquer outro pedido do agente (sistema de arquivos, terminal…) não foi anunciado nas capacidades: recusa clara.
-    if (id !== undefined) write({ id, error: { code: -32601, message: 'Method not supported by AgentBoard' } })
+    if (id !== undefined) write({ id, error: { code: -32601, message: 'Method not supported by GearMod' } })
   })
 
   const finish = (result: AgentRunResult): AgentRunResult => { ended = true; options.signal?.removeEventListener('abort', abort); try { child.stdin.end() } catch { /* já fechado */ } if (!child.killed) child.kill(); return result }

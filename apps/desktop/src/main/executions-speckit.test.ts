@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentConfig } from '@agentboard/contracts'
+import type { AgentConfig } from '@gearmod/contracts'
 import { ExecutionService } from './executions'
 
 function service(ready: boolean, provider: 'claude' | 'codex' = 'claude') {

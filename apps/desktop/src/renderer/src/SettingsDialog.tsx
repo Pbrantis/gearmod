@@ -1,10 +1,10 @@
-import { providerLabels } from '@agentboard/contracts'
+import { providerLabels } from '@gearmod/contracts'
 import { setLocale, useT } from './i18n'
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useFloatingMenu } from './useFloatingMenu'
 import { isOutdated, useLatestVersions } from './toolUpdates'
-import { agentColorPalette, defaultAgentColor, type AgentProbe, type AgentProfile, type AppLanguage, type AppSettings, type AppTheme, type VoiceModel } from '@agentboard/contracts'
+import { agentColorPalette, defaultAgentColor, type AgentProbe, type AgentProfile, type AppLanguage, type AppSettings, type AppTheme, type VoiceModel } from '@gearmod/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
 import { NoticeDialog, plainError } from './NoticeDialog'
 import { SkillsPanel } from './SkillsPanel'
@@ -40,7 +40,7 @@ export function applyTheme(theme: AppTheme): void {
   document.documentElement.dataset.accent = theme
   const light = theme.startsWith('light-')
   document.documentElement.dataset.theme = light ? 'light' : 'dark'
-  void window.agentboard.invoke('app:set-titlebar-theme', { light }).catch(() => undefined)
+  void window.gearmod.invoke('app:set-titlebar-theme', { light }).catch(() => undefined)
 }
 
 export function applySettings(settings: AppSettings): void {
@@ -57,30 +57,30 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
   const [installed, setInstalled] = useState(Boolean(profile)), [pending, setPending] = useState<AgentProfile | undefined>(undefined), [status, setStatus] = useState<AgentProbe>(), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [createdHere, setCreatedHere] = useState(false), [removing, setRemoving] = useState(false)
   const run = async (action: () => Promise<void>): Promise<void> => { setBusy(true); setMessage(''); try { await action() } catch (error) { setMessage(plainError(error)) } finally { setBusy(false) } }
   const checkInstall = async (which = provider): Promise<void> => {
-    const result = await window.agentboard.invoke('profiles:detect-provider', { provider: which })
+    const result = await window.gearmod.invoke('profiles:detect-provider', { provider: which })
     setInstalled(result.installed)
     setMessage(result.installed ? ta.installFound(result.version || which) : ta.notFound(result.error ?? ''))
   }
   useEffect(() => { if (!profile) void run(() => checkInstall(provider)) }, [provider])
   useEffect(() => { if (!profile) setColor(defaultAgentColor(provider)) }, [provider, profile])
   useEscape(() => { void cancel() })
-  const cancel = async (): Promise<void> => { if (pending && createdHere) await window.agentboard.invoke('profiles:delete', { profileId: pending.id }).catch(() => undefined); close() }
+  const cancel = async (): Promise<void> => { if (pending && createdHere) await window.gearmod.invoke('profiles:delete', { profileId: pending.id }).catch(() => undefined); close() }
   const checkAccount = async (item: AgentProfile): Promise<void> => {
-    const result = await window.agentboard.invoke('profiles:probe', { profileId: item.id })
+    const result = await window.gearmod.invoke('profiles:probe', { profileId: item.id })
     setStatus(result)
     if (result.authenticated && result.installed) { await changed(); setMessage(ta.connectedReady(item.label)); if (!profile) close() }
     else setMessage(result.installed ? ta.installFoundLogin : ta.cannotRun(result.error || ta.programNotFound))
   }
   const save = async (): Promise<void> => {
-    if (profile) { await window.agentboard.invoke('profiles:update', { profileId: profile.id, label, scope, color, billingMode, envPassthrough }); await changed(); close(); return }
-    const created = await window.agentboard.invoke('profiles:create', { provider, label: label.trim() || `Meu ${providerLabels[provider]}`, scope: scope.trim() || 'Pessoal', color })
+    if (profile) { await window.gearmod.invoke('profiles:update', { profileId: profile.id, label, scope, color, billingMode, envPassthrough }); await changed(); close(); return }
+    const created = await window.gearmod.invoke('profiles:create', { provider, label: label.trim() || `Meu ${providerLabels[provider]}`, scope: scope.trim() || 'Pessoal', color })
     setCreatedHere(true); setPending(created); await checkAccount(created)
   }
   const [notice, setNotice] = useState<{ title: string; text: string; after?: boolean }>()
   const remove = async (): Promise<void> => {
     if (!profile) return
     try {
-      const result = await window.agentboard.invoke('profiles:delete', { profileId: profile.id }); await changed()
+      const result = await window.gearmod.invoke('profiles:delete', { profileId: profile.id }); await changed()
       if (result.archived) setNotice({ title: ta.removedTitle, text: ta.removedText(profile.label), after: true })
       else close()
     } catch (reason) { setNotice({ title: ta.removeFailed, text: plainError(reason) }) }
@@ -90,12 +90,12 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
     <header><div><div className="eyebrow">{t.common.agent}</div><h2>{profile ? ta.edit : ta.new}</h2></div><button className="x" onClick={() => void cancel()} aria-label={t.common.close}>×</button></header>
     <div className="stack">
       {!profile && !pending && <div className="f"><span>{ta.type}</span><div className="provcards">{newAgentProviders.map((item) => <button type="button" key={item} disabled={busy} className={provider === item ? 'sel' : ''} onClick={() => setProvider(item)}><i className={`av lg ${item}`} style={{ color: provider === item ? color : undefined }}><ProviderLogo provider={item} /></i><span><b>{item === 'claude' ? 'Claude' : 'Codex'}</b><small>{item === 'claude' ? 'Anthropic' : 'OpenAI'}</small></span></button>)}</div></div>}
-      {!profile && !pending && !installed && <div className="convbox"><p>{ta.notInstalledHere(item(provider))}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkInstall())}>{ta.checkInstall}</button><button type="button" disabled={busy} onClick={() => void run(async () => { await window.agentboard.invoke('profiles:install-provider', { provider }); setMessage(ta.installOpened) })}>{ta.install(item(provider))}</button></div></div>}
+      {!profile && !pending && !installed && <div className="convbox"><p>{ta.notInstalledHere(item(provider))}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkInstall())}>{ta.checkInstall}</button><button type="button" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:install-provider', { provider }); setMessage(ta.installOpened) })}>{ta.install(item(provider))}</button></div></div>}
       {(profile || installed) && !pending && <>
         <label className="f">{t.common.name}<input className="in" value={label} placeholder={provider === 'claude' ? ta.labelPlaceholderClaude : provider === 'gemini' ? ta.labelPlaceholderGemini : ta.labelPlaceholderCodex} onChange={(e) => setLabel(e.target.value)} /></label>
         <label className="f">{ta.usage}<input className="in" value={scope} onChange={(e) => setScope(e.target.value)} /></label>
         {profile && <div className="f"><span>{ta.billing}</span><Select label={ta.billing} options={[{ value: 'unknown', label: ta.billingUnknown }, { value: 'subscription', label: ta.billingSubscription }, { value: 'api', label: ta.billingApi }, { value: 'credits', label: ta.billingCredits }]} value={billingMode} onChange={(value) => setBillingMode(value as AgentProfile['billingMode'])} />
-          {profile.apiKeySourceHint && profile.apiKeySourceHint !== 'none' && billingMode !== 'api' && <div className="convbox" style={{ margin: 0 }}><p>{ta.apiKeyHint(profile.apiKeySourceHint)}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(async () => { await window.agentboard.invoke('profiles:login', { profileId: profile.id }); setMessage(ta.finishLoginThenCheck) })}>{ta.redoLogin}</button></div></div>}
+          {profile.apiKeySourceHint && profile.apiKeySourceHint !== 'none' && billingMode !== 'api' && <div className="convbox" style={{ margin: 0 }}><p>{ta.apiKeyHint(profile.apiKeySourceHint)}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:login', { profileId: profile.id }); setMessage(ta.finishLoginThenCheck) })}>{ta.redoLogin}</button></div></div>}
         </div>}
         {profile && <div className="f"><span>{ta.envVars}<small>{ta.envVarsHint}</small></span>
           <div className="swatches" style={{ flexWrap: 'wrap', gap: 6 }}>{envPassthrough.map((name) => <span key={name} className="pillg" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{name}<button type="button" className="x" aria-label={ta.removeVar(name)} onClick={() => setEnvPassthrough(envPassthrough.filter((item) => item !== name))}>×</button></span>)}</div>
@@ -107,8 +107,8 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
         </div>}
         <div className="f"><span>{ta.personality}</span><div className="swatches">{agentColorPalette.map((value) => <button type="button" key={value} className={`sw ${color.toLowerCase() === value.toLowerCase() ? 'sel' : ''}`} style={{ '--c': value } as React.CSSProperties} aria-label={ta.colorAria(value)} aria-pressed={color.toLowerCase() === value.toLowerCase()} onClick={() => setColor(value)} />)}</div><div className="aeprev"><AgentIcon profile={preview} size="lg" tip={false} /><span>{preview.label}</span></div></div>
       </>}
-      {pending && <div className="convbox"><p>{ta.pendingLogin(pending.label)}</p><div className="actions" style={{ margin: 0 }}><button type="button" disabled={busy} onClick={() => void run(async () => { await window.agentboard.invoke('profiles:login', { profileId: pending.id }); setMessage(ta.finishLoginThenCheck2) })}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(pending))}>{ta.checkAccount}</button></div></div>}
-      {profile && <div className="convbox"><p>{status ? (status.authenticated ? ta.accountConnected(status.account ?? '') : status.installed ? ta.installedNotConnected : ta.notInstalled(status.error ?? ta.programNotFound)) : ta.checkPrompt}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(async () => { await window.agentboard.invoke('profiles:login', { profileId: profile.id }); setMessage(ta.finishLoginThenCheck) })}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(profile))}>{ta.checkAccount}</button></div></div>}
+      {pending && <div className="convbox"><p>{ta.pendingLogin(pending.label)}</p><div className="actions" style={{ margin: 0 }}><button type="button" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:login', { profileId: pending.id }); setMessage(ta.finishLoginThenCheck2) })}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(pending))}>{ta.checkAccount}</button></div></div>}
+      {profile && <div className="convbox"><p>{status ? (status.authenticated ? ta.accountConnected(status.account ?? '') : status.installed ? ta.installedNotConnected : ta.notInstalled(status.error ?? ta.programNotFound)) : ta.checkPrompt}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:login', { profileId: profile.id }); setMessage(ta.finishLoginThenCheck) })}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(profile))}>{ta.checkAccount}</button></div></div>}
       {message && <p role="status" className="hint" style={{ overflowWrap: 'anywhere' }}>{message}</p>}
     </div>
     <div className="actions">{profile && <button type="button" className="danger" style={{ marginRight: 'auto' }} disabled={busy} onClick={() => setRemoving(true)}>{t.common.remove}</button>}<button type="button" className="secondary" onClick={() => void cancel()}>{pending ? ta.cancelRegistration : t.common.cancel}</button>{!pending && (profile || installed) && <button type="button" disabled={busy} onClick={() => void run(save)}>{profile ? t.common.save : ta.continueToAccount}</button>}</div>
@@ -120,10 +120,10 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
 function GroqKeyField(): React.JSX.Element {
   const t = useT(), tg = t.settings.groq
   const [saved, setSaved] = useState<boolean>(), [editing, setEditing] = useState(false), [key, setKey] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
-  useEffect(() => { void window.agentboard.invoke('voice:status', undefined).then((status) => setSaved(status.modelInstalled)).catch(() => undefined) }, [])
+  useEffect(() => { void window.gearmod.invoke('voice:status', undefined).then((status) => setSaved(status.modelInstalled)).catch(() => undefined) }, [])
   const store = async (value: string): Promise<void> => {
     setBusy(true); setError('')
-    try { setSaved((await window.agentboard.invoke('voice:set-key', { key: value })).modelInstalled); setKey(''); setEditing(false); dismissVoiceInstall(); notifyVoiceChanged() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
+    try { setSaved((await window.gearmod.invoke('voice:set-key', { key: value })).modelInstalled); setKey(''); setEditing(false); dismissVoiceInstall(); notifyVoiceChanged() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
   return <div className="stack" style={{ gap: 6 }}>
     <div className="f">{tg.keyTitle}
@@ -173,24 +173,24 @@ export function SettingsDialog({ profiles, settings, initialTab, close, changed,
   const spacingOptions = messageSpacings.map((item) => ({ ...item, label: item.value === 'compact' ? td.spacingCompact : item.value === 'comfortable' ? td.spacingComfortable : td.spacingWide }))
   useEffect(() => setItems(profiles), [profiles])
   useEscape(close, !editing)
-  const probeAll = (): void => { void window.agentboard.invoke('profiles:probe-all', undefined).then((all) => setStatuses(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }
+  const probeAll = (): void => { void window.gearmod.invoke('profiles:probe-all', undefined).then((all) => setStatuses(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }
   useEffect(() => { probeAll() }, [profiles])
   // A atualização roda num terminal separado: ao voltar para a janela, confere a versão de novo.
   useEffect(() => { window.addEventListener('focus', probeAll); return () => window.removeEventListener('focus', probeAll) }, [])
   const latest = useLatestVersions()
   const newer = (profile: AgentProfile): string | null => { const probe = statuses[profile.id], last = latest?.versions[profile.provider as 'claude' | 'codex' | 'gemini']; return probe?.installed && last && isOutdated(probe.version, last) ? last : null }
   const updatesPending = items.some((profile) => newer(profile))
-  const save = async (patch: Partial<AppSettings>): Promise<void> => { try { setError(''); settingsChanged(await window.agentboard.invoke('settings:update', patch)) } catch (reason) { setError(plainError(reason)) } }
+  const save = async (patch: Partial<AppSettings>): Promise<void> => { try { setError(''); settingsChanged(await window.gearmod.invoke('settings:update', patch)) } catch (reason) { setError(plainError(reason)) } }
   const refresh = async (): Promise<void> => { await changed() }
   const [capacity, setCapacity] = useState<{ recommended: number; cores: number; memoryGb: number }>(), [limitDraft, setLimitDraft] = useState<string>()
-  useEffect(() => { void window.agentboard.invoke('agents:capacity', undefined).then(setCapacity).catch(() => undefined) }, [])
+  useEffect(() => { void window.gearmod.invoke('agents:capacity', undefined).then(setCapacity).catch(() => undefined) }, [])
   const limitValue = settings.execucoesSimultaneas ?? capacity?.recommended ?? 2
   const commitLimit = (): void => { const value = Math.round(Number(limitDraft)); setLimitDraft(undefined); if (limitDraft !== undefined && Number.isFinite(value) && value >= 1 && value !== limitValue) void save({ execucoesSimultaneas: Math.min(16, value) }) }
   return <div className="overlay" role="dialog" aria-label={t.common.settings}><div className="modal settings-dialog">
-    <header><div><div className="eyebrow">{t.common.settings}</div><h2>AgentBoard</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
+    <header><div><div className="eyebrow">{t.common.settings}</div><h2>GearMod</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
     <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['agents', td.tabAgents], ['skills', td.tabSkills], ['mcp', td.tabMcp], ['shortcuts', td.tabShortcuts], ['general', td.tabGeneral]] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}{value === 'agents' && updatesPending && <i className="tab-dot" data-tip={td.agentUpdateTip} />}</button>)}</div>
     <div className="settings-dialog-body">{tab === 'agents' && <><p style={{ marginBottom: 12 }}>{td.agentsIntro}</p>
-      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">{td.noAgents}</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><span className="settings-agent-avatar tip" data-tip={!probe ? td.checkingConnection : probe.authenticated ? td.connected : probe.installed ? td.disconnectedNoLogin : td.disconnectedNotInstalled} aria-label={!probe ? td.checkingConnection : probe.authenticated ? td.connected : td.disconnected}><AgentIcon profile={profile} size="lg" tip={false} /><i className={`settings-agent-status ${state}`} aria-hidden="true" /></span><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" data-tip={td.accountTip}>{probe.account}</small>}</span>{newer(profile) && <span className="agupdate" data-tip={td.versionTip(statuses[profile.id]?.version ?? '?', newer(profile) ?? '')}>{td.updateAvailable}<button type="button" className="linklike" onClick={() => { void window.agentboard.invoke('profiles:update-provider', { provider: profile.provider as 'claude' | 'codex' }).catch((reason) => setError(plainError(reason))) }}>{td.update}</button></span>}<span className="agtype" data-tip={td.usageTip}>{profile.scope}</span><button className="mini secondary" onClick={() => setEditing(profile)}>{t.common.edit}</button></div> })}</div>
+      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">{td.noAgents}</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><span className="settings-agent-avatar tip" data-tip={!probe ? td.checkingConnection : probe.authenticated ? td.connected : probe.installed ? td.disconnectedNoLogin : td.disconnectedNotInstalled} aria-label={!probe ? td.checkingConnection : probe.authenticated ? td.connected : td.disconnected}><AgentIcon profile={profile} size="lg" tip={false} /><i className={`settings-agent-status ${state}`} aria-hidden="true" /></span><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" data-tip={td.accountTip}>{probe.account}</small>}</span>{newer(profile) && <span className="agupdate" data-tip={td.versionTip(statuses[profile.id]?.version ?? '?', newer(profile) ?? '')}>{td.updateAvailable}<button type="button" className="linklike" onClick={() => { void window.gearmod.invoke('profiles:update-provider', { provider: profile.provider as 'claude' | 'codex' }).catch((reason) => setError(plainError(reason))) }}>{td.update}</button></span>}<span className="agtype" data-tip={td.usageTip}>{profile.scope}</span><button className="mini secondary" onClick={() => setEditing(profile)}>{t.common.edit}</button></div> })}</div>
       <button className="bigadd" onClick={() => setEditing('new')}>{td.addAgent}</button></>}
     {tab === 'skills' && <SkillsPanel scope="global" profiles={items} />}
     {tab === 'mcp' && <McpPanel scope="global" available={['claude', 'codex']} />}

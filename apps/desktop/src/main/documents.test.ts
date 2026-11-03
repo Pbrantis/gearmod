@@ -41,7 +41,7 @@ describe('tasks document', () => {
 
 describe('DocumentRepository', () => {
   async function setup() {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-docs-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-docs-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
     const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
@@ -104,7 +104,7 @@ describe('DocumentRepository', () => {
   })
 
   it('migrates description, criteria and the latest plan into documents', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-docs-mig-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-docs-mig-')); roots.push(root)
     const path = join(root, 'db.sqlite')
     const old = new AppDatabase(path, '0.1.0', migrations.slice(0, 6)); await old.open()
     const now = '2026-01-01T00:00:00.000Z'

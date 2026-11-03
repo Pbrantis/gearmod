@@ -4,8 +4,8 @@ import { delimiter, dirname, extname, isAbsolute, join } from 'node:path'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { resolveCommand } from './agents'
-import type { AgentProfile, Effort, ModelOption, PermissionMode } from '@agentboard/contracts'
-import { effortSchema } from '@agentboard/contracts'
+import type { AgentProfile, Effort, ModelOption, PermissionMode } from '@gearmod/contracts'
+import { effortSchema } from '@gearmod/contracts'
 import type { McpEndpoint } from './mcp-bridge'
 import { claudeMcpServers, codexMcpServers, type McpRunServer } from './mcp-registry'
 import type { ServerNotification } from './generated/codex-app-server/ServerNotification'
@@ -58,7 +58,7 @@ class JsonLineRpc {
     return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.write({ id, method, params }) })
   }
   respond(id: string | number, result: JsonObject): void { this.write({ id, result }) }
-  unsupported(id: string | number): void { this.write({ id, error: { code: -32601, message: 'Agent request not supported by AgentBoard' } }) }
+  unsupported(id: string | number): void { this.write({ id, error: { code: -32601, message: 'Agent request not supported by GearMod' } }) }
   stop(): void { if (!this.process.killed) this.process.kill() }
   private write(value: JsonObject): void { if (!this.process.stdin.writable || this.process.stdin.destroyed) return; this.process.stdin.write(`${JSON.stringify(value)}\n`) }
   private receive(line: string): void {
@@ -78,15 +78,15 @@ class JsonLineRpc {
 const codexEfforts = new Set<string>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 /** Anexos que vão para o Codex como imagem (ele vê o conteúdo), além do caminho no texto. */
 const imageExtensions = /\.(png|jpe?g|gif|webp|bmp)$/i
-/** Esforços que o AgentBoard conhece; um nível novo do provedor é ignorado em vez de invalidar a lista de modelos inteira. */
+/** Esforços que o GearMod conhece; um nível novo do provedor é ignorado em vez de invalidar a lista de modelos inteira. */
 const knownEffort = (value: unknown): value is Effort => effortSchema.safeParse(value).success
 /**
- * As ferramentas do AgentBoard já checam quem pode chamar o quê (ex.: só o chat da Constituição a grava). Sem isto, no modo só leitura
+ * As ferramentas do GearMod já checam quem pode chamar o quê (ex.: só o chat da Constituição a grava). Sem isto, no modo só leitura
  * (aprovação "never") o Codex recusa toda ferramenta que escreve, e o planejamento e o chat da Constituição não conseguiam gravar.
  */
-export const agentboardToolApproval = { default_tools_approval_mode: 'approve' } as const
+export const gearmodToolApproval = { default_tools_approval_mode: 'approve' } as const
 
-/** Modos de permissão do AgentBoard → sandbox, política de aprovação e revisor do Codex (plano 08, seção 6). */
+/** Modos de permissão do GearMod → sandbox, política de aprovação e revisor do Codex (plano 08, seção 6). */
 export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; approvalPolicy: AskForApproval; approvalsReviewer?: ApprovalsReviewer } {
   switch (mode) {
     case 'plan': return { sandbox: 'read-only', approvalPolicy: 'never' }
@@ -98,7 +98,7 @@ export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; appro
   }
 }
 
-/** Modos do AgentBoard → `--permission-mode` do Claude. */
+/** Modos do GearMod → `--permission-mode` do Claude. */
 export const claudePermissionMode: Record<PermissionMode, string | null> = { plan: 'plan', auto: 'auto', accept_edits: 'acceptEdits', manual: 'manual', on_request: null, read_only: null, bypass: 'bypassPermissions' }
 
 export class CodexAppServerAdapter implements AgentAdapter {
@@ -115,10 +115,10 @@ export class CodexAppServerAdapter implements AgentAdapter {
     // O Codex avisa o uso a cada chamada ao modelo (`last`); soma só quando o total do thread muda, para não contar aviso repetido.
     const usage: RunTokens = { input: 0, cached: 0, output: 0 }; let lastTotal = -1
     try {
-      await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
+      await rpc.request('initialize', { clientInfo: { name: 'gearmod', title: 'GearMod', version: '0.1.0' }, capabilities: null })
       rpc.notify('initialized')
       const access = codexAccess(options.planning ? 'plan' : options.mode ?? 'auto')
-      const policy = { cwd: options.cwd, ...access, ...(options.model ? { model: options.model } : {}), ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp || options.mcpServers?.length ? { config: { mcp_servers: { ...codexMcpServers(options.mcpServers ?? []), ...(options.mcp ? { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env, ...agentboardToolApproval } } : {}) } } } : {}) } satisfies ThreadStartParams
+      const policy = { cwd: options.cwd, ...access, ...(options.model ? { model: options.model } : {}), ...(options.developerInstructions ? { developerInstructions: options.developerInstructions } : {}), ...(options.mcp || options.mcpServers?.length ? { config: { mcp_servers: { ...codexMcpServers(options.mcpServers ?? []), ...(options.mcp ? { gearmod: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env, ...gearmodToolApproval } } : {}) } } } : {}) } satisfies ThreadStartParams
       const threadResult = options.sessionId
         ? await rpc.request('thread/resume', { threadId: options.sessionId, ...policy })
         : await rpc.request('thread/start', policy)
@@ -199,7 +199,7 @@ export async function readCodexQuota(profile: AgentProfile, processes: ProcessFa
   const rpc = new JsonLineRpc(child); let timedOut = false
   const timer = setTimeout(() => { timedOut = true; rpc.stop() }, timeoutMs)
   try {
-    await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
+    await rpc.request('initialize', { clientInfo: { name: 'gearmod', title: 'GearMod', version: '0.1.0' }, capabilities: null })
     rpc.notify('initialized')
     return await rpc.request('account/rateLimits/read', {})
   } catch (error) { if (timedOut) return null; throw error } finally { clearTimeout(timer); rpc.stop() }
@@ -223,7 +223,7 @@ async function listCodexModelsLive(profile: AgentProfile, processes: ProcessFact
   let timedOut = false
   const timer = setTimeout(() => { timedOut = true; rpc.stop() }, timeoutMs)
   try {
-    await rpc.request('initialize', { clientInfo: { name: 'agentboard', title: 'AgentBoard', version: '0.1.0' }, capabilities: null })
+    await rpc.request('initialize', { clientInfo: { name: 'gearmod', title: 'GearMod', version: '0.1.0' }, capabilities: null })
     rpc.notify('initialized')
     const result = await rpc.request('model/list', {}) as unknown as { data?: Array<{ model: string; displayName: string; description: string; hidden: boolean; isDefault: boolean; defaultReasoningEffort: Effort; supportedReasoningEfforts: Array<{ reasoningEffort: Effort }> }> }
     return (result.data ?? []).filter((model) => !model.hidden).map((model) => ({ id: model.model, label: model.displayName, description: model.description, efforts: model.supportedReasoningEfforts.map((item) => item.reasoningEffort).filter(knownEffort), recommendedFor: model.isDefault ? ['planning', 'execution'] as const : [], defaultEffort: knownEffort(model.defaultReasoningEffort) ? model.defaultReasoningEffort : null })).map((model) => ({ ...model, recommendedFor: [...model.recommendedFor] }))
@@ -266,8 +266,8 @@ export class ClaudeCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses, private readonly timing = { graceMs: 60_000, pendingIdleMs: 10 * 60_000 }) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
-    // Em `plan` o Claude se recusa a chamar ferramentas que gravam (inclusive as do AgentBoard; confirmado em teste real).
-    // Com o MCP ligado, o planejamento usa o modo padrão só com ferramentas de leitura + as do AgentBoard; sem MCP, `plan` e documentos por marcadores.
+    // Em `plan` o Claude se recusa a chamar ferramentas que gravam (inclusive as do GearMod; confirmado em teste real).
+    // Com o MCP ligado, o planejamento usa o modo padrão só com ferramentas de leitura + as do GearMod; sem MCP, `plan` e documentos por marcadores.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
     const executionMode = claudePermissionMode[options.mode ?? 'accept_edits']
     if (!options.planning && !executionMode) throw new Error(tm().adapters.unsupportedClaudeMode(String(options.mode)))
@@ -279,12 +279,12 @@ export class ClaudeCliAdapter implements AgentAdapter {
     // A config do MCP leva env e headers (segredos): vai por arquivo temporário e não pela linha de comando, que aparece na lista de processos.
     let mcpConfigDir: string | null = null
     if (options.mcp || options.mcpServers?.length) {
-      mcpConfigDir = mkdtempSync(join(tmpdir(), 'agentboard-mcp-'))
+      mcpConfigDir = mkdtempSync(join(tmpdir(), 'gearmod-mcp-'))
       const file = join(mcpConfigDir, 'mcp.json')
-      writeFileSync(file, JSON.stringify({ mcpServers: { ...claudeMcpServers(options.mcpServers ?? []), ...(options.mcp ? { agentboard: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } : {}) } }), { mode: 0o600 })
+      writeFileSync(file, JSON.stringify({ mcpServers: { ...claudeMcpServers(options.mcpServers ?? []), ...(options.mcp ? { gearmod: { command: options.mcp.command, args: options.mcp.args, env: options.mcp.env } } : {}) } }), { mode: 0o600 })
       args.push('--mcp-config', file)
     }
-    if (options.mcp) args.push('--allowedTools', 'mcp__agentboard')
+    if (options.mcp) args.push('--allowedTools', 'mcp__gearmod')
     if (options.sessionId) args.push('--resume', options.sessionId)
     // Anexos fora da pasta do projeto: libera a leitura da pasta de cada um.
     for (const dir of new Set([...(options.attachments ?? []).map((path) => dirname(path)), ...(options.addDirs ?? [])])) args.push('--add-dir', dir)

@@ -12,7 +12,7 @@ const collect = (events: Array<Record<string, unknown>>, count: number): Promise
 
 describe('FileWatchService', () => {
   it('avisa quando o arquivo muda, é trocado por rename e é apagado', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'agentboard-watch-')); dirs.push(dir)
+    const dir = await mkdtemp(join(tmpdir(), 'gearmod-watch-')); dirs.push(dir)
     const file = join(dir, 'a.txt'); await writeFile(file, 'um')
     const events: Array<Record<string, unknown>> = [], service = new FileWatchService((_type, payload) => events.push(payload), 40)
     service.watch('janela', [file])
@@ -29,7 +29,7 @@ describe('FileWatchService', () => {
     service.dispose()
   })
   it('lista vazia para de vigiar', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'agentboard-watch-')); dirs.push(dir)
+    const dir = await mkdtemp(join(tmpdir(), 'gearmod-watch-')); dirs.push(dir)
     const file = join(dir, 'b.txt'); await writeFile(file, 'x')
     const events: Array<Record<string, unknown>> = [], service = new FileWatchService((_type, payload) => events.push(payload), 30)
     service.watch('janela', [file]); service.watch('janela', [])

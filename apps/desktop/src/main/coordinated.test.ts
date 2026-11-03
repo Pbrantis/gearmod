@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
-import { defaultWorkflowConfig } from '@agentboard/contracts'
+import { defaultWorkflowConfig } from '@gearmod/contracts'
 import type { AgentAdapter } from './adapters'
 import { ConversationRepository } from './conversations'
 import { AppDatabase } from './database'
@@ -23,13 +23,13 @@ const exec = promisify(execFile), roots: string[] = [], closers: Array<() => voi
 afterEach(async () => { closers.splice(0).forEach((close) => close()); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 
 async function repo(path: string): Promise<void> {
-  await exec('git', ['init', '-b', 'main', path]); await exec('git', ['-C', path, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', path, 'config', 'user.name', 'AgentBoard Test'])
+  await exec('git', ['init', '-b', 'main', path]); await exec('git', ['-C', path, 'config', 'user.email', 'test@example.invalid']); await exec('git', ['-C', path, 'config', 'user.name', 'GearMod Test'])
   await writeFile(join(path, 'README.md'), '# fixture'); await exec('git', ['-C', path, 'add', 'README.md']); await exec('git', ['-C', path, 'commit', '-m', 'fixture'])
 }
 
 /** Workspace com docs, frontend e backend (cenários E e H). */
 async function workspace() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-coord-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-coord-')); roots.push(root)
   const ws = join(root, 'ws'), data = join(root, 'data'); await mkdir(ws)
   for (const name of ['backend', 'docs', 'frontend']) await repo(join(ws, name))
   const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open(); closers.push(() => database.close())
@@ -87,7 +87,7 @@ describe('Worktrees coordenados', { timeout: 20_000 }, () => {
     expect(results.find((item) => item.repo === 'frontend')).toEqual({ repo: 'frontend', url: 'https://github.com/acme/frontend/pull/7', error: null })
     expect(results.find((item) => item.repo === 'backend')?.error).toMatch(/sem commits/)
     expect(calls[0]!.command).toBe('gh'); expect(calls[0]!.args).toContain('--draft')
-    expect((await exec('git', ['--git-dir', remote, 'branch', '--list'])).stdout).toContain('agentboard/push-')
+    expect((await exec('git', ['--git-dir', remote, 'branch', '--list'])).stdout).toContain('gearmod/push-')
     const view = await git.card(card.id)
     expect(view.repos.find((repo) => repo.name === 'frontend')?.prUrl).toBe('https://github.com/acme/frontend/pull/7')
     expect(view.delivery.complete).toBe(true)

@@ -1,5 +1,5 @@
 import React, { startTransition, useEffect, useMemo, useRef, useState } from 'react'
-import type { IpcOutput } from '@agentboard/contracts'
+import type { IpcOutput } from '@gearmod/contracts'
 import { Checkbox } from './Checkbox'
 import { Select } from './Select'
 import { plainError } from './NoticeDialog'
@@ -26,7 +26,7 @@ import { useT } from './i18n'
 
 type Entry = IpcOutput<'workspace:list'>[number] & { branch?: string | null; worktree?: boolean; primary?: boolean; cardId?: string | null; cardTitle?: string | null }
 type Position = 'left' | 'right' | 'top' | 'bottom'
-const positionKey = 'agentboard.filePanelPosition'
+const positionKey = 'gearmod.filePanelPosition'
 /** Painel que, no momento, reserva espaço ao lado do conteúdo principal (só um por vez). */
 let dockOwner: HTMLElement | null = null
 /** O painel de arquivos abre à esquerda e lembra a posição que o usuário escolheu em "Mover". */
@@ -61,7 +61,7 @@ function TreeFolder({ entry, context, contexts, selected, open, reveal, menu, ed
   useEffect(() => {
     if (!expanded || !entry.directory) return
     let alive = true
-    void window.agentboard.invoke('workspace:list', { ...context, path: entry.path }).then((items) => { if (alive) { setEntries(items); setError('') } }).catch((reason) => { if (alive) setError(plainError(reason)) })
+    void window.gearmod.invoke('workspace:list', { ...context, path: entry.path }).then((items) => { if (alive) { setEntries(items); setError('') } }).catch((reason) => { if (alive) setError(plainError(reason)) })
     return () => { alive = false }
   }, [expanded, entry.path, context.projectId, context.cardId, entry.directory, nonce])
   return <div role="treeitem" aria-expanded={entry.directory ? expanded : undefined} aria-selected={selected === entry.path}>
@@ -89,7 +89,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   const menuBox = useRef<HTMLDivElement>(null)
   const currentRoot = current ? [...roots].sort((a, b) => b.path.length - a.path.length).find((root) => { const path = slashed(current.path), base = slashed(root.path).replace(/\/$/, ''); return path === base || path.startsWith(`${base}/`) }) : undefined
   const commentCardId = currentRoot?.cardId ?? cardId, commentTarget = currentRoot?.cardTitle || (commentCardId ? t.files.workspace.openCard : t.files.workspace.newChat)
-  const [treeWidth, setTreeWidth] = useState(() => { try { return Number(localStorage.getItem('agentboard.fileTreeWidth')) || 240 } catch { return 240 } }), [resizingTree, setResizingTree] = useState(false)
+  const [treeWidth, setTreeWidth] = useState(() => { try { return Number(localStorage.getItem('gearmod.fileTreeWidth')) || 240 } catch { return 240 } }), [resizingTree, setResizingTree] = useState(false)
   // Ordem de uso das abas (Ctrl+Tab volta para a anterior) e arquivos recentes do projeto (Ctrl+P).
   useEffect(() => { if (!active) return; mru.current = [active, ...mru.current.filter((path) => path !== active)]; pushRecent(projectId, active) }, [active])
   useEffect(() => { mru.current = mru.current.filter((path) => documents.some((file) => file.path === path)) }, [documents])
@@ -110,15 +110,15 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     const edit = editing; setEditing(null)
     if (!edit || !name) return
     try {
-      if (edit.type === 'create') { const created = await window.agentboard.invoke('workspace:create', { ...context, parent: edit.parent, name, kind: edit.kind }); setTreeNonce((value) => value + 1); setReveal({ path: created.path, at: Date.now() }); if (edit.kind === 'file') await open(created.path) }
-      else if (name !== nameOf(edit.path)) { const renamed = await window.agentboard.invoke('workspace:rename', { ...context, path: edit.path, name }); remapTabs(edit.path, renamed.path, name); setTreeNonce((value) => value + 1) }
+      if (edit.type === 'create') { const created = await window.gearmod.invoke('workspace:create', { ...context, parent: edit.parent, name, kind: edit.kind }); setTreeNonce((value) => value + 1); setReveal({ path: created.path, at: Date.now() }); if (edit.kind === 'file') await open(created.path) }
+      else if (name !== nameOf(edit.path)) { const renamed = await window.gearmod.invoke('workspace:rename', { ...context, path: edit.path, name }); remapTabs(edit.path, renamed.path, name); setTreeNonce((value) => value + 1) }
     } catch (reason) { setError(plainError(reason)) }
   }
   const askTree = (action: 'rename' | 'delete', entry: Entry): void => { if (action === 'rename') setEditing({ type: 'rename', path: entry.path }); else setDeleting(entry) }
   const trash = async (entry: Entry): Promise<void> => {
     setDeleting(null)
     try {
-      await window.agentboard.invoke('workspace:trash', { ...context, path: entry.path })
+      await window.gearmod.invoke('workspace:trash', { ...context, path: entry.path })
       const gone = (path: string): boolean => slashed(path) === slashed(entry.path) || slashed(path).startsWith(`${slashed(entry.path)}/`)
       const rest = latest.current.filter((file) => !gone(file.path)); latest.current = rest; setDocuments(rest); if (gone(active)) setActive(rest.at(-1)?.path ?? '')
       setTreeNonce((value) => value + 1)
@@ -128,9 +128,9 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   const restore = async (path: string): Promise<void> => {
     const file = latest.current.find((item) => item.path === path); if (!file) return
     try {
-      await window.agentboard.invoke('workspace:create', { ...context, parent: parentOf(path), name: nameOf(path), kind: 'file' })
+      await window.gearmod.invoke('workspace:create', { ...context, parent: parentOf(path), name: nameOf(path), kind: 'file' })
       const text = withEol(file.content, file.eol)
-      await window.agentboard.invoke('workspace:write', { ...context, path, content: text, expected: '' })
+      await window.gearmod.invoke('workspace:write', { ...context, path, content: text, expected: '' })
       updateDocument(path, { deleted: false, saved: file.content, disk: text, error: '' }); setTreeNonce((value) => value + 1)
     } catch (reason) { updateDocument(path, { error: plainError(reason) }) }
   }
@@ -138,8 +138,8 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   const [collapsedRepos, setCollapsedRepos] = useState<string[]>([])
   // Painel encostado à esquerda ou à direita: avisa a largura que ocupa (--files-dock-left/right) e o conteúdo principal abre espaço, lado a lado.
   const panel = useRef<HTMLElement>(null)
-  useEffect(() => { const navigate = (): void => { if (expanded && !standalone && panel.current?.getClientRects().length) close() }; window.addEventListener('agentboard:select-view', navigate); return () => window.removeEventListener('agentboard:select-view', navigate) }, [expanded, standalone, close])
-  const [dockWidth, setDockWidth] = useState<number | null>(() => { try { return Number(localStorage.getItem('agentboard.fileDockWidth')) || null } catch { return null } }), [dockHeight, setDockHeight] = useState<number | null>(() => { try { return Number(localStorage.getItem('agentboard.fileDockHeight')) || null } catch { return null } }), [resizingDock, setResizingDock] = useState(false)
+  useEffect(() => { const navigate = (): void => { if (expanded && !standalone && panel.current?.getClientRects().length) close() }; window.addEventListener('gearmod:select-view', navigate); return () => window.removeEventListener('gearmod:select-view', navigate) }, [expanded, standalone, close])
+  const [dockWidth, setDockWidth] = useState<number | null>(() => { try { return Number(localStorage.getItem('gearmod.fileDockWidth')) || null } catch { return null } }), [dockHeight, setDockHeight] = useState<number | null>(() => { try { return Number(localStorage.getItem('gearmod.fileDockHeight')) || null } catch { return null } }), [resizingDock, setResizingDock] = useState(false)
   // A borda interna ajusta largura ou altura conforme o lado em que o painel está.
   const resizeDock = (event: React.PointerEvent<HTMLDivElement>): void => {
     const element = panel.current; if (!element) return
@@ -150,7 +150,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     let latestSize = initial
     setResizingDock(true)
     const move = (next: PointerEvent): void => { const point = vertical ? next.clientY : next.clientX; latestSize = Math.round(Math.max(vertical ? 180 : 320, Math.min(limit * .75, initial + sign * (point - start)))); if (vertical) setDockHeight(latestSize); else setDockWidth(latestSize) }
-    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setResizingDock(false); try { localStorage.setItem(vertical ? 'agentboard.fileDockHeight' : 'agentboard.fileDockWidth', String(latestSize)) } catch { /* só vale nesta sessão */ } }
+    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setResizingDock(false); try { localStorage.setItem(vertical ? 'gearmod.fileDockHeight' : 'gearmod.fileDockWidth', String(latestSize)) } catch { /* só vale nesta sessão */ } }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
   const docked = !expanded && !standalone
@@ -168,7 +168,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     return () => { observer.disconnect(); if (dockOwner === element) { dockOwner = null; clear() } }
   }, [position, expanded, standalone])
   const setPosition = (value: Position): void => { setPositionState(value); try { localStorage.setItem(positionKey, value) } catch { /* só vale nesta sessão */ } }
-  useEffect(() => { void window.agentboard.invoke('workspace:roots', context).then(setRoots).catch((reason) => setError(plainError(reason))) }, [projectId, cardId])
+  useEffect(() => { void window.gearmod.invoke('workspace:roots', context).then(setRoots).catch((reason) => setError(plainError(reason))) }, [projectId, cardId])
   useEffect(() => { if (initialReveal) { setTreeVisible(true); change({ tree: true }); setReveal(initialReveal) } }, [initialReveal?.at])
   const openedInitial = useRef('')
   useEffect(() => {
@@ -186,7 +186,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   useEffect(() => {
     if (changes || !query.trim()) { setResults(undefined); setSearching(false); return }
     let alive = true; setSearching(true)
-    const timer = window.setTimeout(() => { void window.agentboard.invoke('workspace:search', { ...context, query: query.trim() }).then((result) => { if (alive) setResults(result) }).catch((reason) => { if (alive) setError(plainError(reason)) }).finally(() => { if (alive) setSearching(false) }) }, 250)
+    const timer = window.setTimeout(() => { void window.gearmod.invoke('workspace:search', { ...context, query: query.trim() }).then((result) => { if (alive) setResults(result) }).catch((reason) => { if (alive) setError(plainError(reason)) }).finally(() => { if (alive) setSearching(false) }) }, 250)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [query, projectId, cardId])
   useEffect(() => {
@@ -226,13 +226,13 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   const showContext = (entry: Entry, event: React.MouseEvent): void => { event.preventDefault(); event.stopPropagation(); setTabMenu({ entry, x: event.clientX, y: event.clientY }) }
   const fileMenu = (entry: Entry): FileMenuItem[] => {
     const document = latest.current.find((item) => item.path === entry.path), path = entry.path
-    const external = (target: 'vscode' | 'default' | 'explorer'): void => perform(async () => { if (document && document.content !== document.saved && !await save(path)) return; await window.agentboard.invoke('workspace:external', { ...context, path, target }) })
+    const external = (target: 'vscode' | 'default' | 'explorer'): void => perform(async () => { if (document && document.content !== document.saved && !await save(path)) return; await window.gearmod.invoke('workspace:external', { ...context, path, target }) })
     const isRoot = entry.worktree !== undefined
     return [
       { label: t.files.workspace.menu.newFile, action: () => startCreate('file', entry) },
       { label: t.files.workspace.menu.newFolder, action: () => startCreate('folder', entry) },
       ...(!isRoot ? [{ label: t.files.workspace.menu.rename, shortcut: 'F2', action: () => setEditing({ type: 'rename', path }) }, { label: t.files.workspace.menu.delete, shortcut: 'Del', action: () => setDeleting(entry) }] : []),
-      ...(!entry.directory ? [{ label: t.files.workspace.menu.attach, separator: true, action: () => perform(async () => { if (document && document.content !== document.saved && !await save(path)) return; await window.agentboard.invoke('workspace:attach', { ...context, path }); if (!standalone) close() }) }] : []),
+      ...(!entry.directory ? [{ label: t.files.workspace.menu.attach, separator: true, action: () => perform(async () => { if (document && document.content !== document.saved && !await save(path)) return; await window.gearmod.invoke('workspace:attach', { ...context, path }); if (!standalone) close() }) }] : []),
       { label: t.files.workspace.menu.copy, separator: entry.directory, children: [{ label: t.files.workspace.menu.copyAbsolute, action: () => perform(() => navigator.clipboard.writeText(path)) }, { label: t.files.workspace.menu.copyRelative, action: () => perform(() => navigator.clipboard.writeText(relative(path))) }, { label: t.files.workspace.menu.copyName, action: () => perform(() => navigator.clipboard.writeText(entry.name)) }] },
       { label: t.files.workspace.menu.openIn, separator: true, children: [{ label: 'VS Code', action: () => external('vscode') }, { label: t.files.workspace.menu.defaultApp, action: () => external('default') }] },
       { label: t.files.workspace.menu.showInExplorer, action: () => external('explorer') },
@@ -240,7 +240,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
       ...(!entry.directory ? [
         { label: t.files.workspace.menu.showInTree, separator: true, action: () => { setQuery(''); setResults(undefined); setTreeVisible(true); change({ tree: true, treeSide: 'left' }); setReveal({ path, at: Date.now() }) } },
         { label: t.files.workspace.menu.findInFile, separator: true, shortcut: 'Ctrl+F', disabled: document?.binary, action: () => { void open(path).then(() => ask('find', path)) } },
-        { label: t.files.workspace.menu.copyContent, disabled: document?.binary, action: () => perform(async () => { const file = document ?? await window.agentboard.invoke('workspace:read', { ...context, path }); if (file.binary || file.truncated) throw new Error(t.files.workspace.menu.contentUnavailable); await navigator.clipboard.writeText(file.content) }) },
+        { label: t.files.workspace.menu.copyContent, disabled: document?.binary, action: () => perform(async () => { const file = document ?? await window.gearmod.invoke('workspace:read', { ...context, path }); if (file.binary || file.truncated) throw new Error(t.files.workspace.menu.contentUnavailable); await navigator.clipboard.writeText(file.content) }) },
         { label: t.files.workspace.menu.reload, action: () => void reload(path) },
         ...(document && document.content !== document.saved ? [{ label: t.files.workspace.menu.compareSaved, action: () => { setActive(path); updateDocument(path, { compare: { before: document.saved, title: t.files.workspace.menu.unsavedChanges, split: false } }) } } as FileMenuItem] : []),
         ...(document ? (() => {
@@ -264,12 +264,12 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   const detachPanel = async (point?: { x: number; y: number }): Promise<void> => {
     for (const file of latest.current) if (file.content !== file.saved && !await save(file.path)) return
     const paths = latest.current.map((file) => file.path).filter((path) => path !== active); if (active) paths.push(active)
-    try { await window.agentboard.invoke('windows:open', { kind: 'files', projectId, cardId: cardId ?? undefined, path: active || undefined, paths, placement: 'new', ...point }); setMenu(null); close() } catch (reason) { setError(plainError(reason)) }
+    try { await window.gearmod.invoke('windows:open', { kind: 'files', projectId, cardId: cardId ?? undefined, path: active || undefined, paths, placement: 'new', ...point }); setMenu(null); close() } catch (reason) { setError(plainError(reason)) }
   }
   const detachFile = async (file: Document, point: { x: number; y: number }): Promise<void> => {
     if (!await save(file.path)) return
     try {
-      await window.agentboard.invoke('windows:open', { kind: 'file', projectId, cardId: cardId ?? undefined, path: file.path, placement: 'new', ...point })
+      await window.gearmod.invoke('windows:open', { kind: 'file', projectId, cardId: cardId ?? undefined, path: file.path, placement: 'new', ...point })
       const rest = latest.current.filter((item) => item.path !== file.path); latest.current = rest; setDocuments(rest); if (active === file.path) setActive(rest.at(-1)?.path ?? '')
     } catch (reason) { setError(plainError(reason)) }
   }
@@ -287,7 +287,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   }
   const returnToMain = async (): Promise<void> => {
     if (!current || !await save(current.path)) return
-    try { await window.agentboard.invoke('windows:return-file', { ...context, path: current.path }); window.close() } catch (reason) { setError(plainError(reason)) }
+    try { await window.gearmod.invoke('windows:return-file', { ...context, path: current.path }); window.close() } catch (reason) { setError(plainError(reason)) }
   }
   const resizeTree = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault()
@@ -300,11 +300,11 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     }
     const up = (): void => {
       document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setResizingTree(false)
-      const width = treeElement?.getBoundingClientRect().width; if (width) try { localStorage.setItem('agentboard.fileTreeWidth', String(Math.round(width))) } catch { /* só vale nesta sessão */ }
+      const width = treeElement?.getBoundingClientRect().width; if (width) try { localStorage.setItem('gearmod.fileTreeWidth', String(Math.round(width))) } catch { /* só vale nesta sessão */ }
     }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  const fill = (): void => { if (standalone) void window.agentboard.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded); setMenu(null) }
+  const fill = (): void => { if (standalone) void window.gearmod.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded); setMenu(null) }
   const keyDown = (event: React.KeyboardEvent): void => {
     if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); if (current) void save(current.path) }
     if (event.ctrlKey && !event.shiftKey && current && !current.binary) {
@@ -319,7 +319,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   }
   const tree = treeVisible && preferences.tree
   return <section ref={panel} className={`workspacefiles ${standalone ? 'standalone' : ''} ${expanded ? 'expanded' : position} ${resizingTree ? 'tree-resizing' : ''} ${resizingDock ? 'dock-resizing' : ''}`} style={sideDocked && dockWidth ? { width: dockWidth } : docked && !sideDocked && dockHeight ? { height: dockHeight } : undefined} aria-label={t.files.workspace.panelLabel} onKeyDown={keyDown}>{reloadDialog}{confirmDialog}
-    {docked && <div className={`wf-dockgrip ${position}`} role="separator" aria-orientation={sideDocked ? "vertical" : "horizontal"} aria-label={sideDocked ? t.files.workspace.resizeWidth : t.files.workspace.resizeHeight} onPointerDown={resizeDock} onDoubleClick={() => { if (sideDocked) setDockWidth(null); else setDockHeight(null); try { localStorage.removeItem(sideDocked ? 'agentboard.fileDockWidth' : 'agentboard.fileDockHeight') } catch { /* só vale nesta sessão */ } }} />}
+    {docked && <div className={`wf-dockgrip ${position}`} role="separator" aria-orientation={sideDocked ? "vertical" : "horizontal"} aria-label={sideDocked ? t.files.workspace.resizeWidth : t.files.workspace.resizeHeight} onPointerDown={resizeDock} onDoubleClick={() => { if (sideDocked) setDockWidth(null); else setDockHeight(null); try { localStorage.removeItem(sideDocked ? 'gearmod.fileDockWidth' : 'gearmod.fileDockHeight') } catch { /* só vale nesta sessão */ } }} />}
     <header className="wf-header" draggable={!standalone} onDragStart={(event) => { if ((event.target as HTMLElement).closest('.wf-actions')) { event.preventDefault(); return }; event.preventDefault(); void detachPanel({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><FolderGlyph /><b>{isolated ? nameOf(active || initialPath || t.files.workspace.header.file) : changes ? t.files.workspace.header.changes : t.files.workspace.header.files}</b>{changes ? <span className="wf-context wf-totals" data-tip={roots.map((root) => root.path).join('\n')}><span className="ch-add">+{changeTotals.added}</span> <span className="ch-del">−{changeTotals.removed}</span> · {t.files.workspace.header.fileCount(changes.length)}</span> : <span className="wf-context" data-tip={roots.map((root) => root.path).join('\n')}>{cardId ? t.files.workspace.header.cardWorktree : t.common.project}</span>}{!changes && !isolated && <button type="button" className="wf-unified-search" data-tip={t.files.workspace.header.searchTip} onClick={() => setQuick({ mode: 'files', text: '' })}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg><span>{t.files.workspace.header.search}</span><kbd>Ctrl+P</kbd></button>}<div className="wf-actions">
       {isolated && <button type="button" className="ibtn" data-tip={t.files.workspace.header.backToMain} aria-label={t.files.workspace.header.backToMain} onClick={() => void returnToMain()}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 6h10v10H5zM8 3H3v5m0-5 7 7" /></svg></button>}
       {changes && <button type="button" className="ibtn tip" data-tip={t.files.workspace.header.openAllChanges} aria-label={t.files.workspace.header.openAllChanges} disabled={!changes.length} onClick={openAllChanges}><DiffIcon /></button>}
@@ -331,7 +331,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
           <label>{t.files.workspace.header.tabSize}<Select label={t.files.workspace.header.tabSize} value={String(preferences.tabSize)} options={[2, 4, 8].map((value) => ({ value: String(value), label: String(value) }))} onChange={(value) => change({ tabSize: Number(value) })} /></label>
           <button type="button" className="secondary wf-shortcuts-btn" onClick={() => { setMenu(null); setShortcutsOpen(true) }}>{t.files.workspace.header.shortcuts}</button>
         </div>}
-      </div><WindowLayoutMenu move={(value) => { if (standalone) void window.agentboard.invoke('windows:place', { placement: value }); else { setPosition(value); setExpanded(false) } }} detach={!standalone ? () => void detachPanel() : undefined} />{!standalone && <><button type="button" className="ibtn" aria-label={expanded ? t.files.workspace.header.restore : t.files.workspace.header.expand} data-tip={expanded ? t.files.workspace.header.restore : t.files.workspace.header.expand} onClick={fill}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button type="button" className="ibtn" aria-label={t.files.workspace.closeFiles} onClick={leave}><CloseIcon /></button></>}
+      </div><WindowLayoutMenu move={(value) => { if (standalone) void window.gearmod.invoke('windows:place', { placement: value }); else { setPosition(value); setExpanded(false) } }} detach={!standalone ? () => void detachPanel() : undefined} />{!standalone && <><button type="button" className="ibtn" aria-label={expanded ? t.files.workspace.header.restore : t.files.workspace.header.expand} data-tip={expanded ? t.files.workspace.header.restore : t.files.workspace.header.expand} onClick={fill}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button type="button" className="ibtn" aria-label={t.files.workspace.closeFiles} onClick={leave}><CloseIcon /></button></>}
     </div></header>
     {shortcutsOpen && <div className="overlay top" role="dialog" aria-modal="true" aria-labelledby="wf-shortcuts-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setShortcutsOpen(false) }}><div className="modal wf-shortcuts-dialog"><header><div><div className="eyebrow">{t.files.workspace.shortcutsDialog.eyebrow}</div><h2 id="wf-shortcuts-title">{t.files.workspace.shortcutsDialog.title}</h2><p>{t.files.workspace.shortcutsDialog.description}</p></div><button type="button" className="x" autoFocus aria-label={t.files.workspace.shortcutsDialog.close} onClick={() => setShortcutsOpen(false)}>×</button></header><div className="wf-shortcuts">{shortcutList().map((item) => <div className="wf-shortcut" key={item.keys + item.label}><span>{item.label}</span><kbd>{item.keys}</kbd></div>)}</div></div></div>}
     {deleting && <ConfirmDialog eyebrow={t.files.workspace.trash.eyebrow} title={t.files.workspace.trash.title(deleting.name)} text={t.files.workspace.trash.text(deleting.directory, documents.some((file) => (slashed(file.path) === slashed(deleting.path) || slashed(file.path).startsWith(`${slashed(deleting.path)}/`)) && file.content !== file.saved))} ok={t.files.workspace.trash.ok} danger cancel={() => setDeleting(null)} confirm={() => void trash(deleting)} />}
@@ -340,16 +340,16 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     <div className="wf-tabbar">
       <button type="button" className={`ibtn wf-treebtn ${tree ? 'on' : ''}`} data-tip={tree ? t.files.workspace.tabs.hideTree : t.files.workspace.tabs.showTree} aria-label={t.files.workspace.tabs.tree} aria-pressed={tree} onClick={() => { setTreeVisible(true); change({ tree: !tree }) }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h2m3 0h7M4 10h2m3 0h7M4 16h2m3 0h7" /></svg></button>
       {preferences.tabs && documents.length > 0 && <div className="wf-tabs" role="tablist" aria-label={t.files.workspace.tabs.open}
-        onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-agentboard-file')) { event.preventDefault(); const index = previewIndex(event.clientX); setTabDrop((current) => current === index ? current : index) } }}
+        onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-gearmod-file')) { event.preventDefault(); const index = previewIndex(event.clientX); setTabDrop((current) => current === index ? current : index) } }}
         onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTabDrop(undefined) }}
-        onDrop={(event) => { event.preventDefault(); const path = event.dataTransfer.getData('application/x-agentboard-file'); if (path) dropTab(path, tabDrop ?? previewIndex(event.clientX)) }}>
+        onDrop={(event) => { event.preventDefault(); const path = event.dataTransfer.getData('application/x-gearmod-file'); if (path) dropTab(path, tabDrop ?? previewIndex(event.clientX)) }}>
         {(() => { let visibleIndex = 0; const dragged = documents.find((file) => file.path === draggingTab); const placeholder = dragged ? <span className="wf-tab-placeholder" style={{ width: draggedTabWidth.current }} aria-hidden="true"><span><FileTypeIcon path={dragged.path} />{nameOf(dragged.path)}{dragged.saved !== dragged.content ? ' •' : ''}</span><i>×</i></span> : null; return <>
         {documents.map((file) => {
           const index = file.path === draggingTab ? -1 : visibleIndex++
           return <React.Fragment key={file.path}>
             {index >= 0 && tabDrop === index && placeholder}
             <div draggable={!isolated} data-file-tab={file.path} className={`wf-tab ${file.path === active ? 'on' : ''} ${draggingTab === file.path ? 'dragging' : ''} ${file.transient ? 'transient' : ''}`} onDoubleClick={() => { if (file.transient) updateDocument(file.path, { transient: false }) }}
-              onDragStart={(event) => { internalTabDrop.current = false; const source = event.currentTarget, sourceRect = source.getBoundingClientRect(), tabs = [...source.parentElement!.querySelectorAll<HTMLElement>('[data-file-tab]')], sourceIndex = tabs.indexOf(source); draggedTabWidth.current = Math.round(sourceRect.width); tabGeometry.current = tabs.filter((tab) => tab !== source).map((tab, index) => { const rect = tab.getBoundingClientRect(), wasAfterSource = index >= sourceIndex; return { center: rect.left + rect.width / 2 - (wasAfterSource ? sourceRect.width + 9 : 0) } }); const dragged = file.path, startIndex = Math.max(0, sourceIndex); window.setTimeout(() => { setDraggingTab(dragged); setTabDrop(startIndex) }, 0); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-agentboard-file', file.path) }}
+              onDragStart={(event) => { internalTabDrop.current = false; const source = event.currentTarget, sourceRect = source.getBoundingClientRect(), tabs = [...source.parentElement!.querySelectorAll<HTMLElement>('[data-file-tab]')], sourceIndex = tabs.indexOf(source); draggedTabWidth.current = Math.round(sourceRect.width); tabGeometry.current = tabs.filter((tab) => tab !== source).map((tab, index) => { const rect = tab.getBoundingClientRect(), wasAfterSource = index >= sourceIndex; return { center: rect.left + rect.width / 2 - (wasAfterSource ? sourceRect.width + 9 : 0) } }); const dragged = file.path, startIndex = Math.max(0, sourceIndex); window.setTimeout(() => { setDraggingTab(dragged); setTabDrop(startIndex) }, 0); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-gearmod-file', file.path) }}
               onDragEnd={(event) => { tabGeometry.current = []; setDraggingTab(undefined); setTabDrop(undefined); const point = internalTabDrop.current ? null : outsideWindow(event); internalTabDrop.current = false; const draggedFile = latest.current.find((item) => item.path === file.path); if (point && draggedFile) void detachFile(draggedFile, point) }}
               onContextMenu={(event) => showContext({ path: file.path, name: nameOf(file.path), directory: false }, event)}>
               <button type="button" role="tab" aria-selected={file.path === active} data-tip={file.path} onClick={() => startTransition(() => setActive(file.path))}><FileTypeIcon path={file.path} />{nameOf(file.path)}{file.saved !== file.content ? ' •' : ''}</button><button type="button" aria-label={t.files.workspace.tabs.close(nameOf(file.path))} onClick={() => closeTab(file)}>×</button>
@@ -365,7 +365,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
         const row = (item: FileChange): React.JSX.Element => { const slash = item.path.lastIndexOf('/'), name = item.path.slice(slash + 1), dir = slash > 0 ? item.path.slice(0, slash) : '', path = absolute(item.path, item.root), detail = [grouped ? '' : item.root ? nameOf(item.root) : '', dir].filter(Boolean).join('/'); return <button key={`${item.root ?? ''}:${item.path}`} type="button" role="listitem" className={`wf-result wf-changed ${path && slashed(active) === slashed(path) ? 'on' : ''}`} data-tip={path ?? item.path} onContextMenu={(event) => { if (path) showContext({ path, name, directory: false }, event) }} onClick={() => openChange(item)} onDoubleClick={() => openChange(item, true)}><b><FileTypeIcon path={item.path} />{name}{item.untracked ? <span className="ch-new">{t.files.workspace.changed.newBadge}</span> : <span className="wf-nums"><span className="ch-add">+{item.added}</span><span className="ch-del">−{item.removed}</span></span>}</b>{detail && <small>{detail}</small>}</button> }
         return <div role="list" aria-label={t.files.workspace.changed.listLabel}>{grouped ? groups.map((group) => { const closed = collapsedRepos.includes(group.root ?? ''); return <div key={group.root ?? ''} className="wf-repogroup"><div className="wf-repohead"><button type="button" className="wf-repotoggle" aria-expanded={!closed} data-tip={group.root ?? group.name} onClick={() => setCollapsedRepos((all) => closed ? all.filter((key) => key !== (group.root ?? '')) : [...all, group.root ?? ''])}><span className={`wf-chevron ${closed ? '' : 'open'}`} aria-hidden="true"><svg viewBox="0 0 12 12"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" /></svg></span>{group.worktree ? <WorktreeIcon /> : <BranchIcon />}<b>{group.name}</b>{group.branch && <small>{group.branch}</small>}<span className="wf-nums"><span className="ch-add">+{group.added}</span><span className="ch-del">−{group.removed}</span></span></button><button type="button" className="ibtn tip" data-tip={t.files.workspace.changed.openRepoFiles(group.files.length)} aria-label={t.files.workspace.changed.openRepoFilesLabel(group.name)} onClick={() => group.files.slice(0, 20).forEach((item) => openChange(item, true))}><DiffIcon /></button></div>{!closed && group.files.map(row)}</div> }) : filtered.map(row)}{!changes.length && <p className="wf-note">{t.files.workspace.changed.none}</p>}</div>
       })() : results ? <div>{results.paths.map((path) => <button key={path} type="button" className={`wf-result ${active === path ? 'on' : ''}`} data-tip={path} onContextMenu={(event) => showContext({ path, name: nameOf(path), directory: false }, event)} onClick={() => void openClick(path)} onDoubleClick={() => void openClick(path, true)}><b><FileTypeIcon path={path} />{nameOf(path)}</b><small>{path}</small></button>)}{!results.paths.length && !searching && <p className="wf-note">{t.files.workspace.notFound}</p>}{results.limited && <p className="wf-note">{t.files.workspace.searchLimited}</p>}</div> : <div role="tree">{roots.filter((root) => root.primary).map((root) => <TreeFolder key={root.path} entry={{ ...root, directory: true }} context={context} contexts={roots} selected={active} open={(path, pinned) => { void openClick(path, pinned) }} reveal={reveal} menu={showContext} editing={editing} finish={(name) => void finishEdit(name)} ask={askTree} create={startCreate} nonce={treeNonce} />)}</div>}</nav>}
-      {tree && <div className="wf-treesplit" role="separator" aria-label={t.files.workspace.resizeTree} aria-orientation="vertical" onPointerDown={resizeTree} onDoubleClick={() => { setTreeWidth(240); try { localStorage.setItem('agentboard.fileTreeWidth', '240') } catch { /* só vale nesta sessão */ } }} />}
+      {tree && <div className="wf-treesplit" role="separator" aria-label={t.files.workspace.resizeTree} aria-orientation="vertical" onPointerDown={resizeTree} onDoubleClick={() => { setTreeWidth(240); try { localStorage.setItem('gearmod.fileTreeWidth', '240') } catch { /* só vale nesta sessão */ } }} />}
       {current ? <FilePane doc={current} mode="full" context={context} preferences={preferences} changePreferences={change} change={changeFor(current.path)} root={currentRoot} commentCardId={commentCardId} commentTarget={commentTarget} update={updateDocument} save={save} reload={(path) => void reload(path)} afterComment={() => { if (!standalone) close() }} error={error} loading={loading} setError={setError} roots={roots} selectionText={selectionText} closeDocument={() => closeTab(current)} restore={(path) => void restore(path)} command={command} jump={jump && slashed(jump.path) === slashed(current.path) ? jump : undefined} onJumped={() => setJump(undefined)} openAt={(path, line) => openQuick(path, line)} />
         : <div className="wf-document">{(error) && <div className="wf-error" role="alert">{error}</div>}{loading && <p className="wf-note">{t.files.workspace.opening}</p>}<div className="wf-empty"><FolderGlyph /><p>{changes ? t.files.workspace.pickChanged : t.files.workspace.pickInTree}</p>{!tree && <button type="button" className="mini secondary" onClick={() => { change({ tree: true }); setTreeVisible(true) }}>{t.files.workspace.showFiles}</button>}</div></div>}
     </div>

@@ -1,6 +1,6 @@
-import { providerLabels } from '@agentboard/contracts'
+import { providerLabels } from '@gearmod/contracts'
 import React, { useEffect, useState } from 'react'
-import type { AgentProbe, AgentProfile, AppTheme, Project, ProjectInspection } from '@agentboard/contracts'
+import type { AgentProbe, AgentProfile, AppTheme, Project, ProjectInspection } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { GitMenu } from './BranchMenu'
 import { FolderGlyph } from './icons'
@@ -27,16 +27,16 @@ export function ProjectDialog({ close, created }: { close(): void; created(proje
   const [name, setName] = useState(''), [icon, setIcon] = useState<string | null>(null), [sources, setSources] = useState<ProjectInspection[]>([]), [error, setError] = useState(''), [choosing, setChoosing] = useState(false), [dragging, setDragging] = useState(false)
   useEscape(close)
   const addPath = async (path: string): Promise<void> => {
-    const inspected = await window.agentboard.invoke('projects:inspect', { localPath: path })
+    const inspected = await window.gearmod.invoke('projects:inspect', { localPath: path })
     setSources((current) => current.some((source) => source.localPath.toLocaleLowerCase() === inspected.localPath.toLocaleLowerCase()) ? current : [...current, inspected])
     setName((current) => current.trim() ? current : inspected.name)
   }
-  const choose = async (): Promise<void> => { try { setChoosing(true); setError(''); const path = await window.agentboard.invoke('projects:choose-directory', undefined); if (path) await addPath(path) } catch (reason) { setError(plainError(reason)) } finally { setChoosing(false) } }
+  const choose = async (): Promise<void> => { try { setChoosing(true); setError(''); const path = await window.gearmod.invoke('projects:choose-directory', undefined); if (path) await addPath(path) } catch (reason) { setError(plainError(reason)) } finally { setChoosing(false) } }
   const drop = async (event: React.DragEvent): Promise<void> => {
     event.preventDefault(); setDragging(false); setError('')
-    try { for (const file of Array.from(event.dataTransfer.files)) { const path = window.agentboard.getDroppedFilePath(file); if (path) await addPath(path) } } catch (reason) { setError(plainError(reason)) }
+    try { for (const file of Array.from(event.dataTransfer.files)) { const path = window.gearmod.getDroppedFilePath(file); if (path) await addPath(path) } } catch (reason) { setError(plainError(reason)) }
   }
-  const submit = async (): Promise<void> => { try { created(await window.agentboard.invoke('projects:create', { name: name.trim() || undefined, sourcePaths: sources.map((source) => source.localPath), profileIds: [], icon })) } catch (reason) { setError(plainError(reason)) } }
+  const submit = async (): Promise<void> => { try { created(await window.gearmod.invoke('projects:create', { name: name.trim() || undefined, sourcePaths: sources.map((source) => source.localPath), profileIds: [], icon })) } catch (reason) { setError(plainError(reason)) } }
   return <div className="overlay" role="dialog" aria-label={tp.newTitle}><div className="modal">
     <header><div><div className="eyebrow">{tp.newTitle}</div><h2>{tp.createTitle}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
     <div className="stack">
@@ -88,7 +88,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
   const savedIdentity = React.useRef({ name: project.name, icon: project.icon }), identity = React.useRef({ name, icon }), saveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null), saveQueue = React.useRef<Promise<void>>(Promise.resolve()), profileQueue = React.useRef<Promise<boolean>>(Promise.resolve(true)), saveVersion = React.useRef(0), profileVersion = React.useRef(0), closing = React.useRef(false)
   identity.current = { name, icon }
   const renamedRef = React.useRef(renamed); renamedRef.current = renamed
-  useEffect(() => { void window.agentboard.invoke('profiles:probe-all', undefined).then((all) => setProbes(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }, [])
+  useEffect(() => { void window.gearmod.invoke('profiles:probe-all', undefined).then((all) => setProbes(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }, [])
   const persistIdentity = React.useCallback(async (nextName: string, nextIcon: string | null): Promise<boolean> => {
     const cleanName = nextName.trim()
     if (!cleanName) { setError(tr().settings.project.nameRequired); return false }
@@ -97,7 +97,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
     setSaveState('saving'); setError('')
     const operation = saveQueue.current.catch(() => undefined).then(async () => {
       if (savedIdentity.current.name === cleanName && savedIdentity.current.icon === nextIcon) return
-      await window.agentboard.invoke('projects:update', { projectId: project.id, name: cleanName, icon: nextIcon })
+      await window.gearmod.invoke('projects:update', { projectId: project.id, name: cleanName, icon: nextIcon })
       savedIdentity.current = { name: cleanName, icon: nextIcon }
       // A sidebar e a barra de título mostram o nome novo já, sem esperar o diálogo fechar.
       renamedRef.current?.()
@@ -127,7 +127,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
   const changeAllowed = (next: string[]): void => {
     const previous = allowed, version = ++profileVersion.current
     setAllowed(next); setSaveState('saving'); setError('')
-    const operation = profileQueue.current.catch(() => false).then(async () => { await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: next }); return true })
+    const operation = profileQueue.current.catch(() => false).then(async () => { await window.gearmod.invoke('projects:set-profiles', { projectId: project.id, profileIds: next }); return true })
     profileQueue.current = operation.catch(() => false)
     // Falhou: volta para a lista anterior (que é a salva) e libera o fechamento; senão × e Esc ficavam presos.
     void operation.then(() => { if (version === profileVersion.current) setSaveState('saved') }).catch((reason: unknown) => { if (version === profileVersion.current) { setAllowed(previous); setSaveState('idle'); setError(plainError(reason)); profileQueue.current = Promise.resolve(true) } })
@@ -166,7 +166,7 @@ export function NoAgentDialog({ project, profiles, close, allowed, openSettings 
   useEscape(close)
   const use = async (profile: AgentProfile): Promise<void> => {
     setBusy(true); setError('')
-    try { await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: [...new Set([...project.allowedProfileIds, profile.id])] }); allowed() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
+    try { await window.gearmod.invoke('projects:set-profiles', { projectId: project.id, profileIds: [...new Set([...project.allowedProfileIds, profile.id])] }); allowed() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
   return <div className="overlay" role="dialog" aria-label={tp.noAgentAria}><div className="modal" style={{ width: 'min(480px,100%)' }}>
     <header><div><div className="eyebrow">{t.common.agent}</div><h2>{tp.noAgentTitle}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
@@ -184,7 +184,7 @@ export function ProjectAgentsDialog({ project, profiles, close, saved, openSetti
   useEscape(close)
   const submit = async (): Promise<void> => {
     setBusy(true); setError('')
-    try { await window.agentboard.invoke('projects:set-profiles', { projectId: project.id, profileIds: allowed }); saved() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
+    try { await window.gearmod.invoke('projects:set-profiles', { projectId: project.id, profileIds: allowed }); saved() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
   return <div className="overlay" role="dialog" aria-label={tp.agentsAria}><div className="modal" style={{ width: 'min(520px,100%)' }}>
     <header><div><div className="eyebrow">{tp.created}</div><h2>{tp.whichAgents(project.name)}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>

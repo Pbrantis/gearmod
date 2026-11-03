@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import type { CodeSymbol } from '@agentboard/contracts'
+import type { CodeSymbol } from '@gearmod/contracts'
 import { kindMark } from './codeNavigation'
 import { useT } from '../i18n'
 
@@ -37,7 +37,7 @@ export function SymbolSearch({ context, text, setText, open }: { context: { proj
   useEffect(() => {
     if (!query) { setFound(null); return }
     let alive = true
-    const timer = window.setTimeout(() => { void window.agentboard.invoke('code-index:symbols', { ...context, query, limit: 60 }).then((result) => { if (alive) { setFound(result); setError('') } }).catch(() => { if (alive) setError(t.files.editor.codeNav.failed) }) }, 120)
+    const timer = window.setTimeout(() => { void window.gearmod.invoke('code-index:symbols', { ...context, query, limit: 60 }).then((result) => { if (alive) { setFound(result); setError('') } }).catch(() => { if (alive) setError(t.files.editor.codeNav.failed) }) }, 120)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [query, context.projectId, context.cardId])
   const items: NavItem[] = (found ?? []).map((hit) => ({ path: hit.path, relative: hit.relative, line: hit.line, title: hit.qname || hit.name, kind: hit.kind }))

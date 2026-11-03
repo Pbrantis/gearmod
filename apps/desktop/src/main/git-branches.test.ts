@@ -14,10 +14,10 @@ const git = (dir: string, ...args: string[]): Promise<{ stdout: string }> => exe
 
 /** Repositório com um remoto bare (origin) que já tem a main e a branch feature/x. */
 async function withRemote(): Promise<{ manager: GitManager; repo: string; remote: string; sourceId: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-branches-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-branches-')); roots.push(root)
   const repo = join(root, 'repo'), remote = join(root, 'remote.git')
   await exec('git', ['init', '--bare', '-b', 'main', remote]); await exec('git', ['init', '-b', 'main', repo])
-  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'AgentBoard Test')
+  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'GearMod Test')
   await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'primeiro')
   await git(repo, 'remote', 'add', 'origin', remote); await git(repo, 'push', '-u', 'origin', 'main')
   await git(repo, 'checkout', '-b', 'feature/x'); await writeFile(join(repo, 'b.txt'), 'b\n'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'feature'); await git(repo, 'push', 'origin', 'feature/x')
@@ -67,8 +67,8 @@ describe('branches remotas', { timeout: 20_000 }, () => {
 describe('apagar branch local', () => {
   it('explica quando a branch está em uso por uma worktree ou ainda não foi mesclada', async () => {
     const { manager, repo, sourceId } = await withRemote()
-    const wt = join(repo, '..', 'wt'); await git(repo, 'worktree', 'add', '-b', 'agentboard/card', wt)
-    await expect(manager.branchAction(sourceId, { action: 'delete', name: 'agentboard/card' })).rejects.toThrow(/em uso por uma worktree/)
+    const wt = join(repo, '..', 'wt'); await git(repo, 'worktree', 'add', '-b', 'gearmod/card', wt)
+    await expect(manager.branchAction(sourceId, { action: 'delete', name: 'gearmod/card' })).rejects.toThrow(/em uso por uma worktree/)
     await git(repo, 'worktree', 'remove', '--force', wt)
     await git(repo, 'checkout', '-b', 'solta'); await writeFile(join(repo, 'c.txt'), 'c'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'so aqui'); await git(repo, 'checkout', 'main')
     await expect(manager.branchAction(sourceId, { action: 'delete', name: 'solta' })).rejects.toThrow(/ainda não estão em outra branch/)

@@ -13,14 +13,14 @@ const set = (next: Partial<TerminalState>): void => { state = { ...state, ...nex
 const patchTab = (id: string, change: (tab: TerminalTab) => TerminalTab): void => set({ tabs: state.tabs.map((tab) => (tab.id === id ? change(tab) : tab)) })
 const append = (tab: TerminalTab, data: string): TerminalTab => { const text = tab.text + data; return { ...tab, text: text.length > maxText ? text.slice(text.length - maxText) : text } }
 let counter = 0
-const handOffKey = 'agentboard.terminalHandOff'
+const handOffKey = 'gearmod.terminalHandOff'
 const early = new Map<string, Array<{ data: string; seq: number }>>()
 
-if (typeof window !== 'undefined' && window.agentboard) window.agentboard.onRunEvent((event) => {
+if (typeof window !== 'undefined' && window.gearmod) window.gearmod.onRunEvent((event) => {
   const id = String(event.payload.id ?? '')
-  if (!state.tabs.some((tab) => tab.id === id)) { if (event.eventType === 'agentboard/terminal-data') { const buffered = early.get(id) ?? []; buffered.push({ data: String(event.payload.data ?? ''), seq: Number(event.payload.seq ?? 0) }); early.set(id, buffered.slice(-100)); if (early.size > 100) early.delete(early.keys().next().value!) } return }
-  if (event.eventType === 'agentboard/terminal-data') patchTab(id, (tab) => Number(event.payload.seq ?? 0) <= tab.seq ? tab : { ...append(tab, String(event.payload.data ?? '')), seq: Number(event.payload.seq) })
-  else if (event.eventType === 'agentboard/terminal-exit') patchTab(id, (tab) => ({ ...append(tab, `\n\x1b[2m${tr().files.terminal.exitMessage(String(event.payload.code ?? 0))}\x1b[0m\n`), exited: true }))
+  if (!state.tabs.some((tab) => tab.id === id)) { if (event.eventType === 'gearmod/terminal-data') { const buffered = early.get(id) ?? []; buffered.push({ data: String(event.payload.data ?? ''), seq: Number(event.payload.seq ?? 0) }); early.set(id, buffered.slice(-100)); if (early.size > 100) early.delete(early.keys().next().value!) } return }
+  if (event.eventType === 'gearmod/terminal-data') patchTab(id, (tab) => Number(event.payload.seq ?? 0) <= tab.seq ? tab : { ...append(tab, String(event.payload.data ?? '')), seq: Number(event.payload.seq) })
+  else if (event.eventType === 'gearmod/terminal-exit') patchTab(id, (tab) => ({ ...append(tab, `\n\x1b[2m${tr().files.terminal.exitMessage(String(event.payload.code ?? 0))}\x1b[0m\n`), exited: true }))
 })
 
 export const terminal = {
@@ -34,7 +34,7 @@ export const terminal = {
   async attach(id: string, options?: { quiet?: boolean }): Promise<void> {
     const quiet = Boolean(options?.quiet)
     try {
-      const info = await window.agentboard.invoke('terminal:info', { id }), queued = early.get(id) ?? []; early.delete(id)
+      const info = await window.gearmod.invoke('terminal:info', { id }), queued = early.get(id) ?? []; early.delete(id)
       let tab: TerminalTab = { ...info, title: info.shell }
       queued.filter((chunk) => chunk.seq > info.seq).forEach((chunk) => { tab = { ...append(tab, chunk.data), seq: chunk.seq } })
       if (quiet && state.tabs.some((item) => item.id === id)) return
@@ -49,7 +49,7 @@ export const terminal = {
     try { localStorage.setItem(handOffKey, message) } catch { /* sem armazenamento: tenta só pelo canal */ }
     try { const channel = new BroadcastChannel(handOffKey); channel.postMessage(message); channel.close() } catch { /* canal indisponível */ }
   },
-  async openPath(context: { projectId: string; cardId: string | null; path: string }): Promise<string | null> { try { const { id } = await window.agentboard.invoke('workspace:terminal', context); await terminal.attach(id); return id } catch (reason) { set({ error: plainError(reason), open: true }); return null } },
+  async openPath(context: { projectId: string; cardId: string | null; path: string }): Promise<string | null> { try { const { id } = await window.gearmod.invoke('workspace:terminal', context); await terminal.attach(id); return id } catch (reason) { set({ error: plainError(reason), open: true }); return null } },
   /** Abre uma aba nova do terminal na pasta e digita só o primeiro comando; quem responde às perguntas da CLI é o usuário, ali. */
   async runIn(context: { projectId: string; cardId: string | null; path: string }, command: string): Promise<boolean> {
     const id = await terminal.openPath(context)
@@ -60,7 +60,7 @@ export const terminal = {
     // Sem projeto aberto (contexto vazio), o terminal abre na pasta do usuário, como um terminal comum.
     const context = state.context ?? { projectId: null, cardId: null }
     try {
-      const { id, cwd, shell } = await window.agentboard.invoke('terminal:open', context)
+      const { id, cwd, shell } = await window.gearmod.invoke('terminal:open', context)
       counter += 1
       const chunks = early.get(id) ?? []; early.delete(id)
       set({ tabs: [...state.tabs, { id, title: `${shell} ${counter}`, shell, cwd, text: chunks.map((chunk) => chunk.data).join(''), seq: chunks.at(-1)?.seq ?? 0, exited: false }], active: id, open: true, error: '' })
@@ -70,7 +70,7 @@ export const terminal = {
   async send(id: string, line: string): Promise<void> {
     const tab = state.tabs.find((item) => item.id === id)
     if (!tab || tab.exited) return
-    try { await window.agentboard.invoke('terminal:write', { id, data: `${line}\r` }) } catch (reason) { patchTab(id, (item) => append(item, `${plainError(reason)}\n`)) }
+    try { await window.gearmod.invoke('terminal:write', { id, data: `${line}\r` }) } catch (reason) { patchTab(id, (item) => append(item, `${plainError(reason)}\n`)) }
   },
   /** Botão de play de um bloco de código do chat: roda na aba ativa (abre uma, se não houver ou se ela já terminou). */
   async run(command: string): Promise<void> {
@@ -82,7 +82,7 @@ export const terminal = {
   close(id: string): void {
     // Fechar a aba mata o processo dela: se ainda está rodando, confirma antes.
     if (state.tabs.some((tab) => tab.id === id && !tab.exited) && !window.confirm(tr().files.terminal.closeRunningConfirm)) return
-    void window.agentboard.invoke('terminal:kill', { id }).catch(() => undefined)
+    void window.gearmod.invoke('terminal:kill', { id }).catch(() => undefined)
     const tabs = state.tabs.filter((tab) => tab.id !== id)
     set({ tabs, active: state.active === id ? tabs.at(-1)?.id ?? null : state.active, open: tabs.length > 0 && state.open })
   },
@@ -90,7 +90,7 @@ export const terminal = {
 }
 
 // Só a janela principal recebe as abas de volta (as extras têm `?pop=` na URL).
-if (typeof window !== 'undefined' && window.agentboard && !popoutParams()) {
+if (typeof window !== 'undefined' && window.gearmod && !popoutParams()) {
   const receive = (raw: unknown): void => {
     try { const parsed = JSON.parse(String(raw)) as { ids?: unknown }; if (Array.isArray(parsed.ids)) for (const id of parsed.ids) if (typeof id === 'string' && !state.tabs.some((tab) => tab.id === id)) void terminal.attach(id, { quiet: true }) } catch { /* mensagem inválida */ }
   }

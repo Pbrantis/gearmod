@@ -16,9 +16,9 @@ import { CodeIndexService, type HostProcess } from './service'
 const dirs: string[] = []
 const closers: Array<() => Promise<void> | void> = []
 afterEach(async () => { for (const close of closers.splice(0)) await close(); await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
-const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-code-mcp-')); dirs.push(dir); return dir }
+const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-code-mcp-')); dirs.push(dir); return dir }
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
-const serverScript = join(__dirname, '..', '..', '..', 'resources', 'agentboard-mcp', 'server.mjs')
+const serverScript = join(__dirname, '..', '..', '..', 'resources', 'gearmod-mcp', 'server.mjs')
 
 function fakeHost(): HostProcess {
   const listeners: Array<(message: HostMessage) => void> = []
@@ -64,46 +64,46 @@ async function setup(on: { value: boolean } = { value: true }) {
   return { bridge, card, asked }
 }
 
-describe('ferramentas agentboard_code_* pelo servidor MCP', () => {
+describe('ferramentas gearmod_code_* pelo servidor MCP', () => {
   it('aparecem como só leitura para planejamento, execução, teste e chat livre, e não no chat da Constituição', async () => {
     const { bridge, card } = await setup()
     const execution = await mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' })).names()
-    expect(execution.filter((tool) => tool.name.startsWith('agentboard_code_')).map((tool) => [tool.name, tool.annotations.readOnlyHint])).toEqual([['agentboard_code_explore', true], ['agentboard_code_node', true], ['agentboard_code_search', true], ['agentboard_code_impact', true], ['agentboard_code_affected_tests', true]])
+    expect(execution.filter((tool) => tool.name.startsWith('gearmod_code_')).map((tool) => [tool.name, tool.annotations.readOnlyHint])).toEqual([['gearmod_code_explore', true], ['gearmod_code_node', true], ['gearmod_code_search', true], ['gearmod_code_impact', true], ['gearmod_code_affected_tests', true]])
     const free = await mcpClient(bridge.register('r2', null, () => undefined, { id: 'c2', purpose: 'free' })).names()
-    expect(free.some((tool) => tool.name === 'agentboard_code_explore')).toBe(true)
-    expect(free.some((tool) => tool.name === 'agentboard_code_affected_tests')).toBe(false)
+    expect(free.some((tool) => tool.name === 'gearmod_code_explore')).toBe(true)
+    expect(free.some((tool) => tool.name === 'gearmod_code_affected_tests')).toBe(false)
     const constitution = await mcpClient(bridge.register('r3', null, () => undefined, { id: 'c3', purpose: 'constitution' })).names()
-    expect(constitution.some((tool) => tool.name.startsWith('agentboard_code_'))).toBe(false)
+    expect(constitution.some((tool) => tool.name.startsWith('gearmod_code_'))).toBe(false)
   })
 
   it('responde no card e no chat livre com as pastas da conversa; a Constituição recusa', async () => {
     const { bridge, card, asked } = await setup()
     const onCard = mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' }))
-    const impact = await onCard.call('agentboard_code_impact', { simbolo: 'allowedPath' })
+    const impact = await onCard.call('gearmod_code_impact', { simbolo: 'allowedPath' })
     expect(impact.isError).toBe(false)
     expect(impact.content[0]!.text).toContain('readFile:2 — calls at lines 2')
     const free = mcpClient(bridge.register('r2', null, () => undefined, { id: 'c2', purpose: 'free' }))
-    expect((await free.call('agentboard_code_explore', { pergunta: 'readFile allowedPath' })).content[0]!.text).toContain('**Flow')
+    expect((await free.call('gearmod_code_explore', { pergunta: 'readFile allowedPath' })).content[0]!.text).toContain('**Flow')
     // as pastas são pedidas ao registrar a execução (indexação antecipada) e a cada chamada
     expect(asked).toContainEqual({ cardId: card.id, chatId: 'c1' })
     expect(asked).toContainEqual({ cardId: null, chatId: 'c2' })
-    const missing = await free.call('agentboard_code_search', {})
+    const missing = await free.call('gearmod_code_search', {})
     expect(missing).toMatchObject({ isError: true })
     const constitution = mcpClient(bridge.register('r3', null, () => undefined, { id: 'c3', purpose: 'constitution' }))
-    expect(await constitution.call('agentboard_code_search', { consulta: 'x' })).toMatchObject({ isError: true })
+    expect(await constitution.call('gearmod_code_search', { consulta: 'x' })).toMatchObject({ isError: true })
   })
 
   it('com o índice desligado no projeto as ferramentas somem, e quem já rodava recebe recusa', async () => {
     const on = { value: false }
     const { bridge, card, asked } = await setup(on)
     const off = mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' }))
-    expect((await off.names()).some((tool) => tool.name.startsWith('agentboard_code_'))).toBe(false)
+    expect((await off.names()).some((tool) => tool.name.startsWith('gearmod_code_'))).toBe(false)
     expect(asked).toEqual([]) // nada de indexação antecipada
     on.value = true
     const running = mcpClient(bridge.register('r2', card.id, () => undefined, { id: 'c2', purpose: 'execution' }))
-    expect((await running.names()).some((tool) => tool.name === 'agentboard_code_explore')).toBe(true)
+    expect((await running.names()).some((tool) => tool.name === 'gearmod_code_explore')).toBe(true)
     on.value = false
-    const refused = await running.call('agentboard_code_search', { consulta: 'readFile' })
+    const refused = await running.call('gearmod_code_search', { consulta: 'readFile' })
     expect(refused.isError).toBe(true)
     expect(refused.content[0]!.text).toContain('turned off')
   })

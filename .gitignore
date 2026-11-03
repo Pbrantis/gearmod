@@ -16,4 +16,4 @@ coverage/
 /apps/desktop/dist - Copia/
 
 # Dados temporários do Postgres de teste
-/.tmp-agentboard-pg/
+/.tmp-gearmod-pg/

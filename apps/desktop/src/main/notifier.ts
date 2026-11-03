@@ -1,4 +1,4 @@
-import type { ChatPurpose } from '@agentboard/contracts'
+import type { ChatPurpose } from '@gearmod/contracts'
 
 import { tm } from './i18n'
 

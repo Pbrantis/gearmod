@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
-import type { AgentPurpose, ChatMessage } from '@agentboard/contracts'
+import type { AgentPurpose, ChatMessage } from '@gearmod/contracts'
 import thinkingGif from './assets/thinking.gif'
 import { tr, useT } from './i18n'
 
-/** Mascote do AgentBoard "pensando" (GIF animado): indicador de agente trabalhando. */
+/** Mascote do GearMod "pensando" (GIF animado): indicador de agente trabalhando. */
 export function ThinkingMascot({ size = 22 }: { size?: number }): React.JSX.Element {
   return <img className="mascot" src={thinkingGif} width={size} height={size} alt="" draggable={false} />
 }
@@ -17,9 +17,9 @@ export function activityVerb(messages: ChatMessage[]): string | null {
   const t = tr().shell.thinking
   if (['read', 'grep', 'glob', 'ls'].includes(name)) return t.readingProject
   if (['bash', 'comando'].includes(name)) return t.runningCommand
-  if (['write', 'edit', 'multiedit', 'alterou', 'agentboard_write_document'].includes(name)) return t.writing
+  if (['write', 'edit', 'multiedit', 'alterou', 'gearmod_write_document'].includes(name)) return t.writing
   if (['websearch', 'webfetch'].includes(name)) return t.searching
-  if (name.startsWith('agentboard_')) return t.updatingCard
+  if (name.startsWith('gearmod_')) return t.updatingCard
   return null
 }
 

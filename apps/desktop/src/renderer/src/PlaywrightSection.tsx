@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { isOutdated, type PlaywrightStatus } from '@agentboard/contracts'
+import { isOutdated, type PlaywrightStatus } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { MultiSelect } from './MultiSelect'
@@ -18,28 +18,28 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
   const [confirming, setConfirming] = useState(false), [removing, setRemoving] = useState<string>(), [downloading, setDownloading] = useState(false), [error, setError] = useState('')
   const [picking, setPicking] = useState(false), [available, setAvailable] = useState<string[]>(), [pickError, setPickError] = useState(''), [processId, setProcessId] = useState<string>(), [processOpen, setProcessOpen] = useState(false)
   useEffect(() => {
-    void window.agentboard.invoke('playwright:status', { projectId }).then(setStatus).catch((reason) => setError(plainError(reason)))
-    void window.agentboard.invoke('playwright:sources', { projectId }).then((found) => { setSources(found); setSourceId((current) => current || found[0]?.id || '') }).catch(() => undefined)
+    void window.gearmod.invoke('playwright:status', { projectId }).then(setStatus).catch((reason) => setError(plainError(reason)))
+    void window.gearmod.invoke('playwright:sources', { projectId }).then((found) => { setSources(found); setSourceId((current) => current || found[0]?.id || '') }).catch(() => undefined)
   }, [projectId])
   useEffect(() => { setVersion((current) => current || latest || 'latest') }, [latest])
   const busy = useTasks().some((item) => item.key === `playwright:${projectId}` && item.state === 'running')
   // O diálogo mostra o andamento ao vivo (o log do processo principal) e pode ser minimizado: a instalação continua em segundo plano.
   useEffect(() => {
     if (!busy) return
-    const timer = window.setInterval(() => { void window.agentboard.invoke('playwright:status', { projectId }).then(setStatus).catch(() => undefined) }, 1500)
+    const timer = window.setInterval(() => { void window.gearmod.invoke('playwright:status', { projectId }).then(setStatus).catch(() => undefined) }, 1500)
     return () => window.clearInterval(timer)
   }, [busy, projectId])
   const act = async (call: () => Promise<PlaywrightStatus>): Promise<void> => { setError(''); try { setStatus(await call()) } catch (reason) { setError(plainError(reason)) } }
-  const downloadBrowser = async (): Promise<void> => { setDownloading(true); await act(() => window.agentboard.invoke('playwright:install-browser', { projectId })); setDownloading(false) }
+  const downloadBrowser = async (): Promise<void> => { setDownloading(true); await act(() => window.gearmod.invoke('playwright:install-browser', { projectId })); setDownloading(false) }
   const openPicker = async (): Promise<void> => {
     setPicking(true); setAvailable(undefined); setPickError('')
-    try { const list = await window.agentboard.invoke('playwright:versions', undefined); setAvailable(list); setVersion((current) => list.includes(current) ? current : list[0] ?? '') } catch (reason) { setPickError(plainError(reason)) }
+    try { const list = await window.gearmod.invoke('playwright:versions', undefined); setAvailable(list); setVersion((current) => list.includes(current) ? current : list[0] ?? '') } catch (reason) { setPickError(plainError(reason)) }
   }
   const runInstall = (): void => {
     setConfirming(false); setError('')
     const wanted = version.trim() || 'latest'
     const { id, promise } = tasks.track({ key: `playwright:${projectId}`, title: tw.taskTitle, detail: wanted }, async () => {
-      const result = await window.agentboard.invoke('playwright:install', { projectId, version: wanted, browser, skills, ...(skills.length && sourceId ? { sourceId } : {}) })
+      const result = await window.gearmod.invoke('playwright:install', { projectId, version: wanted, browser, skills, ...(skills.length && sourceId ? { sourceId } : {}) })
       setStatus(result)
       if (result.error) throw new Error(result.error)
       return result
@@ -64,7 +64,7 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
       <h5 className="pw-subtitle">{tw.versionsTitle}</h5>
       {status.versions.length ? <ul className="pw-versions">{status.versions.map((item) => <li key={item.version} className={item.version === status.selected ? 'on' : ''}>
         <code data-tip={item.path}>v{item.version}</code>
-        {item.version === status.selected ? <span className="pw-chip ok"><i aria-hidden="true" />{tw.inUse}</span> : <button type="button" className="mini secondary" disabled={busy} onClick={() => void act(() => window.agentboard.invoke('playwright:select', { projectId, version: item.version }))}>{tw.use}</button>}
+        {item.version === status.selected ? <span className="pw-chip ok"><i aria-hidden="true" />{tw.inUse}</span> : <button type="button" className="mini secondary" disabled={busy} onClick={() => void act(() => window.gearmod.invoke('playwright:select', { projectId, version: item.version }))}>{tw.use}</button>}
         <span className="ch-spacer" />
         <button type="button" className="ibtn tip danger" data-tip={tw.removeVersion(item.version)} aria-label={tw.removeVersion(item.version)} disabled={busy} onClick={() => setRemoving(item.version)}><TrashIcon /></button>
       </li>)}</ul> : <p className="cx-muted">{tw.noVersions}</p>}
@@ -90,7 +90,7 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
       <label className="f"><span>{tw.agentSkill}</span><MultiSelect label={tw.agentSkill} empty={tw.noSkill} value={skills} options={[{ value: 'claude', label: tw.optionClaude }, { value: 'agents', label: tw.optionCodex }]} onChange={(value) => setSkills(value as Array<'claude' | 'agents'>)} /></label>
       {skills.length > 0 && <><label className="f"><span>{tw.skillRepo}</span><Select label={tw.skillRepo} value={sourceId} options={sources.map((item) => ({ value: item.id, label: item.name, disabled: false }))} onChange={setSourceId} /></label><div className="pw-skillnote">{tw.skillNote}</div></>}
     </div>} ok={tw.install} okDisabled={skills.length > 0 && !sourceId} cancel={() => setConfirming(false)} confirm={() => { setPicking(false); runInstall() }} />}
-    {removing && <ConfirmDialog eyebrow="Playwright CLI" title={tw.removeTitle(removing)} text={tw.removeText} ok={tw.remove} danger cancel={() => setRemoving(undefined)} confirm={() => { const target = removing; setRemoving(undefined); void act(() => window.agentboard.invoke('playwright:remove', { projectId, version: target })) }} />}
+    {removing && <ConfirmDialog eyebrow="Playwright CLI" title={tw.removeTitle(removing)} text={tw.removeText} ok={tw.remove} danger cancel={() => setRemoving(undefined)} confirm={() => { const target = removing; setRemoving(undefined); void act(() => window.gearmod.invoke('playwright:remove', { projectId, version: target })) }} />}
     {processOpen && processId && <ProcessDialog taskId={processId} title={tw.processTitle} log={status?.log} background={() => setProcessOpen(false)} close={() => setProcessOpen(false)} />}
   </div>
 }

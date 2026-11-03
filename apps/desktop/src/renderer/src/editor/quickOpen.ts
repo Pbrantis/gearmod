@@ -38,7 +38,7 @@ export function rankPaths(query: string, paths: string[], recents: string[] = []
   return ranked.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path))
 }
 
-const key = (projectId: string): string => `agentboard.recentFiles.${projectId}`
+const key = (projectId: string): string => `gearmod.recentFiles.${projectId}`
 /** Arquivos abertos há pouco neste projeto (mais recente primeiro, até 30), guardados no navegador. */
 export function readRecents(projectId: string): string[] { try { const saved = JSON.parse(localStorage.getItem(key(projectId)) ?? '[]') as unknown; return Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string').slice(0, 30) : [] } catch { return [] } }
 /** Tira dos recentes os caminhos que já não existem no disco. */

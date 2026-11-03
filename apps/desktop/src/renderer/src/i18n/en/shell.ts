@@ -19,7 +19,7 @@ export const shell: typeof source = {
     emptyText: 'Projects, cards and transitions persist locally across restarts.',
     addFirstProject: 'Add first project',
     deleteProject: 'Delete project',
-    deleteProjectText: 'The project is removed from AgentBoard along with its cards, chats, documents and history. Folders and repositories on disk are not deleted. This cannot be undone.',
+    deleteProjectText: 'The project is removed from GearMod along with its cards, chats, documents and history. Folders and repositories on disk are not deleted. This cannot be undone.',
     filesActions: 'File actions',
     terminalActions: 'Terminal actions',
     openInNewWindow: 'Open in new window'

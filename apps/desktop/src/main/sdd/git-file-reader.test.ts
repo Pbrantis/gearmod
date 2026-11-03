@@ -11,10 +11,10 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = (dir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> => exec('git', ['-C', dir, ...args])
 
 async function repo(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-gitreader-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-gitreader-')); roots.push(root)
   const dir = join(root, 'repo')
   await exec('git', ['init', '-b', 'main', dir])
-  await git(dir, 'config', 'user.email', 'test@example.invalid'); await git(dir, 'config', 'user.name', 'AgentBoard Test'); await git(dir, 'config', 'core.autocrlf', 'false')
+  await git(dir, 'config', 'user.email', 'test@example.invalid'); await git(dir, 'config', 'user.name', 'GearMod Test'); await git(dir, 'config', 'core.autocrlf', 'false')
   return dir
 }
 

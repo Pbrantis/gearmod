@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { defaultPermissionMode, type PermissionModeInfo, type AgentConfig, type AgentOptions, type AgentProfile, type AgentPurpose, type Effort } from '@agentboard/contracts'
+import { defaultPermissionMode, type PermissionModeInfo, type AgentConfig, type AgentOptions, type AgentProfile, type AgentPurpose, type Effort } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { CheckIcon } from './icons'
 import { useFitInView } from './useFitInView'
@@ -29,7 +29,7 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
       if (first) setConfig((current) => current ?? { profileId: first.id, model: null, effort: null, mode: defaultPermissionMode(first.provider, purpose) })
       return () => { alive = false }
     }
-    void window.agentboard.invoke('cards:agent-config', { cardId }).then((saved) => {
+    void window.gearmod.invoke('cards:agent-config', { cardId }).then((saved) => {
       if (!alive) return
       const list = latest.current, stored = saved[purpose], first = list.find((item) => item.id === lockedProfileId) ?? list.find((item) => item.id === stored?.profileId) ?? list[0]
       if (!first) return
@@ -40,7 +40,7 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
   useEffect(() => {
     if (!profileId) return
     let alive = true
-    void window.agentboard.invoke('agents:options', { profileId }).then((loaded) => { if (alive) setOptions(loaded) }).catch(() => { if (alive) setOptions({ models: [], mostUsed: { planning: null, execution: null, test: null } }) })
+    void window.gearmod.invoke('agents:options', { profileId }).then((loaded) => { if (alive) setOptions(loaded) }).catch(() => { if (alive) setOptions({ models: [], mostUsed: { planning: null, execution: null, test: null } }) })
     return () => { alive = false }
   }, [profileId])
   // Sem escolha salva, mostra o padrão: o mais usado ou o recomendado para a finalidade.
@@ -54,7 +54,7 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
     if (!config) return
     const next = { ...config, ...patch }
     if (!cardId) { setTouched(true); setConfig(next); return }
-    try { setError(''); await window.agentboard.invoke('cards:set-agent-config', { cardId, purpose, config: next }); setConfig(next) } catch (reason) { setError(plainError(reason)) }
+    try { setError(''); await window.gearmod.invoke('cards:set-agent-config', { cardId, purpose, config: next }); setConfig(next) } catch (reason) { setError(plainError(reason)) }
   }, [cardId, config, purpose])
   return { config, options, update, error, touched }
 }

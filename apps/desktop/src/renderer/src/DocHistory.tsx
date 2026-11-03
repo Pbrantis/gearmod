@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import type { DocumentVersion } from '@agentboard/contracts'
+import type { DocumentVersion } from '@gearmod/contracts'
 import { Markdown } from './markdown'
 import { DiffLines } from './gitDiff'
 import { unifiedDiff } from './docDiff'

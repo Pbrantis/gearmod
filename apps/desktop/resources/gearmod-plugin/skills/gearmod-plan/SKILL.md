@@ -1,6 +1,6 @@
 ---
-name: agentboard-plan
-description: Writes the Plan document of an AgentBoard card in SDD style (technical summary, technical context, project principles check, decisions with alternatives, data model, contracts, affected areas, risks and validation), based on the project's real code.
+name: gearmod-plan
+description: Writes the Plan document of an GearMod card in SDD style (technical summary, technical context, project principles check, decisions with alternatives, data model, contracts, affected areas, risks and validation), based on the project's real code.
 ---
 
 # Document: Plan
@@ -15,7 +15,7 @@ Write everything you produce for the user — documents, headings, labels, descr
 
 1. **Summary.** The main requirement and the technical approach in 2 or 3 sentences.
 2. **Technical context.** Only what matters for this card, taken from the repository: language and version, main dependencies, storage, tests, platform, constraints. Mark anything you don't know as `[PRECISA ESCLARECER]` (needs clarification; use the equivalent marker from the template of `idioma`) and resolve it in the chat.
-3. **Principles check.** Read the project's principles: first the Constitution (full text with `agentboard_read_constitution` if the context carries only the index), then `AGENTS.md`, `CLAUDE.md` and decisions in `docs/`. List the ones that apply and say whether the plan respects each (✅) or not (⚠️). A ⚠️ requires the Complexity section.
+3. **Principles check.** Read the project's principles: first the Constitution (full text with `gearmod_read_constitution` if the context carries only the index), then `AGENTS.md`, `CLAUDE.md` and decisions in `docs/`. List the ones that apply and say whether the plan respects each (✅) or not (⚠️). A ⚠️ requires the Complexity section.
 4. **Decisions.** Each one in the format **Decision** / **Reason** / **Alternatives rejected**.
 5. **Data model.** Only if the card changes data: tables, fields, migration and what happens to existing data.
 6. **Contracts.** Only if the card changes an interface (IPC, API, events, file format): name, input, output and validation.
@@ -32,7 +32,7 @@ Write everything you produce for the user — documents, headings, labels, descr
 
 ## Delivery
 
-Send it with `tipo` = `plano` (tool `agentboard_write_document` or markers, as described in `agentboard-planning`).
+Send it with `tipo` = `plano` (tool `gearmod_write_document` or markers, as described in `gearmod-planning`).
 
 ## Test plan
 

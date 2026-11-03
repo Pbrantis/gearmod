@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import type { IpcOutput } from '@agentboard/contracts'
+import type { IpcOutput } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { ClauseInput } from './ClauseInput'
 import { DbGrid, type GridEdit, type GridMode } from './DbGrid'
@@ -33,7 +33,7 @@ export function DbTableView({ tabId, connectionId, oid, name, allowWrite }: { ta
   const [meta, setMeta] = useState<Describe>(), [page, setPage] = useState<IpcOutput<'db:page'>>(), [offset, setOffset] = useState(0), [order, setOrder] = useState<Order>([]), [exactCount, setExactCount] = useState<string>()
   const [whereText, setWhereText] = useState(''), [orderText, setOrderText] = useState(''), clauses = useRef({ where: '', orderBy: '' })
   const [dialog, setDialog] = useState<DbInfoKind>(), [pagerMenu, setPagerMenu] = useState<{ x: number; y: number }>()
-  const [pageSize, setPageSizeState] = useState(() => { try { return Number(localStorage.getItem('agentboard.db.pageSize')) || 200 } catch { return 200 } })
+  const [pageSize, setPageSizeState] = useState(() => { try { return Number(localStorage.getItem('gearmod.db.pageSize')) || 200 } catch { return 200 } })
   const sizeRef = useRef(pageSize); sizeRef.current = pageSize
   const [pending, setPending] = useState<Pending>(noPending), [sel, setSel] = useState<{ row: number; col: number; mode: GridMode }>({ row: 0, col: 0, mode: 'cell' })
   const [preview, setPreview] = useState<string[]>(), [applying, setApplying] = useState(false)
@@ -48,16 +48,16 @@ export function DbTableView({ tabId, connectionId, oid, name, allowWrite }: { ta
     const dirty = pendingRef.current.added.length + Object.keys(pendingRef.current.edits).length + pendingRef.current.removed.length > 0
     if (dirty) { if (quiet || !(await ask({ eyebrow: t.database.table.pendingChanges, title: t.database.table.discardTitle, text: t.database.table.discardText, ok: t.database.table.discard, danger: true }))) return; setPending(noPending) }
     const id = req.start(); setExactCount(undefined)
-    try { const result = await window.agentboard.invoke('db:page', { connectionId, oid, requestId: id, conditions: [], ...clauseArgs(), order: nextOrder, limit: sizeRef.current, offset: nextOffset }); if (req.current(id)) { setPage(result); setOffset(nextOffset) } } catch (reason) { if (req.current(id)) req.setError(plainError(reason)) } finally { req.finish(id) }
+    try { const result = await window.gearmod.invoke('db:page', { connectionId, oid, requestId: id, conditions: [], ...clauseArgs(), order: nextOrder, limit: sizeRef.current, offset: nextOffset }); if (req.current(id)) { setPage(result); setOffset(nextOffset) } } catch (reason) { if (req.current(id)) req.setError(plainError(reason)) } finally { req.finish(id) }
   }
-  useEffect(() => { void window.agentboard.invoke('db:describe', { connectionId, oid }).then(setMeta).catch((reason) => req.setError(plainError(reason))); void loadPage(0, []) }, [connectionId, oid])
+  useEffect(() => { void window.gearmod.invoke('db:describe', { connectionId, oid }).then(setMeta).catch((reason) => req.setError(plainError(reason))); void loadPage(0, []) }, [connectionId, oid])
   const count = async (): Promise<string | undefined> => {
     const id = req.start()
-    try { const result = await window.agentboard.invoke('db:count', { connectionId, oid, requestId: id, conditions: [], ...clauseArgs(), order: [], limit: 200, offset: 0 }); if (req.current(id)) { setExactCount(result.count); return result.count } } catch (reason) { if (req.current(id)) req.setError(plainError(reason)) } finally { req.finish(id) }
+    try { const result = await window.gearmod.invoke('db:count', { connectionId, oid, requestId: id, conditions: [], ...clauseArgs(), order: [], limit: 200, offset: 0 }); if (req.current(id)) { setExactCount(result.count); return result.count } } catch (reason) { if (req.current(id)) req.setError(plainError(reason)) } finally { req.finish(id) }
   }
   const goLast = async (): Promise<void> => { const total = Number(exactCount ?? await count()); if (!Number.isFinite(total) || total < 1) return; await loadPage(Math.floor((total - 1) / pageSize) * pageSize, order) }
   const applyClauses = (): void => { clauses.current = { where: whereText, orderBy: orderText }; void loadPage(0, order) }
-  const changeSize = (size: number): void => { setPageSizeState(size); sizeRef.current = size; setPagerMenu(undefined); try { localStorage.setItem('agentboard.db.pageSize', String(size)) } catch { /* preferência local */ } void loadPage(0, order) }
+  const changeSize = (size: number): void => { setPageSizeState(size); sizeRef.current = size; setPagerMenu(undefined); try { localStorage.setItem('gearmod.db.pageSize', String(size)) } catch { /* preferência local */ } void loadPage(0, order) }
   const pagerItems: DbMenuItem[] = [{ label: t.database.table.countRows, run: () => { setPagerMenu(undefined); void count() } }, ...[10, 50, 100, 200, 500, 1000].map((size) => ({ label: `${size === pageSize ? '✓' : '  '} ${t.database.table.rowsPerPage(size)}`, run: () => changeSize(size) }))]
   const busy = req.busy
   const offsetRef = useRef(offset), orderRef = useRef(order); offsetRef.current = offset; orderRef.current = order
@@ -108,7 +108,7 @@ export function DbTableView({ tabId, connectionId, oid, name, allowWrite }: { ta
     if (!page || applying) return
     setApplying(true); const id = crypto.randomUUID()
     try {
-      const result = await window.agentboard.invoke('db:apply', { connectionId, requestId: id, oid, dryRun, ...changeSet() })
+      const result = await window.gearmod.invoke('db:apply', { connectionId, requestId: id, oid, dryRun, ...changeSet() })
       if (dryRun) { setPreview(result.sql); return }
       // O ref também é zerado já: senão o loadPage abaixo ainda vê as pendências e não recarrega a grade.
       setPreview(undefined); setPending(noPending); pendingRef.current = noPending

@@ -5,8 +5,8 @@ import { PgDriver } from './pg-driver'
 import { ConnectionManager } from './connection-manager'
 import { DbService } from './service'
 import type { DbConnection, DbConnections } from './connections'
-it.skipIf(!process.env.AGENTBOARD_PG_TEST_URL || process.env.AGENTBOARD_PG_TEST_DISPOSABLE !== '1')('navega e filtra por OID, isola leitura e cancela consulta em PostgreSQL descartável', async () => {
-  const url = new URL(process.env.AGENTBOARD_PG_TEST_URL!)
+it.skipIf(!process.env.GEARMOD_PG_TEST_URL || process.env.GEARMOD_PG_TEST_DISPOSABLE !== '1')('navega e filtra por OID, isola leitura e cancela consulta em PostgreSQL descartável', async () => {
+  const url = new URL(process.env.GEARMOD_PG_TEST_URL!)
   const config: DbConnection = { id: 'test', projectId: 'p', name: 'test', klass: 'test', host: url.hostname, port: Number(url.port || 5432), database: decodeURIComponent(url.pathname.slice(1)), user: decodeURIComponent(url.username), sslMode: 'disable', hasSecret: true, allowWrite: true, agentAccess: 'none', origin: 'manual', envId: null }
   const password = decodeURIComponent(url.password), driver = new PgDriver(), admin = await driver.open(config, password, { type: 'user' })
   const schema = `test_${randomUUID().replaceAll('-', '')}`
@@ -50,12 +50,12 @@ it.skipIf(!process.env.AGENTBOARD_PG_TEST_URL || process.env.AGENTBOARD_PG_TEST_
   } finally { await admin.write('cleanup', `DROP SCHEMA IF EXISTS "${schema}" CASCADE; DROP SCHEMA IF EXISTS "${schema2}" CASCADE`); await admin.close() }
 }, 40_000)
 
-it.skipIf(!process.env.AGENTBOARD_PG_TEST_URL || process.env.AGENTBOARD_PG_TEST_DISPOSABLE !== '1')('reconecta após perda real da sessão sem repetir consultas', async () => {
-  const url = new URL(process.env.AGENTBOARD_PG_TEST_URL!)
+it.skipIf(!process.env.GEARMOD_PG_TEST_URL || process.env.GEARMOD_PG_TEST_DISPOSABLE !== '1')('reconecta após perda real da sessão sem repetir consultas', async () => {
+  const url = new URL(process.env.GEARMOD_PG_TEST_URL!)
   const config: DbConnection = { id: 'reconnect', projectId: 'p', name: 'test', klass: 'test', host: url.hostname, port: Number(url.port || 5432), database: decodeURIComponent(url.pathname.slice(1)), user: decodeURIComponent(url.username), sslMode: 'disable', hasSecret: true, allowWrite: false, agentAccess: 'none', origin: 'manual', envId: null }
   const password = decodeURIComponent(url.password), driver = new PgDriver(), open = vi.spyOn(driver, 'open')
   const manager = new ConnectionManager({ get: () => config, password: async () => password }, driver, 600_000, 100)
-  const control = new pg.Client({ host: config.host, port: config.port, database: config.database, user: config.user, password, application_name: 'AgentBoard-reconnect-test' })
+  const control = new pg.Client({ host: config.host, port: config.port, database: config.database, user: config.user, password, application_name: 'GearMod-reconnect-test' })
   await control.connect()
   try {
     const initial = await manager.open(config.id)

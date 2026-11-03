@@ -12,7 +12,7 @@ afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await 
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 async function setup(): Promise<{ checklists: ChecklistRepository; cardId: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-checklist-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-checklist-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); opened.push(database)
   const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
   const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)

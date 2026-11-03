@@ -12,7 +12,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 
 describe('AgentProbeService', () => {
   it('probes version and authentication in the isolated profile directory', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-probe-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-probe-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const calls: Array<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> = []
@@ -26,7 +26,7 @@ describe('AgentProbeService', () => {
   })
 
   it('reports an unavailable executable without pretending authentication', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-probe-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-probe-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const runner: CommandRunner = { async run() { throw new Error('spawn failed with sk-secret-value') } }

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { explainCommand, shortPath, splitCommand } from './permissionExplain'
 
-const sample = 'cd "C:/Users/dev/AppData/Roaming/@agentboard/desktop/data/wt/2e84d10e/3-shop-checkout-flow" && sed -n 380,392p core/settings.py; grep -rn "\\.delay(" api --include=*.py | grep -v "/tests/" | head -5; grep -n "from core.celery\\|import app" api/tasks.py core/*.py | head'
+const sample = 'cd "C:/Users/dev/AppData/Roaming/@gearmod/desktop/data/wt/2e84d10e/3-shop-checkout-flow" && sed -n 380,392p core/settings.py; grep -rn "\\.delay(" api --include=*.py | grep -v "/tests/" | head -5; grep -n "from core.celery\\|import app" api/tasks.py core/*.py | head'
 
 describe('explicação dos pedidos de permissão', () => {
   it('divide por &&, ; e pipes sem quebrar texto entre aspas', () => {
     expect(splitCommand('echo "a && b" && ls | wc').map((part) => part.text)).toEqual(['echo "a && b"', 'ls', 'wc'])
   })
   it('encurta o caminho da worktree do card', () => {
-    expect(shortPath('C:/Users/x/AppData/Roaming/@agentboard/desktop/data/wt/2e84d10e/3-shop-checkout-flow/core/a.py')).toBe('worktree/3-shop-checkout-flow/core/a.py')
+    expect(shortPath('C:/Users/x/AppData/Roaming/@gearmod/desktop/data/wt/2e84d10e/3-shop-checkout-flow/core/a.py')).toBe('worktree/3-shop-checkout-flow/core/a.py')
   })
   it('mapeia o comando de leitura do exemplo em passos legíveis e somente leitura', () => {
     const { steps, risk } = explainCommand(sample)

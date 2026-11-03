@@ -1,4 +1,4 @@
-import type { GitAccountInfo, GitAccountsState } from '@agentboard/contracts'
+import type { GitAccountInfo, GitAccountsState } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import type { SecretStore } from './secrets'
 import { nativeGit, type GitRunner } from './worktrees'

@@ -21,7 +21,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 
 describe('validated IPC', () => {
   it('accepts declared input and rejects extra or malformed fields', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-ipc-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-ipc-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const ipc = new FakeIpc()
     const notes = new NoteRepository(database)

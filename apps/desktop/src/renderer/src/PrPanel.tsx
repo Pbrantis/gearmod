@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { PullRequestDetail, PullRequestList, PullRequestSummary } from '@agentboard/contracts'
+import type { PullRequestDetail, PullRequestList, PullRequestSummary } from '@gearmod/contracts'
 import { toast } from './toasts'
 import type { PullRequestsState } from './usePullRequests'
 import { plainError } from './NoticeDialog'
@@ -14,14 +14,14 @@ const message = (error: unknown): string => plainError(error)
 function PrDetail({ sourceId, provider, pr, back, changed }: { sourceId: string; provider: 'github' | 'gitlab' | null; pr: PullRequestSummary; back(): void; changed(): void }): React.JSX.Element {
   const { common, git: { pr: t } } = useT(), decisionLabel = t.decision, reviewLabel = t.review
   const [detail, setDetail] = useState<PullRequestDetail>(), [error, setError] = useState(''), [text, setText] = useState(''), [busy, setBusy] = useState(''), [diff, setDiff] = useState(false)
-  const load = (): void => { void window.agentboard.invoke('prs:view', { sourceId, number: pr.number }).then(setDetail, (reason) => setError(message(reason))) }
+  const load = (): void => { void window.gearmod.invoke('prs:view', { sourceId, number: pr.number }).then(setDetail, (reason) => setError(message(reason))) }
   useEffect(load, [sourceId, pr.number])
   const act = async (name: string, run: () => Promise<unknown>, done: string): Promise<void> => {
     setBusy(name)
     try { await run(); setText(''); toast.success(done); load(); changed() } catch (reason) { toast.error(t.failed, message(reason)) } finally { setBusy('') }
   }
-  const review = (action: 'approve' | 'request-changes' | 'comment', done: string) => act(action, () => window.agentboard.invoke('prs:review', { sourceId, number: pr.number, action, body: text }), done)
-  const openWeb = (): void => { void window.agentboard.invoke('prs:open', { sourceId, url: pr.url }).catch((reason) => toast.error(t.openFailed, message(reason))) }
+  const review = (action: 'approve' | 'request-changes' | 'comment', done: string) => act(action, () => window.gearmod.invoke('prs:review', { sourceId, number: pr.number, action, body: text }), done)
+  const openWeb = (): void => { void window.gearmod.invoke('prs:open', { sourceId, url: pr.url }).catch((reason) => toast.error(t.openFailed, message(reason))) }
   return <div className="prdetail">
     <div className="prbar"><button type="button" className="mini" onClick={back}>{t.back}</button><button type="button" className="mini" onClick={openWeb}>{t.openOn(provider === 'gitlab' ? 'GitLab' : 'GitHub')}</button></div>
     <h3>#{pr.number} {pr.title}</h3>
@@ -40,7 +40,7 @@ function PrDetail({ sourceId, provider, pr, back, changed }: { sourceId: string;
       </div>
       <label className="f"><span>{t.commentOrReview}</span><textarea className="in" rows={4} value={text} onChange={(event) => setText(event.target.value)} placeholder={t.commentPlaceholder} /></label>
       <div className="pract">
-        <button type="button" className="mini" disabled={Boolean(busy) || !text.trim()} onClick={() => void act('comment', () => window.agentboard.invoke('prs:comment', { sourceId, number: pr.number, body: text }), t.commentPosted)}>{busy === 'comment' ? '…' : t.comment}</button>
+        <button type="button" className="mini" disabled={Boolean(busy) || !text.trim()} onClick={() => void act('comment', () => window.gearmod.invoke('prs:comment', { sourceId, number: pr.number, body: text }), t.commentPosted)}>{busy === 'comment' ? '…' : t.comment}</button>
         <button type="button" className="mini" disabled={Boolean(busy)} onClick={() => void review('approve', t.approved)}>{busy === 'approve' ? '…' : t.approve}</button>
         {provider !== 'gitlab' && <button type="button" className="mini danger" disabled={Boolean(busy) || !text.trim()} onClick={() => void review('request-changes', t.changesRequested)}>{busy === 'request-changes' ? '…' : t.requestChanges}</button>}
       </div>
@@ -55,7 +55,7 @@ function PrCreate({ sourceId, branches, head, back, created }: { sourceId: strin
   const [title, setTitle] = useState(''), [body, setBody] = useState(''), [draft, setDraft] = useState(true), [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault(); setBusy(true)
-    try { const { url } = await window.agentboard.invoke('prs:create', { sourceId, head: from, base, title, body, draft }); toast.success(t.opened, url); created() } catch (reason) { toast.error(t.createFailed, message(reason)) } finally { setBusy(false) }
+    try { const { url } = await window.gearmod.invoke('prs:create', { sourceId, head: from, base, title, body, draft }); toast.success(t.opened, url); created() } catch (reason) { toast.error(t.createFailed, message(reason)) } finally { setBusy(false) }
   }
   return <form className="prdetail" onSubmit={(event) => void submit(event)}>
     <div className="prbar"><button type="button" className="mini" onClick={back}>{t.back}</button></div>
@@ -71,7 +71,7 @@ function PrCreate({ sourceId, branches, head, back, created }: { sourceId: strin
 }
 
 /** Abre a configuração do projeto na aba Git, onde ficam as contas (tokens). */
-export const openGitAccounts = (): void => { window.dispatchEvent(new CustomEvent('agentboard:open-project-config', { detail: { tab: 'git' } })) }
+export const openGitAccounts = (): void => { window.dispatchEvent(new CustomEvent('gearmod:open-project-config', { detail: { tab: 'git' } })) }
 
 /** Por que os PRs não carregaram, com a saída certa: atualizar o token vencido ou adicionar um (no lugar do gh/glab). */
 export function PrAccessNotice({ list }: { list: PullRequestList }): React.JSX.Element | null {

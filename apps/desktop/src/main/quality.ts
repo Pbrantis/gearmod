@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { Review, TestRun } from '@agentboard/contracts'
+import type { Review, TestRun } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { redact } from './redaction'
 import type { WorktreeService } from './worktrees'

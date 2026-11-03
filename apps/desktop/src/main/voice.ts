@@ -6,7 +6,7 @@ import { delimiter, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
-import type { VoiceModel, VoiceStatus } from '@agentboard/contracts'
+import type { VoiceModel, VoiceStatus } from '@gearmod/contracts'
 import { tm } from './i18n'
 
 const execFileAsync = promisify(execFile)
@@ -21,7 +21,7 @@ const engineAsset = 'https://github.com/ggml-org/whisper.cpp/releases'
 /** Versão e SHA-256 fixos: o executável baixado roda na máquina do usuário, então só é aceito o arquivo exato que foi conferido. */
 const windowsEngine = { url: `${engineAsset}/download/v1.7.6/whisper-bin-x64.zip`, sha256: '0d2eca299c248f965bd0341bcb219db4b433c7f0c0ce2200d4df85765e8156a9' }
 /** Termos em inglês que aparecem no meio do português; ajudam o Whisper a não "traduzir" worktree, commit etc. */
-export const supportVocabulary = 'worktree, commit, branch, pull request, merge, rebase, lint, typecheck, deploy, backend, frontend, Kanban, backlog, To do, Doing, Test, Done, Claude, Codex, AgentBoard, Markdown, SQLite, Electron, React, TypeScript, skill, prompt'
+export const supportVocabulary = 'worktree, commit, branch, pull request, merge, rebase, lint, typecheck, deploy, backend, frontend, Kanban, backlog, To do, Doing, Test, Done, Claude, Codex, GearMod, Markdown, SQLite, Electron, React, TypeScript, skill, prompt'
 
 export interface VoiceDeps {
   dataDir: string

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { builtinCardTypes, cardTypeListSchema, findCardType, ipcContracts } from '@agentboard/contracts'
+import { builtinCardTypes, cardTypeListSchema, findCardType, ipcContracts } from '@gearmod/contracts'
 import { AppDatabase } from './database'
 import { migrations } from './migrations'
 import { BoardRepository, ProjectRepository } from './projects'
@@ -14,7 +14,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-cardtypes-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-cardtypes-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
   const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
   const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev' })
@@ -79,7 +79,7 @@ describe('tipos de card', () => {
   })
 
   it('migração: minor vira improvement com fluxo curto, task vira improvement e o fluxo já escolhido é mantido', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-cardtypes-mig-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-cardtypes-mig-')); roots.push(root)
     const path = join(root, 'db.sqlite'), now = '2026-01-01T00:00:00.000Z'
     const old = new AppDatabase(path, '0.1.0', migrations.filter((item) => item.version < 42)); await old.open()
     old.db.prepare(`INSERT INTO projects(id, name, local_path, base_branch, created_at, updated_at) VALUES ('70000000-0000-4000-8000-000000000001', 'P', ?, 'dev', ?, ?)`).run(root, now, now)

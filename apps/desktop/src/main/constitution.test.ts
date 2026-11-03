@@ -19,7 +19,7 @@ const git = { validate: async () => undefined, branches: async () => ['dev'], in
 type Reply = { ok: boolean; text?: string; error?: string }
 
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-law-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-law-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
   const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
   const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
@@ -40,7 +40,7 @@ async function setup() {
     const chat = conversations.createChat({ projectId: project.id, cardId: purpose === 'constitution' ? null : card.id, purpose, profileId: profile.id })
     const run = conversations.createRun({ cardId: chat.cardId, chatId: chat.id, profileId: profile.id })
     const changes: unknown[] = []
-    return { chat, changes, token: bridge.register(run.id, chat.cardId, (change) => changes.push(change), { id: chat.id, purpose }).env.AGENTBOARD_TOKEN! }
+    return { chat, changes, token: bridge.register(run.id, chat.cardId, (change) => changes.push(change), { id: chat.id, purpose }).env.GEARMOD_TOKEN! }
   }
   return { root, database, project, card, constitution, checklists, context, call, open, writes, approvals }
 }
@@ -52,17 +52,17 @@ describe('Constituição do projeto', () => {
 
     const law = open('constitution')
     // Sem card ainda: a ferramenta recusa e orienta a criar um, em vez de gravar direto no SQLite como antes.
-    expect(await call(law.token, 'agentboard_write_constitution', { markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('Create a card') })
-    const created = await call(law.token, 'agentboard_create_card', { titulo: 'Atualizar a Constituição' })
+    expect(await call(law.token, 'gearmod_write_constitution', { markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('Create a card') })
+    const created = await call(law.token, 'gearmod_create_card', { titulo: 'Atualizar a Constituição' })
     expect(created).toMatchObject({ ok: true })
-    expect(await call(law.token, 'agentboard_write_constitution', { markdown: '# Constituição\n\n### I. Testes primeiro\n- **DEVE** ter teste.' })).toMatchObject({ ok: true, text: expect.stringContaining('has not been changed yet') })
+    expect(await call(law.token, 'gearmod_write_constitution', { markdown: '# Constituição\n\n### I. Testes primeiro\n- **DEVE** ter teste.' })).toMatchObject({ ok: true, text: expect.stringContaining('has not been changed yet') })
     expect(writes).toHaveLength(0); expect(approvals.list().find((item) => item.kind === 'constitution-apply')?.payload.content).toContain('Testes primeiro')
     expect(law.changes.map((item) => (item as { type: string }).type)).toContain('constitution')
 
     // Chat de execução de um card já existente: também exige card (já tem) — o SddResolver fake devolve content:null, então cai no legado.
     const dev = open('execution')
-    expect(await call(dev.token, 'agentboard_read_constitution')).toMatchObject({ ok: true })
-    expect(await call(dev.token, 'agentboard_propose_constitution', { titulo: 'Sem any', o_que_muda: 'Proibir any no TypeScript', motivo: 'Apareceu duas vezes' })).toMatchObject({ ok: true, text: expect.stringContaining('C001') })
+    expect(await call(dev.token, 'gearmod_read_constitution')).toMatchObject({ ok: true })
+    expect(await call(dev.token, 'gearmod_propose_constitution', { titulo: 'Sem any', o_que_muda: 'Proibir any no TypeScript', motivo: 'Apareceu duas vezes' })).toMatchObject({ ok: true, text: expect.stringContaining('C001') })
     expect(constitution.proposals(project.id)).toMatchObject([{ number: 1, title: 'Sem any', status: 'pending', cardId: card.id }])
     database.close()
   })
@@ -84,7 +84,7 @@ describe('Constituição do projeto', () => {
     const fileContext = new AgentContextService(context['board'], new SettingsRepository(database), null, constitution, undefined, undefined, undefined, fromFile)
     const block = await fileContext.block(card.id)
     expect(block).toContain('### II. Segundo')
-    expect(block).toContain('agentboard_read_constitution')
+    expect(block).toContain('gearmod_read_constitution')
     expect(block).not.toContain('texto texto')
     database.close()
   })
@@ -92,9 +92,9 @@ describe('Constituição do projeto', () => {
   it('o testador grava o checklist dele; os outros não', async () => {
     const { card, checklists, call, open, database } = await setup()
     const tester = open('test'), dev = open('execution')
-    expect(await call(dev.token, 'agentboard_test_checklist', { markdown: '- [ ] a' })).toMatchObject({ ok: false })
-    expect(await call(tester.token, 'agentboard_test_checklist', { markdown: 'sem itens' })).toMatchObject({ ok: false, error: expect.stringContaining('- [ ]') })
-    expect(await call(tester.token, 'agentboard_test_checklist', { markdown: '- [x] Testes passam\n- [ ] Lint' })).toMatchObject({ ok: true })
+    expect(await call(dev.token, 'gearmod_test_checklist', { markdown: '- [ ] a' })).toMatchObject({ ok: false })
+    expect(await call(tester.token, 'gearmod_test_checklist', { markdown: 'sem itens' })).toMatchObject({ ok: false, error: expect.stringContaining('- [ ]') })
+    expect(await call(tester.token, 'gearmod_test_checklist', { markdown: '- [x] Testes passam\n- [ ] Lint' })).toMatchObject({ ok: true })
     expect(tester.changes).toEqual([{ type: 'checklist' }])
     expect(checklists.get(card.id).contentMd).toBe('- [x] Testes passam\n- [ ] Lint')
     database.close()

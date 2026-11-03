@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentProfile } from '@agentboard/contracts'
+import type { AgentProfile } from '@gearmod/contracts'
 
 const readJson = (path: string): Record<string, unknown> | null => {
   try { return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown> : null } catch { return null }

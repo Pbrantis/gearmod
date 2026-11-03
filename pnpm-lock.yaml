@@ -10,7 +10,7 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@agentboard/contracts':
+      '@gearmod/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@vscode/tree-sitter-wasm':

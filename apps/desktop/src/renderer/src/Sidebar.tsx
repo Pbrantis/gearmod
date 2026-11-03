@@ -1,10 +1,10 @@
-import { providerLabels } from '@agentboard/contracts'
+import { providerLabels } from '@gearmod/contracts'
 import { SettingsIcon } from './SettingsIcon'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAgentUpdatesPending } from './useAgentUpdates'
 import { ProjectAvatar } from './ProjectIcon'
 import { dismissVoiceInstall, useVoiceInstall } from './voiceStore'
-import type { AgentProfile, AgentUsage, Project, UsageHistoryRow } from '@agentboard/contracts'
+import type { AgentProfile, AgentUsage, Project, UsageHistoryRow } from '@gearmod/contracts'
 import { AgentIcon, ProviderLogo } from './AgentIcon'
 import { ChevronLeftIcon, PlusIcon, TrashIcon } from './icons'
 import { plainError } from './NoticeDialog'
@@ -41,16 +41,16 @@ function VoiceInstallCard(): React.JSX.Element | null {
 
 function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Element {
   const t = useT(), [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>(), [refreshing, setRefreshing] = useState(false)
-  const load = useCallback(async () => { try { setUsage(await window.agentboard.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
+  const load = useCallback(async () => { try { setUsage(await window.gearmod.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
   // Mostra o que já se sabe na hora e atualiza por baixo dos panos (o Claude só informa o limite quando roda).
   useEffect(() => {
     if (!open && !detail) return
     let alive = true
     void load(); setRefreshing(true)
-    void window.agentboard.invoke('usage:refresh', undefined).then((fresh) => { if (alive) setUsage(fresh) }).catch(() => undefined).finally(() => { if (alive) setRefreshing(false) })
+    void window.gearmod.invoke('usage:refresh', undefined).then((fresh) => { if (alive) setUsage(fresh) }).catch(() => undefined).finally(() => { if (alive) setRefreshing(false) })
     return () => { alive = false }
   }, [open, detail, load])
-  useEffect(() => window.agentboard.onRunEvent((event) => { if ((open || detail) && event.eventType === 'agentboard/run-completed') void load() }), [open, detail, load])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if ((open || detail) && event.eventType === 'gearmod/run-completed') void load() }), [open, detail, load])
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
@@ -76,7 +76,7 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
   useEffect(() => {
     let alive = true
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-    void window.agentboard.invoke('usage:history', { granularity: 'month', tz, groupBy: 'profile' }).then((rows) => {
+    void window.gearmod.invoke('usage:history', { granularity: 'month', tz, groupBy: 'profile' }).then((rows) => {
       if (!alive) return
       setHistory(only ? rows.filter((row) => row.group === current) : rows); setHistoryError('')
     }).catch(() => { if (alive) setHistoryError(tr().shell.sidebar.historyLoadFailed) }).finally(() => { if (alive) setHistoryLoading(false) })
@@ -87,8 +87,8 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
   const exportCsv = async (): Promise<void> => {
     setRetentionBusy(true); setRetentionMessage('')
     try {
-      const { csv } = await window.agentboard.invoke('usage:export', {})
-      const { saved } = await window.agentboard.invoke('usage:save-csv', { content: csv, defaultName: 'consumo-agentboard.csv' })
+      const { csv } = await window.gearmod.invoke('usage:export', {})
+      const { saved } = await window.gearmod.invoke('usage:save-csv', { content: csv, defaultName: 'consumo-gearmod.csv' })
       setRetentionMessage(saved ? t.shell.sidebar.csvSaved : t.shell.sidebar.exportCancelled)
     } catch (reason) { setRetentionMessage(plainError(reason)) } finally { setRetentionBusy(false) }
   }
@@ -98,10 +98,10 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
     setRetentionBusy(true); setRetentionMessage('')
     try {
       const range = { to: new Date().toISOString() }
-      const approval = await window.agentboard.invoke('usage:purge-request', range)
-      await window.agentboard.invoke('approvals:decide', { id: approval.id, approve: true })
-      const { deleted, csv } = await window.agentboard.invoke('usage:purge', { ...range, approvalId: approval.id })
-      const { saved } = await window.agentboard.invoke('usage:save-csv', { content: csv, defaultName: 'consumo-antes-de-apagar.csv' })
+      const approval = await window.gearmod.invoke('usage:purge-request', range)
+      await window.gearmod.invoke('approvals:decide', { id: approval.id, approve: true })
+      const { deleted, csv } = await window.gearmod.invoke('usage:purge', { ...range, approvalId: approval.id })
+      const { saved } = await window.gearmod.invoke('usage:save-csv', { content: csv, defaultName: 'consumo-antes-de-apagar.csv' })
       setRetentionMessage(t.shell.sidebar.purged(deleted, saved))
     } catch (reason) { setRetentionMessage(plainError(reason)) } finally { setRetentionBusy(false) }
   }
@@ -124,9 +124,9 @@ export function UsageDialog({ current, close }: { current?: string; close(): voi
   const [profiles, setProfiles] = useState<AgentProfile[]>([]), [usage, setUsage] = useState<AgentUsage[]>([])
   useEffect(() => {
     let alive = true
-    void window.agentboard.invoke('profiles:list', undefined).then((list) => { if (alive) setProfiles(list) }).catch(() => undefined)
-    void window.agentboard.invoke('usage:list', undefined).then((list) => { if (alive) setUsage(list) }).catch(() => undefined)
-    void window.agentboard.invoke('usage:refresh', undefined).then((fresh) => { if (alive) setUsage(fresh) }).catch(() => undefined)
+    void window.gearmod.invoke('profiles:list', undefined).then((list) => { if (alive) setProfiles(list) }).catch(() => undefined)
+    void window.gearmod.invoke('usage:list', undefined).then((list) => { if (alive) setUsage(list) }).catch(() => undefined)
+    void window.gearmod.invoke('usage:refresh', undefined).then((fresh) => { if (alive) setUsage(fresh) }).catch(() => undefined)
     return () => { alive = false }
   }, [])
   return <UsageModal profiles={profiles} usage={usage} current={current ?? ''} close={close} only={Boolean(current)} />

@@ -10,7 +10,7 @@ import { editorCodeQueries, rootOf } from './editor'
 const dirs: string[] = []
 const closers: Array<() => void> = []
 afterEach(async () => { for (const close of closers.splice(0)) close(); await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
-const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-code-editor-')); dirs.push(dir); return dir }
+const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-code-editor-')); dirs.push(dir); return dir }
 
 /** Processo utilitário falso: o mesmo handler do host, no mesmo processo. */
 function fakeHost(): HostProcess {

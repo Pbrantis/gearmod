@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { checklistKey, type CardChecklist } from '@agentboard/contracts'
+import { checklistKey, type CardChecklist } from '@gearmod/contracts'
 import { InlineMarkdown } from './markdown'
 import { toggleChecklist } from './checklistToggle'
 import { MarkBadges } from './MarkBadges'

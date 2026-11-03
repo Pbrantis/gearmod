@@ -47,6 +47,7 @@ export const cardTypeListSchema = z.array(cardTypeDefSchema).min(1).max(30)
   .refine((items) => new Set(items.map((item) => item.name.toLocaleLowerCase())).size === items.length, 'Tipos de card com nome repetido')
 /** Tipos padrão (projetos sem lista própria e o padrão global enquanto o usuário não muda nada). */
 /** Nomes em inglês em qualquer idioma (combinam com os prefixos de branch: feature/, fix/, improvement/); quem quiser troca o nome do tipo. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- mantido na assinatura: os chamadores ainda passam o idioma
 export const builtinCardTypes = (_language: 'pt-BR' | 'en' = 'pt-BR'): Array<z.infer<typeof cardTypeDefSchema>> => [
   { id: 'feature', name: 'Feature', color: '#8fb8d6' },
   { id: 'bug', name: 'Bug', color: '#f08a8a' },
@@ -702,7 +703,7 @@ export type GitSnapshot = z.output<typeof gitSnapshotSchema>
 export type TestRun = z.output<typeof testRunSchema>
 export type Review = z.output<typeof reviewSchema>
 
-export interface AgentBoardApi {
+export interface GearModApi {
   invoke<C extends IpcChannel>(channel: C, input: IpcInput<C>): Promise<IpcOutput<C>>
   onRunEvent(listener: (event: PushedRunEvent) => void): () => void
   getDroppedFilePath(file: File): string

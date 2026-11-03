@@ -22,14 +22,14 @@ export function useAtMention({ projectId, cardId, input, setInput }: { projectId
     const ticket = ++latest.current
     const timer = window.setTimeout(() => {
       void (async () => {
-        if (!roots.current.length) roots.current = (await window.agentboard.invoke('workspace:roots', { projectId, cardId })).filter((item) => item.primary).map((item) => item.path)
+        if (!roots.current.length) roots.current = (await window.gearmod.invoke('workspace:roots', { projectId, cardId })).filter((item) => item.primary).map((item) => item.path)
         const roots_ = roots.current, relativeOf = (path: string): string => { const root = roots_.find((item) => path.toLowerCase().startsWith(item.toLowerCase())); return (root ? path.slice(root.length) : path).split(String.fromCharCode(92)).join('/').replace(/^\/+/, '') }
         let next: Hit[]
         if (!query) {
-          const entries = roots_[0] ? await window.agentboard.invoke('workspace:list', { projectId, cardId, path: roots_[0] }) : []
+          const entries = roots_[0] ? await window.gearmod.invoke('workspace:list', { projectId, cardId, path: roots_[0] }) : []
           next = entries.slice(0, maxHits).map((entry) => ({ path: entry.path, relative: relativeOf(entry.path), name: entry.name, directory: entry.directory }))
         } else {
-          const { paths } = await window.agentboard.invoke('workspace:search', { projectId, cardId, query: query.slice(0, 200), fuzzy: true })
+          const { paths } = await window.gearmod.invoke('workspace:search', { projectId, cardId, query: query.slice(0, 200), fuzzy: true })
           const byRelative = new Map(paths.map((path) => [relativeOf(path), path]))
           next = rankPaths(query, [...byRelative.keys()]).slice(0, maxHits).map((item) => ({ path: byRelative.get(item.path) ?? item.path, relative: item.path, name: item.name, directory: false }))
         }

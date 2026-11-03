@@ -1,4 +1,4 @@
-import { agentConfigSchema, defaultPermissionMode, permissionModes, type AgentConfig, type AgentOptions, type AgentPurpose, type CardAgents, type Effort, type ModelOption } from '@agentboard/contracts'
+import { agentConfigSchema, defaultPermissionMode, permissionModes, type AgentConfig, type AgentOptions, type AgentPurpose, type CardAgents, type Effort, type ModelOption } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import type { BoardRepository, ProfileRepository } from './projects'
 import { tm } from './i18n'

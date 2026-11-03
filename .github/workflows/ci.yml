@@ -51,6 +51,6 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:
-          name: AgentBoard-Setup
-          path: apps/desktop/dist/AgentBoard-Setup-*.exe
+          name: GearMod-Setup
+          path: apps/desktop/dist/GearMod-Setup-*.exe
           if-no-files-found: error

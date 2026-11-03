@@ -2,7 +2,7 @@ import { AgentBackground } from './AgentBackground'
 import { AgentPermissions } from './AgentPermissions'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { dropToken, InputMirror, useAtMention } from './AtMention'
-import { defaultPermissionMode, permissionModes, type AgentProfile, type AgentPurpose, type Card, type Chat, type ChatMessage, type Project, type ProjectBoard, type Run, type SkillEntry, type SkillRef } from '@agentboard/contracts'
+import { defaultPermissionMode, permissionModes, type AgentProfile, type AgentPurpose, type Card, type Chat, type ChatMessage, type Project, type ProjectBoard, type Run, type SkillEntry, type SkillRef } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
 import { shortcutEvent } from './shortcuts'
@@ -40,7 +40,7 @@ import { useT } from './i18n'
 
 /** Estado do dock que sobrevive à troca de aba (o chat remonta a cada etapa): recolhido/expandido e largura. */
 const dockMin = 440
-const stored = (): number => { try { return Number(localStorage.getItem('agentboard.dockWidth')) || dockMin } catch { return dockMin } }
+const stored = (): number => { try { return Number(localStorage.getItem('gearmod.dockWidth')) || dockMin } catch { return dockMin } }
 const dockState = { expanded: true, width: stored() }
 const clampWidth = (value: number): number => Math.max(dockMin, Math.min(Math.round(window.innerWidth * 0.65), value))
 
@@ -51,10 +51,10 @@ export function useDockSize(): { expanded: boolean; setExpanded(value: boolean):
   const startResize = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault(); setDragging(true)
     const move = (e: PointerEvent): void => { const next = clampWidth(window.innerWidth - e.clientX); dockState.width = next; setWidthState(next) }
-    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); try { localStorage.setItem('agentboard.dockWidth', String(dockState.width)) } catch { /* só vale nesta sessão */ } }
+    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); try { localStorage.setItem('gearmod.dockWidth', String(dockState.width)) } catch { /* só vale nesta sessão */ } }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  const setWidth = (value: number): void => { dockState.width = value; setWidthState(value); try { localStorage.setItem('agentboard.dockWidth', String(value)) } catch { /* só vale nesta sessão */ } }
+  const setWidth = (value: number): void => { dockState.width = value; setWidthState(value); try { localStorage.setItem('gearmod.dockWidth', String(value)) } catch { /* só vale nesta sessão */ } }
   return { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth: () => { dockState.width = dockMin; setWidthState(dockMin) } }
 }
 
@@ -88,8 +88,8 @@ export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose
   }
   const place = (placement: 'left' | 'right' | 'top' | 'bottom' | 'new'): void => {
     dismiss()
-    if (pop) { if (placement !== 'new') void window.agentboard.invoke('windows:place', { placement }); return }
-    if (cardId || chatId) void window.agentboard.invoke('windows:open', { kind: 'chat', projectId, ...(cardId ? { cardId, purpose } : {}), ...(chatId ? { chatId } : {}), placement })
+    if (pop) { if (placement !== 'new') void window.gearmod.invoke('windows:place', { placement }); return }
+    if (cardId || chatId) void window.gearmod.invoke('windows:open', { kind: 'chat', projectId, ...(cardId ? { cardId, purpose } : {}), ...(chatId ? { chatId } : {}), placement })
   }
   return <span className="popwrap dockmore" ref={box}>
     <button type="button" className="ibtn morebtn" aria-label={m.moreOptions} aria-haspopup="menu" aria-expanded={open} onClick={() => { setOpen(!open); setPage('main') }}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="4" cy="10" r="1.35" /><circle cx="10" cy="10" r="1.35" /><circle cx="16" cy="10" r="1.35" /></svg></button>
@@ -155,15 +155,15 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const gitView = view === 'git' && Boolean(card.id) && !planning
   const { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth } = useDockSize()
   const chatSearch = useChatSearchShortcut(expanded)
-  useEffect(() => { const navigate = (): void => { if (expanded) close() }; window.addEventListener('agentboard:select-view', navigate); return () => window.removeEventListener('agentboard:select-view', navigate) }, [expanded, close])
-  const [quickHidden, setQuickHiddenState] = useState(() => { try { return localStorage.getItem('agentboard.quickView.hidden') === '1' } catch { return false } })
+  useEffect(() => { const navigate = (): void => { if (expanded) close() }; window.addEventListener('gearmod:select-view', navigate); return () => window.removeEventListener('gearmod:select-view', navigate) }, [expanded, close])
+  const [quickHidden, setQuickHiddenState] = useState(() => { try { return localStorage.getItem('gearmod.quickView.hidden') === '1' } catch { return false } })
   const quickHiddenRef = useRef(quickHidden), expandedRef = useRef(expanded), diffOpenRef = useRef(false)
   quickHiddenRef.current = quickHidden; expandedRef.current = expanded
   useEffect(() => {
     const onShortcut = (event: Event): void => { if ((event as CustomEvent<{ id: string }>).detail.id === 'toggleQuickView' && expandedRef.current && !diffOpenRef.current) setQuickHidden(!quickHiddenRef.current) }
     window.addEventListener(shortcutEvent, onShortcut); return () => window.removeEventListener(shortcutEvent, onShortcut)
   }, [])
-  const setQuickHidden = (value: boolean): void => { setQuickHiddenState(value); try { localStorage.setItem('agentboard.quickView.hidden', value ? '1' : '0') } catch { /* só conveniência */ } }
+  const setQuickHidden = (value: boolean): void => { setQuickHiddenState(value); try { localStorage.setItem('gearmod.quickView.hidden', value ? '1' : '0') } catch { /* só conveniência */ } }
   useEffect(() => { if (!card.id) return; terminal.setContext({ projectId: project.id, cardId: card.id }); return () => terminal.setContext({ projectId: project.id, cardId: null }) }, [card.id, project.id])
   const viewer = useFileViewer(width, setWidth)
   const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
@@ -175,23 +175,23 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   useContextText({ projectId: project.id, cardId: card.id || null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []), card.title || undefined)
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
-  const loadMessages = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
-  useEffect(() => { if (card.id) void window.agentboard.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }, [card.id])
-  useEffect(() => { if (!card.id) return; void window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id }).then((items) => { setChats(items); const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); void loadMessages(found.id) } }).catch((reason: unknown) => setError(plainError(reason))) }, [project.id, card.id, mode, loadMessages])
-  useEffect(() => window.agentboard.onRunEvent((event) => {
-    if (event.eventType === 'agentboard/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void loadMessages(id); return current }); return }
+  const loadMessages = useCallback(async (chatId: string) => setMessages(await window.gearmod.invoke('messages:list', { chatId })), [])
+  useEffect(() => { if (card.id) void window.gearmod.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }, [card.id])
+  useEffect(() => { if (!card.id) return; void window.gearmod.invoke('chats:list', { projectId: project.id, cardId: card.id }).then((items) => { setChats(items); const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); void loadMessages(found.id) } }).catch((reason: unknown) => setError(plainError(reason))) }, [project.id, card.id, mode, loadMessages])
+  useEffect(() => window.gearmod.onRunEvent((event) => {
+    if (event.eventType === 'gearmod/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void loadMessages(id); return current }); return }
     const own = Boolean(chatRef.current) && event.payload.chatId === chatRef.current?.id
     // Run que começou fora deste componente (mensagem da fila, retomada, encadeamento): o chat a adota para mostrar o stream.
-    if (event.eventType === 'agentboard/run-started' && own && event.runId) { runId.current = event.runId; setLive(''); void loadMessages(chatRef.current!.id); return }
-    if (event.eventType !== 'agentboard/run-completed' || !own) { if (event.runId !== runId.current) return }
+    if (event.eventType === 'gearmod/run-started' && own && event.runId) { runId.current = event.runId; setLive(''); void loadMessages(chatRef.current!.id); return }
+    if (event.eventType !== 'gearmod/run-completed' || !own) { if (event.runId !== runId.current) return }
     if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
-    if (event.eventType === 'agentboard/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void window.agentboard.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }
+    if (event.eventType === 'gearmod/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void window.gearmod.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }
   }), [card.id, loadMessages])
   useEffect(() => { chatRef.current = chat }, [chat])
   // Chat aberto com a run já em andamento (saiu e voltou): adota a run para voltar a receber o stream.
   useEffect(() => { if (!runId.current && card.run.runId && card.run.purpose === mode && (card.run.state === 'running' || card.run.state === 'planning')) runId.current = card.run.runId }, [card.run.runId, card.run.state, card.run.purpose, mode])
   useStickToBottom(log)
-  useEffect(() => { void Promise.all([window.agentboard.invoke('skills:list', { scope: 'global' }), window.agentboard.invoke('skills:list', { scope: 'project', projectId: project.id })]).then(([global, local]) => setSkills([...local, ...global])).catch(() => undefined) }, [project.id])
+  useEffect(() => { void Promise.all([window.gearmod.invoke('skills:list', { scope: 'global' }), window.gearmod.invoke('skills:list', { scope: 'project', projectId: project.id })]).then(([global, local]) => setSkills([...local, ...global])).catch(() => undefined) }, [project.id])
   useEffect(() => { setSkill(chat?.skill ?? null) }, [chat?.id, chat?.skill])
   useEffect(() => {
     if (!menu) return
@@ -202,7 +202,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const provider = usable.find((item) => item.id === (agentState.config?.profileId ?? chat?.profileId))?.provider
   const available = skills.filter((item) => provider && item.paths[provider])
   const skillNames = available.map((item) => item.name)
-  const skillPreferenceKey = provider ? `agentboard.lastSkill.${project.id}.${provider}.${mode}` : null
+  const skillPreferenceKey = provider ? `gearmod.lastSkill.${project.id}.${provider}.${mode}` : null
   useEffect(() => {
     if (chat || !provider || !skillPreferenceKey || !available.length) return
     try {
@@ -214,7 +214,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const chooseSkill = async (next: SkillRef | null): Promise<void> => {
     setMenu(null); setSkillFilter('')
     try {
-      setError(''); if (chat) setChat(await window.agentboard.invoke('chats:set-skill', { chatId: chat.id, skill: next })); setSkill(next)
+      setError(''); if (chat) setChat(await window.gearmod.invoke('chats:set-skill', { chatId: chat.id, skill: next })); setSkill(next)
       if (skillPreferenceKey) { if (next) localStorage.setItem(skillPreferenceKey, JSON.stringify(next)); else localStorage.removeItem(skillPreferenceKey) }
     } catch (reason) { setError(plainError(reason)) }
   }
@@ -249,14 +249,14 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       if (!cardId) {
         if (!ensureCard) throw new Error(c.cardNotFound)
         cardId = (await ensureCard()).id
-        if (agentState.touched && agentState.config) await window.agentboard.invoke('cards:set-agent-config', { cardId, purpose: mode, config: agentState.config })
+        if (agentState.touched && agentState.config) await window.gearmod.invoke('cards:set-agent-config', { cardId, purpose: mode, config: agentState.config })
       }
-      if (!current) { if (!chosen) throw new Error(c.chooseAgent); current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId, purpose: mode, profileId: chosen, skill }); setChat(current) }
-      const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning, attachments: files.length ? files : undefined })
+      if (!current) { if (!chosen) throw new Error(c.chooseAgent); current = await window.gearmod.invoke('chats:create', { projectId: project.id, cardId, purpose: mode, profileId: chosen, skill }); setChat(current) }
+      const started = await window.gearmod.invoke('agents:start', { chatId: current.id, prompt, planning, attachments: files.length ? files : undefined })
       runId.current = started.id; setRun(started); setLive(''); await loadMessages(current.id)
     } catch (reason) { setError(plainError(reason)); const restored = replies.restore(prompt); setInput((value) => [restored, value].filter(Boolean).join('\n\n')); attach.add(files) }
   }
-  const cancel = async (): Promise<void> => { const id = run?.id ?? card.run.runId; if (id) await window.agentboard.invoke('agents:cancel', { runId: id }).catch((reason: unknown) => setError(plainError(reason))) }
+  const cancel = async (): Promise<void> => { const id = run?.id ?? card.run.runId; if (id) await window.gearmod.invoke('agents:cancel', { runId: id }).catch((reason: unknown) => setError(plainError(reason))) }
   const send = async (): Promise<void> => {
     const prompt = withChatReplies(input, replies.items) || (attach.files.length ? 'Veja os arquivos anexados.' : ''); if (!prompt) return
     if (prompt.length + (busy && later.queued ? later.queued.length + 2 : 0) > 100_000) { setError(d.messageTooLong); return }
@@ -272,43 +272,43 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     if (!card.id) return false
     try {
       setError('')
-      const currentChats = await window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id })
+      const currentChats = await window.gearmod.invoke('chats:list', { projectId: project.id, cardId: card.id })
       let developer = currentChats.find((item) => item.purpose === 'execution')
       if (developer?.busy) throw new Error(c.developerBusy)
       if (!developer) {
-        const config = (await window.agentboard.invoke('cards:agent-config', { cardId: card.id })).execution
+        const config = (await window.gearmod.invoke('cards:agent-config', { cardId: card.id })).execution
         if (!config) throw new Error(c.chooseDevAgent)
-        developer = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: 'execution', profileId: config.profileId })
+        developer = await window.gearmod.invoke('chats:create', { projectId: project.id, cardId: card.id, purpose: 'execution', profileId: config.profileId })
       }
-      await window.agentboard.invoke('agents:start', { chatId: developer.id, prompt: text, planning: false })
+      await window.gearmod.invoke('agents:start', { chatId: developer.id, prompt: text, planning: false })
       setDiff(undefined); setView('chat'); onSwitch('execution'); return true
     } catch (reason) { setError(plainError(reason)); return false }
   }
   const detachChat = async (point: { x: number; y: number }): Promise<void> => {
     if (!card.id || pop) return
-    try { await window.agentboard.invoke('windows:open', { kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode, placement: 'new', ...point }); close() } catch (reason) { setError(plainError(reason)) }
+    try { await window.gearmod.invoke('windows:open', { kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode, placement: 'new', ...point }); close() } catch (reason) { setError(plainError(reason)) }
   }
   // Atalhos do modo teste, acima da caixa de conversa: cada botão manda um pedido pronto ao testador (entra na fila se ele estiver ocupado).
   // Um botão só: a skill de teste já roda os testes, o lint e o typecheck e, com o Playwright CLI ligado no projeto, também os critérios de tela.
   // Com o Playwright ligado, pergunta se é para ver o navegador ou rodar em segundo plano.
   const [pwReady, setPwReady] = useState(false), [testChoice, setTestChoice] = useState(false)
-  useEffect(() => { if (mode !== 'test') return; void window.agentboard.invoke('playwright:status', { projectId: project.id }).then((status) => setPwReady(status.enabled && Boolean(status.selected))).catch(() => setPwReady(false)) }, [mode, project.id])
-  const retestPrompt = (headed?: boolean): string => `Refaça o teste deste card do começo: reabra o checklist que já existe (mantenha os mesmos itens, desmarque todos e revalide um a um, acrescentando só o que for novo), rode os testes automatizados, o lint e o typecheck${pwReady ? ' e confira os critérios de tela com o Playwright CLI, seguindo a skill agentboard-test.' : '.'}${headed === undefined ? '' : headed ? ' Rode o Playwright com o navegador visível (--headed) e com slowMo para eu acompanhar.' : ' Rode o Playwright sem janela (headless), guardando screenshot e trace do que falhar.'} Me diga o que passou e o que falhou.`
+  useEffect(() => { if (mode !== 'test') return; void window.gearmod.invoke('playwright:status', { projectId: project.id }).then((status) => setPwReady(status.enabled && Boolean(status.selected))).catch(() => setPwReady(false)) }, [mode, project.id])
+  const retestPrompt = (headed?: boolean): string => `Refaça o teste deste card do começo: reabra o checklist que já existe (mantenha os mesmos itens, desmarque todos e revalide um a um, acrescentando só o que for novo), rode os testes automatizados, o lint e o typecheck${pwReady ? ' e confira os critérios de tela com o Playwright CLI, seguindo a skill gearmod-test.' : '.'}${headed === undefined ? '' : headed ? ' Rode o Playwright com o navegador visível (--headed) e com slowMo para eu acompanhar.' : ' Rode o Playwright sem janela (headless), guardando screenshot e trace do que falhar.'} Me diga o que passou e o que falhou.`
   const testShortcuts = mode === 'test' ? [{ label: c.testAgain, run: () => { if (pwReady) setTestChoice(true); else answerQuestions(retestPrompt()) } }] : []
   const resetAndSwitch = async (target: AgentProfile): Promise<void> => {
     setSwitchTo(undefined)
     try {
       setError('')
-      if (chat) { await window.agentboard.invoke('chats:reset', { chatId: chat.id }); setChat(undefined); setMessages([]); setSkill(null) }
+      if (chat) { await window.gearmod.invoke('chats:reset', { chatId: chat.id }); setChat(undefined); setMessages([]); setSkill(null) }
       await agentState.update({ profileId: target.id, model: null, effort: null, mode: defaultPermissionMode(target.provider, mode) })
-      if (card.id) setChats(await window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id }))
+      if (card.id) setChats(await window.gearmod.invoke('chats:list', { projectId: project.id, cardId: card.id }))
     } catch (reason) { setError(plainError(reason)) }
   }
   // Agente removido (desativado): o histórico fica, mas ele não executa mais; para continuar é preciso reiniciar o chat com outro.
   const inactive = chat && !usable.some((item) => item.id === chat.profileId) ? profiles.find((item) => item.id === chat.profileId) : undefined
   const resetInactive = async (): Promise<void> => {
     if (!chat) return
-    try { setError(''); await window.agentboard.invoke('chats:reset', { chatId: chat.id }); setChat(undefined); setMessages([]); setSkill(null); setChats(await window.agentboard.invoke('chats:list', { projectId: project.id, cardId: card.id })) }
+    try { setError(''); await window.gearmod.invoke('chats:reset', { chatId: chat.id }); setChat(undefined); setMessages([]); setSkill(null); setChats(await window.gearmod.invoke('chats:list', { projectId: project.id, cardId: card.id })) }
     catch (reason) { setError(plainError(reason)) }
   }
   const typed = useTypewriter(live)

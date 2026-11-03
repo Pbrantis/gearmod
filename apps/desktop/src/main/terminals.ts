@@ -25,8 +25,8 @@ export class TerminalService {
     const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[0] !== 'ELECTRON_RUN_AS_NODE'))
     const proc = spawn(shell.file, shell.args, { cwd: existsSync(cwd) ? cwd : homedir(), env: { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, cols: 100, rows: 28, name: 'xterm-256color', useConpty: true })
     const session = { proc, cwd, shell: this.platform === 'win32' ? 'PowerShell' : shell.file, text: '', seq: 0, exited: false }; this.shells.set(id, session)
-    proc.onData((data) => { session.text = (session.text + data).slice(-500_000); session.seq++; this.emit('agentboard/terminal-data', { id, data, seq: session.seq }) })
-    proc.onExit(({ exitCode }) => { session.exited = true; this.emit('agentboard/terminal-exit', { id, code: exitCode }) })
+    proc.onData((data) => { session.text = (session.text + data).slice(-500_000); session.seq++; this.emit('gearmod/terminal-data', { id, data, seq: session.seq }) })
+    proc.onExit(({ exitCode }) => { session.exited = true; this.emit('gearmod/terminal-exit', { id, code: exitCode }) })
     return id
   }
   info(id: string): { id: string; cwd: string; shell: string; text: string; seq: number; exited: boolean } {

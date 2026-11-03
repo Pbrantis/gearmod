@@ -20,7 +20,7 @@ const git = { validate: async () => undefined, branches: async () => ['dev'], in
 
 describe('free chat', () => {
   it.each(['allow', 'deny', 'cancel', 'shutdown'] as const)('routes permission to its originating free-chat run and handles %s', async (decision) => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-permission-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-permission-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, git), profile = profiles.list()[0]!
@@ -44,19 +44,19 @@ describe('free chat', () => {
     expect(allowed).toBe(decision === 'allow')
     expect(orchestrator.permissions.list(chat.id)).toEqual([])
     expect(orchestrator.permissions.decide(run.id, request.id, true)).toBe(false)
-    if (decision !== 'shutdown') expect(events).toContain('agentboard/run-completed')
+    if (decision !== 'shutdown') expect(events).toContain('gearmod/run-completed')
     database.close()
   })
 
   it('runs without a card, then becomes the planning chat of the card it creates', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-free-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-free-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
     const profile = profiles.list()[0]!
     const project = await projects.create({ name: 'P', localPath: root, baseBranch: 'dev', profileIds: [profile.id] })
     const conversations = new ConversationRepository(database)
-    const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), join(__dirname, '..', '..', 'resources', 'agentboard-plugin')), serverScript: 'x', conversations })
+    const bridge = new McpBridge({ board, context: new AgentContextService(board, new SettingsRepository(database), join(__dirname, '..', '..', 'resources', 'gearmod-plugin')), serverScript: 'x', conversations })
     const call = (token: string, tool: string, args: Record<string, unknown>) => (bridge as unknown as { handle(token: string, tool: string, args: Record<string, unknown>): { ok: boolean; text?: string; error?: string } }).handle(token, tool, args)
 
     expect(() => conversations.createChat({ projectId: project.id, cardId: null, purpose: 'planning', profileId: profile.id })).toThrow('precisa de um card')
@@ -69,13 +69,13 @@ describe('free chat', () => {
     expect(conversations.context(chat.id).cardId).toBeNull()
 
     const changes: unknown[] = []
-    const token = bridge.register(run.id, null, (change) => changes.push(change), { id: chat.id, purpose: 'free' }).env.AGENTBOARD_TOKEN!
-    expect(call(token, 'agentboard_read_skill', { nome: 'agentboard-discovery' })).toMatchObject({ ok: true, text: expect.stringContaining('# Request discovery (AgentBoard)') })
-    expect(call(token, 'agentboard_read_skill', { nome: 'skill-inexistente' })).toMatchObject({ ok: false })
-    expect(call(token, 'agentboard_write_document', { tipo: 'plano', markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('agentboard_create_card') })
-    expect(call(token, 'agentboard_create_card', { titulo: ' ' })).toMatchObject({ ok: false })
+    const token = bridge.register(run.id, null, (change) => changes.push(change), { id: chat.id, purpose: 'free' }).env.GEARMOD_TOKEN!
+    expect(call(token, 'gearmod_read_skill', { nome: 'gearmod-discovery' })).toMatchObject({ ok: true, text: expect.stringContaining('# Request discovery (GearMod)') })
+    expect(call(token, 'gearmod_read_skill', { nome: 'skill-inexistente' })).toMatchObject({ ok: false })
+    expect(call(token, 'gearmod_write_document', { tipo: 'plano', markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('gearmod_create_card') })
+    expect(call(token, 'gearmod_create_card', { titulo: ' ' })).toMatchObject({ ok: false })
 
-    const created = call(token, 'agentboard_create_card', { titulo: 'Separar dados e tela', tipo: 'improvement', prioridade: 'high', resumo: 'Ideia nascida no chat' })
+    const created = call(token, 'gearmod_create_card', { titulo: 'Separar dados e tela', tipo: 'improvement', prioridade: 'high', resumo: 'Ideia nascida no chat' })
     expect(created.ok).toBe(true)
     const card = board.get(project.id).cards.find((item) => item.title === 'Separar dados e tela')!
     expect(card).toMatchObject({ type: 'improvement', priority: 'high' })
@@ -84,14 +84,14 @@ describe('free chat', () => {
     expect(database.db.prepare('SELECT card_id AS cardId FROM runs WHERE id = ?').get(run.id)).toEqual({ cardId: card.id })
     expect(changes).toContainEqual({ type: 'converted', cardId: card.id, chatId: chat.id })
     // Depois da conversão o mesmo run já age como planejamento do card.
-    expect(call(token, 'agentboard_write_document', { tipo: 'especificacao', markdown: '## Spec' })).toMatchObject({ ok: true })
+    expect(call(token, 'gearmod_write_document', { tipo: 'especificacao', markdown: '## Spec' })).toMatchObject({ ok: true })
     expect(board.documents.read(card.id, 'especificacao')).toBe('## Spec')
-    expect(call(token, 'agentboard_create_card', { titulo: 'Outro' })).toMatchObject({ ok: false, error: expect.stringContaining('already has a card') })
+    expect(call(token, 'gearmod_create_card', { titulo: 'Outro' })).toMatchObject({ ok: false, error: expect.stringContaining('already has a card') })
     database.close()
   })
 
   it('keeps run events and test runs when upgrading a v14 database (runs is rebuilt in v15)', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-v15-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-v15-')); roots.push(root)
     const path = join(root, 'db.sqlite')
     const old = new AppDatabase(path, '0.1.0', migrations.filter((item) => item.version <= 14)); await old.open()
     const profile = { id: 'profile-1' }

@@ -103,12 +103,12 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     if (!name) { setNav({ title: what === 'definition' ? t.files.editor.shortcuts.definition : t.files.editor.shortcuts.references, items: [], note: codeNav.noWord }); return }
     try {
       if (what === 'definition') {
-        const found = await window.agentboard.invoke('code-index:definition', { ...context, name, path: doc.path })
+        const found = await window.gearmod.invoke('code-index:definition', { ...context, name, path: doc.path })
         // Uma só definição: vai direto, como no VS Code; várias abrem a lista.
         if (found.length === 1) { goItem(found[0]!); return }
         setNav({ title: codeNav.definitionsOf(name), items: found.map((hit) => ({ path: hit.path, relative: hit.relative, line: hit.line, title: hit.qname || hit.name, kind: hit.kind, detail: hit.signature.slice(0, 80) })), note: codeNav.noDefinition(name) })
       } else {
-        const found = await window.agentboard.invoke('code-index:references', { ...context, name, path: doc.path })
+        const found = await window.gearmod.invoke('code-index:references', { ...context, name, path: doc.path })
         setNav({ title: codeNav.referencesOf(name, found.length), items: found.map((hit) => ({ path: hit.path, relative: hit.relative, line: hit.line, title: hit.caller })), note: codeNav.noReferences(name) })
       }
     } catch { setNav({ title: name, items: [], note: codeNav.failed }) }
@@ -136,7 +136,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     if (!codeFile) return
     let alive = true
     // Depois de salvar, espera o índice reler o arquivo (o watcher dele tem um pequeno atraso).
-    const timer = window.setTimeout(() => { void window.agentboard.invoke('code-index:outline', { ...context, path: doc.path }).then((found) => { if (alive) setCodeOutline(found.map((hit) => ({ line: hit.line, endLine: hit.endLine, text: hit.name, depth: hit.depth, kind: hit.kind }))) }).catch(() => undefined) }, 700)
+    const timer = window.setTimeout(() => { void window.gearmod.invoke('code-index:outline', { ...context, path: doc.path }).then((found) => { if (alive) setCodeOutline(found.map((hit) => ({ line: hit.line, endLine: hit.endLine, text: hit.name, depth: hit.depth, kind: hit.kind }))) }).catch(() => undefined) }, 700)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [codeFile, doc.path, doc.saved, context.projectId, context.cardId])
   const outlineItems = useMemo<OutlineItem[]>(() => markdown ? headings.map((heading) => ({ line: heading.line, endLine: heading.line, text: heading.text, depth: heading.level - 1 })) : codeOutline, [markdown, headings, codeOutline])
@@ -145,9 +145,9 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   const goHeading = (heading: { line: number }): void => { setOutlineOpen(false); if (doc.preview) previewRef.current?.querySelector(`[data-line="${heading.line - 1}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else gotoLine(heading.line) }
   /** Colar ou soltar imagem só no Markdown editável: grava em `imagens/` e insere o link. */
   const editorExtensions = useMemo<Extension[]>(() => markdown && !readOnly ? [...extensions, markdownImages({
-    markdownPath: doc.path, fail: (message) => setError(message), droppedPath: (file) => { try { return window.agentboard.getDroppedFilePath(file) } catch { return '' } },
+    markdownPath: doc.path, fail: (message) => setError(message), droppedPath: (file) => { try { return window.gearmod.getDroppedFilePath(file) } catch { return '' } },
     inProject: (path) => (roots ?? []).some((root) => slashed(path).startsWith(`${slashed(root.path).replace(/\/$/, '')}/`)),
-    save: (data, mime) => window.agentboard.invoke('workspace:save-image', { ...context, markdownPath: doc.path, data, mime })
+    save: (data, mime) => window.gearmod.invoke('workspace:save-image', { ...context, markdownPath: doc.path, data, mime })
   })] : extensions, [markdown, readOnly, extensions, doc.path, roots, context.projectId, context.cardId])
   useEffect(() => {
     if (!outlineOpen) return
@@ -160,7 +160,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   useEffect(() => { setLines(null); setComposing(false); setComment(''); setCommentError(''); setGoto(false); setEdit(false); setConflictView(undefined) }, [doc.path])
   useEffect(() => { const up = (): void => { pickDrag.current = null }; document.addEventListener('mouseup', up); return () => document.removeEventListener('mouseup', up) }, [])
   useEffect(() => { if (composing) commentField.current?.focus() }, [composing])
-  useEffect(() => { setImage(''); if (fileKind(doc.path) !== 'image') return; let alive = true; void window.agentboard.invoke('workspace:image', { ...context, path: doc.path }).then((url) => { if (alive) setImage(url) }).catch((reason) => { if (alive) setError(plainError(reason)) }); return () => { alive = false } }, [doc.path])
+  useEffect(() => { setImage(''); if (fileKind(doc.path) !== 'image') return; let alive = true; void window.gearmod.invoke('workspace:image', { ...context, path: doc.path }).then((url) => { if (alive) setImage(url) }).catch((reason) => { if (alive) setError(plainError(reason)) }); return () => { alive = false } }, [doc.path])
   useEffect(() => { if (!command) return; if (command.type === 'find') showFind(); else if (command.type === 'replace') showFind(true); else if (command.type === 'goto') showGoto(); else if (find) setFind(false); else showFind() }, [command?.at])
   useEffect(() => {
     if (!jump) return
@@ -183,7 +183,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     const fence = '`'.repeat(Math.max(3, ...(code.match(/`+/g) ?? []).map((run) => run.length + 1))), language = /\.([A-Za-z0-9]+)$/.exec(doc.path)?.[1] ?? ''
     const span = from === to ? `linha ${from + 1}` : `linhas ${from + 1}–${to + 1}`
     const text = `Comentário em \`${doc.relative}\` (${span}${doc.content !== doc.saved ? ', texto atual do editor, com alterações ainda não salvas' : ''}):\n\n${fence}${language}\n${code}\n${fence}\n\n${comment.trim()}`
-    try { setCommentError(''); await window.agentboard.invoke('workspace:comment', { ...context, cardId: commentCardId, text }); setLines(null); setComposing(false); setComment(''); afterComment() } catch (reason) { setCommentError(plainError(reason)) }
+    try { setCommentError(''); await window.gearmod.invoke('workspace:comment', { ...context, cardId: commentCardId, text }); setLines(null); setComposing(false); setComment(''); afterComment() } catch (reason) { setCommentError(plainError(reason)) }
   }
   const keyDown = (event: React.KeyboardEvent): void => {
     if (!event.ctrlKey || event.shiftKey) return
@@ -193,7 +193,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   // Esc fecha a busca/ir para linha e devolve o foco ao editor (a captura impede o onKeyDown do campo).
   const escape = (event: React.KeyboardEvent): void => { if (event.key === 'Escape' && (find || goto)) { event.preventDefault(); event.stopPropagation(); setFind(false); setGoto(false); liveView()?.focus() } }
   const dirty = doc.content !== doc.saved, previewable = isMarkdown(doc.path) || isHtml(doc.path) || fileKind(doc.path) === 'image'
-  const reviewTarget = { path: doc.relative, send: async (prompt: string): Promise<boolean> => { try { await window.agentboard.invoke('workspace:comment', { ...context, cardId: commentCardId, text: prompt }); afterComment(); return true } catch (reason) { setError(plainError(reason)); return false } } }
+  const reviewTarget = { path: doc.relative, send: async (prompt: string): Promise<boolean> => { try { await window.gearmod.invoke('workspace:comment', { ...context, cardId: commentCardId, text: prompt }); afterComment(); return true } catch (reason) { setError(plainError(reason)); return false } } }
   const actionsRow = <>
     {!doc.binary && !doc.truncated && <>
       {outlineItems.length > 0 && <span className="wf-outlinewrap" ref={outlineBox}><button type="button" className="wf-iconchip" aria-label={outlineLabel} aria-expanded={outlineOpen} data-tip={markdown ? outlineLabel : `${outlineLabel} (Ctrl+Shift+O)`} onClick={() => setOutlineOpen(!outlineOpen)}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h12M7 10h9M10 15h6" /></svg></button>{outlineOpen && <div className={`popmenu wf-outline ${markdown ? '' : 'code'}`} role="menu" aria-label={outlineLabel}>{outlineItems.map((item) => <button key={`${item.line}:${item.text}`} type="button" role="menuitem" style={{ paddingLeft: 8 + item.depth * 12 }} onClick={() => goHeading(item)}>{!markdown && <KindMark kind={item.kind} />}{item.text}</button>)}</div>}</span>}

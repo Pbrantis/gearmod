@@ -1,4 +1,4 @@
-import { checklistKey, type CardChecklist } from '@agentboard/contracts'
+import { checklistKey, type CardChecklist } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { tm } from './i18n'
 

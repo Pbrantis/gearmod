@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { AppLanguage } from '@agentboard/contracts'
+import type { AppLanguage } from '@gearmod/contracts'
 import { ptBR } from './pt-BR'
 import { en } from './en'
 

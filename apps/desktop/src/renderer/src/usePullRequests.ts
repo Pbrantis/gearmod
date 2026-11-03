@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PullRequestList, PullRequestSummary } from '@agentboard/contracts'
+import type { PullRequestList, PullRequestSummary } from '@gearmod/contracts'
 import { tr } from './i18n'
 
 const pollMs = 120_000
-const seenKey = (projectId: string): string => `agentboard.prSeen.${projectId}`
+const seenKey = (projectId: string): string => `gearmod.prSeen.${projectId}`
 const loadSeen = (projectId: string): Record<string, string> | null => { try { const raw = localStorage.getItem(seenKey(projectId)); return raw ? JSON.parse(raw) as Record<string, string> : null } catch { return null } }
 const saveSeen = (projectId: string, seen: Record<string, string>): void => { try { localStorage.setItem(seenKey(projectId), JSON.stringify(seen)) } catch { /* só vale nesta sessão */ } }
 const keyOf = (sourceId: string, number: number): string => `${sourceId}#${number}`
@@ -30,8 +30,8 @@ export function usePullRequests(projectId: string): PullRequestsState {
 
   const refresh = useCallback(async (only?: string): Promise<void> => {
     let ids: string[]
-    try { ids = only ? [only] : (await window.agentboard.invoke('git:repos', { projectId })).map((repo) => repo.sourceId) } catch { return }
-    const results = await Promise.all(ids.map(async (sourceId) => [sourceId, await window.agentboard.invoke('prs:list', { sourceId }).catch((): PullRequestList => ({ supported: true, provider: null, error: tr().git.pr.queryFailed, viewer: null, prs: [] }))] as const))
+    try { ids = only ? [only] : (await window.gearmod.invoke('git:repos', { projectId })).map((repo) => repo.sourceId) } catch { return }
+    const results = await Promise.all(ids.map(async (sourceId) => [sourceId, await window.gearmod.invoke('prs:list', { sourceId }).catch((): PullRequestList => ({ supported: true, provider: null, error: tr().git.pr.queryFailed, viewer: null, prs: [] }))] as const))
     const next = { ...listsRef.current }
     for (const [sourceId, list] of results) next[sourceId] = list
     if (!only) for (const stale of Object.keys(next)) if (!ids.includes(stale)) delete next[stale]
@@ -46,8 +46,8 @@ export function usePullRequests(projectId: string): PullRequestsState {
   useEffect(() => {
     void refresh()
     const timer = window.setInterval(() => { if (!document.hidden) void refresh() }, pollMs), onFocus = (): void => { void refresh() }
-    window.addEventListener('focus', onFocus); window.addEventListener('agentboard:git-accounts-changed', onFocus)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); window.removeEventListener('agentboard:git-accounts-changed', onFocus) }
+    window.addEventListener('focus', onFocus); window.addEventListener('gearmod:git-accounts-changed', onFocus)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); window.removeEventListener('gearmod:git-accounts-changed', onFocus) }
   }, [refresh])
 
   const isUnread = useCallback((sourceId: string, pr: PullRequestSummary): boolean => {

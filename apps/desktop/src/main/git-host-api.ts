@@ -1,4 +1,4 @@
-import type { PullRequestDetail, PullRequestSummary } from '@agentboard/contracts'
+import type { PullRequestDetail, PullRequestSummary } from '@gearmod/contracts'
 
 export type HostProvider = 'github' | 'gitlab'
 export interface HostAccess { provider: HostProvider; host: string; token: string }
@@ -44,8 +44,8 @@ export class HostApi {
 
   private async call<T>(path: string, init: { method?: string; body?: unknown; text?: boolean; accept?: string } = {}): Promise<T> {
     const headers: Record<string, string> = this.access.provider === 'github'
-      ? { Authorization: `Bearer ${this.access.token}`, Accept: init.accept ?? 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'AgentBoard' }
-      : { 'PRIVATE-TOKEN': this.access.token, Accept: 'application/json', 'User-Agent': 'AgentBoard' }
+      ? { Authorization: `Bearer ${this.access.token}`, Accept: init.accept ?? 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'GearMod' }
+      : { 'PRIVATE-TOKEN': this.access.token, Accept: 'application/json', 'User-Agent': 'GearMod' }
     if (init.body !== undefined) headers['Content-Type'] = 'application/json'
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 30_000)
     try {

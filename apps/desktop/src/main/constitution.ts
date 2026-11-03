@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Constitution, ConstitutionProposal, ConstitutionState } from '@agentboard/contracts'
+import type { Constitution, ConstitutionProposal, ConstitutionState } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { tm } from './i18n'
 
@@ -11,7 +11,7 @@ export const inlineLimit = 6000
 /** Onde o GitHub Spec Kit guarda a constituição de um projeto. */
 const specKitFile = join('.specify', 'memory', 'constitution.md')
 
-/** Constituição do projeto: princípios que todo card respeita. É opcional; sem ela o AgentBoard segue como antes. */
+/** Constituição do projeto: princípios que todo card respeita. É opcional; sem ela o GearMod segue como antes. */
 export class ConstitutionRepository {
   constructor(private readonly database: AppDatabase) {}
 

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { UsageWindow } from '@agentboard/contracts'
+import type { UsageWindow } from '@gearmod/contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AutoResumeRepository, AutoResumeService, isUsageLimit, resumeTime, type PendingResume } from './auto-resume'
 import { ConversationRepository } from './conversations'
@@ -35,7 +35,7 @@ describe('retomar quando o limite de uso volta', () => {
   })
 
   it('agenda, avisa, confere se voltou e retoma; desiste se o usuário já retomou', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-resume-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-resume-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
@@ -83,7 +83,7 @@ describe('retomar quando o limite de uso volta', () => {
 
 describe('projetos na barra lateral', () => {
   it('reordena, põe o novo no topo e exclui (recusando com agente trabalhando)', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-order-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-order-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const profile = profiles.list()[0]!

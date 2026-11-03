@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { errorCodeOf, withoutErrorCode, type AgentProfile, type GitChange, type GitCommitFile, type GitGraph, type GitRepo, type GitRow, type ProjectBoard } from '@agentboard/contracts'
+import { errorCodeOf, withoutErrorCode, type AgentProfile, type GitChange, type GitCommitFile, type GitGraph, type GitRepo, type GitRow, type ProjectBoard } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { GitSide } from './GitSide'
 import { PrPanel } from './PrPanel'
@@ -162,23 +162,23 @@ function WipForm({ row, graph, summary, setSummary, changed, openDiff }: { row: 
     const finish = (): void => { handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', finish); handle.removeEventListener('pointercancel', finish) }
     handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish)
   }
-  const load = useCallback(async () => { try { const state = await window.agentboard.invoke('git:changes', { sourceId, cardId }); setFiles(state.files); setLast(state.lastMessage) } catch (reason) { setError(plainError(reason)) } }, [sourceId, cardId])
+  const load = useCallback(async () => { try { const state = await window.gearmod.invoke('git:changes', { sourceId, cardId }); setFiles(state.files); setLast(state.lastMessage) } catch (reason) { setError(plainError(reason)) } }, [sourceId, cardId])
   useEffect(() => { void load() }, [load, row.wip?.modified, row.wip?.added, row.wip?.deleted, row.wip?.staged])
   useEffect(() => { const refresh = (): void => { void load() }; window.addEventListener(gitChangedEvent, refresh); return () => window.removeEventListener(gitChangedEvent, refresh) }, [load])
   const unstaged = files.filter((file) => !file.staged), staged = files.filter((file) => file.staged)
   const stage = async (paths: string[], value: boolean): Promise<void> => {
-    try { setError(''); const state = await window.agentboard.invoke('git:stage', { sourceId, cardId, paths, stage: value }); setFiles(state.files); changed() } catch (reason) { setError(plainError(reason)) }
+    try { setError(''); const state = await window.gearmod.invoke('git:stage', { sourceId, cardId, paths, stage: value }); setFiles(state.files); changed() } catch (reason) { setError(plainError(reason)) }
   }
   const perform = async (action: 'discard' | 'stash', paths: string[]): Promise<void> => {
-    try { setError(''); const state = action === 'discard' ? await window.agentboard.invoke('git:discard-unstaged', { sourceId, cardId, paths }) : await window.agentboard.invoke('git:stash-file', { sourceId, cardId, path: paths[0]! }); setFiles(state.files); changed() } catch (reason) { setError(plainError(reason)) }
+    try { setError(''); const state = action === 'discard' ? await window.gearmod.invoke('git:discard-unstaged', { sourceId, cardId, paths }) : await window.gearmod.invoke('git:stash-file', { sourceId, cardId, path: paths[0]! }); setFiles(state.files); changed() } catch (reason) { setError(plainError(reason)) }
   }
   const ignore = async (path: string, kind: 'file' | 'directory' | 'extension'): Promise<void> => {
-    try { const state = await window.agentboard.invoke('git:ignore-file', { sourceId, cardId, path, kind }); setFiles(state.files); changed(); toast.info(t.ignoreAdded) } catch (reason) { setError(plainError(reason)) }
+    try { const state = await window.gearmod.invoke('git:ignore-file', { sourceId, cardId, path, kind }); setFiles(state.files); changed(); toast.info(t.ignoreAdded) } catch (reason) { setError(plainError(reason)) }
   }
   const menuItems = (file: GitChange): FileMenuItem[] => {
     const { dir, name } = splitPath(file.path), extension = /\.[^.]+$/.exec(name)?.[0]
-    const external = async (target: 'explorer'): Promise<void> => { try { const found = await window.agentboard.invoke('git:file-path', { sourceId, cardId, path: file.path }); await window.agentboard.invoke('workspace:external', { ...found, cardId, target }) } catch (reason) { setError(plainError(reason)) } }
-    const edit = async (): Promise<void> => { try { const found = await window.agentboard.invoke('git:file-path', { sourceId, cardId, path: file.path }); await window.agentboard.invoke('windows:open', { kind: 'file', projectId: found.projectId, cardId: cardId ?? undefined, path: found.path, placement: 'new' }) } catch (reason) { setError(plainError(reason)) } }
+    const external = async (target: 'explorer'): Promise<void> => { try { const found = await window.gearmod.invoke('git:file-path', { sourceId, cardId, path: file.path }); await window.gearmod.invoke('workspace:external', { ...found, cardId, target }) } catch (reason) { setError(plainError(reason)) } }
+    const edit = async (): Promise<void> => { try { const found = await window.gearmod.invoke('git:file-path', { sourceId, cardId, path: file.path }); await window.gearmod.invoke('windows:open', { kind: 'file', projectId: found.projectId, cardId: cardId ?? undefined, path: found.path, placement: 'new' }) } catch (reason) { setError(plainError(reason)) } }
     return [
       { label: file.staged ? t.unstageFile : t.stageFile, action: () => void stage([file.path], !file.staged) },
       ...(!file.staged ? [{ label: t.discardChanges, action: () => setPending({ kind: 'discard' as const, paths: [file.path] }) }] : []),
@@ -192,7 +192,7 @@ function WipForm({ row, graph, summary, setSummary, changed, openDiff }: { row: 
   }
   const commit = async (): Promise<void> => {
     setBusy(true); setError('')
-    try { await window.agentboard.invoke('git:commit', { sourceId, cardId, message: summary.trim(), description: description.trim() || undefined, amend }); setSummary(''); setDescription(''); setAmend(false); await load(); changed() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
+    try { await window.gearmod.invoke('git:commit', { sourceId, cardId, message: summary.trim(), description: description.trim() || undefined, amend }); setSummary(''); setDescription(''); setAmend(false); await load(); changed() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
   const lines = (list: GitChange[], isStaged: boolean): React.JSX.Element => <>{list.map((file) => {
     const { dir, name } = splitPath(file.path), key = `${isStaged ? 's' : 'u'}:${file.path}`
@@ -222,7 +222,7 @@ function WipForm({ row, graph, summary, setSummary, changed, openDiff }: { row: 
 function CommitDetail({ row, graph, profiles, board, focus, setFocus, openCardGit, openFile, editMessage }: { row: GitRow; graph: GitGraph; profiles: AgentProfile[]; board: ProjectBoard; focus: string | null; setFocus(id: string | null): void; openCardGit(cardId: string): void; openFile(file: GitCommitFile): void; editMessage?(): void }): React.JSX.Element {
   const t = useT().git.page
   const [detail, setDetail] = useState<{ body: string; files: GitCommitFile[] }>(), [error, setError] = useState(''), [moreBody, setMoreBody] = useState(false)
-  useEffect(() => { setDetail(undefined); setError(''); setMoreBody(false); void window.agentboard.invoke('git:commit-detail', { sourceId: graph.repo.sourceId, hash: row.hash }).then(setDetail).catch((reason: unknown) => setError(plainError(reason))) }, [graph.repo.sourceId, row.hash])
+  useEffect(() => { setDetail(undefined); setError(''); setMoreBody(false); void window.gearmod.invoke('git:commit-detail', { sourceId: graph.repo.sourceId, hash: row.hash }).then(setDetail).catch((reason: unknown) => setError(plainError(reason))) }, [graph.repo.sourceId, row.hash])
   const card = board.cards.find((item) => item.id === row.cardId), branch = graph.worktrees.find((item) => item.cardId === row.cardId)?.branch
   const files = detail?.files ?? []
   return <>
@@ -239,7 +239,7 @@ function StashDetail({ row, sourceId, cardId, busy, action, rename }: { row: Git
   const t = useT().git.page
   const [files, setFiles] = useState<GitCommitFile[]>(), [error, setError] = useState('')
   const stash = row.stash!
-  useEffect(() => { let alive = true; setFiles(undefined); setError(''); void window.agentboard.invoke('git:stash-detail', { sourceId, cardId, ref: stash.ref, commit: stash.commit }).then((result) => { if (alive) setFiles(result.files) }).catch((reason: unknown) => { if (alive) setError(plainError(reason)) }); return () => { alive = false } }, [sourceId, cardId, stash.ref, stash.commit])
+  useEffect(() => { let alive = true; setFiles(undefined); setError(''); void window.gearmod.invoke('git:stash-detail', { sourceId, cardId, ref: stash.ref, commit: stash.commit }).then((result) => { if (alive) setFiles(result.files) }).catch((reason: unknown) => { if (alive) setError(plainError(reason)) }); return () => { alive = false } }, [sourceId, cardId, stash.ref, stash.commit])
   return <><div className="gmeta"><span>{t.stashDetail(stash.ref)}</span></div><button type="button" className="gstashname" data-tip={t.editStashNameTip} onClick={rename}>{row.subject} {gitIcons.pen}</button><div className="gmeta"><span>{t.stashBase(row.parents[0]?.slice(0, 7))}</span></div><div className="cgrow">{stashItems().map((item) => <button type="button" className="mini secondary" key={item.key} disabled={busy} onClick={() => action(item.key, stash.ref)}>{item.label}</button>)}</div>{error ? <p className="error">{error}</p> : files ? <><div className="cglabel">{t.filesCount(files.length)} · <FileCounts files={files} /></div><div className="gfiles">{files.map((file) => <FileRow key={file.path} file={file} />)}</div></> : <p className="gmeta">{t.loadingFiles}</p>}</>
 }
 
@@ -248,7 +248,7 @@ function DiffView({ viewer, close, changed }: { viewer: { sourceId: string; card
   const { common, git: { page: t } } = useT()
   const { sourceId, cardId, file, hash } = viewer
   const [error, setError] = useState(''), [discard, setDiscard] = useState(false)
-  const act = async (action: 'stage' | 'discard'): Promise<void> => { try { if (action === 'stage') await window.agentboard.invoke('git:stage', { sourceId, cardId, paths: [file.path], stage: !file.staged }); else await window.agentboard.invoke('git:discard-unstaged', { sourceId, cardId, paths: [file.path] }); window.dispatchEvent(new Event(gitChangedEvent)); changed(); close() } catch (reason) { setError(plainError(reason)) } }
+  const act = async (action: 'stage' | 'discard'): Promise<void> => { try { if (action === 'stage') await window.gearmod.invoke('git:stage', { sourceId, cardId, paths: [file.path], stage: !file.staged }); else await window.gearmod.invoke('git:discard-unstaged', { sourceId, cardId, paths: [file.path] }); window.dispatchEvent(new Event(gitChangedEvent)); changed(); close() } catch (reason) { setError(plainError(reason)) } }
   return <section className="gdiffview" style={{ gridColumn: '1 / span 2' }} aria-label={t.changesOf(file.path)}><header><span className={`st ${file.status}`}>{file.status}</span><b data-tip={file.path}>{file.path}</b><small>{hash ? t.commitHash(hash.slice(0, 7)) : file.staged ? t.staged : t.notStaged}</small><span className="gdstat"><span className="p">+{file.additions}</span> <span className="m">−{file.deletions}</span></span><span className="grow1" /><button type="button" className="fv-toggle" data-tip={t.openCurrentTip} onClick={() => void openInEditor({ sourceId, cardId, path: file.path }).then(close).catch((reason: unknown) => setError(plainError(reason)))}>{t.openInEditor}</button><button type="button" className="x" onClick={close} aria-label={common.close}>×</button></header>
     {!hash && <div className="gdiff-actions">{!file.staged && <button type="button" className="gwdiscard" data-tip={t.discardChanges} aria-label={t.discardChanges} onClick={() => setDiscard(true)}>{gitIcons.trash}</button>}<button type="button" className={`gwall ${file.staged ? 'un' : ''}`} onClick={() => void act('stage')}>{file.staged ? t.unstageFile : t.stageFile}</button></div>}
     <div className="gdiffbody">{error && <p className="error">{error}</p>}<GitDiffEditor sourceId={sourceId} cardId={cardId} path={file.path} hash={hash} mode={file.staged ? 'staged' : 'unstaged'} /></div>{discard && <ConfirmDialog eyebrow={t.discardChanges} title={t.discardTitleOne(file.path)} text={`${t.discardDiffText} ${t.undoHint}`} ok={t.discardChanges} danger cancel={() => setDiscard(false)} confirm={() => { setDiscard(false); void act('discard') }} />}</section>
@@ -256,17 +256,17 @@ function DiffView({ viewer, close, changed }: { viewer: { sourceId: string; card
 
 type PullMode = 'fetch-all' | 'ff' | 'ff-only' | 'rebase'
 const pullModes: PullMode[] = ['fetch-all', 'ff', 'ff-only', 'rebase']
-const pullKey = 'agentboard.gitPull'
+const pullKey = 'gearmod.gitPull'
 const loadPull = (): PullMode => { try { const value = localStorage.getItem(pullKey); return pullModes.some((id) => id === value) ? value as PullMode : 'ff' } catch { return 'ff' } }
 /** Largura das duas colunas laterais (lateral esquerda e detalhe à direita): arrastáveis, com mínimo e máximo; duplo clique volta ao padrão. */
 const paneLimits = { side: { min: 170, max: 420, def: 230 }, detail: { min: 270, max: 620, def: 330 } } as const
-const paneKey = 'agentboard.gitPanes'
+const paneKey = 'gearmod.gitPanes'
 const loadPanes = (): { side: number; detail: number } => {
   try { const saved = JSON.parse(localStorage.getItem(paneKey) ?? '{}') as Partial<Record<'side' | 'detail', number>>; return { side: clamp(saved.side ?? paneLimits.side.def, 'side'), detail: clamp(saved.detail ?? paneLimits.detail.def, 'detail') } } catch { return { side: paneLimits.side.def, detail: paneLimits.detail.def } }
 }
 const clamp = (value: number, pane: 'side' | 'detail'): number => Math.max(paneLimits[pane].min, Math.min(paneLimits[pane].max, Math.round(value)))
 const graphMin = 36
-const colKey = 'agentboard.gitCols'
+const colKey = 'gearmod.gitCols'
 const loadCols = (): Record<string, number> => { try { return JSON.parse(localStorage.getItem(colKey) ?? '{}') as Record<string, number> } catch { return {} } }
 
 function RepoTabs({ repos, selected, select, reorder, alerts, conflicts }: { repos: GitRepo[]; selected?: string; select(id: string): void; reorder(id: string, index: number): void; alerts(sourceId: string): number; conflicts: Array<ConflictTarget & { operation: keyof typeof operationLabel; files: string[] }> }): React.JSX.Element {
@@ -276,13 +276,13 @@ function RepoTabs({ repos, selected, select, reorder, alerts, conflicts }: { rep
   let visibleIndex = 0
   const dragged = repos.find((repo) => repo.sourceId === dragging)
   const placeholder = dragged ? <span className="gtab gtab-placeholder" style={{ width: dragWidth.current }} aria-hidden="true">{gitIcons.repo}<span className="gtn">{dragged.name}</span></span> : null
-  return <div className="gtabs" role="tablist" aria-label={t.reposAria} onDragOver={(event) => { if (!event.dataTransfer.types.includes('application/x-agentboard-git-repo')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDrop(position(event.clientX)) }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDrop(undefined) }} onDrop={(event) => { event.preventDefault(); const id = event.dataTransfer.getData('application/x-agentboard-git-repo'); if (id) reorder(id, drop ?? position(event.clientX)); setDragging(undefined); setDrop(undefined) }}>
-    {repos.map((repo) => { const index = repo.sourceId === dragging ? -1 : visibleIndex++; const flagged = conflicts.filter((entry) => entry.sourceId === repo.sourceId), total = flagged.reduce((sum, entry) => sum + entry.files.length, 0); return <React.Fragment key={repo.sourceId}>{index >= 0 && drop === index && placeholder}<button type="button" role="tab" data-repo-tab={repo.sourceId} aria-selected={repo.sourceId === selected} className={`gtab ${repo.sourceId === selected ? 'on' : ''} ${repo.sourceId === dragging ? 'dragging' : ''}`} draggable onDragStart={(event) => { const source = event.currentTarget, rect = source.getBoundingClientRect(), tabs = [...source.parentElement!.querySelectorAll<HTMLElement>('[data-repo-tab]')], sourceIndex = tabs.indexOf(source); dragWidth.current = Math.round(rect.width); geometry.current = tabs.filter((tab) => tab !== source).map((tab, i) => { const box = tab.getBoundingClientRect(); return box.left + box.width / 2 - (i >= sourceIndex ? rect.width + 4 : 0) }); window.setTimeout(() => { setDragging(repo.sourceId); setDrop(sourceIndex) }, 0); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-agentboard-git-repo', repo.sourceId) }} onDragEnd={() => { setDragging(undefined); setDrop(undefined); geometry.current = [] }} data-tip={`${repo.path}${repo.head ? ` · ${repo.head}` : ''}`} onClick={() => select(repo.sourceId)}>{gitIcons.repo}<span className="gtn">{repo.name}</span>{alerts(repo.sourceId) > 0 && <i className="ydot" data-tip={t.prsWithNews(alerts(repo.sourceId))} />}{flagged.length > 0 && <span className="gtab-conflict" data-tip={t.repoConflictOps(flagged.length)}>{t.conflictTab}{total ? ` · ${total}` : ''}</span>}</button></React.Fragment> })}
+  return <div className="gtabs" role="tablist" aria-label={t.reposAria} onDragOver={(event) => { if (!event.dataTransfer.types.includes('application/x-gearmod-git-repo')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDrop(position(event.clientX)) }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDrop(undefined) }} onDrop={(event) => { event.preventDefault(); const id = event.dataTransfer.getData('application/x-gearmod-git-repo'); if (id) reorder(id, drop ?? position(event.clientX)); setDragging(undefined); setDrop(undefined) }}>
+    {repos.map((repo) => { const index = repo.sourceId === dragging ? -1 : visibleIndex++; const flagged = conflicts.filter((entry) => entry.sourceId === repo.sourceId), total = flagged.reduce((sum, entry) => sum + entry.files.length, 0); return <React.Fragment key={repo.sourceId}>{index >= 0 && drop === index && placeholder}<button type="button" role="tab" data-repo-tab={repo.sourceId} aria-selected={repo.sourceId === selected} className={`gtab ${repo.sourceId === selected ? 'on' : ''} ${repo.sourceId === dragging ? 'dragging' : ''}`} draggable onDragStart={(event) => { const source = event.currentTarget, rect = source.getBoundingClientRect(), tabs = [...source.parentElement!.querySelectorAll<HTMLElement>('[data-repo-tab]')], sourceIndex = tabs.indexOf(source); dragWidth.current = Math.round(rect.width); geometry.current = tabs.filter((tab) => tab !== source).map((tab, i) => { const box = tab.getBoundingClientRect(); return box.left + box.width / 2 - (i >= sourceIndex ? rect.width + 4 : 0) }); window.setTimeout(() => { setDragging(repo.sourceId); setDrop(sourceIndex) }, 0); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-gearmod-git-repo', repo.sourceId) }} onDragEnd={() => { setDragging(undefined); setDrop(undefined); geometry.current = [] }} data-tip={`${repo.path}${repo.head ? ` · ${repo.head}` : ''}`} onClick={() => select(repo.sourceId)}>{gitIcons.repo}<span className="gtn">{repo.name}</span>{alerts(repo.sourceId) > 0 && <i className="ydot" data-tip={t.prsWithNews(alerts(repo.sourceId))} />}{flagged.length > 0 && <span className="gtab-conflict" data-tip={t.repoConflictOps(flagged.length)}>{t.conflictTab}{total ? ` · ${total}` : ''}</span>}</button></React.Fragment> })}
     {dragging && drop === visibleIndex && placeholder}
   </div>
 }
 
-const reposCacheKey = (projectId: string): string => `agentboard.gitRepos.${projectId}`
+const reposCacheKey = (projectId: string): string => `gearmod.gitRepos.${projectId}`
 /** Última lista de repositórios do projeto: as abas aparecem na hora e a detecção atualiza por baixo dos panos. */
 function cachedRepos(projectId: string): GitRepo[] | undefined {
   try { const value: unknown = JSON.parse(localStorage.getItem(reposCacheKey(projectId)) ?? 'null'); const list = Array.isArray(value) ? value.filter((item): item is GitRepo => typeof item === 'object' && item !== null && typeof (item as GitRepo).sourceId === 'string' && typeof (item as GitRepo).name === 'string') : []; return list.length ? list : undefined } catch { return undefined }
@@ -291,8 +291,8 @@ function cachedRepos(projectId: string): GitRepo[] | undefined {
 export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { board: ProjectBoard; prs: PullRequestsState; profiles: AgentProfile[]; openCardGit(cardId: string): void; focusRequest?: { cardId: string; at: number } }): React.JSX.Element {
   const T = useT(), t = T.git.page, common = T.common
   const projectId = board.project.id
-  const [repos, setRepos] = useState<GitRepo[] | undefined>(() => cachedRepos(projectId)), [repoId, setRepoId] = useState<string | undefined>(() => { const list = cachedRepos(projectId); if (!list) return undefined; try { const saved = localStorage.getItem(`agentboard.gitRepo.${projectId}`); return list.find((item) => item.sourceId === saved)?.sourceId ?? list[0]?.sourceId } catch { return list[0]?.sourceId } }), [graph, setGraph] = useState<GitGraph>(), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState('')
-  const repoOrderKey = `agentboard.gitRepoOrder.${projectId}`
+  const [repos, setRepos] = useState<GitRepo[] | undefined>(() => cachedRepos(projectId)), [repoId, setRepoId] = useState<string | undefined>(() => { const list = cachedRepos(projectId); if (!list) return undefined; try { const saved = localStorage.getItem(`gearmod.gitRepo.${projectId}`); return list.find((item) => item.sourceId === saved)?.sourceId ?? list[0]?.sourceId } catch { return list[0]?.sourceId } }), [graph, setGraph] = useState<GitGraph>(), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState('')
+  const repoOrderKey = `gearmod.gitRepoOrder.${projectId}`
   const sortRepos = (items: GitRepo[]): GitRepo[] => {
     try { const saved: unknown = JSON.parse(localStorage.getItem(repoOrderKey) ?? '[]'); if (!Array.isArray(saved)) return items; const order = new Map(saved.filter((id): id is string => typeof id === 'string').map((id, index) => [id, index])); return [...items].sort((a, b) => (order.get(a.sourceId) ?? Infinity) - (order.get(b.sourceId) ?? Infinity)) } catch { return items }
   }
@@ -334,7 +334,7 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
   const [limit, setLimit] = useState(pageCommits), [more, setMore] = useState(false)
   const load = useCallback(async (id = repoId): Promise<void> => {
     if (!id) return
-    try { setGraph(await window.agentboard.invoke('git:graph', { projectId, sourceId: id, cardId: worktree, limit })); setError('') } catch (reason) { setError(plainError(reason)) } finally { setMore(false) }
+    try { setGraph(await window.gearmod.invoke('git:graph', { projectId, sourceId: id, cardId: worktree, limit })); setError('') } catch (reason) { setError(plainError(reason)) } finally { setMore(false) }
   }, [projectId, repoId, limit, worktree])
   useEffect(() => { setLimit(pageCommits) }, [repoId])
   const onListScroll = (event: React.UIEvent<HTMLDivElement>): void => {
@@ -343,12 +343,12 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) { setMore(true); setLimit((current) => current + pageCommits) }
   }
   useEffect(() => { const cached = cachedRepos(projectId); if (cached) setRepos(sortRepos(cached)) }, [projectId])
-  useEffect(() => { void window.agentboard.invoke('git:detect', { projectId }).then(({ repos: items, changed }) => { if (changed) window.dispatchEvent(new Event(gitChangedEvent)); setRepos(sortRepos(items)); try { if (items.length) localStorage.setItem(reposCacheKey(projectId), JSON.stringify(items)); else localStorage.removeItem(reposCacheKey(projectId)) } catch { /* só vale nesta sessão */ } setRepoId((current) => { const saved = (() => { try { return localStorage.getItem(`agentboard.gitRepo.${projectId}`) } catch { return null } })(); return current && items.some((item) => item.sourceId === current) ? current : items.find((item) => item.sourceId === saved)?.sourceId ?? items[0]?.sourceId }) }).catch((reason: unknown) => setError(plainError(reason))) }, [projectId])
+  useEffect(() => { void window.gearmod.invoke('git:detect', { projectId }).then(({ repos: items, changed }) => { if (changed) window.dispatchEvent(new Event(gitChangedEvent)); setRepos(sortRepos(items)); try { if (items.length) localStorage.setItem(reposCacheKey(projectId), JSON.stringify(items)); else localStorage.removeItem(reposCacheKey(projectId)) } catch { /* só vale nesta sessão */ } setRepoId((current) => { const saved = (() => { try { return localStorage.getItem(`gearmod.gitRepo.${projectId}`) } catch { return null } })(); return current && items.some((item) => item.sourceId === current) ? current : items.find((item) => item.sourceId === saved)?.sourceId ?? items[0]?.sourceId }) }).catch((reason: unknown) => setError(plainError(reason))) }, [projectId])
   useEffect(() => { setGraph(undefined); setSel(null); setOpen(false); setPicked(undefined) }, [repoId])
   useEffect(() => { void load(repoId) }, [repoId, load])
   // Ao abrir o repositório, atualiza o remoto por baixo dos panos: assim o Push já sabe se está atrás antes de tentar.
-  useEffect(() => { if (repoId) void window.agentboard.invoke('git:sync', { sourceId: repoId, cardId: null, action: 'fetch' }).then(() => load(repoId)).catch(() => undefined) }, [repoId])
-  useEffect(() => window.agentboard.onRunEvent((event) => { if (['agentboard/card-updated', 'agentboard/run-completed'].includes(event.eventType)) void load() }), [load])
+  useEffect(() => { if (repoId) void window.gearmod.invoke('git:sync', { sourceId: repoId, cardId: null, action: 'fetch' }).then(() => load(repoId)).catch(() => undefined) }, [repoId])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if (['gearmod/card-updated', 'gearmod/run-completed'].includes(event.eventType)) void load() }), [load])
   useEffect(() => { const again = (): void => void load(); window.addEventListener('focus', again); return () => window.removeEventListener('focus', again) }, [load])
   useEffect(() => { if (graph && sel && !graph.rows.some((row) => row.hash === sel)) { setSel(null); setOpen(false) } }, [graph, sel])
   useEffect(() => { const key = (e: KeyboardEvent): void => { if (e.key === 'Escape' && focus && !document.querySelector('.overlay')) setFocus(null) }; document.addEventListener('keydown', key); return () => document.removeEventListener('keydown', key) }, [focus])
@@ -373,27 +373,27 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
   const sync = async (action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull?: 'ff' | 'ff-only' | 'rebase', force?: boolean): Promise<void> => {
     if (!graph) return
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:sync', { sourceId: graph.repo.sourceId, cardId: worktree, action, pull, force }); if (out.conflicts) report(action, 'warn', out.output, t.stashConflictTitle); else report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? t.done); await load() } catch (reason) {
+    try { const out = await window.gearmod.invoke('git:sync', { sourceId: graph.repo.sourceId, cardId: worktree, action, pull, force }); if (out.conflicts) report(action, 'warn', out.output, t.stashConflictTitle); else report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? t.done); await load() } catch (reason) {
       const text = plainError(reason)
       // Push recusado (ex.: depois de um amend): em vez de só avisar o erro, oferece Pull ou Forçar push.
       if (action === 'push' && !force && errorCodeOf(text) === 'git-push-rejected') setPushRejected(true); else report(action, false, withoutErrorCode(text))
     } finally { setBusy('') }
   }
   const [picked, setPicked] = useState<string>(), [menu, setMenu] = useState<{ x: number; y: number; kind: 'local' | 'remote' | 'commit' | 'stash'; name: string }>(), [wtMenu, setWtMenu] = useState<{ x: number; y: number; cardId: string; branch: string }>(), [wtDelete, setWtDelete] = useState<{ cardId: string; sourceId?: string }>(), [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: string; names: string[] }>(), [allConflicts, setAllConflicts] = useState<Array<ConflictTarget & { operation: keyof typeof operationLabel; files: string[] }>>([]), [resolveTarget, setResolveTarget] = useState<ConflictTarget>(), [ask, setAsk] = useState<{ kind: 'create' | 'delete' | 'delete-folder' | 'delete-remote' | 'commit-branch' | 'commit-tag' | 'reset-hard'; name: string; names?: string[] }>(), [newName, setNewName] = useState(''), [createError, setCreateError] = useState(''), [creating, setCreating] = useState(false)
-  const refreshConflicts = useCallback(() => { void window.agentboard.invoke('git:conflicts-all', { projectId }).then(setAllConflicts).catch(() => undefined) }, [projectId])
+  const refreshConflicts = useCallback(() => { void window.gearmod.invoke('git:conflicts-all', { projectId }).then(setAllConflicts).catch(() => undefined) }, [projectId])
   useEffect(() => { refreshConflicts() }, [graph, notice, resolveTarget, refreshConflicts])
   // Desfazer e refazer: a pilha vive no processo principal (uma por pasta); recarrega junto com o grafo e ao trocar de repositório ou worktree.
   const [undoInfo, setUndoInfo] = useState<{ undo: { label: string } | null; redo: { label: string } | null }>({ undo: null, redo: null }), undoSource = graph?.repo.sourceId
   const loadUndo = useCallback(async (): Promise<void> => {
     if (!undoSource) { setUndoInfo({ undo: null, redo: null }); return }
-    try { setUndoInfo(await window.agentboard.invoke('git:undo-state', { sourceId: undoSource, cardId: worktree })) } catch { setUndoInfo({ undo: null, redo: null }) }
+    try { setUndoInfo(await window.gearmod.invoke('git:undo-state', { sourceId: undoSource, cardId: worktree })) } catch { setUndoInfo({ undo: null, redo: null }) }
   }, [undoSource, worktree])
   useEffect(() => { void loadUndo() }, [loadUndo, graph])
   const stepUndo = async (redo: boolean): Promise<void> => {
     if (!graph || busy || !(redo ? undoInfo.redo : undoInfo.undo)) return
     setBusy(redo ? 'redo' : 'undo'); setNotice('')
     const meta = `${graph.repo.name}${graph.repo.head ? ` · ${graph.repo.head}` : ''}`
-    try { const out = await window.agentboard.invoke(redo ? 'git:redo' : 'git:undo', { sourceId: graph.repo.sourceId, cardId: worktree }); toast.success(out.output, undefined, { meta }); await load(); window.dispatchEvent(new Event(gitChangedEvent)) } catch (reason) { toast.error(redo ? t.redoFailed : t.undoFailed, plainError(reason), { meta }); void loadUndo() } finally { setBusy('') }
+    try { const out = await window.gearmod.invoke(redo ? 'git:redo' : 'git:undo', { sourceId: graph.repo.sourceId, cardId: worktree }); toast.success(out.output, undefined, { meta }); await load(); window.dispatchEvent(new Event(gitChangedEvent)) } catch (reason) { toast.error(redo ? t.redoFailed : t.undoFailed, plainError(reason), { meta }); void loadUndo() } finally { setBusy('') }
   }
   // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y na página; não rouba o desfazer de texto (campos e editores) nem age com um diálogo aberto.
   useEffect(() => {
@@ -418,14 +418,14 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
   const branchAction = async (action: Exclude<BranchAction, 'copy'>, name: string, extra?: { newName?: string }): Promise<string | null> => {
     if (!graph) return null
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, name, ...extra }); report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? t.done); await load(); return null } catch (reason) { const message = plainError(reason); report(action, false, message); return message } finally { setBusy('') }
+    try { const out = await window.gearmod.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, name, ...extra }); report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? t.done); await load(); return null } catch (reason) { const message = plainError(reason); report(action, false, message); return message } finally { setBusy('') }
   }
   const deleteFolderBranches = async (names: string[]): Promise<void> => {
     if (!graph || !names.length) return
     setBusy('delete'); setNotice('')
     const failed: string[] = []
     for (const name of names) {
-      try { await window.agentboard.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action: 'delete', name }) } catch { failed.push(name) }
+      try { await window.gearmod.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action: 'delete', name }) } catch { failed.push(name) }
     }
     const deleted = names.length - failed.length
     const text = failed.length ? t.foldersPartial(deleted, failed.length) : t.branchesDeleted(deleted)
@@ -434,26 +434,26 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
   const openRemoteBranch = async (name: string): Promise<void> => {
     if (!graph || busy) return
     setBusy('checkout'); setNotice('')
-    try { const out = await window.agentboard.invoke('git:checkout-remote', { sourceId: graph.repo.sourceId, cardId: worktree, name }); report('checkout', true, out.output) } catch (reason) { report('checkout', false, plainError(reason)) } finally { await load(); setBusy('') }
+    try { const out = await window.gearmod.invoke('git:checkout-remote', { sourceId: graph.repo.sourceId, cardId: worktree, name }); report('checkout', true, out.output) } catch (reason) { report('checkout', false, plainError(reason)) } finally { await load(); setBusy('') }
   }
   const commitAction = async (action: Exclude<CommitMenuAction, 'copy'>, hash: string, name?: string): Promise<string | null> => {
     if (!graph) return null
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:commit-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, hash, name }); report(action, true, out.output); await load(); return null } catch (reason) { const message = plainError(reason); report(action, false, message); return message } finally { setBusy('') }
+    try { const out = await window.gearmod.invoke('git:commit-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, hash, name }); report(action, true, out.output); await load(); return null } catch (reason) { const message = plainError(reason); report(action, false, message); return message } finally { setBusy('') }
   }
   const stashAction = async (action: StashMenuAction, ref: string): Promise<void> => {
     if (!graph) return
     setBusy(action); setNotice('')
-    try { const out = await window.agentboard.invoke('git:stash-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, ref }); if (out.conflicts) report(action, 'warn', out.output, t.stashConflictTitle); else report(action, true, out.output); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
+    try { const out = await window.gearmod.invoke('git:stash-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, ref }); if (out.conflicts) report(action, 'warn', out.output, t.stashConflictTitle); else report(action, true, out.output); await load() } catch (reason) { report(action, false, plainError(reason)) } finally { setBusy('') }
   }
   const beginRenameStash = (ref: string): void => { const row = rows.find((item) => item.stash?.ref === ref); if (row?.stash) setRenameStash({ ref, commit: row.stash.commit, message: row.subject }) }
   const saveStashName = async (): Promise<void> => {
     if (!graph || !renameStash) return
-    try { const result = await window.agentboard.invoke('git:stash-rename', { sourceId: graph.repo.sourceId, cardId: worktree, ...renameStash }); const hash = `stash:${result.commit}:${result.ref}`; setRenameStash(undefined); await load(); setSel(hash); setOpen(true); setPicked(`stash:${result.ref}`); toast.info(t.stashRenamed) } catch (reason) { toast.error(t.stashRenameFailed, plainError(reason)) }
+    try { const result = await window.gearmod.invoke('git:stash-rename', { sourceId: graph.repo.sourceId, cardId: worktree, ...renameStash }); const hash = `stash:${result.commit}:${result.ref}`; setRenameStash(undefined); await load(); setSel(hash); setOpen(true); setPicked(`stash:${result.ref}`); toast.info(t.stashRenamed) } catch (reason) { toast.error(t.stashRenameFailed, plainError(reason)) }
   }
   const saveCommitName = async (): Promise<void> => {
     if (!graph || !renameCommit) return
-    try { const result = await window.agentboard.invoke('git:rename-commit', { sourceId: graph.repo.sourceId, cardId: worktree, hash: renameCommit.hash, message: renameCommit.message }); setRenameCommit(undefined); await load(); setSel(result.hash); setOpen(true); toast.info(t.commitMessageUpdated) } catch (reason) { toast.error(t.commitMessageFailed, plainError(reason)) }
+    try { const result = await window.gearmod.invoke('git:rename-commit', { sourceId: graph.repo.sourceId, cardId: worktree, hash: renameCommit.hash, message: renameCommit.message }); setRenameCommit(undefined); await load(); setSel(result.hash); setOpen(true); toast.info(t.commitMessageUpdated) } catch (reason) { toast.error(t.commitMessageFailed, plainError(reason)) }
   }
   const runCommitMenu = (action: CommitMenuAction): void => {
     const current = menu; setMenu(undefined)
@@ -526,7 +526,7 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
   const pullNow = (mode: PullMode = pullMode): void => {
     if (mode === 'fetch-all') { void sync('fetch'); return }
     if (!graph) return
-    void window.agentboard.invoke('git:upstream', { sourceId: graph.repo.sourceId, cardId: worktree }).then((info) => {
+    void window.gearmod.invoke('git:upstream', { sourceId: graph.repo.sourceId, cardId: worktree }).then((info) => {
       if (info.branch && !info.upstream && info.remotes.length) setUpstreamAsk({ branch: info.branch, remotes: info.remotes, mode })
       else void sync('pull', mode)
     }).catch(() => { void sync('pull', mode) })
@@ -568,7 +568,7 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
   </aside> : null
   const prPane = prOpen && repoId ? <PrPanel sourceId={repoId} repoName={repos?.find((item) => item.sourceId === repoId)?.name ?? ''} branches={graph?.branches.local.map((branch) => branch.name) ?? []} head={graph?.repo.head ?? null} prs={prs} focus={prFocus} close={() => setPrOpen(false)} /> : null
   const right = prPane ?? detail
-  return <div className="gwrap">{confirmDialog}<RepoTabs repos={repos ?? []} selected={repoId} alerts={(id) => prs.unread(id).length} conflicts={allConflicts} reorder={dropRepo} select={async (id) => { if (resolveTarget && !(await leaveConflicts())) return; setRepoId(id); setWorktree(null); setFocus(null); setViewer(undefined); setResolveTarget(undefined); try { localStorage.setItem(`agentboard.gitRepo.${projectId}`, id) } catch { /* só vale nesta sessão */ } }} />{allConflicts.length > 0 && <div className="cfl-banner" role="status"><span>{t.conflictInRepos(allConflicts.length)}{allConflicts.length === 1 ? ` · ${t.operationInProgress(operationLabel[allConflicts[0]!.operation])} · ${allConflicts[0]!.files.length ? t.conflictFiles(allConflicts[0]!.files.length) : t.conflictsResolvedPending}` : ''}</span><span className="cfl-targets">{allConflicts.map((entry) => <button key={`${entry.sourceId}:${entry.cardId ?? ''}`} type="button" className="mini" data-tip={t.conflictTarget(operationLabel[entry.operation], entry.repo, entry.cardTitle)} onClick={() => resolve(entry)}>{entry.repo}{entry.cardTitle ? ` · ${entry.cardTitle}` : ''} · {entry.files.length ? t.resolve : common.continue}</button>)}</span></div>}<section ref={page} className={`gitpage ${right ? '' : 'nodetail'}`} style={{ '--gside': `${panes.side}px`, '--gdetail': `${panes.detail}px` } as React.CSSProperties} aria-label={t.projectGit}>{resolveTarget ? <ConflictsView key={`${resolveTarget.sourceId}:${resolveTarget.cardId ?? ''}`} target={resolveTarget} setDirty={(value) => { conflictDirty.current = value }} changed={() => { void load(); refreshConflicts() }} back={() => { setResolveTarget(undefined); refreshConflicts() }} /> : viewer ? <DiffView viewer={viewer} close={() => setViewer(undefined)} changed={() => void load()} /> : <>{side}{center}</>}{!resolveTarget && right}{!viewer && !resolveTarget && <div className="gpanegrip side" role="separator" aria-orientation="vertical" data-tip={t.dragPaneTip} onPointerDown={gripPane('side')} onDoubleClick={resetPane('side')} />}{right && !resolveTarget && <div className="gpanegrip detail" role="separator" aria-orientation="vertical" data-tip={t.dragPaneTip} onPointerDown={gripPane('detail')} onDoubleClick={resetPane('detail')} />}</section>
+  return <div className="gwrap">{confirmDialog}<RepoTabs repos={repos ?? []} selected={repoId} alerts={(id) => prs.unread(id).length} conflicts={allConflicts} reorder={dropRepo} select={async (id) => { if (resolveTarget && !(await leaveConflicts())) return; setRepoId(id); setWorktree(null); setFocus(null); setViewer(undefined); setResolveTarget(undefined); try { localStorage.setItem(`gearmod.gitRepo.${projectId}`, id) } catch { /* só vale nesta sessão */ } }} />{allConflicts.length > 0 && <div className="cfl-banner" role="status"><span>{t.conflictInRepos(allConflicts.length)}{allConflicts.length === 1 ? ` · ${t.operationInProgress(operationLabel[allConflicts[0]!.operation])} · ${allConflicts[0]!.files.length ? t.conflictFiles(allConflicts[0]!.files.length) : t.conflictsResolvedPending}` : ''}</span><span className="cfl-targets">{allConflicts.map((entry) => <button key={`${entry.sourceId}:${entry.cardId ?? ''}`} type="button" className="mini" data-tip={t.conflictTarget(operationLabel[entry.operation], entry.repo, entry.cardTitle)} onClick={() => resolve(entry)}>{entry.repo}{entry.cardTitle ? ` · ${entry.cardTitle}` : ''} · {entry.files.length ? t.resolve : common.continue}</button>)}</span></div>}<section ref={page} className={`gitpage ${right ? '' : 'nodetail'}`} style={{ '--gside': `${panes.side}px`, '--gdetail': `${panes.detail}px` } as React.CSSProperties} aria-label={t.projectGit}>{resolveTarget ? <ConflictsView key={`${resolveTarget.sourceId}:${resolveTarget.cardId ?? ''}`} target={resolveTarget} setDirty={(value) => { conflictDirty.current = value }} changed={() => { void load(); refreshConflicts() }} back={() => { setResolveTarget(undefined); refreshConflicts() }} /> : viewer ? <DiffView viewer={viewer} close={() => setViewer(undefined)} changed={() => void load()} /> : <>{side}{center}</>}{!resolveTarget && right}{!viewer && !resolveTarget && <div className="gpanegrip side" role="separator" aria-orientation="vertical" data-tip={t.dragPaneTip} onPointerDown={gripPane('side')} onDoubleClick={resetPane('side')} />}{right && !resolveTarget && <div className="gpanegrip detail" role="separator" aria-orientation="vertical" data-tip={t.dragPaneTip} onPointerDown={gripPane('detail')} onDoubleClick={resetPane('detail')} />}</section>
     {wtMenu && <GitMenu x={wtMenu.x} y={wtMenu.y} title={wtMenu.branch} label={T.git.worktreeDelete.menuLabel(wtMenu.branch)} items={[{ key: 'one' as const, label: T.git.worktreeDelete.menuOne, danger: true }, { key: 'all' as const, label: T.git.worktreeDelete.menuItem, danger: true }]} run={(kind) => { const id = wtMenu.cardId; setWtMenu(undefined); setWtDelete(kind === 'one' && graph ? { cardId: id, sourceId: graph.repo.sourceId } : { cardId: id }) }} close={() => setWtMenu(undefined)} />}
     {wtDelete && <WorktreeDeleteDialog projectId={projectId} cardId={wtDelete.cardId} sourceId={wtDelete.sourceId} close={() => setWtDelete(undefined)} done={() => { const id = wtDelete.cardId; setWtDelete(undefined); if (worktree === id) { setGraph(undefined); setWorktree(null) } else void load(); window.dispatchEvent(new Event(gitChangedEvent)) }} />}
     {folderMenu && <GitMenu x={folderMenu.x} y={folderMenu.y} title={folderMenu.folder} label={t.folderActions(folderMenu.folder)} items={[{ key: 'delete-folder', label: t.deleteAllBranches(folderMenu.names.length), danger: true }]} run={() => { const current = folderMenu; setFolderMenu(undefined); setAsk({ kind: 'delete-folder', name: current.folder, names: current.names }) }} close={() => setFolderMenu(undefined)} />}

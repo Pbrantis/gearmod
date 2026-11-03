@@ -6,7 +6,7 @@ import { createProjectItem, listProjectDirectory, readProjectFile, resolveProjec
 
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
-const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-file-')); dirs.push(dir); return dir }
+const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-file-')); dirs.push(dir); return dir }
 
 describe('readProjectFile', () => {
   it('resolve referências relativas e pastas do projeto, sem adivinhar nomes ambíguos ou sair das raízes', async () => {

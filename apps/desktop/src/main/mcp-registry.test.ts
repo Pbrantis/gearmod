@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { McpServerInput } from '@agentboard/contracts'
+import type { McpServerInput } from '@gearmod/contracts'
 import { AppDatabase } from './database'
 import { ProjectRepository, GitService } from './projects'
 import { McpRegistry, claudeMcpServers, codexMcpServers, geminiMcpServers, mcpPresets } from './mcp-registry'
@@ -12,7 +12,7 @@ afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await 
 const storage = { isEncryptionAvailable: () => true, encryptString: (value: string) => Buffer.from(value, 'utf8'), decryptString: (value: Buffer) => value.toString('utf8') }
 
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-mcp-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); opened.push(database)
   await mkdir(join(root, 'a')); await mkdir(join(root, 'b'))
   const projects = new ProjectRepository(database, new GitService())
@@ -67,9 +67,9 @@ describe('cadastro de servidores MCP', () => {
     expect((await registry.list(two)).every((item) => item.scope === 'global')).toBe(true)
   })
 
-  it('valida nome, comando, URL e o nome reservado do AgentBoard', async () => {
+  it('valida nome, comando, URL e o nome reservado do GearMod', async () => {
     const { registry } = await setup()
-    await expect(registry.save(stdio({ name: 'agentboard' }))).rejects.toThrow(/reservado/)
+    await expect(registry.save(stdio({ name: 'gearmod' }))).rejects.toThrow(/reservado/)
     await expect(registry.save(stdio({ name: 'a b' }))).rejects.toThrow(/Nome inválido/)
     await expect(registry.save(stdio({ command: ' ' }))).rejects.toThrow(/comando/)
     await expect(registry.save(stdio({ transport: 'http', url: 'ftp://x' }))).rejects.toThrow(/URL/)

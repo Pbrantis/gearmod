@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { GitWorktreeInfo } from '@agentboard/contracts'
+import type { GitWorktreeInfo } from '@gearmod/contracts'
 import { Checkbox } from './Checkbox'
 import { ConfirmDialog } from './ConfirmDialog'
 import { plainError } from './NoticeDialog'
@@ -16,7 +16,7 @@ export function WorktreeDeleteDialog({ projectId, cardId, sourceId, close, done 
   const [info, setInfo] = useState<GitWorktreeInfo>(), [deleteBranch, setDeleteBranch] = useState<boolean>(), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   useEffect(() => {
     let alive = true
-    void window.agentboard.invoke('git:worktree-info', { projectId, cardId, sourceId }).then((value) => { if (!alive) return; setInfo(value) }, (reason) => { if (alive) { toast.error(t.failed, plainError(reason)); close() } })
+    void window.gearmod.invoke('git:worktree-info', { projectId, cardId, sourceId }).then((value) => { if (!alive) return; setInfo(value) }, (reason) => { if (alive) { toast.error(t.failed, plainError(reason)); close() } })
     return () => { alive = false }
   }, [projectId, cardId, sourceId])
   if (!info) return null
@@ -27,7 +27,7 @@ export function WorktreeDeleteDialog({ projectId, cardId, sourceId, close, done 
   const confirm = async (): Promise<void> => {
     setBusy(true); setError('')
     try {
-      const out = await window.agentboard.invoke('git:worktree-delete', { projectId, cardId, sourceId, deleteBranch: withBranch })
+      const out = await window.gearmod.invoke('git:worktree-delete', { projectId, cardId, sourceId, deleteBranch: withBranch })
       if (out.keptBranches.length) toast.warning(t.done, t.keptBranches(out.keptBranches)); else toast.success(t.done, out.output)
       done()
     } catch (reason) { setError(plainError(reason)); setBusy(false) }

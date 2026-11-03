@@ -12,7 +12,7 @@ const exec = promisify(execFile), roots: string[] = [], opened: AppDatabase[] = 
 afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 
 async function folderWithoutGit(): Promise<{ folder: string; manager: GitManager; projectId: string; sourceId: string; database: AppDatabase }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-gitsetup-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-gitsetup-')); roots.push(root)
   const folder = join(root, 'projeto'); await mkdir(folder); await writeFile(join(folder, 'notas.txt'), 'não apague\n')
   const database = new AppDatabase(join(root, 'data', 'db.sqlite'), '0.1.0'); await database.open(); opened.push(database)
   const project = await new ProjectRepository(database, new GitService()).create({ localPath: folder })

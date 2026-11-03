@@ -9,7 +9,7 @@ import { SettingsRepository } from './settings'
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 async function open(): Promise<{ root: string; database: AppDatabase }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-settings-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-settings-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
   return { root, database }
 }

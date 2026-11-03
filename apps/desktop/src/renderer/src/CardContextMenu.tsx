@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { Card } from '@agentboard/contracts'
+import type { Card } from '@gearmod/contracts'
 import { BranchIcon, ChatIcon, EyeIcon, TrashIcon } from './icons'
 import { useEscape } from './useEscape'
 import { useT } from './i18n'

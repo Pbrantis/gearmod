@@ -11,7 +11,7 @@ import { supportVocabulary, VoiceService } from './voice'
 const roots: string[] = []
 const servers: Server[] = []
 afterEach(async () => { servers.splice(0).forEach((server) => server.close()); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
-const tmp = async (): Promise<string> => { const root = await mkdtemp(join(tmpdir(), 'agentboard-voice-')); roots.push(root); return root }
+const tmp = async (): Promise<string> => { const root = await mkdtemp(join(tmpdir(), 'gearmod-voice-')); roots.push(root); return root }
 async function serve(body: Buffer, status = 200): Promise<string> {
   const server = createServer((_request, response) => { response.writeHead(status, { 'content-length': body.length }); response.end(body) })
   servers.push(server); await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))

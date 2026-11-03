@@ -11,7 +11,7 @@ describe('gerador SQL de tabela', () => {
   it('ordena pelo valor da coluna, não pelo texto da saída (id 2 antes de 10)', () => {
     const result = buildTableQuery(table, { ...request, order: [{ column: 1, dir: 'desc' }] })
     // O apelido da projeção não pode ser o nome da coluna: o ORDER BY usaria o texto convertido.
-    expect(result.text).toContain('"id"::text AS "__agentboard_1"')
+    expect(result.text).toContain('"id"::text AS "__gearmod_1"')
     expect(result.text).not.toMatch(/AS "id"/)
     expect(result.text).toContain('ORDER BY "id" DESC')
   })

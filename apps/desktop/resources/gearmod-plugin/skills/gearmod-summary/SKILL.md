@@ -1,6 +1,6 @@
 ---
-name: agentboard-summary
-description: Writes the Summary document of an AgentBoard card. Use when planning ends, when pausing and when finishing an execution, to say in a few lines what the card is, where it stands, task progress and the next step.
+name: gearmod-summary
+description: Writes the Summary document of an GearMod card. Use when planning ends, when pausing and when finishing an execution, to say in a few lines what the card is, where it stands, task progress and the next step.
 ---
 
 # Document: Summary
@@ -23,4 +23,4 @@ Write everything you produce for the user (labels, status, text) in the language
 
 ## Delivery
 
-Send with `tipo` = `resumo` (the `agentboard_write_document` tool or markers, as in `agentboard-planning`).
+Send with `tipo` = `resumo` (the `gearmod_write_document` tool or markers, as in `gearmod-planning`).

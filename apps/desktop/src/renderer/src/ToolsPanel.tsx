@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { ToolsStatus, WorkflowConfig } from '@agentboard/contracts'
+import type { ToolsStatus, WorkflowConfig } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { Select } from './Select'
 import { PlaywrightSection } from './PlaywrightSection'
@@ -12,7 +12,7 @@ import { useT } from './i18n'
 const pendingByProject = new Map<string, boolean>()
 const pendingListeners = new Set<(projectId: string, pending: boolean) => void>()
 const pendingChecks = new Map<string, Promise<void>>()
-const statusKey = (projectId: string): string => `agentboard.tools-status.${projectId}`
+const statusKey = (projectId: string): string => `gearmod.tools-status.${projectId}`
 const cachedStatus = (projectId: string): ToolsStatus | undefined => {
   try { const raw = localStorage.getItem(statusKey(projectId)); return raw ? JSON.parse(raw) as ToolsStatus : undefined } catch { return undefined }
 }
@@ -50,11 +50,11 @@ export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; o
   const [status, setStatus] = useState<ToolsStatus | undefined>(() => cachedStatus(projectId)), [error, setError] = useState(''), [checking, setChecking] = useState(false), [config, setConfig] = useState<WorkflowConfig>()
   const [specRepo, setSpecRepo] = useState(''), [copied, setCopied] = useState(''), latest = useLatestVersions()
   const refresh = useCallback(async (): Promise<void> => {
-    try { const next = await window.agentboard.invoke('tools:status', { projectId }); saveStatus(projectId, next); setStatus(next); setError(''); setSpecRepo((current) => next.repos.some((repo) => repo.sourceId === current) ? current : next.repos.find((repo) => repo.specKit)?.sourceId ?? next.repos[0]?.sourceId ?? '') } catch (reason) { setError(plainError(reason)) }
+    try { const next = await window.gearmod.invoke('tools:status', { projectId }); saveStatus(projectId, next); setStatus(next); setError(''); setSpecRepo((current) => next.repos.some((repo) => repo.sourceId === current) ? current : next.repos.find((repo) => repo.specKit)?.sourceId ?? next.repos[0]?.sourceId ?? '') } catch (reason) { setError(plainError(reason)) }
   }, [projectId])
-  useEffect(() => { const saved = cachedStatus(projectId); setStatus(saved); if (saved) setSpecRepo((current) => saved.repos.some((repo) => repo.sourceId === current) ? current : saved.repos.find((repo) => repo.specKit)?.sourceId ?? saved.repos[0]?.sourceId ?? ''); void window.agentboard.invoke('workflow:get', { projectId }).then((state) => setConfig(state.config)).catch(() => undefined) }, [projectId])
+  useEffect(() => { const saved = cachedStatus(projectId); setStatus(saved); if (saved) setSpecRepo((current) => saved.repos.some((repo) => repo.sourceId === current) ? current : saved.repos.find((repo) => repo.specKit)?.sourceId ?? saved.repos[0]?.sourceId ?? ''); void window.gearmod.invoke('workflow:get', { projectId }).then((state) => setConfig(state.config)).catch(() => undefined) }, [projectId])
   const verify = async (): Promise<void> => { setChecking(true); await Promise.all([refresh(), loadLatest(true).catch(() => undefined)]); setChecking(false) }
-  const togglePlaywright = (value: boolean): void => { if (!config) return; const next = { ...config, playwrightCli: value }; setConfig(next); void window.agentboard.invoke('workflow:set', { projectId, config: next }).then((state) => setConfig(state.config)).catch((reason) => setError(plainError(reason))) }
+  const togglePlaywright = (value: boolean): void => { if (!config) return; const next = { ...config, playwrightCli: value }; setConfig(next); void window.gearmod.invoke('workflow:set', { projectId, config: next }).then((state) => setConfig(state.config)).catch((reason) => setError(plainError(reason))) }
   const folder = (id: string): string => status?.repos.find((repo) => repo.sourceId === id)?.path ?? ''
   const run = async (command: string, id: string): Promise<void> => { const path = folder(id); if (!path) return; setError(''); if (await terminal.runIn({ projectId, cardId: null, path }, command)) openedTerminal(); else setError(tt.cannotOpenTerminal) }
   const copy = (command: string): void => { void navigator.clipboard.writeText(command).then(() => { setCopied(command); window.setTimeout(() => setCopied(''), 1400) }).catch((reason: unknown) => toast.error(tt.cannotCopy, plainError(reason))) }

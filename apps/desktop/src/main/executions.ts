@@ -1,4 +1,4 @@
-import type { AgentConfig, Run } from '@agentboard/contracts'
+import type { AgentConfig, Run } from '@gearmod/contracts'
 import type { AgentConfigRepository } from './agent-config'
 import type { ConversationRepository } from './conversations'
 import type { AgentOrchestrator } from './orchestrator'
@@ -7,11 +7,11 @@ import type { CardHistoryService } from './history'
 import { specKitCommand, specKitGeminiMessage, specKitProvider, type SpecKitRuntime } from './speckit'
 import { tm } from './i18n'
 
-// O passo a passo vive nas skills do plugin (agentboard-implement, agentboard-test, agentboard-small): o prompt só aponta para a skill.
+// O passo a passo vive nas skills do plugin (gearmod-implement, gearmod-test, gearmod-small): o prompt só aponta para a skill.
 const steps = {
-  execution: { skill: 'agentboard-implement', start: 'implement this card', resume: 'continue the implementation where it left off' },
-  test: { skill: 'agentboard-test', start: 'test this card', resume: 'continue the test where it left off' },
-  short: { skill: 'agentboard-small', start: 'do this card in the short workflow from start to finish', resume: 'continue the short-workflow card where it left off' }
+  execution: { skill: 'gearmod-implement', start: 'implement this card', resume: 'continue the implementation where it left off' },
+  test: { skill: 'gearmod-test', start: 'test this card', resume: 'continue the test where it left off' },
+  short: { skill: 'gearmod-small', start: 'do this card in the short workflow from start to finish', resume: 'continue the short-workflow card where it left off' }
 } as const
 const skillPrompt = (what: string, skill: string): string => `Use the ${skill} skill to ${what}.`
 const skillNotice = (skill: string, extra = ''): string => `▶ Usando a skill ${skill}${extra}`

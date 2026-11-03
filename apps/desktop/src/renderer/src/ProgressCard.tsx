@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { CardChecklist } from '@agentboard/contracts'
-import { checklistKey } from '@agentboard/contracts'
+import type { CardChecklist } from '@gearmod/contracts'
+import { checklistKey } from '@gearmod/contracts'
 import { InlineMarkdown } from './markdown'
 import { checklistEvent, toggleChecklist } from './checklistToggle'
 import { MarkBadges } from './MarkBadges'
@@ -40,8 +40,8 @@ export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'ex
   const [source, setSource] = useState<string>(), [open, setOpen] = useState(true), [toggled, setToggled] = useState<Record<string, boolean>>({}), [marks, setMarks] = useState<CardChecklist['marks']>({}), [problem, setProblem] = useState('')
   const load = useCallback(async () => {
     try {
-      if (purpose === 'test') { const checklist = await window.agentboard.invoke('cards:checklist', { cardId }); setSource(checklist.contentMd); setMarks(checklist.marks) }
-      else setSource((await window.agentboard.invoke('cards:documents', { cardId })).tasks.contentMd)
+      if (purpose === 'test') { const checklist = await window.gearmod.invoke('cards:checklist', { cardId }); setSource(checklist.contentMd); setMarks(checklist.marks) }
+      else setSource((await window.gearmod.invoke('cards:documents', { cardId })).tasks.contentMd)
     } catch { /* painel é informativo */ }
   }, [cardId, purpose])
   useEffect(() => { const received = (event: Event): void => { const next = (event as CustomEvent<CardChecklist>).detail; if (next.cardId === cardId && purpose === 'test') { setSource(next.contentMd); setMarks(next.marks) } }; window.addEventListener(checklistEvent, received); return () => window.removeEventListener(checklistEvent, received) }, [cardId, purpose])
@@ -50,7 +50,7 @@ export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'ex
   const flip = (line: number, text: string, checked: boolean): void => { setProblem(''); void toggleChecklist(cardId, line, text, checked).catch((reason: unknown) => { setProblem(plainError(reason)); void load() }) }
   const by = (text: string, done: boolean): React.ReactNode => (interactive ? <MarkBadges mark={marks[checklistKey(text)]} checked={done} /> : null)
   useEffect(() => { void load() }, [load])
-  useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType === 'agentboard/card-updated' && event.payload.cardId === cardId) void load() }), [cardId, load])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/card-updated' && event.payload.cardId === cardId) void load() }), [cardId, load])
   if (source === undefined) return null
   const tasks = parseTasks(source), done = tasks.filter((task) => task.done).length, title = purpose === 'test' ? t.progress.testChecklist : t.progress.tasks
   if (!tasks.length && purpose === 'execution') return null

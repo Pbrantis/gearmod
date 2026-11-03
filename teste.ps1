@@ -3,14 +3,14 @@
 #      .\teste.ps1 -CopiarDados    antes de abrir, copia os dados da homologada para o perfil de teste (sobrescreve o teste)
 param([switch]$CopiarDados)
 $ErrorActionPreference = 'Stop'
-$exe = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked\AgentBoard.exe'
+$exe = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked\GearMod.exe'
 if (-not (Test-Path $exe)) { throw "Build nao encontrado: $exe (rode build.ps1)" }
 
-$teste = Join-Path $env:APPDATA 'AgentBoard-teste'
+$teste = Join-Path $env:APPDATA 'GearMod-teste'
 if ($CopiarDados) {
-  $origem = Join-Path $env:APPDATA 'AgentBoard\data'
+  $origem = Join-Path $env:APPDATA 'GearMod\data'
   if (-not (Test-Path $origem)) { throw "Dados da homologada nao encontrados: $origem" }
-  $ativo = Get-Process -Name AgentBoard -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith((Split-Path $exe), [StringComparison]::OrdinalIgnoreCase) }
+  $ativo = Get-Process -Name GearMod -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith((Split-Path $exe), [StringComparison]::OrdinalIgnoreCase) }
   if ($ativo) { throw 'A versao de teste esta aberta; feche-a antes de copiar os dados.' }
   Remove-Item (Join-Path $teste 'data') -Recurse -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Force $teste | Out-Null
@@ -18,6 +18,6 @@ if ($CopiarDados) {
   Write-Host 'Dados da homologada copiados para o perfil de teste.'
 }
 
-$env:AGENTBOARD_PROFILE = 'teste'
+$env:GEARMOD_PROFILE = 'teste'
 Start-Process -FilePath $exe
 Write-Host "Versao de teste aberta (dados em $teste)."

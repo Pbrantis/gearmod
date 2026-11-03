@@ -1,4 +1,4 @@
-import { appSettingsSchema, type AppSettings } from '@agentboard/contracts'
+import { appSettingsSchema, type AppSettings } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 
 export const languageFromLocale = (locale: string): AppSettings['idioma'] => (locale.toLowerCase().startsWith('pt') ? 'pt-BR' : 'en')

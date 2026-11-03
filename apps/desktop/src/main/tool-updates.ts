@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { toolKeys, type ToolVersions } from '@agentboard/contracts'
+import { toolKeys, type ToolVersions } from '@gearmod/contracts'
 import { tm } from './i18n'
 
 type Key = typeof toolKeys[number]
@@ -12,7 +12,7 @@ const sources: Record<Key, { kind: 'npm'; name: string } | { kind: 'github'; rep
 const day = 24 * 60 * 60 * 1000
 export type FetchJson = (url: string, timeoutMs: number) => Promise<unknown>
 const nativeFetch: FetchJson = async (url, timeoutMs) => {
-  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: 'application/json', 'user-agent': 'AgentBoard' } })
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), headers: { accept: 'application/json', 'user-agent': 'GearMod' } })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   return response.json()
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import type { Project, SddConfig, IpcOutput } from '@agentboard/contracts'
+import type { Project, SddConfig, IpcOutput } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { Select } from './Select'
 import { ConstitutionPanel } from './ConstitutionPanel'
@@ -17,16 +17,16 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
   const [editRoot, setEditRoot] = useState(false), [editConstitution, setEditConstitution] = useState(false)
   const sources = project.sources.filter((source) => source.isGitRepository)
   const source = sources.find((item) => item.id === config?.sourceId) ?? sources[0]
-  useEffect(() => { void window.agentboard.invoke('sdd:config-get', { projectId: project.id }).then(setConfig).catch((e) => setMessage(plainError(e))) }, [project.id])
-  useEffect(() => { void window.agentboard.invoke('projects:list', undefined).then((items) => { const current = items.find((item) => item.id === project.id); if (current) setBranch(current.baseBranch) }).catch((e) => setMessage(plainError(e))) }, [project.id])
-  useEffect(() => { if (!source) { setBranches([]); return }; void window.agentboard.invoke('projects:branches', { localPath: source.localPath }).then(setBranches).catch((e) => setMessage(plainError(e))) }, [source?.id, source?.localPath])
+  useEffect(() => { void window.gearmod.invoke('sdd:config-get', { projectId: project.id }).then(setConfig).catch((e) => setMessage(plainError(e))) }, [project.id])
+  useEffect(() => { void window.gearmod.invoke('projects:list', undefined).then((items) => { const current = items.find((item) => item.id === project.id); if (current) setBranch(current.baseBranch) }).catch((e) => setMessage(plainError(e))) }, [project.id])
+  useEffect(() => { if (!source) { setBranches([]); return }; void window.gearmod.invoke('projects:branches', { localPath: source.localPath }).then(setBranches).catch((e) => setMessage(plainError(e))) }, [source?.id, source?.localPath])
   const save = async (): Promise<void> => {
     if (!config || !source) return
     setBusy(true); setMessage(''); setPreview(undefined)
     try {
       // Validate the branch before persisting the location, so a typo cannot silently become the base.
-      await window.agentboard.invoke('projects:set-base-branch', { projectId: project.id, sourceId: source.id, branch })
-      setConfig(await window.agentboard.invoke('sdd:config-set', { projectId: project.id, config }))
+      await window.gearmod.invoke('projects:set-base-branch', { projectId: project.id, sourceId: source.id, branch })
+      setConfig(await window.gearmod.invoke('sdd:config-set', { projectId: project.id, config }))
       setMessage(t.saved)
     } catch (e) { setMessage(plainError(e)) } finally { setBusy(false) }
   }
@@ -54,7 +54,7 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
   const constitutionFolder = /\/constitution\.md$/i.test(slash(constitutionFile)) ? slash(constitutionFile).replace(/\/constitution\.md$/i, '') : constitutionFile
   const chooseFolder = async (kind: 'root' | 'constitution'): Promise<void> => {
     try {
-      const path = await window.agentboard.invoke('projects:choose-directory', { projectId: project.id })
+      const path = await window.gearmod.invoke('projects:choose-directory', { projectId: project.id })
       if (!path) return
       const relative = relativeToSource(path)
       if (kind === 'root') set({ root: relative })
@@ -68,19 +68,19 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
       root: '',
       constitution: {
         ...config.constitution,
-        [method]: isSpecKit ? '.specify/memory/constitution.md' : '.agentboard/constitution.md'
+        [method]: isSpecKit ? '.specify/memory/constitution.md' : '.gearmod/constitution.md'
       },
       ...(isSpecKit ? { featuresDir: 'specs' } : {})
     })
-    setMessage(isSpecKit ? t.specKitSelected : t.agentBoardSelected)
+    setMessage(isSpecKit ? t.specKitSelected : t.gearModSelected)
   }
-  return <section className="cx-wfcard"><h4 className="cx-labelrow">{t.title}<button type="button" className="cx-tiny" disabled={busy} onClick={() => { setMessage(''); void window.agentboard.invoke('sdd:detect-constitutions', { projectId: project.id }).then(setPreview).catch((e) => setMessage(plainError(e))) }}>{t.detect}</button></h4>
+  return <section className="cx-wfcard"><h4 className="cx-labelrow">{t.title}<button type="button" className="cx-tiny" disabled={busy} onClick={() => { setMessage(''); void window.gearmod.invoke('sdd:detect-constitutions', { projectId: project.id }).then(setPreview).catch((e) => setMessage(plainError(e))) }}>{t.detect}</button></h4>
     <p className="cx-note">{t.note}</p>
     {!sources.length ? <p className="error">{t.addGitRepo}</p> : <div className="stack">
       <div className="f"><span>{t.repository}</span><Select label={t.sddRepository} value={config.sourceId ?? ''} options={[{ value: '', label: t.firstGitRepo }, ...sources.map((item) => ({ value: item.id, label: item.name }))]} onChange={(value) => set({ sourceId: value || null })} /></div>
       <div className="f"><span>{t.projectBaseBranch}</span><Select label={t.projectBaseBranch} value={branch} options={[...(!branches.includes(branch) && branch ? [{ value: branch, label: t.notFound(branch) }] : []), ...branches.map((name) => ({ value: name, label: name }))]} onChange={setBranch} /></div>
       <div className="f"><span>{t.sddFolder}</span>{!editRoot ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{config.root ? t.chosenFolder : t.repoRoot}</b><code>{absolutePath(config.root)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditRoot(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={config.root} onChange={(event) => set({ root: event.target.value })} placeholder={t.repoRoot} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('root')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditRoot(false)}>{t.done}</button></div>}</div>
-      <div className="f"><span className="cx-labelrow">{t.constitutionPath(config.method === 'native' ? t.methodNames.native : t.methodNames.speckit)}<button type="button" className="cx-tiny" disabled={busy} onClick={() => chooseConstitutionSource(config.method === 'native' ? 'speckit' : 'native')}>{config.method === 'native' ? t.useSpecKitPath : t.useAgentBoardPath}</button></span>{!editConstitution ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{t.chosenFolder}</b><code>{absolutePath(constitutionFolder)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditConstitution(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={constitutionFolder} onChange={(event) => set({ constitution: { ...config.constitution, [config.method]: [event.target.value, 'constitution.md'].filter(Boolean).join('/') } })} placeholder={config.method === 'native' ? '.agentboard' : '.specify/memory'} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('constitution')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditConstitution(false)}>{t.done}</button></div>}</div>
+      <div className="f"><span className="cx-labelrow">{t.constitutionPath(config.method === 'native' ? t.methodNames.native : t.methodNames.speckit)}<button type="button" className="cx-tiny" disabled={busy} onClick={() => chooseConstitutionSource(config.method === 'native' ? 'speckit' : 'native')}>{config.method === 'native' ? t.useSpecKitPath : t.useGearModPath}</button></span>{!editConstitution ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{t.chosenFolder}</b><code>{absolutePath(constitutionFolder)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditConstitution(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={constitutionFolder} onChange={(event) => set({ constitution: { ...config.constitution, [config.method]: [event.target.value, 'constitution.md'].filter(Boolean).join('/') } })} placeholder={config.method === 'native' ? '.gearmod' : '.specify/memory'} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('constitution')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditConstitution(false)}>{t.done}</button></div>}</div>
       <section className="cx-wfcard"><span className="sectitle">{t.constitution}</span><ConstitutionPanel projectId={project.id} openChat={openConstitutionChat} onOpenReference={onOpenReference} /></section>
     </div>}
     {message && <p role="status">{message}</p>}

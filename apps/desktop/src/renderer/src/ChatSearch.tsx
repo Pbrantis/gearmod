@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatMessage } from '@agentboard/contracts'
+import type { ChatMessage } from '@gearmod/contracts'
 import { useFitInView } from './useFitInView'
 import { useT } from './i18n'
 

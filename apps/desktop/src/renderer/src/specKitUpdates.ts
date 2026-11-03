@@ -1,7 +1,7 @@
-import { isOutdated } from '@agentboard/contracts'
+import { isOutdated } from '@gearmod/contracts'
 
 // Release consultada em 29/10/2026. Este limite de atualização não é uma
-// afirmação de que a integração nativa do AgentBoard já foi validada.
+// afirmação de que a integração nativa do GearMod já foi validada.
 export const specKitUpdateCeiling = '1.2.5'
 export const specKitInstallCommand = `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v${specKitUpdateCeiling}`
 

@@ -13,7 +13,7 @@ const git = (dir: string, ...args: string[]): Promise<{ stdout: string; stderr: 
 
 describe('localDirty', () => {
   it('detecta arquivo modificado no checkout aberto e não aponta o que não mudou', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-dirty-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-dirty-')); roots.push(root)
     const dir = join(root, 'repo')
     await exec('git', ['init', '-b', 'main', dir])
     await git(dir, 'config', 'user.email', 't@t.invalid'); await git(dir, 'config', 'user.name', 'T')
@@ -26,7 +26,7 @@ describe('localDirty', () => {
   })
 
   it('nunca lança: pasta sem repositório Git devolve false', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-dirty-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-dirty-')); roots.push(root)
     expect(await localDirty(nativeGit, root, 'qualquer.md')).toBe(false)
   })
 })

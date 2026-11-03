@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Note } from '@agentboard/contracts'
+import type { Note } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 
 export class NoteRepository {

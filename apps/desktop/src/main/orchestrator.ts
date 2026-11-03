@@ -1,5 +1,5 @@
 import { AgentPermissions } from './agent-permissions'
-import type { AgentPurpose, ChatPurpose, Effort, PermissionMode, Run } from '@agentboard/contracts'
+import type { AgentPurpose, ChatPurpose, Effort, PermissionMode, Run } from '@gearmod/contracts'
 import type { AgentAdapter, AgentEvent } from './adapters'
 import type { ConversationRepository } from './conversations'
 import type { WorktreeService } from './worktrees'
@@ -81,7 +81,7 @@ export class AgentOrchestrator {
     const full = this.active >= this.limit()
     this.queue.push({ run, ...input }); this.pump()
     // Pedido do usuário que não coube: ele fica na fila e a tela pergunta se quer rodar mesmo assim ou mudar o limite. Retomadas automáticas esperam em silêncio.
-    if (full && !input.automatic) this.emit({ runId: run.id, eventType: 'agentboard/run-queued', payload: { chatId: input.chatId, cardId: context.cardId, active: this.active, limit: this.limit() } })
+    if (full && !input.automatic) this.emit({ runId: run.id, eventType: 'gearmod/run-queued', payload: { chatId: input.chatId, cardId: context.cardId, active: this.active, limit: this.limit() } })
     return run
   }
 
@@ -144,11 +144,11 @@ export class AgentOrchestrator {
       // O agente mexeu na worktree de outro card (ex.: o usuário pediu para trabalhar lá): avisa uma vez por dono, para a tela oferecer o vínculo.
       if (context.cardId) for (const file of toolEditedFiles(event.type, event.payload)) {
         const owner = this.worktrees.foreignOwner(context.cardId, file)
-        if (owner && !offered.has(owner.cardId)) { offered.add(owner.cardId); this.emit({ runId: job.run.id, eventType: 'agentboard/worktree-foreign', payload: { cardId: context.cardId, ownerCardId: owner.cardId, ownerTitle: owner.title } }) }
+        if (owner && !offered.has(owner.cardId)) { offered.add(owner.cardId); this.emit({ runId: job.run.id, eventType: 'gearmod/worktree-foreign', payload: { cardId: context.cardId, ownerCardId: owner.cardId, ownerTitle: owner.title } }) }
       }
       if (tools.length) {
         for (const tool of tools) this.conversations.addMessage({ chatId: job.chatId, role: 'tool', body: tool.detail ? `${tool.title}\n${tool.detail}` : tool.title, status: 'complete' })
-        this.emit({ runId: job.run.id, eventType: 'agentboard/tool-activity', payload: { chatId: job.chatId } })
+        this.emit({ runId: job.run.id, eventType: 'gearmod/tool-activity', payload: { chatId: job.chatId } })
       }
     }
     try {
@@ -178,7 +178,7 @@ export class AgentOrchestrator {
       if (!sk && context.chat.purpose === 'execution' && context.cardId) { try { impl = this.speckit?.prepareImplementation(context.cardId) ?? null } catch { impl = null } }
       const runCwd = sk?.cwd ?? impl?.cwd ?? cwd, adapterPlanning = job.planning && !sk
       this.conversations.updateRun(job.run.id, 'running', null)
-      publish({ type: 'agentboard/run-started', payload: { cardId: context.cardId, chatId: job.chatId, planning: job.planning } })
+      publish({ type: 'gearmod/run-started', payload: { cardId: context.cardId, chatId: job.chatId, planning: job.planning } })
       if (free) this.conversations.setTitleIfEmpty(job.chatId, titleFromPrompt(job.prompt))
       if (constitution) this.conversations.setTitleIfEmpty(job.chatId, 'Constituição')
       const purpose = free || constitution ? null : context.chat.purpose as AgentPurpose
@@ -199,7 +199,7 @@ export class AgentOrchestrator {
       try { this.ledger?.recordRun(job.run.id, result.usage, result.status !== 'completed') } catch { /* ledger é informativo; nunca derruba a run */ }
       if (result.apiKeySource) try { this.profiles?.recordBillingHint(context.profile.id, result.apiKeySource) } catch { /* indício é informativo; só sugere na UI */ }
       if (result.text) this.conversations.addMessage({ chatId: job.chatId, role: 'assistant', body: result.text, status: result.status === 'completed' ? 'complete' : 'failed' })
-      // O chat livre pode ter virado planejamento durante o turno (ferramenta agentboard_create_card): daqui em diante vale o card novo.
+      // O chat livre pode ter virado planejamento durante o turno (ferramenta gearmod_create_card): daqui em diante vale o card novo.
       const after = free ? this.conversations.context(job.chatId) : context
       const planned = job.planning || (free && after.chat.purpose === 'planning')
       const applied = this.writeback?.finish({ runId: job.run.id, cardId: after.cardId, planning: planned, completed: result.status === 'completed', text: result.text, prompt: job.prompt, publish: (type, payload) => publish({ type, payload }) })
@@ -208,7 +208,7 @@ export class AgentOrchestrator {
       if (sk && result.status === 'completed' && after.cardId) { const next = this.speckit?.afterRun({ cardId: after.cardId, prompt: job.prompt }); if (next) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: next, status: 'complete' }) }
       if (result.status === 'failed' && !result.text && result.error) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: result.error, status: 'failed' })
       this.conversations.updateRun(job.run.id, result.status, result.error, result.turnId)
-      publish({ type: 'agentboard/run-completed', payload: { chatId: job.chatId, status: result.status, error: result.error } })
+      publish({ type: 'gearmod/run-completed', payload: { chatId: job.chatId, status: result.status, error: result.error } })
       if (after.cardId && after.chat.purpose !== 'free' && after.chat.purpose !== 'constitution' && this.harness) {
         try { (await this.harness.after({ cardId: after.cardId, runId: job.run.id, chatId: job.chatId, purpose: after.chat.purpose, status: result.status })).forEach((body) => this.conversations.addMessage({ chatId: job.chatId, role: 'system', body, status: 'failed' })) } catch { /* aviso do harness é best-effort */ }
       }
@@ -221,7 +221,7 @@ export class AgentOrchestrator {
       // Sem isto o card só ficava Pausado, sem dizer por quê (ex.: a worktree não pôde ser criada).
       if (!aborted) this.conversations.addMessage({ chatId: job.chatId, role: 'system', body: message, status: 'failed' })
       this.conversations.updateRun(job.run.id, aborted ? 'interrupted' : 'failed', message)
-      publish({ type: 'agentboard/run-completed', payload: { chatId: job.chatId, status: aborted ? 'interrupted' : 'failed', error: message } })
+      publish({ type: 'gearmod/run-completed', payload: { chatId: job.chatId, status: aborted ? 'interrupted' : 'failed', error: message } })
       // Run que termina em erro também fecha o ciclo: o harness confere o que mudou e o encadeamento entre etapas segue.
       try {
         const after = this.conversations.context(job.chatId), status = aborted ? 'interrupted' as const : 'failed' as const

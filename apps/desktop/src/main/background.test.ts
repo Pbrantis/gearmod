@@ -11,8 +11,8 @@ describe('background', () => {
   })
 
   it('shows how many agents are working in the tray tooltip', () => {
-    expect(trayTooltip(0)).toBe('AgentBoard')
-    expect(trayTooltip(1)).toBe('AgentBoard · 1 agente trabalhando')
-    expect(trayTooltip(2)).toBe('AgentBoard · 2 agentes trabalhando')
+    expect(trayTooltip(0)).toBe('GearMod')
+    expect(trayTooltip(1)).toBe('GearMod · 1 agente trabalhando')
+    expect(trayTooltip(2)).toBe('GearMod · 2 agentes trabalhando')
   })
 })

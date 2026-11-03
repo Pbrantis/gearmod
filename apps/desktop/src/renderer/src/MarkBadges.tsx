@@ -1,5 +1,5 @@
 import React from 'react'
-import type { CardChecklist } from '@agentboard/contracts'
+import type { CardChecklist } from '@gearmod/contracts'
 import { markBadges } from './checklistToggle'
 
 /** Etiquetas de um item do checklist: "agente" (o OK dele) e "você" (a sua confirmação). Item desmarcado com OK do agente mostra "OK do agente" apagado. */

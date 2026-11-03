@@ -62,13 +62,15 @@ import { onMainLocaleChange, setMainLocale, tm } from './i18n'
 import { CodeIndexService, type HostProcess } from './code-index/service'
 import { CodeIndexSettings } from './code-index/project-setting'
 
-// Perfil separado (ex.: AGENTBOARD_PROFILE=teste): outra pasta de dados e outro lock de instância única, para rodar junto da versão homologada.
-const profileName = (process.env.AGENTBOARD_PROFILE ?? '').replace(/[^\w-]/g, '')
-if (profileName) app.setPath('userData', join(app.getPath('appData'), `AgentBoard-${profileName}`))
+// Pasta de dados fixa em %APPDATA%\GearMod, sem depender do nome do pacote npm.
+// Perfil separado (ex.: GEARMOD_PROFILE=teste): outra pasta de dados e outro lock de instância única, para rodar junto da versão homologada.
+const profileName = (process.env.GEARMOD_PROFILE ?? '').replace(/[^\w-]/g, '')
+app.setName('GearMod')
+app.setPath('userData', join(app.getPath('appData'), profileName ? `GearMod-${profileName}` : 'GearMod'))
 
 const appVersion = app.getVersion()
-const dataDir = process.env.AGENTBOARD_DATA_DIR || join(app.getPath('userData'), 'data')
-const database = new AppDatabase(join(dataDir, 'agentboard.sqlite'), appVersion)
+const dataDir = process.env.GEARMOD_DATA_DIR || join(app.getPath('userData'), 'data')
+const database = new AppDatabase(join(dataDir, 'gearmod.sqlite'), appVersion)
 const backups = new BackupService(dataDir, appVersion)
 const git = new GitService()
 const profiles = new ProfileRepository(database, homedir())
@@ -81,8 +83,8 @@ const conversations = new ConversationRepository(database)
 const constitution = new ConstitutionRepository(database)
 const checklists = new ChecklistRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
-// Índice de código (grafo de símbolos) para as ferramentas agentboard_code_*: roda num processo utilitário, aberto no primeiro uso.
-const codeIndex = new CodeIndexService({ dataDir, fork: () => utilityProcess.fork(join(__dirname, 'codeIndexHost.js'), [], { serviceName: 'AgentBoard code index', stdio: 'ignore' }) as unknown as HostProcess })
+// Índice de código (grafo de símbolos) para as ferramentas gearmod_code_*: roda num processo utilitário, aberto no primeiro uso.
+const codeIndex = new CodeIndexService({ dataDir, fork: () => utilityProcess.fork(join(__dirname, 'codeIndexHost.js'), [], { serviceName: 'GearMod code index', stdio: 'ignore' }) as unknown as HostProcess })
 /** Pastas que o índice cobre: os repositórios da worktree do card, senão as fontes do projeto. Vale para os agentes e para o editor. */
 const projectCodeRoots = ({ projectId, cardId }: { projectId: string; cardId: string | null }): string[] => {
   const worktree = cardId ? worktrees.get(cardId) : null
@@ -99,7 +101,7 @@ const codeRoots = (run: { cardId: string | null; chatId: string }): string[] => 
 const codeIndexSettings = new CodeIndexSettings(database)
 const codeEnabled = (run: { cardId: string | null; chatId: string }): boolean => codeIndexSettings.enabled(runProject(run))
 const quality = new QualityService(database, worktrees)
-const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-plugin' : 'resources/agentboard-plugin')
+const pluginDir = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'gearmod-plugin' : 'resources/gearmod-plugin')
 const approvals = new ApprovalService(database)
 const policy = new PolicyEngine(database)
 const gitManager = new GitManager(database, undefined, undefined, approvals, (path) => fileActions.trashItem(path), join(dataDir, 'git-undo'))
@@ -123,7 +125,7 @@ const agentContext = new AgentContextService(board, settings, existsSync(pluginD
     return { nome: source.name, noCard: card.repoIds ? card.repoIds.includes(source.id) : source.id === sources[0]?.id, ...(member ? { pasta: member.path, estado: member.status, ...(member.error ? { erro: member.error } : {}) } : {}) }
   }) : undefined
   const playwrightCli = playwright.forCard(cardId)
-  return { ...(repositorios ? { repositorios, regraRepositorios: 'Só os repositórios com noCard=true ganham worktree. Se precisar de outro, chame agentboard_set_repositories.' } : {}), ...(playwrightCli ? { playwrightCli } : {}) }
+  return { ...(repositorios ? { repositorios, regraRepositorios: 'Só os repositórios com noCard=true ganham worktree. Se precisar de outro, chame gearmod_set_repositories.' } : {}), ...(playwrightCli ? { playwrightCli } : {}) }
 }, sddResolver)
 const agentConfigs = new AgentConfigRepository(database, board, profiles, (profileId) => listCodexModels(profiles.get(profileId)))
 const usageLedger = new UsageLedgerService(database)
@@ -131,10 +133,10 @@ const cardUsageExport = new CardUsageExport(database, board, history, sddResolve
 board.setOnDone((cardId) => { void cardUsageExport.export(cardId).catch(() => console.error('Falha ao exportar consumo do card.')) })
 const usage = new UsageService(database, profiles, (profile) => probeClaudeLimits(profile), undefined, (profile) => readCodexQuota(profile), usageLedger)
 const appIcon = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'tray' : 'resources/tray', 'app.png')
-const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'agentboard-mcp' : 'resources/agentboard-mcp', 'server.mjs')
-const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/card-updated', payload: { cardId, type: 'document' } })))
+const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'gearmod-mcp' : 'resources/gearmod-mcp', 'server.mjs')
+const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/card-updated', payload: { cardId, type: 'document' } })))
 // S05, atrás da flag (padrão off até soak, Q-05): movimento imediato do agente vira pedido pendente de aprovação.
-const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.AGENTBOARD_AGENT_MOVE_APPROVAL === '1', codeIndex, codeRoots, codeEnabled })
+const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.GEARMOD_AGENT_MOVE_APPROVAL === '1', codeIndex, codeRoots, codeEnabled })
 const writeback = new AgentWriteback(board, mcpBridge)
 const shownNotifications = new Set<Notification>()
 const notifier = new Notifier({
@@ -153,7 +155,7 @@ const notifier = new Notifier({
     if (!window || window.isDestroyed()) return
     if (window.isMinimized()) window.restore()
     window.show(); window.focus()
-    window.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/open-target', payload: target })
+    window.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/open-target', payload: target })
   }
 })
 const mcpRegistry = new McpRegistry(database, join(dataDir, 'mcp', 'secrets'), safeStorage)
@@ -161,7 +163,7 @@ const speckit = new SpecKitRuntime({ history, board: Object.assign(Object.create
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter(), gemini: new GeminiCliAdapter(nodeProcesses) }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
   // A contagem só baixa depois que a run sai da fila do orquestrador, por isso o pequeno atraso.
-  if (event.eventType.startsWith('agentboard/run-')) setTimeout(updateTray, 100)
+  if (event.eventType.startsWith('gearmod/run-')) setTimeout(updateTray, 100)
 }, worktrees, () => settings.get().execucoesSimultaneas ?? recommendedConcurrency(), agentContext, writeback, agentConfigs, usage, collab, (info) => {
   if (info.cardId) void cardUsageExport.export(info.cardId).catch(() => console.error('Falha ao exportar consumo do card.'))
   // Evento do fim da execução (métricas e relatórios de implementação/verificação na pasta de artefatos do card).
@@ -185,7 +187,7 @@ const autoResume = new AutoResumeService({
     if (item.cardId && (item.purpose === 'execution' || item.purpose === 'test')) { executions.resume(item.cardId, item.purpose); return }
     orchestrator.start({ chatId: item.chatId, prompt: 'O limite de uso voltou. Continue de onde parou.', planning: true, notice: tm().autoResume.resumingNotice, automatic: true })
   },
-  notify: (chatId, body) => { conversations.addMessage({ chatId, role: 'system', body, status: 'complete' }); pushEvent('agentboard/tool-activity', { chatId }) }
+  notify: (chatId, body) => { conversations.addMessage({ chatId, role: 'system', body, status: 'complete' }); pushEvent('gearmod/tool-activity', { chatId }) }
 })
 const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter(), gemini: new GeminiCliAdapter(nodeProcesses) }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })), usageLedger)
 collab.setStarter((action) => { orchestrator.start({ ...action, automatic: true }) })
@@ -297,15 +299,15 @@ function openPopout(target: PopoutTarget, placement: WindowPlacement, point?: { 
 }
 
 function returnFile(input: { projectId: string; cardId: string | null; path: string }): void {
-  mainWindow?.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/open-file', payload: input })
+  mainWindow?.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/open-file', payload: input })
   mainWindow?.show(); mainWindow?.focus()
 }
 const fileActions = {
   attachFile(input: { projectId: string; cardId: string | null; path: string }): void {
-    mainWindow?.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/attach-file', payload: input }); mainWindow?.show(); mainWindow?.focus()
+    mainWindow?.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/attach-file', payload: input }); mainWindow?.show(); mainWindow?.focus()
   },
   commentFile(input: { projectId: string; cardId: string | null; text: string }): void {
-    mainWindow?.webContents.send('runs:event-pushed', { runId: '', eventType: 'agentboard/comment-file', payload: input }); mainWindow?.show(); mainWindow?.focus()
+    mainWindow?.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/comment-file', payload: input }); mainWindow?.show(); mainWindow?.focus()
   },
   async openFileExternal(path: string, target: 'explorer' | 'default' | 'vscode'): Promise<void> {
     if (target === 'explorer') { shell.showItemInFolder(path); return }
@@ -390,12 +392,12 @@ function createTray(): void {
   updateTray()
 }
 
-// Uma cópia só: abrir o AgentBoard de novo (com ele escondido na bandeja) traz a janela de volta em vez de abrir outro app no mesmo banco.
+// Uma cópia só: abrir o GearMod de novo (com ele escondido na bandeja) traz a janela de volta em vez de abrir outro app no mesmo banco.
 if (!app.requestSingleInstanceLock()) app.exit(0)
 app.on('second-instance', showWindow)
 
 app.whenReady().then(async () => {
-  app.setAppUserModelId('com.agentboard.desktop')  // necessário para as notificações do Windows
+  app.setAppUserModelId('dev.gearmod.desktop')  // necessário para as notificações do Windows
   await openDatabase()
   setMainLocale(settings.get().idioma)  // só depois de abrir o banco: antes disso as configurações não podem ser lidas
   await mcpBridge.listen()
@@ -406,7 +408,7 @@ app.whenReady().then(async () => {
   autoResume.start()  // confere a cada 30 s se chegou a hora de retomar algo que parou por limite de uso
   app.on('activate', showWindow)
 }).catch((error: unknown) => {
-  console.error('AgentBoard startup failed', error)
+  console.error('GearMod startup failed', error)
   // As configurações podem não ter sido lidas (banco fechado): usa o idioma salvo se der, senão o do sistema.
   try { setMainLocale(settings.get().idioma) } catch { setMainLocale(app.getLocale().toLowerCase().startsWith('pt') ? 'pt-BR' : 'en') }
   const detail = error instanceof Error ? error.message : String(error)

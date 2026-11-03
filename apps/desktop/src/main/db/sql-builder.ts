@@ -81,7 +81,7 @@ export function buildTableQuery(table: CatalogTable, request: TableQuery, mode: 
   const projections = table.columns.map((col) => {
     const name = quote(col.name)
     // Apelido diferente do nome: senão o ORDER BY "id" ordena o texto da saída (1, 10, 100…) e não o valor. As linhas voltam por posição.
-    const alias = quote(`__agentboard_${col.attnum}`)
+    const alias = quote(`__gearmod_${col.attnum}`)
     if (col.kind === 'bytea') return `CASE WHEN ${name} IS NULL THEN NULL ELSE 'bytea(' || octet_length(${name}) || '):' || encode(substring(${name} from 1 for 32), 'hex') END AS ${alias}`
     if (col.kind === 'text' || col.kind === 'json') return `left(${name}::text, 8201) AS ${alias}`
     return `${name}::text AS ${alias}`

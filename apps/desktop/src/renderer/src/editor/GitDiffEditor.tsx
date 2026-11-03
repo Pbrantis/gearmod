@@ -18,8 +18,8 @@ export function GitDiffEditor({ sourceId, cardId, path, hash, mode = 'auto', rev
   const options = useMemo(() => ({ wrap: preferences.wrap, tabSize: preferences.tabSize, indentWithTab: preferences.indent, whitespace: preferences.whitespace, guides: preferences.guides, scrollPastEnd: preferences.beyond }), [preferences.wrap, preferences.tabSize, preferences.indent, preferences.whitespace, preferences.guides, preferences.beyond])
   useEffect(() => {
     let alive = true; setData(undefined); setError('')
-    const fetchVersions = (kind: 'unstaged' | 'staged' | 'commit'): Promise<Versions> => window.agentboard.invoke('git:file-versions', { sourceId, cardId, path, mode: kind, ...(hash ? { hash } : {}) })
-    const fallback = (versions: Versions, staged: boolean): Promise<string> => versions.binary || versions.truncated ? (hash ? window.agentboard.invoke('git:commit-diff', { sourceId, hash, path }) : window.agentboard.invoke('git:diff', { sourceId, cardId, path, staged })) : Promise.resolve('')
+    const fetchVersions = (kind: 'unstaged' | 'staged' | 'commit'): Promise<Versions> => window.gearmod.invoke('git:file-versions', { sourceId, cardId, path, mode: kind, ...(hash ? { hash } : {}) })
+    const fallback = (versions: Versions, staged: boolean): Promise<string> => versions.binary || versions.truncated ? (hash ? window.gearmod.invoke('git:commit-diff', { sourceId, hash, path }) : window.gearmod.invoke('git:diff', { sourceId, cardId, path, staged })) : Promise.resolve('')
     void (async () => {
       if (hash) { const versions = await fetchVersions('commit'); return { versions, text: await fallback(versions, false) } }
       let versions = await fetchVersions(mode === 'staged' ? 'staged' : 'unstaged'), staged = mode === 'staged'

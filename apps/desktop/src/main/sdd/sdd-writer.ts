@@ -73,7 +73,7 @@ export class SddWriter {
     const current = await currentBlobSha(this.git, targetAbs)
     if (current !== expect.blobSha) throw new SddConflict(tm().sdd.constitutionChangedSinceRead, expect.blobSha, current)
     await mkdir(dirname(targetAbs), { recursive: true })
-    const tempPath = `${targetAbs}.agentboard-tmp-${randomUUID()}`
+    const tempPath = `${targetAbs}.gearmod-tmp-${randomUUID()}`
     try {
       await writeFile(tempPath, content, 'utf8')
       await rename(tempPath, targetAbs)

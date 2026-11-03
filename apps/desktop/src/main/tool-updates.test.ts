@@ -2,12 +2,12 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { isOutdated } from '@agentboard/contracts'
+import { isOutdated } from '@gearmod/contracts'
 import { ToolUpdateService } from './tool-updates'
 
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
-const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-updates-')); dirs.push(dir); return join(dir, 'tool-versions.json') }
+const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-updates-')); dirs.push(dir); return join(dir, 'tool-versions.json') }
 const answer = (url: string): unknown => url.includes('spec-kit') ? { tag_name: 'v0.7.2' } : { version: url.includes('claude-code') ? '2.0.20' : url.includes('codex') ? '0.51.0' : url.includes('gemini-cli') ? '0.66.0' : url.includes('openspec') ? '1.5.0' : '1.55.0' }
 
 describe('isOutdated', () => {

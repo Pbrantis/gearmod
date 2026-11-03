@@ -42,9 +42,9 @@ export const tasks = {
 }
 
 // A revisão de uma skill convertida roda no processo principal, sem nenhum diálogo aberto: acompanha pelos avisos dela.
-if (typeof window !== 'undefined' && window.agentboard) {
+if (typeof window !== 'undefined' && window.gearmod) {
   const reviews = new Map<string, string>()
-  window.agentboard.onRunEvent((event) => {
+  window.gearmod.onRunEvent((event) => {
     const name = String(event.payload.name ?? '')
     if (event.eventType === 'skills/review-started') reviews.set(name, tasks.begin({ key: `skill-review:${name}`, title: tr().shell.tasks.reviewSkill(name), detail: tr().shell.tasks.reviewSkillDetail }))
     else if (event.eventType === 'skills/review-finished' && reviews.has(name)) { tasks.end(reviews.get(name)!); reviews.delete(name) }

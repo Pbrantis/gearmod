@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { cp, mkdir, readFile, readdir, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type Database from 'better-sqlite3'
-import type { BackupSummary } from '@agentboard/contracts'
+import type { BackupSummary } from '@gearmod/contracts'
 
 interface BackupManifest extends BackupSummary {
   databaseFile: string
@@ -31,7 +31,7 @@ export class BackupService {
     const target = join(this.backupRoot, id)
     const temp = `${target}.partial`
     await mkdir(temp, { recursive: false })
-    const databaseFile = 'agentboard.sqlite'
+    const databaseFile = 'gearmod.sqlite'
     try {
       await db.backup(join(temp, databaseFile))
       await cp(this.attachmentsDir, join(temp, 'attachments'), { recursive: true, force: false })

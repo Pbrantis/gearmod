@@ -45,17 +45,17 @@ export function useAttachments(target?: ContextTarget): { files: string[]; add(p
   }, [target?.projectId, target?.cardId, add])
   const remove = (path: string): void => update(ref.current.filter((item) => item !== path))
   const take = (): string[] => { const taken = ref.current; update([]); return taken }
-  const choose = async (): Promise<void> => { try { add(await window.agentboard.invoke('files:choose', undefined)) } catch (reason) { toast.error(tr().chat.attachments.attachFailed, plainError(reason)) } }
+  const choose = async (): Promise<void> => { try { add(await window.gearmod.invoke('files:choose', undefined)) } catch (reason) { toast.error(tr().chat.attachments.attachFailed, plainError(reason)) } }
   // Ctrl+V: arquivos copiados no Explorer entram pelo caminho; imagens coladas (prints) são salvas na pasta de anexos do app.
   const paste = async (files: File[]): Promise<void> => {
     const paths: string[] = []
     for (const file of files) {
       let path = ''
-      try { path = window.agentboard.getDroppedFilePath(file) } catch { /* sem caminho */ }
+      try { path = window.gearmod.getDroppedFilePath(file) } catch { /* sem caminho */ }
       if (!path) {
         try {
           const base64 = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] ?? ''); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file) })
-          path = await window.agentboard.invoke('files:save-pasted', { name: file.name || `colado.${(file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, base64 })
+          path = await window.gearmod.invoke('files:save-pasted', { name: file.name || `colado.${(file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, base64 })
         } catch { /* arquivo grande demais ou ilegível */ }
       }
       if (path) paths.push(path)
@@ -69,7 +69,7 @@ export function useAttachments(target?: ContextTarget): { files: string[]; add(p
     onDrop: (event) => {
       if (!event.dataTransfer.files.length) return
       event.preventDefault(); setDragging(false)
-      add(Array.from(event.dataTransfer.files).map((file) => window.agentboard.getDroppedFilePath(file)))
+      add(Array.from(event.dataTransfer.files).map((file) => window.gearmod.getDroppedFilePath(file)))
     }
   }
   return { files, add, remove, take, choose, dropProps, dragging }
@@ -87,7 +87,7 @@ function AttachmentCard({ path, remove }: { path: string; remove?(path: string):
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    window.agentboard.invoke('files:preview', { path }).then((url) => { if (alive) setSrc(url) }).catch(() => undefined)
+    window.gearmod.invoke('files:preview', { path }).then((url) => { if (alive) setSrc(url) }).catch(() => undefined)
     return () => { alive = false }
   }, [path])
   return <div className={`attcard tip ${src ? 'image' : 'file'}`} data-tip={path}>

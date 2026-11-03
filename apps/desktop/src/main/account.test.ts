@@ -6,7 +6,7 @@ import { accountKey, accountKeyFromProvider, readAccountEmail } from './account'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
-const folder = async (): Promise<string> => { const root = await mkdtemp(join(tmpdir(), 'agentboard-account-')); roots.push(root); await mkdir(root, { recursive: true }); return root }
+const folder = async (): Promise<string> => { const root = await mkdtemp(join(tmpdir(), 'gearmod-account-')); roots.push(root); await mkdir(root, { recursive: true }); return root }
 const jwt = (payload: object): string => `x.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.y`
 
 describe('readAccountEmail', () => {

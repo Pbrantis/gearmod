@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { complexityDimensions, type Assessment, type Card, type CardComplexity, type CardHistory, type DimensionScores, type RunMetric, type WorkflowKind } from '@agentboard/contracts'
+import { complexityDimensions, type Assessment, type Card, type CardComplexity, type CardHistory, type DimensionScores, type RunMetric, type WorkflowKind } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Select } from './Select'
@@ -46,17 +46,17 @@ export function AssessmentDialog({ card, close, changed, initialTab = 'avaliacao
   /** Onde o card está agora (coluna, execução, plano pronto), sempre lido de novo: é o que decide travar ou avisar. */
   const readStage = async (): Promise<Stage | undefined> => {
     try {
-      const board = await window.agentboard.invoke('board:get', { projectId: card.projectId }), fresh = board.cards.find((item) => item.id === card.id), column = board.columns.find((item) => item.id === fresh?.columnId)
+      const board = await window.gearmod.invoke('board:get', { projectId: card.projectId }), fresh = board.cards.find((item) => item.id === card.id), column = board.columns.find((item) => item.id === fresh?.columnId)
       const next = fresh && column ? { state: column.semanticState, run: fresh.run, hasPlan: fresh.hasPlan, planningOpen: fresh.planningOpen } : undefined
       setStage(next); return next
     } catch { return undefined }
   }
   const load = async (): Promise<void> => {
     void readStage()
-    try { const [next, runs] = await Promise.all([window.agentboard.invoke('history:get', { cardId: card.id }), window.agentboard.invoke('metrics:card', { cardId: card.id })]); setHistory(next); setMetrics(runs) } catch (reason) { setError(plainError(reason)) }
+    try { const [next, runs] = await Promise.all([window.gearmod.invoke('history:get', { cardId: card.id }), window.gearmod.invoke('metrics:card', { cardId: card.id })]); setHistory(next); setMetrics(runs) } catch (reason) { setError(plainError(reason)) }
   }
   const [specKit, setSpecKit] = useState<{ enabled: boolean; reason: string | null }>({ enabled: false, reason: t.specKitDisabled })
-  useEffect(() => { void window.agentboard.invoke('speckit:availability', { projectId: card.projectId }).then(setSpecKit).catch(() => undefined) }, [card.projectId])
+  useEffect(() => { void window.gearmod.invoke('speckit:availability', { projectId: card.projectId }).then(setSpecKit).catch(() => undefined) }, [card.projectId])
   useEffect(() => { void load() }, [card.id])
   useEscape(close)
   const warningsFor = (now: Stage): string[] => {
@@ -67,7 +67,7 @@ export function AssessmentDialog({ card, close, changed, initialTab = 'avaliacao
     if (now.hasPlan || now.planningOpen) list.push(t.flowWarnPlan)
     return list
   }
-  const choose = (workflow: WorkflowKind, method: 'native' | 'speckit' | undefined, reason?: string): Promise<void> => apply(window.agentboard.invoke('history:select-workflow', { cardId: card.id, workflow, ...(method ? { method } : {}), ...(reason ? { reason } : {}) }))
+  const choose = (workflow: WorkflowKind, method: 'native' | 'speckit' | undefined, reason?: string): Promise<void> => apply(window.gearmod.invoke('history:select-workflow', { cardId: card.id, workflow, ...(method ? { method } : {}), ...(reason ? { reason } : {}) }))
   // Mudar o fluxo nunca é barrado (menos em card concluído), mas avisa quando já há execução, plano, desenvolvimento ou teste; o que ele confirma vai para as decisões.
   const askBeforeChoosing = async (workflow: WorkflowKind, method?: 'native' | 'speckit'): Promise<void> => {
     const now = await readStage()
@@ -86,21 +86,21 @@ export function AssessmentDialog({ card, close, changed, initialTab = 'avaliacao
   }
   return <div className="overlay top" role="dialog" aria-label={t.historyLabel} onClick={close}><div className="modal cx-dialog" onClick={(event) => event.stopPropagation()}>
     <header><div><div className="eyebrow">{t.eyebrow}</div><h2>{card.title || t.untitledCard}</h2></div><button type="button" className="x" onClick={close} aria-label={common.close}>×</button></header>
-    <div className="cx-tabrow"><div className="tabs" role="tablist">{([['avaliacao', t.tabs.assessment], ['riscos', t.tabs.risks(assessments.at(-1)?.criticalRisks.length ?? 0)], ['decisoes', t.tabs.decisions(history?.decisions.length ?? 0)], ['entendimento', t.tabs.understanding], ['metricas', t.tabs.metrics], ['eventos', t.tabs.events]] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div><button type="button" className="mini secondary cx-open" onClick={() => { void window.agentboard.invoke('history:open-folder', { cardId: card.id }).catch((reason) => setError(plainError(reason))) }}>{t.openArtifacts}</button></div>
+    <div className="cx-tabrow"><div className="tabs" role="tablist">{([['avaliacao', t.tabs.assessment], ['riscos', t.tabs.risks(assessments.at(-1)?.criticalRisks.length ?? 0)], ['decisoes', t.tabs.decisions(history?.decisions.length ?? 0)], ['entendimento', t.tabs.understanding], ['metricas', t.tabs.metrics], ['eventos', t.tabs.events]] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div><button type="button" className="mini secondary cx-open" onClick={() => { void window.gearmod.invoke('history:open-folder', { cardId: card.id }).catch((reason) => setError(plainError(reason))) }}>{t.openArtifacts}</button></div>
     {error && <div className="cx-error" role="alert">{error}</div>}
     {!history ? <p className="cx-muted">{common.loading}</p> : <div className={`cx-body ${tab === 'decisoes' ? 'cx-body-decisions' : tab === 'eventos' ? 'cx-body-events' : ''}`}>
       {tab === 'avaliacao' && <div className="cx-grid">
         <aside className="cx-versions">{assessments.length ? [...assessments].reverse().map((item) => <button type="button" key={item.id} className={`cx-version ${item.id === current?.id ? 'on' : ''}`} onClick={() => { setSelected(item.id); setContesting(false) }}>
           <span className={`cx-dot ${item.level}`} /><b>v{item.version}</b><span>{item.preliminary ? '~' : ''}{item.total} {t.pts} · {tb.levelLabels[item.level]}</span><small>{tb.triggerLabels[item.trigger]} · {item.actor === 'user' ? t.you : item.model ?? item.provider ?? t.agentFallback}</small><small>{formatDate(item.createdAt)}</small>
         </button>) : <p className="cx-muted">{t.noAssessmentYet}</p>}</aside>
-        <section className="cx-detail">{contesting || !current ? <ContestForm current={current} cancel={current ? () => setContesting(false) : undefined} submit={(scores, reason) => apply(window.agentboard.invoke('history:contest', { cardId: card.id, scores, reason }).then((next) => { setSelected(undefined); setContesting(false); return next }))} />
+        <section className="cx-detail">{contesting || !current ? <ContestForm current={current} cancel={current ? () => setContesting(false) : undefined} submit={(scores, reason) => apply(window.gearmod.invoke('history:contest', { cardId: card.id, scores, reason }).then((next) => { setSelected(undefined); setContesting(false); return next }))} />
           : <AssessmentView item={current} previous={previous} latest={current.id === assessments.at(-1)?.id} history={history} specKit={specKit} seeRisks={() => { setRiskFocus(current.id); setTab('riscos') }} contest={() => setContesting(true)} locked={stage?.state === 'done'} choose={(workflow, method) => void askBeforeChoosing(workflow, method)} />}</section>
       </div>}
       {tab === 'riscos' && <CriticalRisks assessments={assessments} focus={riskFocus} />}
-      {tab === 'decisoes' && <Decisions history={history} set={(decisionId, status) => apply(window.agentboard.invoke('history:set-decision', { decisionId, status }))} add={(statement) => apply(window.agentboard.invoke('history:add-decision', { cardId: card.id, kind: 'other', statement }))} />}
+      {tab === 'decisoes' && <Decisions history={history} set={(decisionId, status) => apply(window.gearmod.invoke('history:set-decision', { decisionId, status }))} add={(statement) => apply(window.gearmod.invoke('history:add-decision', { cardId: card.id, kind: 'other', statement }))} />}
       {tab === 'entendimento' && <Understanding history={history} />}
       {tab === 'metricas' && <Metrics runs={metrics} simple={card.workflow === 'light'} />}
-      {tab === 'eventos' && <Events history={history} rebuild={async () => { try { const result = await window.agentboard.invoke('history:rebuild', { cardId: card.id }); setError(t.rebuilt(result.events, result.assessments, result.decisions)); await load(); changed() } catch (reason) { setError(plainError(reason)) } }} />}
+      {tab === 'eventos' && <Events history={history} rebuild={async () => { try { const result = await window.gearmod.invoke('history:rebuild', { cardId: card.id }); setError(t.rebuilt(result.events, result.assessments, result.decisions)); await load(); changed() } catch (reason) { setError(plainError(reason)) } }} />}
     </div>}
   </div>{pendingFlow && <ConfirmDialog eyebrow={t.flowChangeEyebrow} title={t.flowChangeTitle} text={t.flowChangeText(pendingFlow.warnings)} ok={t.flowChangeOk} cancel={() => setPendingFlow(undefined)} confirm={confirmFlow} />}</div>
 }
@@ -231,9 +231,9 @@ function Donut({ parts, center, label }: { parts: Array<{ key: string; value: nu
 
 function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): React.JSX.Element {
   const t = useT().board.assessment
-  const [view, setView] = useState<'dashboard' | 'tabela'>(() => { try { return localStorage.getItem('agentboard.metricsView') === 'tabela' ? 'tabela' : 'dashboard' } catch { return 'dashboard' } })
+  const [view, setView] = useState<'dashboard' | 'tabela'>(() => { try { return localStorage.getItem('gearmod.metricsView') === 'tabela' ? 'tabela' : 'dashboard' } catch { return 'dashboard' } })
   const [openSteps, setOpenSteps] = useState<string[]>([])
-  const choose = (value: 'dashboard' | 'tabela'): void => { setView(value); try { localStorage.setItem('agentboard.metricsView', value) } catch { /* só conveniência */ } }
+  const choose = (value: 'dashboard' | 'tabela'): void => { setView(value); try { localStorage.setItem('gearmod.metricsView', value) } catch { /* só conveniência */ } }
   if (!runs.length) return <div className="cx-empty"><b>{t.noRuns}</b><span>{t.noRunsHint}</span></div>
   const total = runs.reduce((sum, run) => ({ input: sum.input + run.input, cached: sum.cached + run.cached, output: sum.output + run.output, cost: sum.cost + (run.costUsd ?? 0), unknown: sum.unknown + (run.costUsd === null ? 1 : 0), ms: sum.ms + (run.durationMs ?? 0) }), { input: 0, cached: 0, output: 0, cost: 0, unknown: 0, ms: 0 })
   // Comparação honesta do Playwright CLI: média de tokens das execuções de teste com e sem ele (só quando há as duas).

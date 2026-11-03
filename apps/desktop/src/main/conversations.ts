@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentPurpose, BackgroundTask, CardUsage, Chat, ChatPurpose, ChatMessage, Plan, Run, RunEvent, RunMetric, TokenCount } from '@agentboard/contracts'
-import type { AgentProfile } from '@agentboard/contracts'
+import type { AgentPurpose, BackgroundTask, CardUsage, Chat, ChatPurpose, ChatMessage, Plan, Run, RunEvent, RunMetric, TokenCount } from '@gearmod/contracts'
+import type { AgentProfile } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { tm } from './i18n'
 

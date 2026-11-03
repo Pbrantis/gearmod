@@ -12,7 +12,7 @@ import { seedProfiles } from './test-helpers'
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-projects-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-projects-')); roots.push(root)
   const database = new AppDatabase(join(root, 'data.sqlite'), '0.1.0'); await database.open()
   const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
   const git = {
@@ -97,7 +97,7 @@ describe('project board', () => {
   })
 
   it('migrates MR columns to Test keeping history and adds Backlog', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-mr-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-mr-')); roots.push(root)
     const path = join(root, 'data.sqlite')
     const old = new AppDatabase(path, '0.1.0', migrations.slice(0, 5)); await old.open()
     const now = '2026-01-01T00:00:00.000Z', project = '40000000-0000-4000-8000-000000000001'
@@ -124,7 +124,7 @@ describe('project board', () => {
   })
 
   it('archives an agent that has history instead of failing, and refuses while it is running', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-profile-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-profile-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, { validate: async () => undefined, inspect: async (localPath: string) => ({ localPath, name: 'P', repositories: [] }) } as never)
@@ -151,7 +151,7 @@ describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () =>
   afterEach(async () => { while (databases.length) databases.pop()!.close(); while (roots.length) await rm(roots.pop()!, { recursive: true, force: true }) })
 
   it('nunca lê a pasta padrão do CLI, mesmo com uma sessão já logada lá na máquina de teste', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-s16-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-s16-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
     const defaultCodexHome = join(root, '.codex'), defaultClaudeHome = join(root, '.claude')
     await mkdir(defaultCodexHome, { recursive: true }); await mkdir(defaultClaudeHome, { recursive: true })
@@ -161,14 +161,14 @@ describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () =>
     const codex = profiles.create({ provider: 'codex', label: 'Codex', scope: 'x' })
     const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x' })
     expect(codex.configDir).not.toBe(defaultCodexHome); expect(claude.configDir).not.toBe(defaultClaudeHome)
-    expect(codex.configDir.startsWith(join(root, '.agentboard', 'profiles'))).toBe(true)
-    expect(claude.configDir.startsWith(join(root, '.agentboard', 'profiles'))).toBe(true)
+    expect(codex.configDir.startsWith(join(root, '.gearmod', 'profiles'))).toBe(true)
+    expect(claude.configDir.startsWith(join(root, '.gearmod', 'profiles'))).toBe(true)
     expect(existsSync(join(codex.configDir, 'auth.json'))).toBe(false)
     expect(existsSync(join(claude.configDir, 'credentials.json'))).toBe(false)
   })
 
   it('cada perfil novo ganha uma pasta isolada só dele, mesmo dois do mesmo provedor', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-s16-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-s16-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
     const profiles = new ProfileRepository(database, root)
     const first = profiles.create({ provider: 'claude', label: 'Claude 1', scope: 'x' })
@@ -176,7 +176,7 @@ describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () =>
     expect(first.configDir).not.toBe(second.configDir)
   })
   it('Gemini desativado: não cria perfil e some da lista', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-gemini-off-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-gemini-off-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root)
     expect(() => profiles.create({ provider: 'gemini', label: 'G', scope: 'x' })).toThrow(/Gemini/)

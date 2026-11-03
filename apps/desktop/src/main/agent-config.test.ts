@@ -11,7 +11,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 async function setup(lister?: (profileId: string) => Promise<never[]>) {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-cfg-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-cfg-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
   const profiles = new ProfileRepository(database, root)
   const claude = profiles.create({ provider: 'claude', label: 'Claude', scope: 'x' })

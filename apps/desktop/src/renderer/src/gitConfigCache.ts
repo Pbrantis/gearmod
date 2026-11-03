@@ -1,7 +1,7 @@
-import type { GitPolicy, GitRepo } from '@agentboard/contracts'
+import type { GitPolicy, GitRepo } from '@gearmod/contracts'
 
 /** Git do projeto já carregado: a aba Git de Configurar projeto abre na hora e atualiza por baixo dos panos. */
-export const gitConfigEvent = 'agentboard:git-changed'
+export const gitConfigEvent = 'gearmod:git-changed'
 interface Cached { policy?: GitPolicy; repos?: GitRepo[] }
 const cache = new Map<string, Cached>(), loading = new Map<string, Promise<boolean>>()
 
@@ -15,7 +15,7 @@ export const rememberGit = (projectId: string, patch: Cached): void => { cache.s
 export function refreshGit(projectId: string): Promise<boolean> {
   const running = loading.get(projectId)
   if (running) return running
-  const job = Promise.all([window.agentboard.invoke('git:detect', { projectId }), window.agentboard.invoke('git:policy-get', { projectId })])
+  const job = Promise.all([window.gearmod.invoke('git:detect', { projectId }), window.gearmod.invoke('git:policy-get', { projectId })])
     .then(([found, policy]) => { rememberGit(projectId, { repos: found.repos, policy }); return found.changed })
     .finally(() => { loading.delete(projectId) })
   loading.set(projectId, job)

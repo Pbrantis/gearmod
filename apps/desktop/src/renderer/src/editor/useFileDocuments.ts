@@ -31,7 +31,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     pending.current.add(path)
     try {
       const text = withEol(file.content, file.eol)
-      await window.agentboard.invoke('workspace:write', { projectId, cardId, path, content: text, expected: file.disk })
+      await window.gearmod.invoke('workspace:write', { projectId, cardId, path, content: text, expected: file.disk })
       setDocuments((all) => all.map((item) => item.path === path ? { ...item, saved: file.content, disk: text, error: '', transient: false } : item)); return true
     } catch (reason) { update(path, { error: plainError(reason) }); return false }
     finally { pending.current.delete(path) }
@@ -41,7 +41,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     if (existing) { if (!transient && existing.transient) update(existing.path, { transient: false }); setActive(existing.path); return existing.path }
     const id = ++loadingId.current; setLoading(true); setError('')
     try {
-      const file = await window.agentboard.invoke('workspace:read', { projectId, cardId, path })
+      const file = await window.gearmod.invoke('workspace:read', { projectId, cardId, path })
       const opened: Document = { ...fromDisk(file), preview: isMarkdown(file.path) || fileKind(file.path) === 'image', error: '', diffView: diff.current(file.path), transient }
       // Aba temporária: a anterior (se ainda não foi mexida) dá lugar à nova, na mesma posição.
       setDocuments((all) => { if (all.some((item) => item.path === file.path)) return all; const at = transient ? all.findIndex((item) => item.transient && item.content === item.saved) : -1; return at < 0 ? [...all, opened] : all.map((item, index) => index === at ? opened : item) }); if (id === loadingId.current) setActive(file.path)
@@ -50,7 +50,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
       // Caminho que o agente citou e que está fora das raízes do projeto: se o chat consegue ler, abre só para leitura.
       if (readOnlyChatId) {
         try {
-          const file = await window.agentboard.invoke('files:read', { chatId: readOnlyChatId, path })
+          const file = await window.gearmod.invoke('files:read', { chatId: readOnlyChatId, path })
           setDocuments((all) => all.some((item) => item.path === file.path) ? all : [...all, { ...fromDisk(file), preview: isMarkdown(file.path), error: '', locked: true }]); if (id === loadingId.current) setActive(file.path)
           return file.path
         } catch { /* mantém o erro original */ }
@@ -65,13 +65,13 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     const document = latest.current.find((item) => item.path === path)
     if (document && document.content !== document.saved && !(await ask({ eyebrow: tr().files.editor.documents.reloadEyebrow, title: tr().files.workspace.discardTitle, text: tr().files.editor.documents.reloadText(nameOf(path)), ok: tr().files.workspace.discard, danger: true }))) return
     setLoading(true)
-    try { const file = await window.agentboard.invoke('workspace:read', { projectId, cardId, path }); if (document) update(path, { ...fromDisk(file), error: '' }); else await open(path) } catch (reason) { setError(plainError(reason)) } finally { setLoading(false) }
+    try { const file = await window.gearmod.invoke('workspace:read', { projectId, cardId, path }); if (document) update(path, { ...fromDisk(file), error: '' }); else await open(path) } catch (reason) { setError(plainError(reason)) } finally { setLoading(false) }
   }, [projectId, cardId, update, open, ask])
   // O "antes" do diff vem do Git uma vez por arquivo aberto.
   useEffect(() => {
     if (!current?.diffView || current.versions) return
     const path = current.path; let alive = true
-    void window.agentboard.invoke('workspace:versions', { ...context, path }).then((versions) => { if (alive) update(path, { versions }) }).catch((reason) => { if (alive) update(path, { diffView: false, error: plainError(reason) }) })
+    void window.gearmod.invoke('workspace:versions', { ...context, path }).then((versions) => { if (alive) update(path, { versions }) }).catch((reason) => { if (alive) update(path, { diffView: false, error: plainError(reason) }) })
     return () => { alive = false }
   }, [current?.diffView, current?.path, Boolean(current?.versions)])
   useEffect(() => {
@@ -86,14 +86,14 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
   // Arquivos abertos são vigiados: o que o agente (ou outro programa) grava aparece aqui sem precisar recarregar.
   const watchId = useRef(crypto.randomUUID()), noticeTimers = useRef(new Map<string, number>())
   const paths = documents.filter((item) => !item.locked).map((item) => item.path).join('\n')
-  useEffect(() => { void window.agentboard.invoke('workspace:watch', { projectId, cardId, watchId: watchId.current, paths: paths ? paths.split('\n') : [] }).catch(() => undefined) }, [paths, projectId, cardId])
-  useEffect(() => () => { void window.agentboard.invoke('workspace:watch', { projectId, cardId, watchId: watchId.current, paths: [] }).catch(() => undefined) }, [projectId, cardId])
+  useEffect(() => { void window.gearmod.invoke('workspace:watch', { projectId, cardId, watchId: watchId.current, paths: paths ? paths.split('\n') : [] }).catch(() => undefined) }, [paths, projectId, cardId])
+  useEffect(() => () => { void window.gearmod.invoke('workspace:watch', { projectId, cardId, watchId: watchId.current, paths: [] }).catch(() => undefined) }, [projectId, cardId])
   const sync = useCallback(async (path: string, deleted = false): Promise<void> => {
     const file = latest.current.find((item) => item.path === path)
     if (!file || file.locked || pending.current.has(path)) return
     if (deleted) { update(path, { deleted: true }); return }
-    let read: Awaited<ReturnType<typeof window.agentboard.invoke<'workspace:read'>>>
-    try { read = await window.agentboard.invoke('workspace:read', { projectId, cardId, path }) } catch { update(path, { deleted: true }); return }
+    let read: Awaited<ReturnType<typeof window.gearmod.invoke<'workspace:read'>>>
+    try { read = await window.gearmod.invoke('workspace:read', { projectId, cardId, path }) } catch { update(path, { deleted: true }); return }
     const now = latest.current.find((item) => item.path === path)
     if (!now || pending.current.has(path) || read.truncated || read.binary) return
     const disk = fromDisk(read)
@@ -105,9 +105,9 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     } else update(path, { conflict: { content: disk.content, disk: disk.disk, eol: disk.eol }, deleted: false })
   }, [projectId, cardId, update])
   const syncAll = useCallback((): void => { for (const item of latest.current) void sync(item.path) }, [sync])
-  useEffect(() => window.agentboard.onRunEvent((event) => {
-    if (event.eventType === 'agentboard/file-changed') { const payload = event.payload as { path: string; deleted?: boolean }; const match = latest.current.find((item) => slashed(item.path) === slashed(payload.path)); if (match) void sync(match.path, Boolean(payload.deleted)) }
-    else if (event.eventType === 'agentboard/run-completed') syncAll()
+  useEffect(() => window.gearmod.onRunEvent((event) => {
+    if (event.eventType === 'gearmod/file-changed') { const payload = event.payload as { path: string; deleted?: boolean }; const match = latest.current.find((item) => slashed(item.path) === slashed(payload.path)); if (match) void sync(match.path, Boolean(payload.deleted)) }
+    else if (event.eventType === 'gearmod/run-completed') syncAll()
   }), [sync, syncAll])
   // O `fs.watch` perde eventos às vezes (no Windows, principalmente): voltar à janela confere tudo de novo.
   useEffect(() => { window.addEventListener('focus', syncAll); return () => window.removeEventListener('focus', syncAll) }, [syncAll])

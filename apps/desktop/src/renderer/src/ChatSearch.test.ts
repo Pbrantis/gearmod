@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatMessage } from '@agentboard/contracts'
+import type { ChatMessage } from '@gearmod/contracts'
 import { searchMessages, snippet, visibleText } from './ChatSearch'
 
 const message = (role: string, body: string, id = role): ChatMessage => ({ id, role, body } as unknown as ChatMessage)

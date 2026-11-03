@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { GitPolicy, GitRepo, GitRule } from '@agentboard/contracts'
+import type { GitPolicy, GitRepo, GitRule } from '@gearmod/contracts'
 import { gitIcons } from './GitPage'
 import { Select } from './Select'
 import { plainError } from './NoticeDialog'
@@ -39,7 +39,7 @@ export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.
   if (!policy || !reposLoaded) return <div className="stack">{error ? <p className="error">{error}</p> : <small className="hint">{common.loading}</small>}</div>
   if (!repos.length) return <GitEmpty projectId={projectId} done={(items) => { rememberGit(projectId, { repos: items }); setRepos(items) }} />
   const save = async (next: GitPolicy): Promise<void> => {
-    try { setError(''); setPolicy(next); rememberGit(projectId, { policy: next }); const stored = await window.agentboard.invoke('git:policy-set', { projectId, policy: next }); rememberGit(projectId, { policy: stored }); setPolicy((current) => current && current.rules.length === stored.rules.length ? current : stored); toast.success(t.ruleSaved) } catch (reason) { setError(plainError(reason)) }
+    try { setError(''); setPolicy(next); rememberGit(projectId, { policy: next }); const stored = await window.gearmod.invoke('git:policy-set', { projectId, policy: next }); rememberGit(projectId, { policy: stored }); setPolicy((current) => current && current.rules.length === stored.rules.length ? current : stored); toast.success(t.ruleSaved) } catch (reason) { setError(plainError(reason)) }
   }
   const rules = policy.rules
   const setRule = (index: number, patch: Partial<GitPolicy['rules'][number]>, persist = true): void => {

@@ -1,5 +1,5 @@
 import React from 'react'
-import { type AgentProfile } from '@agentboard/contracts'
+import { type AgentProfile } from '@gearmod/contracts'
 
 const claudePath = 'M12 1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 1 0 0-3zM11.25 4.5h1.5V7h-1.5zM6 7h12a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3zM8.5 11.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 1 0 0-3.5zM15.5 11.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 1 0 0-3.5zM1 11.5h1.5v4H1zM21.5 11.5H23v4h-1.5z'
 const codexPath = 'M12 1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 1 0 0-3zM11.25 4.5h1.5V7h-1.5zM6 7h12a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3zM8.5 11.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 1 0 0-3.5zM15.5 11.25a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 1 0 0-3.5zM1 11.5h1.5v4H1zM21.5 11.5H23v4h-1.5z'

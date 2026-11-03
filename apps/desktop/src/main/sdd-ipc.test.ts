@@ -33,11 +33,11 @@ const unavailable = {} as never
 
 describe('IPC do SDD file-first (G10)', () => {
   it('sdd:config-get/set, sdd:locate e constitution:read/write ponta a ponta, com validação do contrato', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-sddipc-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-sddipc-')); roots.push(root)
     const repo = join(root, 'repo'), data = join(root, 'data')
     await exec('git', ['init', '-b', 'main', repo])
-    await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'AgentBoard Test')
-    await mkdir(join(repo, '.agentboard'), { recursive: true }); await writeFile(join(repo, '.agentboard', 'constitution.md'), 'versão inicial')
+    await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'GearMod Test')
+    await mkdir(join(repo, '.gearmod'), { recursive: true }); await writeFile(join(repo, '.gearmod', 'constitution.md'), 'versão inicial')
     await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'inicial')
     const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
@@ -95,7 +95,7 @@ describe('IPC do SDD file-first (G10)', () => {
     expect((await ipc.invoke('constitution:read', { projectId: project.id, cardId: card.id }) as { content: string }).content).toBe('proposta aprovada')
 
     // A cópia principal não mudou: a escrita foi só na worktree do card.
-    expect((await git(repo, 'show', 'HEAD:.agentboard/constitution.md')).stdout).toBe('versão inicial')
+    expect((await git(repo, 'show', 'HEAD:.gearmod/constitution.md')).stdout).toBe('versão inicial')
 
     database.close()
   })

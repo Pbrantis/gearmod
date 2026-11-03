@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import type { AgentUsage, UsageWindow } from '@agentboard/contracts'
+import type { AgentUsage, UsageWindow } from '@gearmod/contracts'
 import { useEscape } from './useEscape'
 import { dateLocale, tr, useT } from './i18n'
 
@@ -27,15 +27,15 @@ function Ring({ window, name }: { window: UsageWindow; name: string }): React.JS
 export function UsageRings({ profileId }: { profileId?: string }): React.JSX.Element | null {
   const t = useT().chat.usageRings
   const [usage, setUsage] = useState<AgentUsage[]>([]), [open, setOpen] = useState(false)
-  const load = useCallback(async () => { try { setUsage(await window.agentboard.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
+  const load = useCallback(async () => { try { setUsage(await window.gearmod.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
   useEffect(() => { void load() }, [load, profileId])
   // O Claude só informa o limite quando roda: recarrega quando uma execução termina.
-  useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType === 'agentboard/run-completed') void load() }), [load])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/run-completed') void load() }), [load])
   const entry = usage.find((item) => item.profileId === profileId), windows = entry?.windows ?? []
   const box = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     if (!open) return
-    void window.agentboard.invoke('usage:refresh', undefined).then(setUsage).catch(() => undefined)
+    void window.gearmod.invoke('usage:refresh', undefined).then(setUsage).catch(() => undefined)
     const out = (e: MouseEvent): void => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
     document.addEventListener('mousedown', out)
     return () => document.removeEventListener('mousedown', out)

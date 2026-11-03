@@ -49,12 +49,12 @@ export function buildEnv(profile: { envPassthrough?: readonly string[] | null },
   return { env: mode === 'enforce' ? kept : { ...base }, removed }
 }
 
-/** Modo atual: `enforce` por padrão; `AGENTBOARD_ENV_POLICY_MODE=observe` volta ao ambiente completo (só para diagnóstico). */
-export function envPolicyMode(): EnvPolicyMode { return process.env.AGENTBOARD_ENV_POLICY_MODE === 'observe' ? 'observe' : 'enforce' }
+/** Modo atual: `enforce` por padrão; `GEARMOD_ENV_POLICY_MODE=observe` volta ao ambiente completo (só para diagnóstico). */
+export function envPolicyMode(): EnvPolicyMode { return process.env.GEARMOD_ENV_POLICY_MODE === 'observe' ? 'observe' : 'enforce' }
 
 /** Impuro: lê o modo do processo e, em `observe`, loga o que seria removido. Para os pontos reais de disparo de CLI. */
 export function applyEnvPolicy(profile: { envPassthrough?: readonly string[] | null }, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const mode = envPolicyMode(), { env, removed } = buildEnv(profile, base, mode)
-  if (mode === 'observe' && removed.length) console.warn(`[env-policy] observe: removeria ${removed.length} variável(is) (${removed.slice(0, 10).join(', ')}${removed.length > 10 ? '…' : ''}); nada foi removido (AGENTBOARD_ENV_POLICY_MODE=observe)`)
+  if (mode === 'observe' && removed.length) console.warn(`[env-policy] observe: removeria ${removed.length} variável(is) (${removed.slice(0, 10).join(', ')}${removed.length > 10 ? '…' : ''}); nada foi removido (GEARMOD_ENV_POLICY_MODE=observe)`)
   return env
 }

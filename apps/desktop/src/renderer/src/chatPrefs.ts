@@ -7,7 +7,7 @@ export const messageSpacings: Array<{ value: MessageSpacing; label: string; gap:
   { value: 'comfortable', get label() { return tr().chat.messageSpacing.comfortable }, gap: 22 },
   { value: 'wide', get label() { return tr().chat.messageSpacing.wide }, gap: 34 }
 ]
-const key = 'agentboard.messageSpacing'
+const key = 'gearmod.messageSpacing'
 
 export function readMessageSpacing(): MessageSpacing {
   try { const stored = localStorage.getItem(key); if (messageSpacings.some((item) => item.value === stored)) return stored as MessageSpacing } catch { /* sem armazenamento: usa o padrão */ }

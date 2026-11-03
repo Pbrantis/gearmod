@@ -2,12 +2,12 @@ export interface ChatReply { id: string; messageId?: string; quote: string; resp
 
 /** Inline context travels with the prompt, including queued messages and saved history. */
 export function withChatReplies(text: string, replies: ChatReply[]): string {
-  return [text.trim(), ...replies.map((reply) => `<agentboard-chat-reply>\n${JSON.stringify(reply)}\n</agentboard-chat-reply>`)].filter(Boolean).join('\n\n')
+  return [text.trim(), ...replies.map((reply) => `<gearmod-chat-reply>\n${JSON.stringify(reply)}\n</gearmod-chat-reply>`)].filter(Boolean).join('\n\n')
 }
 
 export function splitChatReplies(body: string): { text: string; replies: ChatReply[] } {
   const replies: ChatReply[] = []
-  const text = body.replace(/(^|\n)<agentboard-chat-reply>\n([^\n]+)\n<\/agentboard-chat-reply>(?=\n|$)/g, (block: string, leading: string, json: string) => {
+  const text = body.replace(/(^|\n)<gearmod-chat-reply>\n([^\n]+)\n<\/gearmod-chat-reply>(?=\n|$)/g, (block: string, leading: string, json: string) => {
     try {
       const value: unknown = JSON.parse(json)
       if (!value || typeof value !== 'object') return block

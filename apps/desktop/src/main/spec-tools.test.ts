@@ -14,7 +14,7 @@ afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await 
 const runner = (answers: Record<string, string>): CommandRunner => ({ run: async (command, args) => { const key = `${command} ${args.join(' ')}`; if (key in answers) return answers[key]!; throw new Error(`${command}: comando não encontrado`) } })
 
 async function setup(): Promise<{ root: string; database: AppDatabase; projectId: string; started: string; plain: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-tools-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-tools-')); roots.push(root)
   const started = join(root, 'started'), plain = join(root, 'plain')
   await mkdir(join(started, '.specify', 'memory'), { recursive: true }); await mkdir(join(started, '.claude', 'commands'), { recursive: true }); await mkdir(join(started, 'openspec'), { recursive: true }); await mkdir(plain)
   await writeFile(join(started, '.claude', 'commands', 'speckit.plan.md'), '')
@@ -58,7 +58,7 @@ describe('specKitIntegrations', () => {
 
 describe('specKitSkill', () => {
   it('exige instalação e skill não vazia para o agente e etapa solicitados', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-speckit-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-speckit-')); roots.push(root)
     const repo = join(root, 'native')
     const codex = join(repo, '.agents', 'skills', 'speckit-specify')
     const claude = join(repo, '.claude', 'skills', 'speckit-plan')

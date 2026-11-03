@@ -4,9 +4,9 @@ import { existsSync } from 'node:fs'
 import { mkdir, readdir, realpath, rm, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { withErrorCode, type GitSnapshot, type Worktree } from '@agentboard/contracts'
+import { withErrorCode, type GitSnapshot, type Worktree } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
-import { branchPrefixOf, findCardType } from '@agentboard/contracts'
+import { branchPrefixOf, findCardType } from '@gearmod/contracts'
 import { projectCardTypes } from './card-types'
 import { tm } from './i18n'
 
@@ -218,7 +218,7 @@ export class WorktreeService {
     for (const member of members) {
       const state = await directoryState(member.path)
       if (state !== 'missing') { targets.push(member); continue }
-      // A pasta foi apagada fora do AgentBoard: remove tanto o vínculo órfão do Git quanto o registro local.
+      // A pasta foi apagada fora do GearMod: remove tanto o vínculo órfão do Git quanto o registro local.
       // Falhas de permissão não entram aqui e continuam visíveis ao usuário, pois podem ser temporárias.
       await this.git.run(['-C', member.repoPath, 'worktree', 'prune']).catch(() => undefined)
       this.database.db.prepare('DELETE FROM worktree_members WHERE worktree_id = ? AND path = ?').run(worktree.id, member.path)
@@ -238,7 +238,7 @@ export class WorktreeService {
       ])
       // A raiz real da worktree acompanha cada trecho: a tela de alterações precisa dela para abrir caminhos relativos
       // corretamente quando o card usa mais de um repositório.
-      return { heading: `\n### AgentBoard root: ${member.path}\n`, status: status.stdout, diff: diff.stdout }
+      return { heading: `\n### GearMod root: ${member.path}\n`, status: status.stdout, diff: diff.stdout }
     }))
     return { worktreeId: worktree.id, status: snapshots.map((item) => `${item.heading}${item.status}`).join(''), diff: snapshots.map((item) => `${item.heading}${item.diff}`).join(''), exists: true }
   }
@@ -256,7 +256,7 @@ export class WorktreeService {
     return member ? { ref: await this.mergeBase(member), label: tm().worktrees.cardStartingPoint(member.baseRef) } : null
   }
 
-  /** Solta a branch de worktrees antigas do AgentBoard que ficaram quebradas (pasta apagada ou criação interrompida). */
+  /** Solta a branch de worktrees antigas do GearMod que ficaram quebradas (pasta apagada ou criação interrompida). */
   private async releaseStale(repoPath: string, branch: string, target: string): Promise<void> {
     await this.git.run(['-C', repoPath, 'worktree', 'prune']).catch(() => undefined)
     const list = await this.git.run(['-C', repoPath, 'worktree', 'list', '--porcelain']).catch(() => ({ stdout: '' }))

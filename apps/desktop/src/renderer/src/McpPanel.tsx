@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { McpPreset, McpServer, McpServerInput } from '@agentboard/contracts'
+import type { McpPreset, McpServer, McpServerInput } from '@gearmod/contracts'
 import { ConfirmDialog } from './ConfirmDialog'
 import { plainError } from './NoticeDialog'
 import { Select } from './Select'
@@ -25,7 +25,7 @@ const catalogs = [{ key: 'official', url: 'https://github.com/modelcontextprotoc
 /** Linha "Procurar mais: [a] [b]". Os links abrem no navegador padrão pelo canal `app:open-link` (o main só aceita http(s) e mailto). */
 export function CatalogLinks({ label, links }: { label: string; links: ReadonlyArray<{ label: string; url: string }> }): React.JSX.Element {
   const t = useT()
-  const open = (url: string): void => { void window.agentboard.invoke('app:open-link', { url }).catch((reason: unknown) => toast.error(t.shell.markdown.couldNotOpenLink, plainError(reason))) }
+  const open = (url: string): void => { void window.gearmod.invoke('app:open-link', { url }).catch((reason: unknown) => toast.error(t.shell.markdown.couldNotOpenLink, plainError(reason))) }
   return <p className="catlinks"><span>{label}</span>{links.map((link) => <button type="button" key={link.url} className="catlink tip" data-tip={link.url} onClick={() => open(link.url)}>{link.label}<span aria-hidden="true">↗</span></button>)}</p>
 }
 
@@ -33,8 +33,8 @@ export function CatalogLinks({ label, links }: { label: string; links: ReadonlyA
 export function McpPanel({ scope, projectId, available }: { scope: 'global' | 'project'; projectId?: string; available: Provider[] }): React.JSX.Element {
   const t = useT(), tm = t.settings.mcp
   const [items, setItems] = useState<McpServer[]>([]), [presets, setPresets] = useState<McpPreset[]>([]), [dialog, setDialog] = useState<{ draft: Draft; preset?: McpPreset }>(), [removing, setRemoving] = useState<McpServer>(), [error, setError] = useState(''), [busy, setBusy] = useState(false)
-  const reload = useCallback(async (): Promise<void> => { try { setItems(await window.agentboard.invoke('mcp:list', projectId ? { projectId } : {})); setError('') } catch (reason) { setError(plainError(reason)) } }, [projectId])
-  useEffect(() => { void reload(); void window.agentboard.invoke('mcp:presets', undefined).then(setPresets).catch(() => undefined) }, [reload])
+  const reload = useCallback(async (): Promise<void> => { try { setItems(await window.gearmod.invoke('mcp:list', projectId ? { projectId } : {})); setError('') } catch (reason) { setError(plainError(reason)) } }, [projectId])
+  useEffect(() => { void reload(); void window.gearmod.invoke('mcp:presets', undefined).then(setPresets).catch(() => undefined) }, [reload])
   const visible = scope === 'global' ? items.filter((item) => item.scope === 'global') : items
   // O preset genérico "remote" não é um servidor de verdade: o cadastro manual (tipo Remoto) já cobre esse caso.
   const recommended = presets.filter((item) => item.id !== 'remote' && !visible.some((server) => server.presetId === item.id))
@@ -43,7 +43,7 @@ export function McpPanel({ scope, projectId, available }: { scope: 'global' | 'p
   const save = async (draft: Draft): Promise<string | null> => {
     const input: McpServerInput = { ...(draft.id ? { id: draft.id } : {}), scope, ...(scope === 'project' ? { projectId } : {}), name: draft.name, presetId: draft.presetId, transport: draft.transport, command: draft.command, args: argsOf(draft.argsText), url: draft.url, env: draft.env.map(({ key, value }) => ({ key, value })), headers: draft.headers.map(({ key, value }) => ({ key, value })), providers: draft.providers, enabled: draft.enabled }
     setBusy(true)
-    try { await window.agentboard.invoke('mcp:save', input); setDialog(undefined); await reload(); return null } catch (reason) { return plainError(reason) } finally { setBusy(false) }
+    try { await window.gearmod.invoke('mcp:save', input); setDialog(undefined); await reload(); return null } catch (reason) { return plainError(reason) } finally { setBusy(false) }
   }
   return <div className="mcp">
     <div className="mcp-head"><div><h4>{tm.title}</h4><p className="mcp-intro">{tm.intro(scope === 'project')}</p></div>
@@ -62,12 +62,12 @@ export function McpPanel({ scope, projectId, available }: { scope: 'global' | 'p
           <span className="mcp-tags">{scope === 'project' && <em>{server.scope === 'global' ? tm.global : tm.thisProjectOnly}</em>}{server.providers.map((provider) => <em key={provider}>{providerNames[provider]}</em>)}{server.env.some((item) => !item.set) || server.headers.some((item) => !item.set) ? <em className="warn">{tm.missingValue}</em> : null}</span></div>
         <div className="mcp-actions">
           {scope === 'project' && server.scope === 'global'
-            ? <Switch className="dbsw" tip={tm.projectToggleTip} checked={!server.disabledHere} disabled={busy || !server.enabled} onChange={(value) => void run(() => window.agentboard.invoke('mcp:set-project-enabled', { projectId: projectId!, id: server.id, enabled: value }))}>{tm.inThisProject}</Switch>
-            : <Switch className="dbsw" checked={server.enabled} disabled={busy} onChange={(value) => void run(() => window.agentboard.invoke('mcp:save', { id: server.id, scope: server.scope, ...(server.projectId ? { projectId: server.projectId } : {}), name: server.name, presetId: server.presetId, transport: server.transport, command: server.command, args: server.args, url: server.url, env: server.env.map((item) => ({ key: item.key })), headers: server.headers.map((item) => ({ key: item.key })), providers: server.providers, enabled: value }))}>{tm.on}</Switch>}
+            ? <Switch className="dbsw" tip={tm.projectToggleTip} checked={!server.disabledHere} disabled={busy || !server.enabled} onChange={(value) => void run(() => window.gearmod.invoke('mcp:set-project-enabled', { projectId: projectId!, id: server.id, enabled: value }))}>{tm.inThisProject}</Switch>
+            : <Switch className="dbsw" checked={server.enabled} disabled={busy} onChange={(value) => void run(() => window.gearmod.invoke('mcp:save', { id: server.id, scope: server.scope, ...(server.projectId ? { projectId: server.projectId } : {}), name: server.name, presetId: server.presetId, transport: server.transport, command: server.command, args: server.args, url: server.url, env: server.env.map((item) => ({ key: item.key })), headers: server.headers.map((item) => ({ key: item.key })), providers: server.providers, enabled: value }))}>{tm.on}</Switch>}
           {(scope === 'global' ? server.scope === 'global' : server.scope === 'project') && <><button type="button" className="mini secondary" onClick={() => setDialog({ draft: fromServer(server), preset: presets.find((item) => item.id === server.presetId) })}>{t.common.edit}</button><button type="button" className="mini secondary" onClick={() => setRemoving(server)}>{t.common.remove}</button></>}
         </div></li>)}</ul>}</section>
     {dialog && <McpDialog initial={dialog.draft} preset={dialog.preset} available={available} busy={busy} cancel={() => setDialog(undefined)} save={save} />}
-    {removing && <ConfirmDialog eyebrow="MCP" title={tm.removeTitle(removing.name)} text={tm.removeText} ok={t.common.remove} danger cancel={() => setRemoving(undefined)} confirm={() => { const target = removing; setRemoving(undefined); void run(() => window.agentboard.invoke('mcp:delete', { id: target.id })) }} />}
+    {removing && <ConfirmDialog eyebrow="MCP" title={tm.removeTitle(removing.name)} text={tm.removeText} ok={t.common.remove} danger cancel={() => setRemoving(undefined)} confirm={() => { const target = removing; setRemoving(undefined); void run(() => window.gearmod.invoke('mcp:delete', { id: target.id })) }} />}
   </div>
 }
 

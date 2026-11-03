@@ -19,7 +19,7 @@ export class PgDriver {
   async open(config: DbConnection, password: string | null, actor: DbActor): Promise<PgSession> {
     if (actor.type !== 'user') throw new Error(tm().db.agentAccessUnavailable)
     const ssl = config.sslMode === 'disable' ? false : { rejectUnauthorized: config.sslMode === 'verify-full' }
-    const opts = { host: config.host, port: config.port, database: config.database, user: config.user, password: password ?? undefined, ssl, application_name: 'AgentBoard', connectionTimeoutMillis: 10_000, statement_timeout: 15_000, lock_timeout: 3_000, idle_in_transaction_session_timeout: 10_000, types: textTypes, ...(!config.allowWrite ? { options: '-c default_transaction_read_only=on' } : {}) }
+    const opts = { host: config.host, port: config.port, database: config.database, user: config.user, password: password ?? undefined, ssl, application_name: 'GearMod', connectionTimeoutMillis: 10_000, statement_timeout: 15_000, lock_timeout: 3_000, idle_in_transaction_session_timeout: 10_000, types: textTypes, ...(!config.allowWrite ? { options: '-c default_transaction_read_only=on' } : {}) }
     const control = new pg.Client(opts), pool = new pg.Pool({ ...opts, max: 3, idleTimeoutMillis: 600_000 })
     const session = new PgSession(control, pool, config.allowWrite)
     control.on('error', () => session.markLost()); control.on('end', () => session.markLost()); pool.on('error', () => session.markLost())

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { answersMessage, splitQuestionBlocks, type QuestionBlock } from '@agentboard/contracts'
+import { answersMessage, splitQuestionBlocks, type QuestionBlock } from '@gearmod/contracts'
 import { Markdown } from './markdown'
 import { useT } from './i18n'
 

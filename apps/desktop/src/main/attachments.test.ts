@@ -16,7 +16,7 @@ const git = { validate: async () => undefined, branches: async () => ['dev'], in
 
 describe('anexos no chat', () => {
   it('põe os caminhos no pedido, descarta os que não existem e passa a lista ao agente', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-attach-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-attach-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const profile = profiles.list()[0]!

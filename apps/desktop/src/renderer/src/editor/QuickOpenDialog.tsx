@@ -22,7 +22,7 @@ export function QuickOpen({ context, roots, recents, open, close, initialMode = 
   useEffect(() => {
     if (mode !== 'files' || !target.path) { setFound([]); return }
     let alive = true
-    const timer = window.setTimeout(() => { void window.agentboard.invoke('workspace:search', { ...context, query: target.path, fuzzy: true }).then((result) => { if (alive) { setFound(result.paths); setError('') } }).catch(() => { if (alive) setError(t.files.editor.quickOpen.searchFailed) }) }, 120)
+    const timer = window.setTimeout(() => { void window.gearmod.invoke('workspace:search', { ...context, query: target.path, fuzzy: true }).then((result) => { if (alive) { setFound(result.paths); setError('') } }).catch(() => { if (alive) setError(t.files.editor.quickOpen.searchFailed) }) }, 120)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [target.path, mode, context.projectId, context.cardId])
   // Recentes conferidos no disco (uma listagem por pasta) antes de aparecer: apagados ou renomeados somem.
@@ -66,7 +66,7 @@ export function QuickOpen({ context, roots, recents, open, close, initialMode = 
 async function existingRecents(context: { projectId: string; cardId: string | null }, recents: string[]): Promise<{ keep: string[]; gone: string[] }> {
   const split = (path: string): [string, string] => { const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')); return [path.slice(0, at), path.slice(at + 1).toLowerCase()] }
   const folders = [...new Set(recents.map((path) => split(path)[0]).filter(Boolean))]
-  const listed = new Map(await Promise.all(folders.map(async (folder) => [folder, await window.agentboard.invoke('workspace:list', { ...context, path: folder }).then((entries) => new Set(entries.filter((entry) => !entry.directory).map((entry) => entry.name.toLowerCase())), () => null)] as const)))
+  const listed = new Map(await Promise.all(folders.map(async (folder) => [folder, await window.gearmod.invoke('workspace:list', { ...context, path: folder }).then((entries) => new Set(entries.filter((entry) => !entry.directory).map((entry) => entry.name.toLowerCase())), () => null)] as const)))
   const keep: string[] = [], gone: string[] = []
   for (const path of recents) {
     const [folder, name] = split(path), names = listed.get(folder)

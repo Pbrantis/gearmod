@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import type { ToolsStatus } from '@agentboard/contracts'
+import type { ToolsStatus } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { nativeCommands, type CommandRunner } from './playwright-cli'
 import { tm } from './i18n'

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import type { BackgroundTask } from '@agentboard/contracts'
+import type { BackgroundTask } from '@gearmod/contracts'
 import { useT } from './i18n'
 const elapsed = (from: string, to: string | null, now: number): string => {
   const seconds = Math.max(0, Math.round(((to ? Date.parse(to) : now) - Date.parse(from)) / 1000))
@@ -14,10 +14,10 @@ export function AgentBackground({ chatId }: { chatId?: string }): React.JSX.Elem
     setTasks([]); setOpen(false)
     if (!chatId) return
     let disposed = false, timer: number | undefined
-    const load = (): void => { void window.agentboard.invoke('chats:background', { chatId }).then((items) => { if (!disposed) setTasks(items) }).catch(() => undefined) }
+    const load = (): void => { void window.gearmod.invoke('chats:background', { chatId }).then((items) => { if (!disposed) setTasks(items) }).catch(() => undefined) }
     const later = (): void => { window.clearTimeout(timer); timer = window.setTimeout(load, 1200) }
-    const off = window.agentboard.onRunEvent((event) => {
-      if (event.eventType === 'agentboard/run-completed' || event.eventType === 'agentboard/run-started' || (event.eventType === 'claude/system' && String(event.payload.subtype ?? '').startsWith('task_') && event.payload.session_id !== undefined)) later()
+    const off = window.gearmod.onRunEvent((event) => {
+      if (event.eventType === 'gearmod/run-completed' || event.eventType === 'gearmod/run-started' || (event.eventType === 'claude/system' && String(event.payload.subtype ?? '').startsWith('task_') && event.payload.session_id !== undefined)) later()
     })
     load()
     return () => { disposed = true; window.clearTimeout(timer); off() }

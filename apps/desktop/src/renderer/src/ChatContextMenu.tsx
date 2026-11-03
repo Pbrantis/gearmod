@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { Chat } from '@agentboard/contracts'
+import type { Chat } from '@gearmod/contracts'
 import { BoardIcon, TrashIcon } from './icons'
 import { useEscape } from './useEscape'
 import { useT } from './i18n'

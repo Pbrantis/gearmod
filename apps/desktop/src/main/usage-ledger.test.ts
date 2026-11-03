@@ -9,7 +9,7 @@ import { ApprovalService } from './approvals'
 const roots: string[] = []
 const databases: AppDatabase[] = []
 async function setup(): Promise<{ database: AppDatabase; root: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-ledger-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-ledger-')); roots.push(root)
   const database = new AppDatabase(join(root, 'db.sqlite'), 'test'); databases.push(database); await database.open()
   database.db.prepare("INSERT INTO projects(id,name,local_path,base_branch,created_at,updated_at) VALUES ('p','P','C:/p','main','now','now')").run()
   database.db.prepare("INSERT INTO board_columns(id,project_id,label,sort_order,semantic_state) VALUES ('c','p','Todo',0,'todo')").run()

@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react'
-import type { ChatMessage } from '@agentboard/contracts'
+import type { ChatMessage } from '@gearmod/contracts'
 import { AgentMessage, answersFor } from './AgentMessage'
 import { AttachmentChips, splitAttachmentNote } from './Attachments'
 import { ReplyContextCards } from './ChatReplies'

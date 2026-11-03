@@ -1,4 +1,4 @@
-# Comparação de tokens entre configurações (sem grafo, CodeGraph e variações do grafo do AgentBoard).
+# Comparação de tokens entre configurações (sem grafo, CodeGraph e variações do grafo do GearMod).
 # Rode da raiz da worktree:
 #   powershell -ExecutionPolicy Bypass -File .\spike\run-bench.ps1 -Set bit -Repeat 3
 #   powershell -ExecutionPolicy Bypass -File .\spike\run-bench.ps1 -Configs abresumo,abexplor -Repeat 2
@@ -6,7 +6,7 @@
 # -Configs: baseline, codegraph, abfull (grafo, código completo), abresumo (grafo em modo resumo),
 #           abexplor (resumo + subagente explorador Haiku), abtudo (resumo + subagente + mapa no contexto)
 # -Model opus|sonnet (padrão sonnet) · -Repeat N (rodadas, uma depois da outra) · -Only q1,q3
-param([string]$Set = 'agentboard', [string[]]$Configs = @('baseline', 'codegraph', 'abfull'), [string]$Model = 'sonnet', [int]$Repeat = 1, [string[]]$Only = @())
+param([string]$Set = 'gearmod', [string[]]$Configs = @('baseline', 'codegraph', 'abfull'), [string]$Model = 'sonnet', [int]$Repeat = 1, [string[]]$Only = @())
 # com -File, "a,b,c" chega como um texto só
 $Configs = @($Configs | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
@@ -16,7 +16,7 @@ $spike = $PSScriptRoot
 $wt = Split-Path $spike -Parent
 $cfg = Get-Content (Join-Path $spike "bench-sets\$Set.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $root = (Resolve-Path (Join-Path $wt $cfg.root)).Path
-$out = Join-Path $spike $(if ($Set -eq 'agentboard') { 'bench' } else { "bench-$Set" })
+$out = Join-Path $spike $(if ($Set -eq 'gearmod') { 'bench' } else { "bench-$Set" })
 New-Item -ItemType Directory -Force $out | Out-Null
 Write-Host "Projeto: $root - configs: $($Configs -join ', ')"
 

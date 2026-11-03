@@ -18,7 +18,7 @@ export const shell = {
     emptyText: 'Projetos, cards e transições persistem localmente entre reinícios.',
     addFirstProject: 'Adicionar primeiro projeto',
     deleteProject: 'Excluir projeto',
-    deleteProjectText: 'O projeto sai do AgentBoard com os cards, chats, documentos e histórico dele. As pastas e os repositórios no disco não são apagados. Isso não pode ser desfeito.',
+    deleteProjectText: 'O projeto sai do GearMod com os cards, chats, documentos e histórico dele. As pastas e os repositórios no disco não são apagados. Isso não pode ser desfeito.',
     filesActions: 'Ações dos arquivos',
     terminalActions: 'Ações do terminal',
     openInNewWindow: 'Abrir em nova janela'

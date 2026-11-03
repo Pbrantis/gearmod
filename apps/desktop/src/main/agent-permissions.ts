@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { AgentPermission } from '@agentboard/contracts'
+import type { AgentPermission } from '@gearmod/contracts'
 import type { AgentEvent } from './adapters'
 
 /** Callbacks exist only while their originating run is alive. Never replay approvals on resume. */
@@ -14,12 +14,12 @@ export class AgentPermissions {
       const finish = (allow: boolean): void => {
         if (!this.pending.delete(request.id)) return
         signal.removeEventListener('abort', abort)
-        publish({ type: 'agentboard/permission-resolved', payload: { requestId: request.id, chatId: request.chatId, allow } })
+        publish({ type: 'gearmod/permission-resolved', payload: { requestId: request.id, chatId: request.chatId, allow } })
         resolve(allow)
       }
       this.pending.set(request.id, { request, finish })
       signal.addEventListener('abort', abort, { once: true })
-      publish({ type: 'agentboard/permission-requested', payload: { ...request } })
+      publish({ type: 'gearmod/permission-requested', payload: { ...request } })
     })
   }
   decide(runId: string, requestId: string, allow: boolean): boolean {

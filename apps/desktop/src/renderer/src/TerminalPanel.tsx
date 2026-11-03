@@ -38,7 +38,7 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
     const container = box.current, colors = terminalTheme()
     const xterm = new Terminal({ cursorBlink: true, fontFamily: 'Consolas, monospace', fontSize: 13, scrollback: 10000, allowProposedApi: true, theme: colors.theme }), addon = new FitAddon(), finder = new SearchAddon()
     xterm.loadAddon(addon); xterm.loadAddon(finder)
-    xterm.loadAddon(new WebLinksAddon((event, uri) => { if (event.ctrlKey || event.metaKey) void window.agentboard.invoke('app:open-link', { url: uri }).catch((reason: unknown) => toast.error(tr().files.terminal.openLinkFailed, plainError(reason))) }, { hover: () => { container.title = tr().files.terminal.linkHint }, leave: () => { container.title = '' } }))
+    xterm.loadAddon(new WebLinksAddon((event, uri) => { if (event.ctrlKey || event.metaKey) void window.gearmod.invoke('app:open-link', { url: uri }).catch((reason: unknown) => toast.error(tr().files.terminal.openLinkFailed, plainError(reason))) }, { hover: () => { container.title = tr().files.terminal.linkHint }, leave: () => { container.title = '' } }))
     xterm.loadAddon(new Unicode11Addon()); xterm.open(container)
     xterm.unicode.activeVersion = '11'
     // Aceleração por placa de vídeo: se faltar suporte ou o contexto se perder, segue no renderizador padrão, sem aviso.
@@ -49,7 +49,7 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
       const context = terminal.snapshot().context, text = xterm.buffer.active.getLine(line - 1)?.translateToString(true) ?? ''
       if (!context || !text) { callback(undefined); return }
       // Caminho com `:linha[:coluna]` na saída (erros do TypeScript, stack traces): vira link com Ctrl+clique. Veja `terminalLinks.ts`.
-      callback(findFileLinks(text).map((found) => ({ text: found.text, range: { start: { x: found.start + 1, y: line }, end: { x: found.start + found.text.length, y: line } }, activate: (event: MouseEvent) => { if (!(event.ctrlKey || event.metaKey)) return; const value = linkTarget(found), path = absolute(value) ? value : `${tab.cwd.replace(/[\\/]+$/, '')}/${value}`; window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path } })) } })))
+      callback(findFileLinks(text).map((found) => ({ text: found.text, range: { start: { x: found.start + 1, y: line }, end: { x: found.start + found.text.length, y: line } }, activate: (event: MouseEvent) => { if (!(event.ctrlKey || event.metaKey)) return; const value = linkTarget(found), path = absolute(value) ? value : `${tab.cwd.replace(/[\\/]+$/, '')}/${value}`; window.dispatchEvent(new CustomEvent('gearmod:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path } })) } })))
     } })
     xterm.attachCustomKeyEventHandler((event) => {
       if (event.ctrlKey && (event.shiftKey && event.code === 'KeyF' || event.code === 'Backquote' || event.key === '^')) return false
@@ -59,8 +59,8 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
       if (event.ctrlKey && event.code === 'KeyC' && (event.shiftKey || xterm.hasSelection())) { if (xterm.hasSelection()) { void navigator.clipboard.writeText(xterm.getSelection()).catch(() => undefined); xterm.clearSelection() } return false }
       return true
     })
-    const input = xterm.onData((data) => { void window.agentboard.invoke('terminal:write', { id: tab.id, data }).catch(() => undefined) })
-    const resize = (): void => { if (!box.current?.clientWidth || !box.current?.clientHeight) return; addon.fit(); void window.agentboard.invoke('terminal:resize', { id: tab.id, cols: Math.max(2, xterm.cols), rows: Math.max(2, xterm.rows) }).catch(() => undefined) }
+    const input = xterm.onData((data) => { void window.gearmod.invoke('terminal:write', { id: tab.id, data }).catch(() => undefined) })
+    const resize = (): void => { if (!box.current?.clientWidth || !box.current?.clientHeight) return; addon.fit(); void window.gearmod.invoke('terminal:resize', { id: tab.id, cols: Math.max(2, xterm.cols), rows: Math.max(2, xterm.rows) }).catch(() => undefined) }
     const observer = new ResizeObserver(resize); observer.observe(container); resize()
     // Tema claro/escuro (ou outro tema do app): o atributo do documento muda e o terminal repinta.
     const repaint = (): void => { const next = terminalTheme(); xterm.options.theme = next.theme; setBackground(next.theme.background) }
@@ -82,7 +82,7 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
 }
 
 export function TerminalPanel({ standalone = false }: { standalone?: boolean } = {}): React.JSX.Element | null {
-  const t = useT(), { open, tabs, active, error, context } = useTerminal(), [position, setPosition] = useState<LayoutPosition>(() => { try { const saved = localStorage.getItem('agentboard.terminalPosition'); return saved === 'top' || saved === 'left' || saved === 'right' ? saved : 'bottom' } catch { return 'bottom' } }), [expanded, setExpanded] = useState(false), [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalHeight')) || 300 } catch { return 300 } }), [width, setWidth] = useState(() => { try { return Number(localStorage.getItem('agentboard.terminalWidth')) || Math.round(window.innerWidth * .48) } catch { return Math.round(window.innerWidth * .48) } }), [dragging, setDragging] = useState(false), [moveTarget, setMoveTarget] = useState<LayoutPosition>()
+  const t = useT(), { open, tabs, active, error, context } = useTerminal(), [position, setPosition] = useState<LayoutPosition>(() => { try { const saved = localStorage.getItem('gearmod.terminalPosition'); return saved === 'top' || saved === 'left' || saved === 'right' ? saved : 'bottom' } catch { return 'bottom' } }), [expanded, setExpanded] = useState(false), [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('gearmod.terminalHeight')) || 300 } catch { return 300 } }), [width, setWidth] = useState(() => { try { return Number(localStorage.getItem('gearmod.terminalWidth')) || Math.round(window.innerWidth * .48) } catch { return Math.round(window.innerWidth * .48) } }), [dragging, setDragging] = useState(false), [moveTarget, setMoveTarget] = useState<LayoutPosition>()
   const current = tabs.find((tab) => tab.id === active), panel = useRef<HTMLElement>(null)
   useEffect(() => {
     const root = document.documentElement.style
@@ -93,13 +93,13 @@ export function TerminalPanel({ standalone = false }: { standalone?: boolean } =
     publish(); const observer = new ResizeObserver(publish); observer.observe(element)
     return () => { observer.disconnect(); clear() }
   }, [open, standalone, expanded, position])
-  const moveTo = (value: LayoutPosition): void => { setPosition(value); setExpanded(false); try { localStorage.setItem('agentboard.terminalPosition', value) } catch { /* só vale nesta sessão */ } }
+  const moveTo = (value: LayoutPosition): void => { setPosition(value); setExpanded(false); try { localStorage.setItem('gearmod.terminalPosition', value) } catch { /* só vale nesta sessão */ } }
   const resize = (event: React.PointerEvent<HTMLDivElement>): void => {
     const element = panel.current; if (!element) return
     event.preventDefault(); const vertical = position === 'top' || position === 'bottom', rect = element.getBoundingClientRect(), start = vertical ? event.clientY : event.clientX, initial = vertical ? rect.height : rect.width, sign = position === 'bottom' || position === 'right' ? -1 : 1
     let nextSize = initial; setDragging(true)
     const move = (next: PointerEvent): void => { nextSize = Math.round(Math.max(vertical ? 180 : 320, Math.min((vertical ? window.innerHeight : window.innerWidth) * .75, initial + sign * ((vertical ? next.clientY : next.clientX) - start)))); if (vertical) setHeight(nextSize); else setWidth(nextSize) }
-    const up = (): void => { setDragging(false); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); try { localStorage.setItem(vertical ? 'agentboard.terminalHeight' : 'agentboard.terminalWidth', String(nextSize)) } catch { /* só vale nesta sessão */ } }
+    const up = (): void => { setDragging(false); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); try { localStorage.setItem(vertical ? 'gearmod.terminalHeight' : 'gearmod.terminalWidth', String(nextSize)) } catch { /* só vale nesta sessão */ } }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
   const moveHeader = (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -115,17 +115,17 @@ export function TerminalPanel({ standalone = false }: { standalone?: boolean } =
   useEffect(() => { if (standalone && pop?.terminalId) { terminal.setContext({ projectId: pop.projectId, cardId: pop.cardId }); void terminal.attach(pop.terminalId) } }, [standalone])
   // Fechar a janela destacada não deixa processo órfão: as abas dela (inclusive as do "+") passam para a janela principal.
   useEffect(() => { if (!standalone) return; const leave = (): void => terminal.handOff(); window.addEventListener('pagehide', leave); window.addEventListener('beforeunload', leave); return () => { window.removeEventListener('pagehide', leave); window.removeEventListener('beforeunload', leave) } }, [standalone])
-  const detach = async (point?: { x: number; y: number }): Promise<void> => { if (!current || !context) return; try { await window.agentboard.invoke('windows:open', { kind: 'terminal', projectId: context.projectId, cardId: context.cardId ?? undefined, terminalId: current.id, placement: 'new', ...point }); terminal.setOpen(false) } catch (reason) { toast.error(t.files.terminal.detachFailed, plainError(reason)) } }
+  const detach = async (point?: { x: number; y: number }): Promise<void> => { if (!current || !context) return; try { await window.gearmod.invoke('windows:open', { kind: 'terminal', projectId: context.projectId, cardId: context.cardId ?? undefined, terminalId: current.id, placement: 'new', ...point }); terminal.setOpen(false) } catch (reason) { toast.error(t.files.terminal.detachFailed, plainError(reason)) } }
   if (!open && !standalone) return null
   const size = position === 'top' || position === 'bottom' ? { height } : { width }
-  const fill = (): void => { if (standalone) void window.agentboard.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded) }
+  const fill = (): void => { if (standalone) void window.gearmod.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded) }
   return <section ref={panel} className={`term terminalpty ${standalone ? 'standalone' : expanded ? 'expanded' : position} ${dragging ? 'dragging' : ''}`} style={standalone || expanded ? undefined : size} aria-label={t.files.terminal.panelLabel}>
     {!standalone && !expanded && <div className={`term-grip ${position}`} role="separator" aria-orientation={position === 'top' || position === 'bottom' ? 'horizontal' : 'vertical'} aria-label={position === 'top' || position === 'bottom' ? t.files.terminal.resizeHeight : t.files.terminal.resizeWidth} onPointerDown={resize} />}
     {moveTarget && <div className={`term-move-preview ${moveTarget}`} aria-hidden="true" />}
     <div className="term-tabs" onPointerDown={moveHeader}><span className="powershell-icon" aria-hidden="true">›_</span><div className="term-tablist">{tabs.map((tab) => <span key={tab.id} className={`term-tab ${tab.id === active ? 'on' : ''}`}><button type="button" onClick={() => terminal.select(tab.id)} data-tip={tab.cwd}>{tab.exited ? t.files.terminal.tabExited(tab.title) : tab.title}</button><button type="button" className="x" aria-label={t.files.terminal.closeTab(tab.title)} onClick={() => terminal.close(tab.id)}>×</button></span>)}</div>
       <button type="button" className="ibtn" data-tip={t.files.terminal.newTip} aria-label={t.files.terminal.newLabel} onClick={() => void terminal.newTab()}>+</button><span className="term-header-drag" aria-hidden="true" />
       {current && <button type="button" className="term-link" onClick={() => terminal.clear(current.id)}>{t.common.clear}</button>}
-      <WindowLayoutMenu move={(value) => { if (standalone) void window.agentboard.invoke('windows:place', { placement: value }); else moveTo(value) }} detach={!standalone ? () => void detach() : undefined} detachDisabled={!current || !context} />
+      <WindowLayoutMenu move={(value) => { if (standalone) void window.gearmod.invoke('windows:place', { placement: value }); else moveTo(value) }} detach={!standalone ? () => void detach() : undefined} detachDisabled={!current || !context} />
       {!standalone && <button type="button" className="ibtn" aria-label={expanded ? t.files.terminal.restore : t.files.terminal.expand} onClick={fill}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button>}<button type="button" className="ibtn" aria-label={t.files.terminal.hide} onClick={() => { if (standalone) window.close(); else terminal.setOpen(false) }}><CloseIcon /></button>
     </div>
     {error && <p className="term-error">{error}</p>}{tabs.map((tab) => <Screen key={tab.id} tab={tab} visible={active === tab.id} />)}

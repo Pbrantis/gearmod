@@ -28,13 +28,13 @@ export function ConflictsView({ target, changed, back, setDirty }: { target: Con
   const draft = drafts[path], dirty = (file: string): boolean => Boolean(drafts[file] && drafts[file]!.text !== drafts[file]!.saved)
   // O conflito de stash some do Git assim que o último arquivo é marcado; guarda o tipo para a tela não virar "Operação".
   const [kind, setKind] = useState<ConflictState['operation']>(null)
-  const reload = useCallback(async (): Promise<ConflictState> => { const next = await window.agentboard.invoke('git:conflicts', tail); setState(next); if (next.operation) setKind(next.operation); return next }, [sourceId, cardId])
+  const reload = useCallback(async (): Promise<ConflictState> => { const next = await window.gearmod.invoke('git:conflicts', tail); setState(next); if (next.operation) setKind(next.operation); return next }, [sourceId, cardId])
   useEffect(() => { void reload().catch((reason: unknown) => setError(plainError(reason))) }, [reload])
   useEffect(() => { if (!state.files.includes(path)) setPath(state.files[0] ?? '') }, [state.files, path])
   useEffect(() => {
     if (!path || drafts[path]) return
     let alive = true
-    void window.agentboard.invoke('git:conflict-file', { ...tail, path }).then((text) => { if (alive) setDrafts((all) => ({ ...all, [path]: { text, saved: text } })) }).catch((reason: unknown) => { if (alive) setError(plainError(reason)) })
+    void window.gearmod.invoke('git:conflict-file', { ...tail, path }).then((text) => { if (alive) setDrafts((all) => ({ ...all, [path]: { text, saved: text } })) }).catch((reason: unknown) => { if (alive) setError(plainError(reason)) })
     return () => { alive = false }
   }, [path, sourceId, cardId])
   const anyDirty = Object.values(drafts).some((item) => item.text !== item.saved)
@@ -45,12 +45,12 @@ export function ConflictsView({ target, changed, back, setDirty }: { target: Con
   const forget = (file: string): void => setDrafts((all) => { const next = { ...all }; delete next[file]; return next })
   /** Pergunta antes de abandonar uma edição que ainda não foi salva. */
   const guard = (file: string, title: string, run: () => void): void => { if (dirty(file)) setPending({ title, text: t.unsavedIn(file), run }); else run() }
-  const save = (): Promise<void> => act(async () => { if (!draft) return; await window.agentboard.invoke('git:conflict-save', { ...tail, path, content: draft.text }); setDrafts((all) => ({ ...all, [path]: { text: draft.text, saved: draft.text } })) })
-  const resolve = (side: 'ours' | 'theirs' | 'marked'): Promise<void> => act(async () => { await window.agentboard.invoke('git:conflict-resolve', { ...tail, path, side }); forget(path); await reload(); changed() })
-  const saveAndMark = (): Promise<void> => act(async () => { if (!draft) return; await window.agentboard.invoke('git:conflict-save', { ...tail, path, content: draft.text }); await window.agentboard.invoke('git:conflict-resolve', { ...tail, path, side: 'marked' }); forget(path); await reload(); changed() })
+  const save = (): Promise<void> => act(async () => { if (!draft) return; await window.gearmod.invoke('git:conflict-save', { ...tail, path, content: draft.text }); setDrafts((all) => ({ ...all, [path]: { text: draft.text, saved: draft.text } })) })
+  const resolve = (side: 'ours' | 'theirs' | 'marked'): Promise<void> => act(async () => { await window.gearmod.invoke('git:conflict-resolve', { ...tail, path, side }); forget(path); await reload(); changed() })
+  const saveAndMark = (): Promise<void> => act(async () => { if (!draft) return; await window.gearmod.invoke('git:conflict-save', { ...tail, path, content: draft.text }); await window.gearmod.invoke('git:conflict-resolve', { ...tail, path, side: 'marked' }); forget(path); await reload(); changed() })
   const stash = kind === 'stash'
   // Stash: os arquivos já foram marcados com git add; não há "continue" no Git, então concluir só volta ao grafo.
-  const finish = (action: 'continue' | 'abort'): Promise<void> => act(async () => { if (!stash) await window.agentboard.invoke('git:conflict-finish', { ...tail, action }); else toast.success(t.stashDone, t.stashKept); changed(); back() })
+  const finish = (action: 'continue' | 'abort'): Promise<void> => act(async () => { if (!stash) await window.gearmod.invoke('git:conflict-finish', { ...tail, action }); else toast.success(t.stashDone, t.stashKept); changed(); back() })
   const open = (file: string): void => { if (file !== path) guard(path, t.switchFileTitle, () => { setComparing(undefined); setPath(file) }) }
   const label = kind ? operationLabel[kind] : t.operation
   const marked = draft ? hasConflicts(draft.text) : false

@@ -69,11 +69,11 @@ export const settings: typeof source = {
     spacingComfortable: 'Comfortable',
     spacingWide: 'Wide',
     notifications: 'System notifications',
-    notificationsHint: 'Notifies you when a card finishes, the plan is ready or something needs you, while AgentBoard is in the background. Clicking the notification opens the card chat.',
+    notificationsHint: 'Notifies you when a card finishes, the plan is ready or something needs you, while GearMod is in the background. Clicking the notification opens the card chat.',
     gitPhotos: 'Show author photos on the Git page (Gravatar)',
     gitPhotosHint: 'Off by default. When on, the app sends gravatar.com a hash of each author email to fetch the photo.',
     autoResume: 'Resume automatically when the usage limit resets',
-    autoResumeHint: 'If the session (or weekly) limit runs out in the middle of an execution, AgentBoard schedules the resume for when it resets (one minute later), checks that it really did and continues where it stopped. The chat shows the time.',
+    autoResumeHint: 'If the session (or weekly) limit runs out in the middle of an execution, GearMod schedules the resume for when it resets (one minute later), checks that it really did and continues where it stopped. The chat shows the time.',
     concurrency: 'Agents at the same time',
     concurrencyHint: (recommended: number, cores: number, memoryGb: number) => `Recommended for this computer: ${recommended} (${cores} cores, ${memoryGb} GB of RAM). Each run opens an agent and runs builds and tests in its own worktree. The real limit is often your account usage. When the limit is reached you choose: run anyway or wait in the queue.`,
     concurrencyUseRecommended: 'Use the recommended value',
@@ -93,7 +93,7 @@ export const settings: typeof source = {
     cardBehavior: 'Behavior',
     cardGit: 'Git',
     cardVoice: 'Voice',
-    voiceModelHint: 'The model is downloaded only the first time you use the chat microphone and is kept in the AgentBoard data folder.'
+    voiceModelHint: 'The model is downloaded only the first time you use the chat microphone and is kept in the GearMod data folder.'
   },
 
   agent: {
@@ -309,7 +309,7 @@ export const settings: typeof source = {
 
   mcp: {
     title: 'MCP servers',
-    intro: (project) => `MCP servers give agents extra tools (files, GitHub, browser, databases…). AgentBoard injects them when running each agent; it does not change the Claude or Codex configuration files. ${project ? 'Global ones can be turned off for this project only.' : 'Each project can also have its own.'}`,
+    intro: (project) => `MCP servers give agents extra tools (files, GitHub, browser, databases…). GearMod injects them when running each agent; it does not change the Claude or Codex configuration files. ${project ? 'Global ones can be turned off for this project only.' : 'Each project can also have its own.'}`,
     addButton: '＋ Add',
     recommended: 'Recommended',
     installed: 'Installed',
@@ -375,7 +375,7 @@ export const settings: typeof source = {
     updateFilesDisabled: 'Updating the project files is disabled until it is validated against the version ceiling; your existing settings will be preserved.',
     integrationNotDetected: 'The integration used in this repository was not detected.',
     updateAvailable: (from, to) => `Update available: ${from} → ${to}`,
-    newerThanCeiling: (ceiling) => `There is a version newer than AgentBoard's update ceiling (${ceiling}). The team will review later versions in a future update.`,
+    newerThanCeiling: (ceiling) => `There is a version newer than GearMod's update ceiling (${ceiling}). The team will review later versions in a future update.`,
     checked: (ago) => `Checked ${ago}`,
     notChecked: 'Not checked yet',
     checking: 'Checking…',
@@ -393,13 +393,13 @@ export const settings: typeof source = {
 
   playwright: {
     title: 'Browser tests: Playwright CLI (optional)',
-    description: 'Lets the tester explore the UI, take screenshots as evidence and check visual criteria. It is a tool of AgentBoard itself: it lives in an app folder, not inside your project, and several versions can coexist.',
-    badgeApp: 'AgentBoard folder',
+    description: 'Lets the tester explore the UI, take screenshots as evidence and check visual criteria. It is a tool of GearMod itself: it lives in an app folder, not inside your project, and several versions can coexist.',
+    badgeApp: 'GearMod folder',
     badgeVersions: 'multiple versions',
     badgeConfirm: 'asks first',
-    nodeTip: 'Playwright CLI needs Node.js 18 or newer. If the machine has none, AgentBoard downloads one just for this tool.',
+    nodeTip: 'Playwright CLI needs Node.js 18 or newer. If the machine has none, GearMod downloads one just for this tool.',
     nodeSystem: (version: string) => `Node.js ${version} (system)`,
-    nodeManaged: (version: string) => `Node.js ${version} (AgentBoard)`,
+    nodeManaged: (version: string) => `Node.js ${version} (GearMod)`,
     nodeWillDownload: 'Node.js will be downloaded during install',
     folderChip: 'Tools folder',
     browserDownloaded: 'Test browser · downloaded',
@@ -430,7 +430,7 @@ export const settings: typeof source = {
     checking: 'Checking…',
     taskTitle: 'Install Playwright CLI',
     confirmTitle: 'Install Playwright CLI?',
-    confirmText: 'The version is installed in the AgentBoard tools folder and becomes the one used in this project. Nothing in your repository changes, unless you ask for the agent skill.',
+    confirmText: 'The version is installed in the GearMod tools folder and becomes the one used in this project. Nothing in your repository changes, unless you ask for the agent skill.',
     command: 'Command',
     installIn: (folder: string) => `Folder: ${folder}`,
     downloadBrowserOption: 'Download the test browser',

@@ -1,4 +1,4 @@
-import { ipcContracts, appSettingsSchema } from '@agentboard/contracts'
+import { ipcContracts, appSettingsSchema } from '@gearmod/contracts'
 import { describe, expect, it } from 'vitest'
 
 const ids = { projectId: '60000000-0000-4000-8000-000000000001', columnId: '60000000-0000-4000-8000-000000000002', cardId: '60000000-0000-4000-8000-000000000003' }

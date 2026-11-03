@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { IpcOutput } from '@agentboard/contracts'
+import type { IpcOutput } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { SchemaIcon } from './DbIcons'
 import { useT } from './i18n'
@@ -25,7 +25,7 @@ export function DbTree({ connectionId, schemas, tables, expanded, toggleSchema, 
   const [toggled, setToggled] = useState<Set<string>>(new Set()), [details, setDetails] = useState<Record<number, Description>>({})
   const isOpen = (key: string, byDefault: boolean): boolean => byDefault !== toggled.has(key)
   const flip = (key: string): void => setToggled((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next })
-  const loadDetails = (oid: number): void => { if (!details[oid]) void window.agentboard.invoke('db:describe', { connectionId, oid }).then((value) => setDetails((current) => ({ ...current, [oid]: value }))).catch((reason) => fail(plainError(reason))) }
+  const loadDetails = (oid: number): void => { if (!details[oid]) void window.gearmod.invoke('db:describe', { connectionId, oid }).then((value) => setDetails((current) => ({ ...current, [oid]: value }))).catch((reason) => fail(plainError(reason))) }
   const q = query.trim().toLowerCase()
   const group = (label: string, key: string, count: number, children: React.ReactNode, byDefault: boolean, level: number): React.JSX.Element => <div role="group" key={key}><button type="button" role="treeitem" aria-expanded={isOpen(key, byDefault)} className="db-node" style={{ paddingLeft: 6 + level * 16 }} onClick={() => flip(key)}><Chevron open={isOpen(key, byDefault)} /><Icon kind="folder" /><span className="nm">{label}</span><em>{count}</em></button>{isOpen(key, byDefault) && children}</div>
   const leaf = (key: string, kind: 'column' | 'key', label: string, note: string, level: number, title?: string): React.JSX.Element => <div key={key} role="treeitem" className="db-node leaf" style={{ paddingLeft: 6 + level * 16 }} data-tip={title ?? `${label} ${note}`}><Chevron open={false} empty /><Icon kind={kind} /><span className="nm">{label}</span>{note && <small>{note}</small>}</div>

@@ -59,7 +59,7 @@ export const chat = {
   },
   approval: {
     switchWorkflow: (workflow: string) => `Trocar o fluxo para ${workflow}`,
-    sddNative: 'SDD completo — SDD do AgentBoard',
+    sddNative: 'SDD completo — SDD do GearMod',
     sddSpecKit: 'SDD completo — GitHub Spec Kit',
     sddNoMethod: 'SDD completo — método não escolhido',
     workflowLight: 'Fluxo curto',

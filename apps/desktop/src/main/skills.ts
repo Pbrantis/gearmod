@@ -2,7 +2,7 @@ import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promi
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import type { AgentProfile, SkillEntry, SkillProviderState, SkillScope } from '@agentboard/contracts'
+import type { AgentProfile, SkillEntry, SkillProviderState, SkillScope } from '@gearmod/contracts'
 import type { AgentAdapter } from './adapters'
 import type { ProfileRepository, ProjectRepository } from './projects'
 import { tm } from './i18n'

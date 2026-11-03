@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import type { AgentProfile } from '@agentboard/contracts'
+import type { AgentProfile } from '@gearmod/contracts'
 import { GeminiCliAdapter } from './gemini-adapter'
 import { acpMcpServers, acpPermissionDetails, acpPermissionOutcome } from './gemini-acp'
 import type { ProcessFactory } from './adapters'
@@ -49,7 +49,7 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
     expect(spawned.log[0]!.params).toMatchObject({ protocolVersion: 1, clientCapabilities: { fs: { readTextFile: false, writeTextFile: false } } })
     const created = spawned.log[1]!.params as { cwd: string; mcpServers: Json[] }
     expect(created.cwd).toBe('C:\\repo')
-    expect(created.mcpServers).toEqual([{ name: 'agentboard', command: 'node', args: ['a.mjs'], env: [{ name: 'A', value: '1' }] }, { name: 'gh', command: 'npx', args: ['x'], env: [{ name: 'T', value: 't' }] }, { type: 'http', name: 'api', url: 'https://h/mcp', headers: [{ name: 'Authorization', value: 'z' }] }])
+    expect(created.mcpServers).toEqual([{ name: 'gearmod', command: 'node', args: ['a.mjs'], env: [{ name: 'A', value: '1' }] }, { name: 'gh', command: 'npx', args: ['x'], env: [{ name: 'T', value: 't' }] }, { type: 'http', name: 'api', url: 'https://h/mcp', headers: [{ name: 'Authorization', value: 'z' }] }])
     expect(spawned.log[2]!.params).toMatchObject({ sessionId: 'acp-1', prompt: [{ type: 'text', text: 'faça X' }] })
     expect(events).toContain('item/agentMessage/delta')
   })
@@ -146,7 +146,7 @@ describe('peças do protocolo ACP', () => {
     expect(acpPermissionOutcome([{ optionId: 'a', name: 'Sempre', kind: 'allow_always' }], true)).toEqual({ outcome: 'cancelled' })
     expect(acpPermissionOutcome(undefined, false)).toEqual({ outcome: 'cancelled' })
   })
-  it('servidores MCP sem AgentBoard e detalhes sem caminho', () => {
+  it('servidores MCP sem GearMod e detalhes sem caminho', () => {
     expect(acpMcpServers([])).toEqual([])
     expect(acpPermissionDetails({ toolCall: { title: 'Editar', kind: 'edit', locations: [{ path: 'a.ts' }], rawInput: {} }, options: [] })).toMatchObject({ toolKind: 'edit', path: 'a.ts' })
   })

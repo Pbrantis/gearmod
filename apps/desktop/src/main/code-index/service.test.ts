@@ -9,7 +9,7 @@ import { CodeIndexService, type HostProcess } from './service'
 const dirs: string[] = []
 const closers: Array<() => void> = []
 afterEach(async () => { closers.splice(0).forEach((close) => close()); await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
-const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-code-service-')); dirs.push(dir); return dir }
+const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-code-service-')); dirs.push(dir); return dir }
 
 /** Processo falso: roda o mesmo código do utilityProcess, no próprio teste. */
 function fakeHost(): HostProcess & { killed: boolean } {
@@ -38,15 +38,15 @@ describe('CodeIndexService', () => {
     let forks = 0
     const service = new CodeIndexService({ dataDir: data, fork: () => { forks++; return fakeHost() } })
     expect(forks).toBe(0)
-    expect(service.isTool('agentboard_code_impact')).toBe(true)
-    const impact = await service.tool('agentboard_code_impact', { simbolo: 'allowedPath' }, [root])
+    expect(service.isTool('gearmod_code_impact')).toBe(true)
+    const impact = await service.tool('gearmod_code_impact', { simbolo: 'allowedPath' }, [root])
     expect(impact).toContain('readFile:2 — calls at lines 2')
-    const explore = await service.tool('agentboard_code_explore', { pergunta: 'readFile allowedPath' }, [root])
+    const explore = await service.tool('gearmod_code_explore', { pergunta: 'readFile allowedPath' }, [root])
     expect(explore).toContain('**Flow')
     expect((await service.symbols(root, 'read'))[0]).toMatchObject({ name: 'readFile', path: 'src/files.ts', line: 2 })
     expect(forks).toBe(1)
-    await expect(service.tool('agentboard_code_search', {}, [root])).rejects.toThrow('consulta')
-    await expect(service.tool('agentboard_code_search', { consulta: 'x' }, [join(root, 'nao-existe')])).rejects.toThrow('no project folder')
+    await expect(service.tool('gearmod_code_search', {}, [root])).rejects.toThrow('consulta')
+    await expect(service.tool('gearmod_code_search', { consulta: 'x' }, [join(root, 'nao-existe')])).rejects.toThrow('no project folder')
     service.dispose()
   })
 
@@ -56,10 +56,10 @@ describe('CodeIndexService', () => {
     await writeFile(join(b, 'b.py'), 'def beta():\n    pass\n')
     let enabled = true
     const service = new CodeIndexService({ dataDir: data, fork: fakeHost, enabled: () => enabled })
-    const text = await service.tool('agentboard_code_search', { consulta: 'alpha beta' }, [a, b])
+    const text = await service.tool('gearmod_code_search', { consulta: 'alpha beta' }, [a, b])
     expect(text).toMatch(/# .+\n\nfunction alpha[\s\S]*# .+\n\nfunction beta/)
     enabled = false
-    await expect(service.tool('agentboard_code_search', { consulta: 'alpha' }, [a])).rejects.toThrow('turned off')
+    await expect(service.tool('gearmod_code_search', { consulta: 'alpha' }, [a])).rejects.toThrow('turned off')
     service.dispose()
   })
 })

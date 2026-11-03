@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { AppDatabase } from './database'
-import type { PolicyAction, PolicyDecision, PolicyRule } from '@agentboard/contracts'
+import type { PolicyAction, PolicyDecision, PolicyRule } from '@gearmod/contracts'
 
 /** Decisão pura e determinística: a primeira regra para a ação decide; sem regra para a ação, fica `ask` (nunca libera por omissão). */
 export function decide(rules: readonly PolicyRule[], action: PolicyAction): PolicyDecision {

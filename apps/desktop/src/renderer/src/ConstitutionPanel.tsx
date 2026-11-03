@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { ConstitutionProposal, ConstitutionState } from '@agentboard/contracts'
+import type { ConstitutionProposal, ConstitutionState } from '@gearmod/contracts'
 import { Markdown } from './markdown'
 import { CodeEditor } from './editor/CodeEditor'
 
@@ -18,10 +18,10 @@ const when = (iso: string | null): string => iso ? new Date(iso).toLocaleDateStr
 export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { projectId: string; openChat(prompt?: string): void; onOpenReference?(): void }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.constitution
   const [state, setState] = useState<ConstitutionState>(), [editing, setEditing] = useState<string | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [viewing, setViewing] = useState(false)
-  const load = useCallback(async () => { try { setState(await window.agentboard.invoke('constitution:get', { projectId })) } catch (reason) { setError(plainError(reason)) } }, [projectId])
+  const load = useCallback(async () => { try { setState(await window.gearmod.invoke('constitution:get', { projectId })) } catch (reason) { setError(plainError(reason)) } }, [projectId])
   useEffect(() => { void load() }, [load])
   // O agente grava ou sugere mudanças enquanto a aba está aberta: recarrega quando avisa.
-  useEffect(() => window.agentboard.onRunEvent((event) => { if (event.eventType === 'agentboard/card-updated' && event.payload.type === 'constitution') void load() }), [load])
+  useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/card-updated' && event.payload.type === 'constitution') void load() }), [load])
   const act = async (call: () => Promise<ConstitutionState>): Promise<void> => {
     setWorking(true); setError('')
     try { setState(await call()); setEditing(null) } catch (reason) { setError(plainError(reason)) } finally { setWorking(false) }
@@ -38,7 +38,7 @@ export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { pr
   return <div className="stack cons">
     {editing !== null && !viewing ? <>
       <CodeEditor variant="prose" className="in cons-edit" path="constituicao.md" value={editing} options={proseOptions} ariaLabel={t.textLabel} onChange={setEditing} />
-      <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>{common.cancel}</button><button type="button" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:save', { projectId, contentMd: editing }))}>{t.saveVersion}</button></div>
+      <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>{common.cancel}</button><button type="button" disabled={working} onClick={() => void act(() => window.gearmod.invoke('constitution:save', { projectId, contentMd: editing }))}>{t.saveVersion}</button></div>
     </> : empty ? <div className="cons-empty">
       <b>{t.noneYet}</b>
       <p>{t.noneHint}</p>
@@ -55,15 +55,15 @@ export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { pr
         <div className="cons-prop-t"><b>{code(proposal)} · {proposal.title}</b><span className="hint">{when(proposal.createdAt)}</span></div>
         <p>{proposal.details}</p><p className="hint">{t.reason(proposal.reason)}</p>
         <div className="cons-actions start">
-          <button type="button" className="mini" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:set-proposal', { proposalId: proposal.id, status: 'applied' })).then(() => openChat(`Aplique a mudança sugerida ${code(proposal)} (${proposal.title}) na Constituição. Mostre como fica e grave quando eu concordar.`))}>{t.takeToChat}</button>
-          <button type="button" className="mini secondary" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:set-proposal', { proposalId: proposal.id, status: 'dismissed' }))}>{t.discard}</button>
+          <button type="button" className="mini" disabled={working} onClick={() => void act(() => window.gearmod.invoke('constitution:set-proposal', { proposalId: proposal.id, status: 'applied' })).then(() => openChat(`Aplique a mudança sugerida ${code(proposal)} (${proposal.title}) na Constituição. Mostre como fica e grave quando eu concordar.`))}>{t.takeToChat}</button>
+          <button type="button" className="mini secondary" disabled={working} onClick={() => void act(() => window.gearmod.invoke('constitution:set-proposal', { proposalId: proposal.id, status: 'dismissed' }))}>{t.discard}</button>
         </div>
       </div>)}
     </div>}
     {viewing && <div className="overlay full" onMouseDown={(e) => { if (e.target === e.currentTarget && editing === null) closeView() }}><div className="modal wide cons-dialog" role="dialog" aria-label={t.title}>
       <header><div><div className="eyebrow">{t.dialogEyebrow(constitution.version)}</div><h2>{heading}</h2></div><div className="hdr-actions">{editing === null && <><button type="button" className="mini secondary" onClick={() => { closeView(); openChat() }}>{common.edit}</button><button type="button" className="mini" onClick={() => { closeView(); openChat() }}>{t.chatWithAgent}</button></>}<button type="button" className="x" onClick={closeView} aria-label={common.close}>×</button></div></header>
       {editing !== null ? <><CodeEditor variant="prose" className="in cons-edit cons-dialog-edit" path="constituicao.md" value={editing} options={proseOptions} ariaLabel={t.textLabel} onChange={setEditing} />
-        <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>{common.cancel}</button><button type="button" disabled={working} onClick={() => void act(() => window.agentboard.invoke('constitution:save', { projectId, contentMd: editing }))}>{t.saveVersion}</button></div></>
+        <div className="cons-actions"><button type="button" className="secondary" onClick={() => setEditing(null)}>{common.cancel}</button><button type="button" disabled={working} onClick={() => void act(() => window.gearmod.invoke('constitution:save', { projectId, contentMd: editing }))}>{t.saveVersion}</button></div></>
         : <div className="cons-view md cons-dialog-view"><Markdown source={constitution.contentMd} base={{ projectId, cardId: null, path: importable ?? '' }} onOpenReference={() => { closeView(); onOpenReference?.() }} /></div>}
       {error && <p className="error">{error}</p>}
     </div></div>}

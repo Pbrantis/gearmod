@@ -1,6 +1,6 @@
 import { machineInfo, recommendedConcurrency } from './capacity'
 import { homedir } from 'node:os'
-import { systemDocumentKinds, ipcContracts, type AppLanguage, type VoiceModel, type AppTheme, type AgentConfig, type AgentPurpose, type GitPolicy, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
+import { systemDocumentKinds, ipcContracts, type AppLanguage, type VoiceModel, type AppTheme, type AgentConfig, type AgentPurpose, type GitPolicy, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@gearmod/contracts'
 import type { PopoutTarget, WindowPlacement } from './windows'
 import type { TerminalService } from './terminals'
 import type { BackupService } from './backup'
@@ -48,7 +48,7 @@ import { GitFileReader } from './sdd/git-file-reader'
 import { editorCodeQueries, type EditorCodeIndex } from './code-index/editor'
 import { candidate, constitutionMigrationPlan } from './sdd/constitution-migration-plan'
 import { cardTypeUsage, defaultCardTypes, setDefaultCardTypes } from './card-types'
-import type { CardTypeDef, SpecKitState, DecisionKind, DimensionScores, Effort, PermissionMode, SddConfig, WorkflowConfig, WorkflowKind } from '@agentboard/contracts'
+import type { CardTypeDef, SpecKitState, DecisionKind, DimensionScores, Effort, PermissionMode, SddConfig, WorkflowConfig, WorkflowKind } from '@gearmod/contracts'
 
 const workflowState = (history: CardHistoryService, projectId: string) => ({ config: history.config(projectId), detected: history.detect(projectId), defaultArtifactsDir: history.defaultArtifactsRoot(projectId) })
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -177,7 +177,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     } finally { applyingConstitution.delete(id) }
   }
   const handlers: Record<IpcChannel, Handler> = {
-    'db:feature-enabled': () => process.env.AGENTBOARD_DATABASE_EXPERIMENTAL !== '0',
+    'db:feature-enabled': () => process.env.GEARMOD_DATABASE_EXPERIMENTAL !== '0',
     'db:connections:list': (input: { projectId: string }) => db().list(input.projectId),
     'db:connections:save': (input: DbConnectionInput) => db().save(input),
     'db:connections:test': async (input: DbConnectionInput) => ({ ok: true as const, ...await db().testConnection(input) }),

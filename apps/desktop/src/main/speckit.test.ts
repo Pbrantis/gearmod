@@ -6,7 +6,7 @@ import type { Approval } from './approvals'
 import { SpecKitRuntime, specKitSpecifyRequest, bindSpecKitFeature, specKitArtifacts, specKitAvailability, specKitCommand, specKitFeatureDir, specKitMissingSkill, specKitMode, specKitPermissionText, specKitStageOf, type SpecKitDeps } from './speckit'
 
 let root: string
-beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'agentboard-speckit-')) })
+beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'gearmod-speckit-')) })
 afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 const write = (path: string, text = '# x'): void => { mkdirSync(join(path, '..'), { recursive: true }); writeFileSync(path, text) }
@@ -184,7 +184,7 @@ describe('SpecKitRuntime', () => {
     runtime.prepare({ cardId: 'c', provider: 'claude', prompt: 'x' })
     expect(readdirSync(join(worktree, 'specs'))).toEqual(['12345678-login-com-sso'])
     expect(readdirSync(join(worktree, 'specs/12345678-login-com-sso'))).toEqual([])
-    expect(existsSync(join(worktree, '.agentboard-card'))).toBe(false)
+    expect(existsSync(join(worktree, '.gearmod-card'))).toBe(false)
   })
 
   it('bloqueia speckit-implement no planejamento e nega qualquer permissão dela', () => {

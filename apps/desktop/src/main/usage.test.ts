@@ -43,7 +43,7 @@ describe('rollWindow', () => {
 
 describe('UsageService', () => {
   async function setup() {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-usage-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-usage-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root)
     const codex = profiles.create({ provider: 'codex', label: 'Codex', scope: 'x' })
@@ -104,7 +104,7 @@ describe('UsageService', () => {
 
   it('deduplicates quota snapshots when two profiles identify the same account', async () => {
     const { database, claude, service } = await setup()
-    const profiles = new ProfileRepository(database, join(tmpdir(), 'agentboard-usage-second-profile'))
+    const profiles = new ProfileRepository(database, join(tmpdir(), 'gearmod-usage-second-profile'))
     const second = profiles.create({ provider: 'claude', label: 'Claude 2', scope: 'x' })
     const future = Math.floor(Date.now() / 1000) + 3600
     const firstPayload = { account: { accountId: 'same-account' }, rate_limit_info: { unifiedWindows: { five_hour: { utilization: 0.5, resetsAt: future } } } }

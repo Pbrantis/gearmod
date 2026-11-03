@@ -31,7 +31,7 @@ const git = (dir: string, ...args: string[]): Promise<{ stdout: string; stderr: 
 
 describe('mergeBaseCommit + constitutionState (integração real)', () => {
   it('branch do card ahead: mudou a constituição, a base não', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-constate-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-constate-')); roots.push(root)
     const dir = join(root, 'repo')
     await exec('git', ['init', '-b', 'main', dir])
     await git(dir, 'config', 'user.email', 't@t.invalid'); await git(dir, 'config', 'user.name', 'T')
@@ -46,7 +46,7 @@ describe('mergeBaseCommit + constitutionState (integração real)', () => {
   })
 
   it('base behind: a base ganhou um commit novo, o card não mudou o arquivo', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'agentboard-constate-')); roots.push(root)
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-constate-')); roots.push(root)
     const dir = join(root, 'repo')
     await exec('git', ['init', '-b', 'main', dir])
     await git(dir, 'config', 'user.email', 't@t.invalid'); await git(dir, 'config', 'user.name', 'T')

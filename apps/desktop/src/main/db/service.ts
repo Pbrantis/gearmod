@@ -5,7 +5,7 @@ import type { ConnectionManager } from './connection-manager'
 import type { DbConnections, DbConnectionInput } from './connections'
 import { PgDriver } from './pg-driver'
 import { tm } from '../i18n'
-import { destructiveStatements } from '@agentboard/contracts'
+import { destructiveStatements } from '@gearmod/contracts'
 
 const integer = (value: string | null): number => { const n = Number(value); if (!Number.isSafeInteger(n) || n <= 0) throw new Error(tm().db.invalidCatalogId); return n }
 const kindOf = (category: string, type: string, typeKind: string): ColumnKind => {

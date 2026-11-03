@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import type { IpcOutput } from '@agentboard/contracts'
+import type { IpcOutput } from '@gearmod/contracts'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { CloseIcon } from '../icons'
 import { findChange, parseChanges, tabLabels, type FileChange } from '../changes'
@@ -29,13 +29,13 @@ export function FocusedFile({ projectId, cardId, chatId, request, close, setDirt
   const [preferences, changePreferences] = usePreferences(), [roots, setRoots] = useState<IpcOutput<'workspace:roots'>>([]), [jump, setJump] = useState<{ line: number; column: number }>(), [leaving, setLeaving] = useState(false)
   const changes = useRef<FileChange[]>([])
   const { setDocuments, setActive, current, loading, error, setError, update, save, open, reload, dialog } = useFileDocuments({ projectId, cardId, autosave: preferences.autosave, diffFirst: (path) => Boolean(findChange(changes.current, path)?.diff), readOnlyChatId: chatId })
-  useEffect(() => { void window.agentboard.invoke('workspace:roots', context).then(setRoots).catch(() => undefined) }, [context])
+  useEffect(() => { void window.gearmod.invoke('workspace:roots', context).then(setRoots).catch(() => undefined) }, [context])
   useEffect(() => {
     let alive = true
     const target = requestedTarget(effective.path)
     void (async () => {
       // O diff só abre sozinho se o arquivo está nas alterações do card; a lista vem do snapshot da worktree.
-      if (cardId) changes.current = await window.agentboard.invoke('worktrees:snapshot', { cardId }).then((snapshot) => snapshot.exists ? parseChanges(snapshot) : [], () => [])
+      if (cardId) changes.current = await window.gearmod.invoke('worktrees:snapshot', { cardId }).then((snapshot) => snapshot.exists ? parseChanges(snapshot) : [], () => [])
       const opened = await open(target.path)
       if (!alive || !opened) return
       setDocuments((all) => all.filter((item) => item.path === opened)); setActive(opened)
@@ -59,7 +59,7 @@ export function FocusedFile({ projectId, cardId, chatId, request, close, setDirt
     {quick && <QuickOpen context={context} roots={roots} recents={readRecents(projectId)} initialMode={quick} open={openAt} close={() => setQuick(null)} />}
     {current
       ? <FilePane doc={current} mode="focused" context={context} preferences={preferences} changePreferences={changePreferences} change={findChange(changes.current, current.path)} root={currentRoot} commentCardId={cardId} commentTarget={cardId ? t.files.editor.focused.commentCard : t.files.editor.focused.commentChat} update={update} save={save} reload={(path) => void reload(path)} afterComment={() => undefined} error={error} loading={loading} setError={setError} jump={jump} onJumped={() => setJump(undefined)} repoName={repoName} roots={roots} openAt={openAt}
-        headerEnd={<><button type="button" className="wf-iconchip tip" data-tip={t.files.editor.focused.openInFiles} aria-label={t.files.editor.focused.openInFiles} onClick={() => window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId, cardId, path: current.path } }))}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3H3v14h14v-5M11 3h6v6m0-6-8 8" /></svg></button><button type="button" className="x" aria-label={t.files.editor.focused.closeFile} onClick={leave}><CloseIcon /></button></>} />
+        headerEnd={<><button type="button" className="wf-iconchip tip" data-tip={t.files.editor.focused.openInFiles} aria-label={t.files.editor.focused.openInFiles} onClick={() => window.dispatchEvent(new CustomEvent('gearmod:open-file', { detail: { projectId, cardId, path: current.path } }))}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3H3v14h14v-5M11 3h6v6m0-6-8 8" /></svg></button><button type="button" className="x" aria-label={t.files.editor.focused.closeFile} onClick={leave}><CloseIcon /></button></>} />
       : <><div className="fv-head"><div className="fv-path" data-tip={target.path}><span className="fv-name">{nameOf(target.path)}</span></div><button type="button" className="x" aria-label={t.files.editor.focused.closeFile} onClick={close}><CloseIcon /></button></div>
         <div className="fv-body">{loading && <p className="fv-note"><span className="spin sm" /> {t.files.editor.focused.opening}</p>}{error && <p className="fv-note err">{error}</p>}</div></>}
     {leaving && current && <ConfirmDialog eyebrow={t.files.editor.focused.discardEyebrow} title={t.files.workspace.discardTitle} text={t.files.editor.focused.discardText(nameOf(current.path))} ok={t.files.editor.focused.discardOk} danger cancel={() => setLeaving(false)} confirm={() => { setLeaving(false); close() }} />}

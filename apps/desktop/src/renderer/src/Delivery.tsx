@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import type { Card, ProjectSource } from '@agentboard/contracts'
+import type { Card, ProjectSource } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { Checkbox } from './Checkbox'
 import { useT } from './i18n'
@@ -13,7 +13,7 @@ export function RepoChooser({ card, sources, changed, bare = false }: { card: Ca
   const [error, setError] = useState(''), [editing, setEditing] = useState(false), chosen = card.repoIds ?? []
   const toggle = async (id: string): Promise<void> => {
     const next = chosen.includes(id) ? chosen.filter((item) => item !== id) : [...chosen, id]
-    try { changed(await window.agentboard.invoke('cards:set-repos', { cardId: card.id, sourceIds: next.length ? next : null })); setError('') } catch (reason) { setError(plainError(reason)) }
+    try { changed(await window.gearmod.invoke('cards:set-repos', { cardId: card.id, sourceIds: next.length ? next : null })); setError('') } catch (reason) { setError(plainError(reason)) }
   }
   const marked = sources.filter((source) => chosen.includes(source.id))
   const body = <>

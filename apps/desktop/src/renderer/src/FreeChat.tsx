@@ -1,9 +1,9 @@
-import { providerLabels } from '@agentboard/contracts'
+import { providerLabels } from '@gearmod/contracts'
 import { AgentBackground } from './AgentBackground'
 import { AgentPermissions } from './AgentPermissions'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { dropToken, InputMirror, useAtMention } from './AtMention'
-import { defaultPermissionMode, permissionModes, type AgentProfile, type Chat, type ChatMessage, type Effort, type PermissionMode, type Project } from '@agentboard/contracts'
+import { defaultPermissionMode, permissionModes, type AgentProfile, type Chat, type ChatMessage, type Effort, type PermissionMode, type Project } from '@gearmod/contracts'
 import { PopMenu } from './PopMenu'
 import { ChatSearch, useChatSearchShortcut } from './ChatSearch'
 import { ChatMoreMenu, useDockSize } from './CardChat'
@@ -32,12 +32,12 @@ import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
 
 type Saved = { profileId: string; model: string | null; effort: Effort | null; mode: PermissionMode }
-const savedKey = (projectId: string): string => `agentboard.freeChatAgent.${projectId}`
+const savedKey = (projectId: string): string => `gearmod.freeChatAgent.${projectId}`
 const readSaved = (projectId: string): Saved | null => { try { return JSON.parse(localStorage.getItem(savedKey(projectId)) ?? 'null') as Saved | null } catch { return null } }
 
 /**
  * Chat livre: conversa solta com um agente, sem card e sem alterar arquivos. Se a conversa virar um planejamento, o agente cria o
- * card (agentboard_create_card) e este mesmo chat passa a ser o chat de planejamento dele; aí `onConverted` abre o card.
+ * card (gearmod_create_card) e este mesmo chat passa a ser o chat de planejamento dele; aí `onConverted` abre o card.
  * Com `mode="constitution"` é o chat da Constituição do projeto; `prompt` já envia o primeiro pedido ao abrir.
  */
 export function FreeChat({ project, profiles, chat: start, close, onConverted, changed, mode = 'free', prompt: firstPrompt }: { project: Project; profiles: AgentProfile[]; chat?: Chat; close(): void; onConverted(cardId: string): void; changed(): void; mode?: 'free' | 'constitution'; prompt?: string }): React.JSX.Element {
@@ -45,7 +45,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const text = f.modes[mode]
   const { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth } = useDockSize()
   const chatSearch = useChatSearchShortcut(expanded)
-  useEffect(() => { const navigate = (): void => { if (expanded) close() }; window.addEventListener('agentboard:select-view', navigate); return () => window.removeEventListener('agentboard:select-view', navigate) }, [expanded, close])
+  useEffect(() => { const navigate = (): void => { if (expanded) close() }; window.addEventListener('gearmod:select-view', navigate); return () => window.removeEventListener('gearmod:select-view', navigate) }, [expanded, close])
   const [chat, setChat] = useState<Chat | undefined>(start), [messages, setMessages] = useState<ChatMessage[]>([]), [input, setInput] = useState(''), [live, setLive] = useState(''), [error, setError] = useState('')
   const saved = useMemo(() => (mode === 'free' ? readSaved(project.id) : null), [project.id, mode])
   const [profileId, setProfileId] = useState(start?.profileId ?? (saved && profiles.some((item) => item.id === saved.profileId) ? saved.profileId : undefined) ?? profiles[0]?.id ?? ''), [busy, setBusy] = useState(Boolean(start?.busy))
@@ -83,14 +83,14 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   useContextText({ projectId: project.id, cardId: null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []))
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
-  const load = useCallback(async (chatId: string) => setMessages(await window.agentboard.invoke('messages:list', { chatId })), [])
+  const load = useCallback(async (chatId: string) => setMessages(await window.gearmod.invoke('messages:list', { chatId })), [])
   useEffect(() => { if (start) void load(start.id).catch((reason: unknown) => setError(plainError(reason))) }, [start, load])
-  useEffect(() => window.agentboard.onRunEvent((event) => {
-    if (event.eventType === 'agentboard/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void load(id); return current }); return }
+  useEffect(() => window.gearmod.onRunEvent((event) => {
+    if (event.eventType === 'gearmod/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void load(id); return current }); return }
     if (!runId.current || event.runId !== runId.current) return
     if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
-    if (event.eventType === 'agentboard/card-updated' && event.payload.type === 'converted') converted.current = String(event.payload.cardId)
-    if (event.eventType === 'agentboard/run-completed') {
+    if (event.eventType === 'gearmod/card-updated' && event.payload.type === 'converted') converted.current = String(event.payload.cardId)
+    if (event.eventType === 'gearmod/run-completed') {
       runId.current = undefined; setBusy(false); setLive(''); changed()
       setChat((current) => { if (current) void load(current.id); return current })
       if (converted.current) onConverted(converted.current)
@@ -102,12 +102,12 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
     try {
       setError('')
       let current = chat
-      if (!current) { if (!profileId) throw new Error(t.chat.cardChat.chooseAgent); current = await window.agentboard.invoke('chats:create', { projectId: project.id, cardId: null, purpose: mode, profileId }); setChat(current) }
-      const started = await window.agentboard.invoke('agents:start', { chatId: current.id, prompt, planning: readOnly, attachments: files.length ? files : undefined, choice: agentConfig ? { model: agentConfig.model, effort: agentConfig.effort, mode: agentConfig.mode } : undefined })
+      if (!current) { if (!profileId) throw new Error(t.chat.cardChat.chooseAgent); current = await window.gearmod.invoke('chats:create', { projectId: project.id, cardId: null, purpose: mode, profileId }); setChat(current) }
+      const started = await window.gearmod.invoke('agents:start', { chatId: current.id, prompt, planning: readOnly, attachments: files.length ? files : undefined, choice: agentConfig ? { model: agentConfig.model, effort: agentConfig.effort, mode: agentConfig.mode } : undefined })
       runId.current = started.id; setBusy(true); setLive(''); await load(current.id); changed()
     } catch (reason) { setError(plainError(reason)); const restored = replies.restore(prompt); setInput((value) => [restored, value].filter(Boolean).join('\n\n')); attach.add(files) }
   }
-  const cancel = async (): Promise<void> => { if (runId.current) await window.agentboard.invoke('agents:cancel', { runId: runId.current }).catch((reason: unknown) => setError(plainError(reason))) }
+  const cancel = async (): Promise<void> => { if (runId.current) await window.gearmod.invoke('agents:cancel', { runId: runId.current }).catch((reason: unknown) => setError(plainError(reason))) }
   const later = useQueuedMessage(busy, deliver)
   // Pedido que veio de fora (ex.: aplicar uma mudança sugerida na Constituição): envia uma vez ao abrir.
   const sentFirst = useRef(false)
@@ -121,7 +121,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const stop = async (): Promise<void> => { later.markStopped(); await cancel() }
   const detachChat = async (point: { x: number; y: number }): Promise<void> => {
     if (!chat?.id || pop) return
-    try { await window.agentboard.invoke('windows:open', { kind: 'chat', projectId: project.id, chatId: chat.id, placement: 'new', ...point }); close() } catch (reason) { setError(plainError(reason)) }
+    try { await window.gearmod.invoke('windows:open', { kind: 'chat', projectId: project.id, chatId: chat.id, placement: 'new', ...point }); close() } catch (reason) { setError(plainError(reason)) }
   }
   // Respostas das perguntas do agente voltam como mensagem normal (na fila, se ele ainda estiver trabalhando).
   const answerQuestions = (text: string): void => { if (busy) later.queue(text); else void deliver(text) }

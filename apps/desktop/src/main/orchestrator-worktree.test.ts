@@ -16,7 +16,7 @@ describe('worktree no planejamento', () => {
     const adapter = { run: async (options: AgentRunOptions) => { calls.push(options); return { status: 'completed', text: '', sessionId: 'session', turnId: null, error: null } } }
     let completed!: () => void
     const done = new Promise<void>((resolve) => { completed = resolve })
-    const orchestrator = new AgentOrchestrator(conversations as unknown as ConversationRepository, { codex: adapter as AgentAdapter, claude: adapter as AgentAdapter, gemini: adapter as AgentAdapter }, (event) => { if (event.eventType === 'agentboard/run-completed') completed() }, worktrees as unknown as WorktreeService)
+    const orchestrator = new AgentOrchestrator(conversations as unknown as ConversationRepository, { codex: adapter as AgentAdapter, claude: adapter as AgentAdapter, gemini: adapter as AgentAdapter }, (event) => { if (event.eventType === 'gearmod/run-completed') completed() }, worktrees as unknown as WorktreeService)
     orchestrator.start({ chatId: 'chat', prompt: 'Planeje', planning: true })
     await done
     expect(worktrees.prepare).toHaveBeenCalledWith('card')
@@ -37,7 +37,7 @@ describe('run que termina em erro (B3, B8)', () => {
     const collab = { afterRun: vi.fn() }
     let completed!: () => void
     const done = new Promise<void>((resolve) => { completed = resolve })
-    const orchestrator = new AgentOrchestrator(conversations as unknown as ConversationRepository, { codex: adapter as unknown as AgentAdapter, claude: adapter as unknown as AgentAdapter, gemini: adapter as unknown as AgentAdapter }, (event) => { if (event.eventType === 'agentboard/run-completed') completed() }, worktrees as unknown as WorktreeService, 2, undefined, undefined, undefined, undefined, collab)
+    const orchestrator = new AgentOrchestrator(conversations as unknown as ConversationRepository, { codex: adapter as unknown as AgentAdapter, claude: adapter as unknown as AgentAdapter, gemini: adapter as unknown as AgentAdapter }, (event) => { if (event.eventType === 'gearmod/run-completed') completed() }, worktrees as unknown as WorktreeService, 2, undefined, undefined, undefined, undefined, collab)
     orchestrator.setHarness(harness as never)
     orchestrator.start({ chatId: 'chat', prompt: 'Execute', planning: false })
     await done

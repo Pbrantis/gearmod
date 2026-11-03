@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process'
 import { readdir, stat } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { defaultAgentColor, geminiEnabled, type CardRunState, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@agentboard/contracts'
+import { defaultAgentColor, geminiEnabled, type CardRunState, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { DocumentRepository } from './documents'
 import { countTasks } from './tasks'
@@ -107,7 +107,7 @@ export class ProfileRepository {
   create(input: { provider: 'codex' | 'claude' | 'gemini'; label: string; scope: string; color?: string }): AgentProfile {
     if (input.provider === 'gemini' && !geminiEnabled) throw new Error(tm().projects.geminiDisabled)
     const id = randomUUID()
-    const configDir = join(this.homeDir, '.agentboard', 'profiles', id)
+    const configDir = join(this.homeDir, '.gearmod', 'profiles', id)
     const now = new Date().toISOString()
     this.database.db.prepare(`INSERT INTO agent_profiles
       (id, provider, label, scope, color, config_dir, executable_path, enabled, created_at, updated_at)
@@ -279,7 +279,7 @@ export class ProjectRepository {
     return this.list()
   }
 
-  /** Remove o projeto do AgentBoard (cards, chats, documentos e histórico). As pastas e os repositórios no disco não são tocados. */
+  /** Remove o projeto do GearMod (cards, chats, documentos e histórico). As pastas e os repositórios no disco não são tocados. */
   delete(projectId: string): boolean {
     this.get(projectId)
     const busy = this.database.db.prepare(`SELECT 1 FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ? AND r.status IN ('queued', 'running') LIMIT 1`).get(projectId)

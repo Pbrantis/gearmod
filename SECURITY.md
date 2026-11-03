@@ -1,15 +1,15 @@
 # Security policy
 
-## What AgentBoard promises
+## What GearMod promises
 
-- **Your data stays on your machine.** AgentBoard has no server and no account. The database, attachments and backups are local files under the app's user-data folder.
+- **Your data stays on your machine.** GearMod has no server and no account. The database, attachments and backups are local files under the app's user-data folder.
 - **Agents get a minimal environment.** Agent processes (Claude Code, Codex, Gemini CLI) receive a fixed allowlist of system variables (PATH, proxy, certificates, locale...) plus the variables you explicitly declare on the agent profile. Variables that look like tokens, keys or secrets are not passed unless declared. Docker Engine variables are never passed.
 - **MCP configuration is not put on the command line.** Secrets in MCP server settings are written to a temporary file with restricted permissions and removed when the run ends.
 - **Downloads are verified.** The dictation engine and models are downloaded from pinned versions and checked against a SHA-256 before use.
 - **Risky actions ask first.** Destructive Git actions, backup restore and destructive SQL need confirmation, and the app refuses Git actions on a worktree while an agent is running in it.
 - **The window is locked down.** IPC calls are accepted only from the app's own window, and every channel validates its input.
 
-## What AgentBoard does not promise
+## What GearMod does not promise
 
 - **It is not a sandbox.** An agent runs with your user's permissions and can read and write anything your account can, within the permission mode you chose. Modes such as "Ignore permissions" approve everything; use them only in a disposable environment. The app does not isolate agents from each other or from your system.
 - **It does not scan for secrets** in what an agent writes or commits. Review diffs before you push.

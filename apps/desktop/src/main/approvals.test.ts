@@ -6,7 +6,7 @@ import { AppDatabase } from './database'
 import { ApprovalService } from './approvals'
 
 const roots: string[] = [], databases: AppDatabase[] = []
-async function service(): Promise<ApprovalService> { const root = await mkdtemp(join(tmpdir(), 'agentboard-approval-')); roots.push(root); const database = new AppDatabase(join(root, 'db.sqlite'), 'test'); databases.push(database); await database.open(); return new ApprovalService(database) }
+async function service(): Promise<ApprovalService> { const root = await mkdtemp(join(tmpdir(), 'gearmod-approval-')); roots.push(root); const database = new AppDatabase(join(root, 'db.sqlite'), 'test'); databases.push(database); await database.open(); return new ApprovalService(database) }
 afterEach(async () => { while (databases.length) databases.pop()!.close(); while (roots.length) await rm(roots.pop()!, { recursive: true, force: true }) })
 
 describe('ApprovalService', () => {

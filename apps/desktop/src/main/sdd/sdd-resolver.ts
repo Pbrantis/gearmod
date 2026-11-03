@@ -1,6 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { SddConfig } from '@agentboard/contracts'
+import type { SddConfig } from '@gearmod/contracts'
 import type { BoardRepository, ProjectRepository } from '../projects'
 import type { CardHistoryService } from '../history'
 import { nativeGit, type GitRunner, type WorktreeService } from '../worktrees'

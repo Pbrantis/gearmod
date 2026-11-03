@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { DbConnection, IpcOutput } from '@agentboard/contracts'
+import type { DbConnection, IpcOutput } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { DbContextMenu, type DbMenuItem } from './DbContextMenu'
 import { DbTree } from './DbTree'
@@ -28,40 +28,40 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
   const [scopes, setScopes] = useState<Record<string, string[]>>({}), [totals, setTotals] = useState<Record<string, number>>({}), [scopePick, setScopePick] = useState<{ x: number; y: number; connection: DbConnection; items: ScopeItem[] }>()
   const patchTree = (id: string, change: (tree: Tree) => Tree): void => setTrees((current) => ({ ...current, [id]: change(current[id] ?? { schemas: [], tables: {}, expanded: [] }) }))
   const [layout, setLayout] = useState<WsNode>(() => defaultLayout()), [focus, setFocus] = useState('')
-  const [side, setSide] = useState<'left' | 'right'>(() => read('agentboard.db.dock', 'left') === 'right' ? 'right' : 'left'), [sideWidth, setSideWidth] = useState(() => Math.max(200, Math.min(640, Number(read('agentboard.db.sideWidth', '')) || 280))), [dockDrag, setDockDrag] = useState<'left' | 'right'>()
+  const [side, setSide] = useState<'left' | 'right'>(() => read('gearmod.db.dock', 'left') === 'right' ? 'right' : 'left'), [sideWidth, setSideWidth] = useState(() => Math.max(200, Math.min(640, Number(read('gearmod.db.sideWidth', '')) || 280))), [dockDrag, setDockDrag] = useState<'left' | 'right'>()
   const [editing, setEditing] = useState<DbConnection>(), [newDbFor, setNewDbFor] = useState<DbConnection>(), [menu, setMenu] = useState<{ x: number; y: number; connection: DbConnection }>()
   const [passwordFor, setPasswordFor] = useState<string>(), [sessionPassword, setSessionPassword] = useState('')
   const [connectionState, setConnectionState] = useState<IpcOutput<'db:state'>>('disconnected')
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [showNew, setShowNew] = useState(false)
   const [layoutProject, setLayoutProject] = useState(''), [states, setStates] = useState<Record<string, string>>({})
   const dropTabs = (ids: string[]): void => setLayout((current) => dropConnections(current, ids))
-  const reload = (): void => { void window.agentboard.invoke('db:connections:list', { projectId }).then(setConnections).catch((reason) => setError(plainError(reason))) }
+  const reload = (): void => { void window.gearmod.invoke('db:connections:list', { projectId }).then(setConnections).catch((reason) => setError(plainError(reason))) }
   useEffect(reload, [projectId])
-  useEffect(() => { if (layoutProject === projectId) write(`agentboard.db.layout.${projectId}`, JSON.stringify(layout)) }, [layout, layoutProject, projectId])
+  useEffect(() => { if (layoutProject === projectId) write(`gearmod.db.layout.${projectId}`, JSON.stringify(layout)) }, [layout, layoutProject, projectId])
   useEffect(() => { setLayout(loadLayout()); setFocus(''); setLayoutProject(projectId) }, [projectId])
-  useEffect(() => { for (const [id, tree] of Object.entries(trees)) write(`agentboard.db.expanded.${projectId}.${id}`, JSON.stringify(tree.expanded)) }, [trees, projectId])
-  useEffect(() => { if (!selected) return; const refresh = (): void => { void window.agentboard.invoke('db:state', { connectionId: selected }).then(setConnectionState).catch(() => setConnectionState('error')) }; refresh(); const timer = window.setInterval(refresh, 5000); return () => window.clearInterval(timer) }, [selected])
+  useEffect(() => { for (const [id, tree] of Object.entries(trees)) write(`gearmod.db.expanded.${projectId}.${id}`, JSON.stringify(tree.expanded)) }, [trees, projectId])
+  useEffect(() => { if (!selected) return; const refresh = (): void => { void window.gearmod.invoke('db:state', { connectionId: selected }).then(setConnectionState).catch(() => setConnectionState('error')) }; refresh(); const timer = window.setInterval(refresh, 5000); return () => window.clearInterval(timer) }, [selected])
   /** Um só espaço de abas por projeto: cada aba é ligada a um banco e abrir outro banco não fecha as abas dos demais. */
   const loadLayout = (): WsNode => {
-    try { const saved = parseLayout(JSON.parse(read(`agentboard.db.layout.${projectId}`, 'null'))); if (saved) return saved } catch { /* preferência local inválida */ }
+    try { const saved = parseLayout(JSON.parse(read(`gearmod.db.layout.${projectId}`, 'null'))); if (saved) return saved } catch { /* preferência local inválida */ }
     return defaultLayout()
   }
   const closePassword = (): void => { setPasswordFor(undefined); setSessionPassword('') }
   useEscape(closePassword, Boolean(passwordFor))
-  const connect = async (id: string): Promise<void> => { setBusy(true); setError(''); setSelected(id); setConnectionState('connecting'); try { await window.agentboard.invoke('db:connect', { connectionId: id }); const parentId = connections.find((item) => item.id === id)?.parentId; if (parentId) void window.agentboard.invoke('db:databases', { connectionId: parentId }).then((list) => setTotals((current) => ({ ...current, [parentId]: list.length }))).catch(() => undefined); const list = await window.agentboard.invoke('db:schemas', { connectionId: id, all: true }); let open: number[] = trees[id]?.expanded ?? []; if (!trees[id]) { try { const expandedValue: unknown = JSON.parse(read(`agentboard.db.expanded.${projectId}.${id}`, '[]')); if (Array.isArray(expandedValue)) open = expandedValue.filter((item): item is number => Number.isSafeInteger(item)).slice(0, 100) } catch { /* preferência local inválida */ } } setTrees((current) => ({ ...current, [id]: { schemas: list, tables: {}, expanded: open } })); setOpenConns((current) => current.includes(id) ? current : [...current, id]); for (const oid of open) void listTables(id, oid); setConnectionState('ready'); } catch (reason) { setConnectionState('error'); setError(plainError(reason)); if (!connections.find((item) => item.id === id)?.hasSecret) { setSessionPassword(''); setPasswordFor(id) } } finally { setBusy(false) } }
-  const listTables = async (id: string, oid: number): Promise<void> => { try { const result = await window.agentboard.invoke('db:tables', { connectionId: id, schemaOid: oid }); patchTree(id, (tree) => ({ ...tree, tables: { ...tree.tables, [oid]: result } })) } catch (reason) { setError(plainError(reason)) } }
+  const connect = async (id: string): Promise<void> => { setBusy(true); setError(''); setSelected(id); setConnectionState('connecting'); try { await window.gearmod.invoke('db:connect', { connectionId: id }); const parentId = connections.find((item) => item.id === id)?.parentId; if (parentId) void window.gearmod.invoke('db:databases', { connectionId: parentId }).then((list) => setTotals((current) => ({ ...current, [parentId]: list.length }))).catch(() => undefined); const list = await window.gearmod.invoke('db:schemas', { connectionId: id, all: true }); let open: number[] = trees[id]?.expanded ?? []; if (!trees[id]) { try { const expandedValue: unknown = JSON.parse(read(`gearmod.db.expanded.${projectId}.${id}`, '[]')); if (Array.isArray(expandedValue)) open = expandedValue.filter((item): item is number => Number.isSafeInteger(item)).slice(0, 100) } catch { /* preferência local inválida */ } } setTrees((current) => ({ ...current, [id]: { schemas: list, tables: {}, expanded: open } })); setOpenConns((current) => current.includes(id) ? current : [...current, id]); for (const oid of open) void listTables(id, oid); setConnectionState('ready'); } catch (reason) { setConnectionState('error'); setError(plainError(reason)); if (!connections.find((item) => item.id === id)?.hasSecret) { setSessionPassword(''); setPasswordFor(id) } } finally { setBusy(false) } }
+  const listTables = async (id: string, oid: number): Promise<void> => { try { const result = await window.gearmod.invoke('db:tables', { connectionId: id, schemaOid: oid }); patchTree(id, (tree) => ({ ...tree, tables: { ...tree.tables, [oid]: result } })) } catch (reason) { setError(plainError(reason)) } }
   const toggleSchema = (id: string, oid: number, opened: boolean): void => { patchTree(id, (tree) => ({ ...tree, expanded: opened ? [...new Set([...tree.expanded, oid])] : tree.expanded.filter((item) => item !== oid) })); if (opened && !trees[id]?.tables[oid]) void listTables(id, oid) }
   const openFrom = async (id: string, item: { oid: number; name: string }): Promise<void> => { if (id !== selected) await connect(id); setLayout((current) => openTab(current, tableTab(item.oid, item.name, id), focus)) }
   const removeConnection = async (connection: DbConnection): Promise<void> => {
     const children = connections.filter((item) => item.parentId === connection.id)
     if (!(await ask({ eyebrow: connection.parentId ? t.database.page.removeDb : t.database.page.removeServer, title: connection.name, text: connection.parentId ? t.database.page.removeDbText : t.database.page.removeServerText(children.length), ok: t.common.remove, danger: true }))) return
-    void window.agentboard.invoke('db:connections:delete', { connectionId: connection.id }).then(() => { dropTabs([connection.id, ...children.map((item) => item.id)]); if (selected === connection.id || children.some((item) => item.id === selected)) { setSelected(''); setTrees({}) }; reload() }).catch((reason) => setError(plainError(reason)))
+    void window.gearmod.invoke('db:connections:delete', { connectionId: connection.id }).then(() => { dropTabs([connection.id, ...children.map((item) => item.id)]); if (selected === connection.id || children.some((item) => item.id === selected)) { setSelected(''); setTrees({}) }; reload() }).catch((reason) => setError(plainError(reason)))
   }
   const openMenu = (connection: DbConnection, x: number, y: number): void => setMenu({ x, y, connection })
   const menuItems = (connection: DbConnection): DbMenuItem[] => connection.parentId
     ? [{ label: t.common.open, run: () => { setMenu(undefined); void connect(connection.id) } }, { label: t.database.page.menuEditDb, run: () => { setMenu(undefined); setNewDbFor(undefined); setEditing(connection); setShowNew(true) } }, { label: t.database.page.menuRemoveFromList, danger: true, run: () => { setMenu(undefined); void removeConnection(connection) } }]
     : [{ label: t.database.page.menuAddDb, run: () => { setMenu(undefined); setEditing(undefined); setNewDbFor(connection); setShowNew(true) } }, { label: t.database.page.menuEditServer, run: () => { setMenu(undefined); setNewDbFor(undefined); setEditing(connection); setShowNew(true) } }, { label: t.database.page.removeServer, danger: true, run: () => { setMenu(undefined); void removeConnection(connection) } }]
-  const scopeKey = (id: string): string => `agentboard.db.scope.${projectId}.${id}`
+  const scopeKey = (id: string): string => `gearmod.db.scope.${projectId}.${id}`
   /** Esquemas escolhidos no filtro do banco; sem escolha salva, mostra todos menos os de sistema. */
   const savedScope = (id: string): string[] | undefined => {
     if (scopes[id]) return scopes[id]
@@ -73,12 +73,12 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
     try {
       let items: ScopeItem[]
       if (!connection.parentId) {
-        const names = await window.agentboard.invoke('db:databases', { connectionId: connection.id })
+        const names = await window.gearmod.invoke('db:databases', { connectionId: connection.id })
         setTotals((current) => ({ ...current, [connection.id]: names.length }))
         const have = new Set(connections.filter((item) => item.parentId === connection.id).map((item) => item.database))
         items = names.map((name) => ({ key: name, label: name, ...(name === connection.database ? { note: t.database.page.defaultNote } : {}), checked: have.has(name) }))
       } else {
-        const list = await window.agentboard.invoke('db:schemas', { connectionId: connection.id, all: true }), visible = new Set(visibleSchemas(connection.id, list).map((item) => item.name))
+        const list = await window.gearmod.invoke('db:schemas', { connectionId: connection.id, all: true }), visible = new Set(visibleSchemas(connection.id, list).map((item) => item.name))
         items = list.map((item) => ({ key: item.name, label: item.name, ...(item.name === 'public' ? { note: t.database.page.defaultNote } : {}), ...(item.system ? { system: true } : {}), checked: visible.has(item.name) }))
       }
       setScopePick({ x, y, connection, items })
@@ -92,14 +92,14 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
     if (!add.length && !drop.length) return
     if (drop.length && !(await ask({ eyebrow: t.database.page.removeDbs, title: t.database.page.removeDbsTitle(drop.length), text: t.database.page.removeDbsText(drop.map((item) => item.name).join(', ')), ok: t.common.remove, danger: true }))) return
     try {
-      for (const item of drop) await window.agentboard.invoke('db:connections:delete', { connectionId: item.id })
-      for (const name of add) await window.agentboard.invoke('db:connections:save', { projectId, parentId: connection.id, name, host: connection.host, port: connection.port, database: name, user: connection.user, klass: connection.klass, sslMode: connection.sslMode, allowWrite: connection.allowWrite, agentAccess: 'none' as const, ...(connection.allowWrite && (connection.klass === 'prod' || connection.klass === 'external') ? { confirmWrite: name } : {}) })
+      for (const item of drop) await window.gearmod.invoke('db:connections:delete', { connectionId: item.id })
+      for (const name of add) await window.gearmod.invoke('db:connections:save', { projectId, parentId: connection.id, name, host: connection.host, port: connection.port, database: name, user: connection.user, klass: connection.klass, sslMode: connection.sslMode, allowWrite: connection.allowWrite, agentAccess: 'none' as const, ...(connection.allowWrite && (connection.klass === 'prod' || connection.klass === 'external') ? { confirmWrite: name } : {}) })
       dropTabs(drop.map((item) => item.id))
       if (drop.some((item) => item.id === selected)) { setSelected(''); setTrees({}) }
     } catch (reason) { setError(plainError(reason)) }
     reload()
   }
-  const refreshTrees = (): void => { for (const id of openConns) { void window.agentboard.invoke('db:schemas', { connectionId: id, all: true }).then((list) => { const open = trees[id]?.expanded ?? []; setTrees((current) => ({ ...current, [id]: { schemas: list, tables: {}, expanded: open } })); for (const oid of open) void listTables(id, oid) }).catch((reason) => setError(plainError(reason))) } }
+  const refreshTrees = (): void => { for (const id of openConns) { void window.gearmod.invoke('db:schemas', { connectionId: id, all: true }).then((list) => { const open = trees[id]?.expanded ?? []; setTrees((current) => ({ ...current, [id]: { schemas: list, tables: {}, expanded: open } })); for (const oid of open) void listTables(id, oid) }).catch((reason) => setError(plainError(reason))) } }
   const focusPane = panesOf(layout).find((pane) => pane.id === focus) ?? panesOf(layout)[0]!, activeTab = focusPane.tabs.find((tab) => tab.id === focusPane.active)
   const activeOid: number | 'sql' = activeTab?.kind === 'table' && activeTab.oid !== undefined ? activeTab.oid : 'sql'
   const activeConn = activeTab?.connectionId ?? selected
@@ -111,7 +111,7 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
   const usedKey = [...usedConnections].filter(Boolean).sort().join(',')
   useEffect(() => {
     const ids = usedKey ? usedKey.split(',') : []; if (!ids.length) return
-    const poll = (): void => { void Promise.all(ids.map((id) => window.agentboard.invoke('db:state', { connectionId: id }).then((state) => [id, state] as const, () => [id, 'error'] as const))).then((pairs) => setStates((current) => ({ ...current, ...Object.fromEntries(pairs) }))) }
+    const poll = (): void => { void Promise.all(ids.map((id) => window.gearmod.invoke('db:state', { connectionId: id }).then((state) => [id, state] as const, () => [id, 'error'] as const))).then((pairs) => setStates((current) => ({ ...current, ...Object.fromEntries(pairs) }))) }
     poll(); const timer = window.setInterval(poll, 3000); return () => window.clearInterval(timer)
   }, [usedKey])
   const tabState = (tab: WsTab): string | undefined => { const id = tabConnection(tab); return id ? states[id] ?? 'disconnected' : undefined }
@@ -127,14 +127,14 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
   const startWidth = (event: React.PointerEvent): void => {
     event.preventDefault(); const page = (event.currentTarget as HTMLElement).closest('.db-page') as HTMLElement, box = page.getBoundingClientRect(); let last = sideWidth
     const move = (item: PointerEvent): void => { last = Math.round(Math.max(200, Math.min(Math.min(640, box.width - 360), side === 'left' ? item.clientX - box.left : box.right - item.clientX))); setSideWidth(last) }
-    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); write('agentboard.db.sideWidth', String(last)) }
+    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); write('gearmod.db.sideWidth', String(last)) }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
   const startDock = (event: React.PointerEvent): void => {
     if ((event.target as HTMLElement).closest('button')) return
     event.preventDefault(); const box = (event.currentTarget as HTMLElement).closest('.db-page')!.getBoundingClientRect(); let target = side, moved = false
     const move = (item: PointerEvent): void => { moved = true; target = item.clientX < box.left + box.width / 2 ? 'left' : 'right'; setDockDrag(target) }
-    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); setDockDrag(undefined); if (moved && target !== side) { setSide(target); write('agentboard.db.dock', target) } }
+    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); setDockDrag(undefined); if (moved && target !== side) { setSide(target); write('gearmod.db.dock', target) } }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
   const renderConn = (connection: DbConnection): React.JSX.Element => {
@@ -147,7 +147,7 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
   }
   return <div className={`db-page${side === 'right' ? ' dock-right' : ''}`}>{scopePick && <DbScopePicker x={scopePick.x} y={scopePick.y} title={scopePick.connection.parentId ? t.database.page.schemasTitle : t.database.page.databasesTitle} items={scopePick.items} apply={(keys) => void applyScope(scopePick.connection, keys)} close={() => setScopePick(undefined)} />}{menu && <DbContextMenu x={menu.x} y={menu.y} title={menu.connection.name} items={menuItems(menu.connection)} close={() => setMenu(undefined)} />}{dockDrag && <div className={`db-dock-preview ${dockDrag}`} style={{ width: sideWidth }} aria-hidden="true" />}<aside style={{ width: sideWidth }}><div className="db-side-head"><h2 className="db-side-grip" data-tip={t.database.page.dragToDock} onPointerDown={startDock}>{t.database.title}</h2><button type="button" className="db-new" onClick={() => { setEditing(undefined); setNewDbFor(undefined); setShowNew(true) }}>{t.database.page.newServer}</button></div><div className="db-search"><input aria-label={t.database.page.searchTree} placeholder={t.database.page.searchTree} data-tip={t.database.page.searchTreeTip} value={treeQuery} onChange={(event) => setTreeQuery(event.target.value)} /><button type="button" className="db-tool db-refresh" data-tip={t.database.page.refreshTrees} aria-label={t.database.page.refreshTree} onClick={refreshTrees}>↻</button></div><div className="db-conns">{connections.filter((item) => !item.parentId).map((server) => <div key={server.id} className="db-server">{renderConn(server)}{!collapsed.includes(server.id) && <div className="db-dbs">{connections.some((item) => item.parentId === server.id) ? connections.filter((item) => item.parentId === server.id).map((child) => renderConn(child)) : <p className="db-hint">{t.database.page.noDatabasesYet}</p>}</div>}</div>)}</div>
     </aside><div className="db-vgutter" role="separator" aria-orientation="vertical" data-tip={t.database.dragToResize} onPointerDown={startWidth} />
-    <section>{passwordFor && <div className="overlay" role="dialog" aria-label={t.database.page.sessionPasswordAria}><div className="modal"><header><div><div className="eyebrow">{t.database.title}</div><h2>{t.database.page.sessionPasswordTitle}</h2></div><button type="button" className="x" aria-label={t.common.close} onClick={closePassword}>×</button></header><p>{t.database.page.sessionPasswordNote}</p><label>{t.database.page.password}<input type="password" value={sessionPassword} autoComplete="off" onChange={(event) => setSessionPassword(event.target.value)} /></label><div className="actions"><button type="button" className="secondary" onClick={closePassword}>{t.common.cancel}</button><button type="button" onClick={() => { const id = passwordFor, value = sessionPassword; setPasswordFor(undefined); setSessionPassword(''); void window.agentboard.invoke('db:session-password', { connectionId: id, password: value }).then(() => { reload(); return connect(id) }).catch((reason) => setError(plainError(reason))) }}>{t.database.page.connect}</button></div></div></div>}{askDialog}{showNew && (newDbFor || editing?.parentId ? <DatabaseForm projectId={projectId} server={newDbFor ?? connections.find((item) => item.id === editing?.parentId)!} initial={editing} close={() => setShowNew(false)} saved={(created) => { setShowNew(false); if (selected === editing?.id) { setSelected(''); setTrees({}) }; reload(); if (created) void connect(created) }} /> : <ConnectionForm projectId={projectId} initial={editing} close={() => setShowNew(false)} saved={(created) => { setShowNew(false); if (created) void connect(created); if (selected === editing?.id || connections.some((item) => item.parentId === editing?.id && item.id === selected)) { setSelected(''); setTrees({}) }; reload() }} />)}{error && <p className="error">{error}</p>}{!connections.length && <p>{t.database.page.pickOrCreate}</p>}{(busy || (selected && ['lost', 'error'].includes(connectionState))) && <div className="db-topbar">{selected && ['lost', 'error'].includes(connectionState) && <p role="status" className={`db-status ${connectionState}`}><span className={`db-dot ${connectionState}`} aria-hidden="true" />{connectionState === 'lost' ? t.database.page.connectionLost : t.database.page.connectionFailed}<button type="button" className="db-tool" onClick={() => void connect(selected)}>{t.database.page.reconnect}</button></p>}{busy && <p className="db-busy"><span className="db-spin" aria-hidden="true" />{t.database.page.connecting}</p>}</div>}
+    <section>{passwordFor && <div className="overlay" role="dialog" aria-label={t.database.page.sessionPasswordAria}><div className="modal"><header><div><div className="eyebrow">{t.database.title}</div><h2>{t.database.page.sessionPasswordTitle}</h2></div><button type="button" className="x" aria-label={t.common.close} onClick={closePassword}>×</button></header><p>{t.database.page.sessionPasswordNote}</p><label>{t.database.page.password}<input type="password" value={sessionPassword} autoComplete="off" onChange={(event) => setSessionPassword(event.target.value)} /></label><div className="actions"><button type="button" className="secondary" onClick={closePassword}>{t.common.cancel}</button><button type="button" onClick={() => { const id = passwordFor, value = sessionPassword; setPasswordFor(undefined); setSessionPassword(''); void window.gearmod.invoke('db:session-password', { connectionId: id, password: value }).then(() => { reload(); return connect(id) }).catch((reason) => setError(plainError(reason))) }}>{t.database.page.connect}</button></div></div></div>}{askDialog}{showNew && (newDbFor || editing?.parentId ? <DatabaseForm projectId={projectId} server={newDbFor ?? connections.find((item) => item.id === editing?.parentId)!} initial={editing} close={() => setShowNew(false)} saved={(created) => { setShowNew(false); if (selected === editing?.id) { setSelected(''); setTrees({}) }; reload(); if (created) void connect(created) }} /> : <ConnectionForm projectId={projectId} initial={editing} close={() => setShowNew(false)} saved={(created) => { setShowNew(false); if (created) void connect(created); if (selected === editing?.id || connections.some((item) => item.parentId === editing?.id && item.id === selected)) { setSelected(''); setTrees({}) }; reload() }} />)}{error && <p className="error">{error}</p>}{!connections.length && <p>{t.database.page.pickOrCreate}</p>}{(busy || (selected && ['lost', 'error'].includes(connectionState))) && <div className="db-topbar">{selected && ['lost', 'error'].includes(connectionState) && <p role="status" className={`db-status ${connectionState}`}><span className={`db-dot ${connectionState}`} aria-hidden="true" />{connectionState === 'lost' ? t.database.page.connectionLost : t.database.page.connectionFailed}<button type="button" className="db-tool" onClick={() => void connect(selected)}>{t.database.page.reconnect}</button></p>}{busy && <p className="db-busy"><span className="db-spin" aria-hidden="true" />{t.database.page.connecting}</p>}</div>}
       {layoutProject === projectId && connections.length > 0 && <DbWorkspace layout={layout} change={setLayout} focus={focusPane.id} setFocus={setFocus} renderTab={renderTab} sqlConnection={activeConn || undefined} tabNote={tabNote} tabState={tabState} confirmClose={() => ask({ eyebrow: t.database.table.pendingChanges, title: t.database.table.discardTitle, text: t.database.table.discardText, ok: t.database.table.discard, danger: true })} />}</section></div>
 }
 
@@ -161,17 +161,17 @@ function ConnectionForm({ projectId, initial, close, saved }: { projectId: strin
   const input = () => ({ projectId, name, host, port, database, user, ...(initial ? { id: initial.id } : {}), ...(!initial || password ? { password, passwordStorage: session ? 'session' as const : 'secure' as const } : {}), klass, sslMode, allowWrite, agentAccess: agentEligible ? agentAccess : 'none' as const, ...(confirmation ? { confirmWrite: confirmation } : {}) })
   const save = (): void => {
     setError('')
-    void window.agentboard.invoke('db:connections:save', input()).then(async (server) => {
+    void window.gearmod.invoke('db:connections:save', input()).then(async (server) => {
       const first = database.trim()
       // O servidor é só o contêiner: o banco informado já entra dentro dele como o primeiro banco da lista.
-      const child = initial || !first ? undefined : await window.agentboard.invoke('db:connections:save', { projectId, parentId: server.id, name: first, host, port, database: first, user, klass, sslMode, allowWrite, agentAccess: 'none' as const, ...(allowWrite && (klass === 'prod' || klass === 'external') ? { confirmWrite: first } : {}) }).catch(() => undefined)
+      const child = initial || !first ? undefined : await window.gearmod.invoke('db:connections:save', { projectId, parentId: server.id, name: first, host, port, database: first, user, klass, sslMode, allowWrite, agentAccess: 'none' as const, ...(allowWrite && (klass === 'prod' || klass === 'external') ? { confirmWrite: first } : {}) }).catch(() => undefined)
       saved(child?.id)
     }).catch((reason) => setError(plainError(reason)))
   }
   const [tab, setTab] = useState<'general' | 'options' | 'ssl'>('general')
   const test = (): void => {
     setError(''); setTesting(true)
-    void window.agentboard.invoke('db:connections:test', input())
+    void window.gearmod.invoke('db:connections:test', input())
       .then((result) => toast.success(t.database.connForm.connected, [result.version, result.pingMs !== undefined ? `${result.pingMs} ms` : '', t.database.connForm.sslState[sslMode]].filter(Boolean).join(' · ')))
       .catch((reason) => toast.error(t.database.connForm.cannotConnect, plainError(reason)))
       .finally(() => setTesting(false))
@@ -211,12 +211,12 @@ function DatabaseForm({ projectId, server, initial, close, saved }: { projectId:
   const [allowWrite, setAllowWrite] = useState(initial?.allowWrite ?? server.allowWrite), [confirmation, setConfirmation] = useState(''), [error, setError] = useState(''), [available, setAvailable] = useState<string[]>([]), [listNote, setListNote] = useState(t.database.dbForm.loadingList)
   useEffect(() => {
     let alive = true
-    void window.agentboard.invoke('db:connect', { connectionId: server.id }).then(() => window.agentboard.invoke('db:databases', { connectionId: server.id })).then((list) => { if (alive) { setAvailable(list); setListNote('') } }).catch(() => { if (alive) setListNote(t.database.dbForm.listFailed) })
+    void window.gearmod.invoke('db:connect', { connectionId: server.id }).then(() => window.gearmod.invoke('db:databases', { connectionId: server.id })).then((list) => { if (alive) { setAvailable(list); setListNote('') } }).catch(() => { if (alive) setListNote(t.database.dbForm.listFailed) })
     return () => { alive = false }
   }, [server.id])
   useEscape(close)
   const needsConfirm = allowWrite && (server.klass === 'prod' || server.klass === 'external')
-  const save = (): void => { setError(''); void window.agentboard.invoke('db:connections:save', { projectId, parentId: server.id, ...(initial ? { id: initial.id } : {}), name: name || database, host: server.host, port: server.port, database, user: server.user, klass: server.klass, sslMode: server.sslMode, allowWrite, agentAccess: initial?.agentAccess ?? 'none', ...(confirmation ? { confirmWrite: confirmation } : {}) }).then((item) => saved(initial ? undefined : item.id)).catch((reason) => setError(plainError(reason))) }
+  const save = (): void => { setError(''); void window.gearmod.invoke('db:connections:save', { projectId, parentId: server.id, ...(initial ? { id: initial.id } : {}), name: name || database, host: server.host, port: server.port, database, user: server.user, klass: server.klass, sslMode: server.sslMode, allowWrite, agentAccess: initial?.agentAccess ?? 'none', ...(confirmation ? { confirmWrite: confirmation } : {}) }).then((item) => saved(initial ? undefined : item.id)).catch((reason) => setError(plainError(reason))) }
   return <div className="overlay" role="dialog" aria-label={t.database.dbForm.dialogAria}><div className="modal dbmodal"><header><div><div className="eyebrow">{t.database.title}</div><h2>{initial ? t.database.dbForm.editTitle(server.name) : t.database.dbForm.newTitle(server.name)}</h2></div><button type="button" className="x" aria-label={t.common.close} onClick={close}>×</button></header><div className="stack dbform">
     <p className="db-hint">{t.database.dbForm.usesConnection(`${server.user}@${server.host}:${server.port}`)}</p>
     {available.length ? <div className="f"><span>{t.database.connForm.database}</span><Select label={t.database.connForm.database} value={database} options={[{ value: '', label: t.database.dbForm.pickDatabase }, ...[...new Set([...(database ? [database] : []), ...available])].map((item) => ({ value: item, label: item }))]} onChange={(value) => { setDatabase(value); if (!nameTouched) setName(value) }} /></div> : <label className="f">{t.database.connForm.database}<input className="in" value={database} onChange={(e) => { setDatabase(e.target.value); if (!nameTouched) setName(e.target.value) }} placeholder={t.database.dbForm.typeDatabase} /></label>}

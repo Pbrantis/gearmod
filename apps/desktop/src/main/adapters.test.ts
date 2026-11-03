@@ -4,7 +4,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { ClaudeCliAdapter, CodexAppServerAdapter, codexAccess, listCodexModels, type ProcessFactory } from './adapters'
-import type { AgentProfile } from '@agentboard/contracts'
+import type { AgentProfile } from '@gearmod/contracts'
 
 const profile = (provider: 'codex' | 'claude'): AgentProfile => ({ id: '10000000-0000-4000-8000-000000000001', provider, label: provider, scope: 'work', color: '#aeb9ff', configDir: 'C:\\profiles\\work', executablePath: null, enabled: true, billingMode: 'unknown', envPassthrough: [] })
 
@@ -80,8 +80,8 @@ describe('real provider protocol adapters', () => {
       if (request.method === 'thread/start') { started.push(request.params as Record<string, unknown>); send(child, { id, result: { thread: { id: 'thread-1' } } }) }
       if (request.method === 'turn/start') { send(child, { id, result: { turn: { id: 'turn-1' } } }); send(child, { method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'turn-1', status: 'completed' } } }) }
     }) } }
-    await new CodexAppServerAdapter(codex).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: true, profile: profile('codex'), developerInstructions: 'SKILLS', mcp: { command: 'node', args: ['s.mjs'], env: { AGENTBOARD_TOKEN: 't' } }, onEvent: () => undefined })
-    expect(started[0]).toMatchObject({ developerInstructions: 'SKILLS', sandbox: 'read-only', config: { mcp_servers: { agentboard: { command: 'node', args: ['s.mjs'] } } } })
+    await new CodexAppServerAdapter(codex).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: true, profile: profile('codex'), developerInstructions: 'SKILLS', mcp: { command: 'node', args: ['s.mjs'], env: { GEARMOD_TOKEN: 't' } }, onEvent: () => undefined })
+    expect(started[0]).toMatchObject({ developerInstructions: 'SKILLS', sandbox: 'read-only', config: { mcp_servers: { gearmod: { command: 'node', args: ['s.mjs'] } } } })
 
     let args: string[] = []
     let child: ChildProcessWithoutNullStreams
@@ -94,13 +94,13 @@ describe('real provider protocol adapters', () => {
 
     let mcpFile = ''
     const withMcp: ProcessFactory = { start(_command, received) { args = received; if (received.includes('--mcp-config')) mcpFile = readFileSync(received[received.indexOf('--mcp-config') + 1]!, 'utf8'); child = fakeProcess(); queueMicrotask(() => send(child, { type: 'result', session_id: 's', result: 'ok' })); return child } }
-    const mcp = { command: 'node', args: ['server.mjs'], env: { AGENTBOARD_TOKEN: 't' } }
+    const mcp = { command: 'node', args: ['server.mjs'], env: { GEARMOD_TOKEN: 't' } }
     await new ClaudeCliAdapter(withMcp).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: true, profile: profile('claude'), mcp, onEvent: () => undefined })
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('default'); expect(args[args.indexOf('--tools') + 1]).not.toMatch(/Edit|Write|Bash/)
-    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__agentboard'); 
+    expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__gearmod'); 
     // S2: o segredo não vai na linha de comando; vai por arquivo, que é apagado no fim da run
-    expect(args.join(' ')).not.toContain('AGENTBOARD_TOKEN')
-    expect(args[args.indexOf('--mcp-config') + 1]).toMatch(/mcp\.json$/); expect(JSON.parse(mcpFile).mcpServers.agentboard.env.AGENTBOARD_TOKEN).toBe('t'); expect(existsSync(args[args.indexOf('--mcp-config') + 1]!)).toBe(false)
+    expect(args.join(' ')).not.toContain('GEARMOD_TOKEN')
+    expect(args[args.indexOf('--mcp-config') + 1]).toMatch(/mcp\.json$/); expect(JSON.parse(mcpFile).mcpServers.gearmod.env.GEARMOD_TOKEN).toBe('t'); expect(existsSync(args[args.indexOf('--mcp-config') + 1]!)).toBe(false)
     await new ClaudeCliAdapter(withMcp).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('claude'), mcp, onEvent: () => undefined })
     expect(args).not.toContain('--tools')
   })

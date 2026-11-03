@@ -1,9 +1,9 @@
-import type { GitSnapshot } from '@agentboard/contracts'
+import type { GitSnapshot } from '@gearmod/contracts'
 
 export interface FileChange { path: string; root?: string; added: number; removed: number; diff: string; untracked?: boolean }
 
 function sections(text: string): Array<{ root?: string; body: string }> {
-  const matches = [...text.matchAll(/^### AgentBoard root: (.+)\r?$/gm)]
+  const matches = [...text.matchAll(/^### GearMod root: (.+)\r?$/gm)]
   if (!matches.length) return [{ body: text }]
   return matches.map((match, index) => ({ root: match[1]!.trim(), body: text.slice((match.index ?? 0) + match[0].length, matches[index + 1]?.index ?? text.length) }))
 }

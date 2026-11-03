@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { open, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { AgentProfile, UsageWindow } from '@agentboard/contracts'
+import type { AgentProfile, UsageWindow } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import type { ProfileRepository } from './projects'
 import { accountKeyFromProvider } from './account'
@@ -72,7 +72,7 @@ async function tail(path: string, bytes: number): Promise<string> {
 /** Uso das sessões: Codex lido de `<CODEX_HOME>/sessions/**\/*.jsonl`; Claude a partir do `rate_limit_event` que o Claude Code emite em cada execução. */
 export class UsageService {
   private readonly probing = new Set<string>()
-  constructor(private readonly database: AppDatabase, private readonly profiles: ProfileRepository, private readonly probeClaude?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly staleMs = 10 * 60_000, private readonly readCodex?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly ledger?: UsageLedgerService, private readonly writeLegacySnapshots = process.env.AGENTBOARD_LEGACY_USAGE_SNAPSHOTS === '1') {}
+  constructor(private readonly database: AppDatabase, private readonly profiles: ProfileRepository, private readonly probeClaude?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly staleMs = 10 * 60_000, private readonly readCodex?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly ledger?: UsageLedgerService, private readonly writeLegacySnapshots = process.env.GEARMOD_LEGACY_USAGE_SNAPSHOTS === '1') {}
 
   recordClaude(profileId: string, payload: Record<string, unknown>): void {
     const info = (payload.rate_limit_info ?? {}) as { unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }> }

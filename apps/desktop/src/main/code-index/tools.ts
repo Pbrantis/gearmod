@@ -2,18 +2,18 @@ import type { CodeTool } from './protocol'
 import type { Queries } from './query'
 
 /**
- * Ferramentas MCP do índice (agentboard_code_*). Os argumentos seguem o padrão das outras ferramentas do AgentBoard
+ * Ferramentas MCP do índice (gearmod_code_*). Os argumentos seguem o padrão das outras ferramentas do GearMod
  * (nomes em português); as respostas são em inglês.
  */
 export const codeToolNames: Record<string, CodeTool> = {
-  agentboard_code_explore: 'explore',
-  agentboard_code_node: 'node',
-  agentboard_code_search: 'search',
-  agentboard_code_impact: 'impact',
-  agentboard_code_callers: 'callers',
-  agentboard_code_callees: 'callees',
-  agentboard_code_affected_tests: 'affected',
-  agentboard_code_map: 'map'
+  gearmod_code_explore: 'explore',
+  gearmod_code_node: 'node',
+  gearmod_code_search: 'search',
+  gearmod_code_impact: 'impact',
+  gearmod_code_callers: 'callers',
+  gearmod_code_callees: 'callees',
+  gearmod_code_affected_tests: 'affected',
+  gearmod_code_map: 'map'
 }
 
 const text = (value: unknown): string | undefined => (typeof value === 'string' && value.trim() ? value.trim() : undefined)

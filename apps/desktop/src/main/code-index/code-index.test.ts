@@ -10,7 +10,7 @@ afterEach(async () => {
   for (const index of indexes.splice(0)) index.close()
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
 })
-const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'agentboard-code-index-')); dirs.push(dir); return dir }
+const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-code-index-')); dirs.push(dir); return dir }
 const write = async (root: string, files: Record<string, string>): Promise<void> => {
   for (const [path, content] of Object.entries(files)) { await mkdir(dirname(join(root, path)), { recursive: true }); await writeFile(join(root, path), content) }
 }

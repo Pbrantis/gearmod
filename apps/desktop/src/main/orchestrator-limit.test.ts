@@ -29,7 +29,7 @@ describe('limite de execuções simultâneas', () => {
     await settle()
     expect(started).toHaveLength(1)
     expect(orchestrator.capacity()).toEqual({ active: 1, queued: 2, limit: 1 })
-    expect(events.filter((event) => event.eventType === 'agentboard/run-queued').map((event) => event.runId)).toEqual(['run-2'])
+    expect(events.filter((event) => event.eventType === 'gearmod/run-queued').map((event) => event.runId)).toEqual(['run-2'])
   })
 
   it('runNow ultrapassa o limite e refill aproveita um limite maior', async () => {

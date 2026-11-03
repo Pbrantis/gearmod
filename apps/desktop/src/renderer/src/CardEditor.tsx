@@ -1,9 +1,9 @@
-import { providerLabels } from '@agentboard/contracts'
+import { providerLabels } from '@gearmod/contracts'
 import React, { useEffect, useState } from 'react'
 import type { Extension } from '@codemirror/state'
 import { placeholder } from '@codemirror/view'
 import { CodeEditor } from './editor/CodeEditor'
-import { cardDocumentKinds, permissionModes, defaultPermissionMode, type AgentProfile, type CardChecklist, type AgentPurpose, type Card, type Chat, type CardDocumentKind, type CardDocuments, type CardTypeDef, type DocumentVersion, type GitCard, type ProjectSource } from '@agentboard/contracts'
+import { cardDocumentKinds, permissionModes, defaultPermissionMode, type AgentProfile, type CardChecklist, type AgentPurpose, type Card, type Chat, type CardDocumentKind, type CardDocuments, type CardTypeDef, type DocumentVersion, type GitCard, type ProjectSource } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
 import { DeleteCardDialog } from './DeleteCardDialog'
@@ -46,7 +46,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
   const { board: tb, common, git: tg } = useT(), t = tb.editor, labels = tb.docKinds, tw = tg.worktreeDelete
   const priorityOptions = priorities.map((item) => ({ ...item, label: tb.priority[item.value] }))
   const [workspace, setWorkspace] = useState<Card['workspace']>(null), [complexity, setComplexity] = useState<Card>(), [assessing, setAssessing] = useState(false), [assessTab, setAssessTab] = useState<'avaliacao' | 'metricas'>('avaliacao')
-  useEffect(() => { if (start.id) void window.agentboard.invoke('cards:get', { cardId: start.id }).then((card) => { setWorkspace(card.workspace); setComplexity(card) }).catch(() => undefined) }, [start.id])
+  useEffect(() => { if (start.id) void window.gearmod.invoke('cards:get', { cardId: start.id }).then((card) => { setWorkspace(card.workspace); setComplexity(card) }).catch(() => undefined) }, [start.id])
   const [d, set] = useState(start), [chosenKind, setKind] = useState<CardDocumentKind>('resumo'), [mode, setMode] = useState<Mode>(start.id ? 'prev' : 'write'), [texts, setTexts] = useState<Texts>(empty), [original, setOriginal] = useState<Texts>(empty)
   // Fluxo curto só tem o Resumo, que aqui é o "O que fazer"; os outros documentos não existem nele.
   const small = (complexity ? complexity.workflow : start.workflow) === 'light', kind: CardDocumentKind = small ? 'resumo' : chosenKind
@@ -60,28 +60,28 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
   useEffect(() => {
     const cardId = start.id
     if (!cardId) return
-    const load = (): void => { void window.agentboard.invoke('cards:checklist', { cardId }).then(setChecklistData).catch(() => undefined) }
+    const load = (): void => { void window.gearmod.invoke('cards:checklist', { cardId }).then(setChecklistData).catch(() => undefined) }
     load()
     const received = (event: Event): void => { const next = (event as CustomEvent<CardChecklist>).detail; if (next.cardId === cardId) setChecklistData(next) }
     window.addEventListener(checklistEvent, received)
-    const off = window.agentboard.onRunEvent((event) => { if (event.eventType === 'agentboard/card-updated' && event.payload.cardId === cardId) load() })
+    const off = window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/card-updated' && event.payload.cardId === cardId) load() })
     return () => { window.removeEventListener(checklistEvent, received); off() }
   }, [start.id])
   const testItems = (checklist.match(/^\s*[-*] \[[ xX]\]/gm) ?? []).length, testDone = (checklist.match(/^\s*[-*] \[[xX]\]/gm) ?? []).length
   const [versions, setVersions] = useState<DocumentVersion[]>(), [error, setError] = useState(''), [confirming, setConfirming] = useState(false), [busy, setBusy] = useState(false), [loaded, setLoaded] = useState(!start.id)
   const [chats, setChats] = useState<Chat[]>([]), [resetting, setResetting] = useState<AgentPurpose>(), [deleting, setDeleting] = useState<AgentPurpose>()
-  const loadChats = (): void => { if (start.id) void window.agentboard.invoke('chats:list', { projectId, cardId: start.id }).then(setChats).catch(() => undefined) }
+  const loadChats = (): void => { if (start.id) void window.gearmod.invoke('chats:list', { projectId, cardId: start.id }).then(setChats).catch(() => undefined) }
   useEffect(loadChats, [start.id, projectId])
   const chatOf = (purpose: AgentPurpose): Chat | undefined => chats.find((item) => item.purpose === purpose)
   const planAgent = useAgentConfig(start.id ?? '', 'planning', profiles, chatOf('planning')?.profileId), execAgent = useAgentConfig(start.id ?? '', 'execution', profiles, chatOf('execution')?.profileId), testAgent = useAgentConfig(start.id ?? '', 'test', profiles, chatOf('test')?.profileId)
   const gitSources = sources.filter((source) => source.isGitRepository)
-  useEffect(() => { if (start.id) void window.agentboard.invoke('cards:documents', { cardId: start.id }).then((docs) => { setTexts(toTexts(docs)); setOriginal(toTexts(docs)); setLoaded(true) }).catch((reason: unknown) => setError(plainError(reason))) }, [start.id])
+  useEffect(() => { if (start.id) void window.gearmod.invoke('cards:documents', { cardId: start.id }).then((docs) => { setTexts(toTexts(docs)); setOriginal(toTexts(docs)); setLoaded(true) }).catch((reason: unknown) => setError(plainError(reason))) }, [start.id])
   useEffect(() => { setVersions(undefined) }, [kind])
   useEscape(close, !confirming)
   const dirty = (k: CardDocumentKind): boolean => texts[k] !== original[k]
-  const [auto, setAuto] = useState(() => { try { return localStorage.getItem('agentboard.cardAutosave') === '1' } catch { return false } })
+  const [auto, setAuto] = useState(() => { try { return localStorage.getItem('gearmod.cardAutosave') === '1' } catch { return false } })
   const [autoState, setAutoState] = useState<'' | 'saving' | 'saved'>('')
-  const setAutoSave = (value: boolean): void => { setAuto(value); try { localStorage.setItem('agentboard.cardAutosave', value ? '1' : '0') } catch { /* sem armazenamento: vale só nesta abertura */ } }
+  const setAutoSave = (value: boolean): void => { setAuto(value); try { localStorage.setItem('gearmod.cardAutosave', value ? '1' : '0') } catch { /* sem armazenamento: vale só nesta abertura */ } }
   // Salvar automaticamente: só em card que já existe; espera 1,2 s sem digitar e grava sem fechar o editor.
   useEffect(() => {
     if (!auto || !d.id || !loaded || !d.title.trim()) return
@@ -92,8 +92,8 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
       void (async () => {
         try {
           const base = { sourceId: d.sourceId ?? gitSources[0]?.id ?? null, title: d.title, type: d.type, priority: d.priority, description: texts.resumo, acceptanceCriteria: [] }
-          await window.agentboard.invoke('cards:update', { cardId: d.id!, ...base })
-          for (const k of cardDocumentKinds) if (k !== 'resumo' && !systemKinds.includes(k) && texts[k] !== original[k]) await window.agentboard.invoke('cards:write-document', { cardId: d.id!, kind: k, contentMd: texts[k] })
+          await window.gearmod.invoke('cards:update', { cardId: d.id!, ...base })
+          for (const k of cardDocumentKinds) if (k !== 'resumo' && !systemKinds.includes(k) && texts[k] !== original[k]) await window.gearmod.invoke('cards:write-document', { cardId: d.id!, kind: k, contentMd: texts[k] })
           setOriginal(texts); setAutoState('saved'); setError('')
         } catch (reason) { setAutoState(''); setError(plainError(reason)) }
       })()
@@ -106,9 +106,9 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
     try {
       const sourceId = d.sourceId ?? gitSources[0]?.id ?? null
       const base = { sourceId, title: d.title, type: d.type, priority: d.priority, description: texts.resumo, acceptanceCriteria: [] }
-      const card = d.id ? await window.agentboard.invoke('cards:update', { cardId: d.id, ...base }) : await window.agentboard.invoke('cards:create', { projectId, columnId: d.columnId, ...base })
-      for (const k of cardDocumentKinds) if (k !== 'resumo' && !systemKinds.includes(k) && dirty(k)) await window.agentboard.invoke('cards:write-document', { cardId: card.id, kind: k, contentMd: texts[k] })
-      if (!d.id) for (const [purpose, state] of [['planning', planAgent], ['execution', execAgent], ['test', testAgent]] as const) if (state.touched && state.config) await window.agentboard.invoke('cards:set-agent-config', { cardId: card.id, purpose, config: state.config })
+      const card = d.id ? await window.gearmod.invoke('cards:update', { cardId: d.id, ...base }) : await window.gearmod.invoke('cards:create', { projectId, columnId: d.columnId, ...base })
+      for (const k of cardDocumentKinds) if (k !== 'resumo' && !systemKinds.includes(k) && dirty(k)) await window.gearmod.invoke('cards:write-document', { cardId: card.id, kind: k, contentMd: texts[k] })
+      if (!d.id) for (const [purpose, state] of [['planning', planAgent], ['execution', execAgent], ['test', testAgent]] as const) if (state.touched && state.config) await window.gearmod.invoke('cards:set-agent-config', { cardId: card.id, purpose, config: state.config })
       saved()
     } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
@@ -116,7 +116,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
     const lines = texts[kind].split('\n'); const current = lines[line]; if (current === undefined) return
     lines[line] = current.replace(/\[( |x|X)\]/, checked ? '[x]' : '[ ]'); setTexts({ ...texts, [kind]: lines.join('\n') })
   }
-  const showVersions = async (): Promise<void> => { if (d.id) setVersions(await window.agentboard.invoke('cards:document-versions', { cardId: d.id, kind })) }
+  const showVersions = async (): Promise<void> => { if (d.id) setVersions(await window.gearmod.invoke('cards:document-versions', { cardId: d.id, kind })) }
   const agentOptions = () => profiles.map((item) => ({ value: item.id, label: item.label, icon: <AgentIcon profile={item} tip={false} />, sub: providerLabels[item.provider] }))
   const stepTitle: Record<AgentPurpose, string> = t.stepTitle
   const agentField = (purpose: AgentPurpose, state: typeof planAgent): React.JSX.Element => {
@@ -148,14 +148,14 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
     return <div className={`sep secfold ${expanded ? 'open' : ''}`}><div className="sechead"><button type="button" className="foldbtn" aria-expanded={expanded} onClick={() => setOpenSec({ ...openSec, [purpose]: !expanded })}><span className="chev" aria-hidden="true">›</span><span className="sectitle">{label}</span></button>{chatButton}</div>{!expanded && <button type="button" className="foldprev" onClick={() => setOpenSec({ ...openSec, [purpose]: true })}>{profile && <AgentIcon profile={profile} size="sm" tip={false} />}<span>{preview}</span></button>}{expanded && agentField(purpose, state)}</div>
   }
   // Worktree por repositório: só busca ao expandir o bloco (o estado de cada repositório custa uma consulta ao Git).
-  useEffect(() => { if (wsOpen && d.id) void window.agentboard.invoke('git:card', { cardId: d.id }).then((git) => setWsRepos(git.repos)).catch(() => setWsRepos([])) }, [wsOpen, d.id])
+  useEffect(() => { if (wsOpen && d.id) void window.gearmod.invoke('git:card', { cardId: d.id }).then((git) => setWsRepos(git.repos)).catch(() => setWsRepos([])) }, [wsOpen, d.id])
   const text = texts[kind]
   return <div className="overlay full card-editor-overlay"><div className="modal wide" role="dialog" aria-label={d.id ? t.editCard : tb.newCard}>
-    <header><div><h2><input className="titlein" aria-label={t.title} value={d.title} placeholder={tb.untitled} onChange={(e) => set({ ...d, title: e.target.value })} /></h2>{assessing && complexity && <AssessmentDialog initialTab={assessTab} card={complexity} close={() => setAssessing(false)} changed={() => { void window.agentboard.invoke('cards:get', { cardId: complexity.id }).then(setComplexity).catch(() => undefined) }} />}</div><div className="hdr-actions">{d.id && pending && (pending.changes > 0 || pending.questions > 0) && <button type="button" className="mini ask" onClick={onPending}>{t.authorizeChanges(pending.changes + pending.questions)}</button>}{d.id && <button type="button" className="mini secondary openchat" onClick={() => window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId, cardId: d.id } }))}><FolderGlyph />{tb.tile.openCardFiles}</button>}{d.id && openChat && <button type="button" className="mini secondary openchat" onClick={() => openChat()}><ChatIcon />{tb.tile.openChat}</button>}<button type="button" className="x" onClick={close} aria-label={common.close}>×</button></div></header>
+    <header><div><h2><input className="titlein" aria-label={t.title} value={d.title} placeholder={tb.untitled} onChange={(e) => set({ ...d, title: e.target.value })} /></h2>{assessing && complexity && <AssessmentDialog initialTab={assessTab} card={complexity} close={() => setAssessing(false)} changed={() => { void window.gearmod.invoke('cards:get', { cardId: complexity.id }).then(setComplexity).catch(() => undefined) }} />}</div><div className="hdr-actions">{d.id && pending && (pending.changes > 0 || pending.questions > 0) && <button type="button" className="mini ask" onClick={onPending}>{t.authorizeChanges(pending.changes + pending.questions)}</button>}{d.id && <button type="button" className="mini secondary openchat" onClick={() => window.dispatchEvent(new CustomEvent('gearmod:open-file', { detail: { projectId, cardId: d.id } }))}><FolderGlyph />{tb.tile.openCardFiles}</button>}{d.id && openChat && <button type="button" className="mini secondary openchat" onClick={() => openChat()}><ChatIcon />{tb.tile.openChat}</button>}<button type="button" className="x" onClick={close} aria-label={common.close}>×</button></div></header>
     <form onSubmit={(e) => void submit(e)} style={{ display: 'contents' }}>
       <div className={`editor docs ${small ? 'smallcard' : ''} ${wide ? 'wide' : ''}`}>
         <div className="stack pane-left" style={{ alignContent: 'start' }}>
-          {complexity && <div className="cxtop"><ComplexityBadge full complexity={complexity.complexity} onClick={() => { setAssessTab('avaliacao'); setAssessing(true) }} />{d.id && <button type="button" className="mini secondary tip cx-artifacts" data-tip={tb.assessment.openArtifacts} aria-label={tb.assessment.openArtifacts} onClick={() => { void window.agentboard.invoke('history:open-folder', { cardId: d.id! }).catch((reason) => setError(plainError(reason))) }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5h6l3 3v8a1.5 1.5 0 0 1-1.5 1.5h-7.5A1.5 1.5 0 0 1 4.5 14.5v-9A1.5 1.5 0 0 1 6 3.5Z" /><path d="M12 3.5v3h3M7.5 10h5M7.5 13h3.5" /></svg></button>}</div>}
+          {complexity && <div className="cxtop"><ComplexityBadge full complexity={complexity.complexity} onClick={() => { setAssessTab('avaliacao'); setAssessing(true) }} />{d.id && <button type="button" className="mini secondary tip cx-artifacts" data-tip={tb.assessment.openArtifacts} aria-label={tb.assessment.openArtifacts} onClick={() => { void window.gearmod.invoke('history:open-folder', { cardId: d.id! }).catch((reason) => setError(plainError(reason))) }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5h6l3 3v8a1.5 1.5 0 0 1-1.5 1.5h-7.5A1.5 1.5 0 0 1 4.5 14.5v-9A1.5 1.5 0 0 1 6 3.5Z" /><path d="M12 3.5v3h3M7.5 10h5M7.5 13h3.5" /></svg></button>}</div>}
           <div className="f"><span>{t.type}</span><Select label={t.type} options={cardTypeOptions(cardTypes, d.type)} value={d.type} onChange={(value) => set({ ...d, type: value })} /></div>
           <div className="f"><span>{t.priority}</span><Select label={t.priority} options={priorityOptions} value={d.priority} onChange={(value) => set({ ...d, priority: value as Card['priority'] })} /></div>
           {d.id && complexity && <div className="f"><span>{t.flow.label}</span><span className={`flowchip tip ${complexity.workflow ? '' : 'none'}`} data-tip={t.flow.tip}>{!complexity.workflow ? t.flow.none : complexity.workflow === 'sdd' ? t.flow[complexity.sddMethod ?? 'sdd'] : t.flow[complexity.workflow]}</span></div>}
@@ -174,7 +174,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
         {touched && <small className="wstree-n" data-tip={t.cardTouchedRepo}>{repo.ahead > 0 ? tb.delivery.commitCount(repo.ahead) : ''}{repo.ahead > 0 && repo.files.length > 0 ? ' · ' : ''}{repo.files.length > 0 ? tb.delivery.uncommitted(repo.files.length) : ''}</small>}
         <span className="chev" aria-hidden="true">›</span></button>
       {shown && <div className="wstree-body"><small className="wstree-path" data-tip={repo.worktreePath}>{repo.worktreePath}</small><small className="wsbase">{t.base(repo.baseRef)}</small><button type="button" className="wsdel" onClick={() => setWsDeleteRepo(repo.sourceId)}><TrashIcon />{tw.deleteOne}</button></div>}
-    </li> })}</ul> : <small data-tip={workspace.path}>Worktree: {workspace.path}</small>)}{wsOpen && <button type="button" className="wsdel all" onClick={() => setWsDelete(true)}><TrashIcon />{tw.deleteButton}</button>}</div>{wsDelete && <WorktreeDeleteDialog cardId={d.id!} close={() => setWsDelete(false)} done={() => { setWsDelete(false); setWsRepos(undefined); window.dispatchEvent(new Event('agentboard:board-changed')) }} />}{wsDeleteRepo && <WorktreeDeleteDialog cardId={d.id!} sourceId={wsDeleteRepo} close={() => setWsDeleteRepo(undefined)} done={() => { setWsDeleteRepo(undefined); setWsRepos(undefined); window.dispatchEvent(new Event('agentboard:board-changed')) }} />}</div>}
+    </li> })}</ul> : <small data-tip={workspace.path}>Worktree: {workspace.path}</small>)}{wsOpen && <button type="button" className="wsdel all" onClick={() => setWsDelete(true)}><TrashIcon />{tw.deleteButton}</button>}</div>{wsDelete && <WorktreeDeleteDialog cardId={d.id!} close={() => setWsDelete(false)} done={() => { setWsDelete(false); setWsRepos(undefined); window.dispatchEvent(new Event('gearmod:board-changed')) }} />}{wsDeleteRepo && <WorktreeDeleteDialog cardId={d.id!} sourceId={wsDeleteRepo} close={() => setWsDeleteRepo(undefined)} done={() => { setWsDeleteRepo(undefined); setWsRepos(undefined); window.dispatchEvent(new Event('gearmod:board-changed')) }} />}</div>}
           {gitSources.length === 0 && <p className="hint">{t.noGit}</p>}
         </div>
         <div className="stack pane-mid" style={{ minWidth: 0 }}>
@@ -201,8 +201,8 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
       <div className="actions">{d.id && <button type="button" className="danger" onClick={() => setConfirming(true)}>{tb.contextMenu.deleteCard}</button>}{d.id && <div className="cefoot-tokens"><TokenUsage cardId={d.id} small={small} onOpenDetails={complexity ? () => { setAssessTab('metricas'); setAssessing(true) } : undefined} /></div>}<span className="grow1" />{d.id && <Switch className="tip" tip={t.autosaveTip} checked={auto} onChange={setAutoSave}>{t.autosave}{auto && autoState && <small>{autoState === 'saving' ? common.saving : t.saved}</small>}</Switch>}<button type="button" className="secondary" onClick={close}>{common.cancel}</button><button disabled={busy || !loaded || !d.title.trim()}>{busy ? common.saving : t.saveCard}</button></div>
     </form>
-    {deleting && d.id && <ConfirmDialog eyebrow={t.deleteChat} title={t.deleteChatTitle(stepTitle[deleting].toLowerCase())} text={t.deleteChatText} ok={t.deleteChat} danger cancel={() => setDeleting(undefined)} confirm={() => { const chat = chatOf(deleting); setDeleting(undefined); if (chat) void window.agentboard.invoke('chats:reset', { chatId: chat.id }).then(() => loadChats()).catch((reason: unknown) => setError(plainError(reason))) }} />}
-    {resetting && d.id && <ConfirmDialog eyebrow={t.switchAgent} title={t.resetChatTitle} text={t.resetChatText} ok={t.resetChat} danger cancel={() => setResetting(undefined)} confirm={() => { const purpose = resetting, chat = chatOf(purpose); setResetting(undefined); if (chat) void window.agentboard.invoke('chats:reset', { chatId: chat.id }).then(() => loadChats()).catch((reason: unknown) => setError(plainError(reason))) }} />}
-    {confirming && d.id && <DeleteCardDialog title={d.title} cancel={() => setConfirming(false)} confirm={(deleteArtifacts) => void window.agentboard.invoke('cards:delete', { cardId: d.id!, deleteArtifacts }).then(saved).catch((reason: unknown) => { setConfirming(false); setError(plainError(reason)) })} />}
+    {deleting && d.id && <ConfirmDialog eyebrow={t.deleteChat} title={t.deleteChatTitle(stepTitle[deleting].toLowerCase())} text={t.deleteChatText} ok={t.deleteChat} danger cancel={() => setDeleting(undefined)} confirm={() => { const chat = chatOf(deleting); setDeleting(undefined); if (chat) void window.gearmod.invoke('chats:reset', { chatId: chat.id }).then(() => loadChats()).catch((reason: unknown) => setError(plainError(reason))) }} />}
+    {resetting && d.id && <ConfirmDialog eyebrow={t.switchAgent} title={t.resetChatTitle} text={t.resetChatText} ok={t.resetChat} danger cancel={() => setResetting(undefined)} confirm={() => { const purpose = resetting, chat = chatOf(purpose); setResetting(undefined); if (chat) void window.gearmod.invoke('chats:reset', { chatId: chat.id }).then(() => loadChats()).catch((reason: unknown) => setError(plainError(reason))) }} />}
+    {confirming && d.id && <DeleteCardDialog title={d.title} cancel={() => setConfirming(false)} confirm={(deleteArtifacts) => void window.gearmod.invoke('cards:delete', { cardId: d.id!, deleteArtifacts }).then(saved).catch((reason: unknown) => { setConfirming(false); setError(plainError(reason)) })} />}
   </div></div>
 }

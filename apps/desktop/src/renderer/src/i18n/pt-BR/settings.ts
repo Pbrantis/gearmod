@@ -68,11 +68,11 @@ export const settings = {
     spacingComfortable: 'Confortável',
     spacingWide: 'Amplo',
     notifications: 'Notificações do sistema',
-    notificationsHint: 'Avisa quando um card termina, o plano fica pronto ou algo precisa de você, com o AgentBoard em segundo plano. Tocar na notificação abre o chat do card.',
+    notificationsHint: 'Avisa quando um card termina, o plano fica pronto ou algo precisa de você, com o GearMod em segundo plano. Tocar na notificação abre o chat do card.',
     gitPhotos: 'Mostrar fotos dos autores na página Git (Gravatar)',
     gitPhotosHint: 'Desligado por padrão. Ligado, o app envia ao gravatar.com um hash do e-mail de cada autor para buscar a foto.',
     autoResume: 'Retomar sozinho quando o limite de uso voltar',
-    autoResumeHint: 'Se o limite da sessão (ou da semana) acabar no meio de uma execução, o AgentBoard agenda a retomada para quando ele voltar (um minuto depois), confere se voltou mesmo e continua de onde parou. O chat avisa o horário.',
+    autoResumeHint: 'Se o limite da sessão (ou da semana) acabar no meio de uma execução, o GearMod agenda a retomada para quando ele voltar (um minuto depois), confere se voltou mesmo e continua de onde parou. O chat avisa o horário.',
     concurrency: 'Agentes ao mesmo tempo',
     concurrencyHint: (recommended: number, cores: number, memoryGb: number) => `Recomendado para este computador: ${recommended} (${cores} núcleos, ${memoryGb} GB de RAM). Cada execução abre um agente e roda build e testes na própria worktree. O limite real costuma ser o uso da sua conta. Se o limite for atingido, você escolhe: rodar mesmo assim ou esperar na fila.`,
     concurrencyUseRecommended: 'Usar o recomendado',
@@ -92,7 +92,7 @@ export const settings = {
     cardBehavior: 'Comportamento',
     cardGit: 'Git',
     cardVoice: 'Voz',
-    voiceModelHint: 'O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do AgentBoard.'
+    voiceModelHint: 'O modelo é baixado só quando você usa o microfone do chat pela primeira vez e fica na pasta de dados do GearMod.'
   },
 
   agent: {
@@ -308,7 +308,7 @@ export const settings = {
 
   mcp: {
     title: 'Servidores MCP',
-    intro: (project: boolean) => `Servidores MCP dão ferramentas extras aos agentes (arquivos, GitHub, navegador, bancos…). O AgentBoard os injeta ao rodar cada agente; não altera os arquivos de configuração do Claude ou do Codex. ${project ? 'Os globais podem ser desligados só para este projeto.' : 'Cada projeto também pode ter os seus.'}`,
+    intro: (project: boolean) => `Servidores MCP dão ferramentas extras aos agentes (arquivos, GitHub, navegador, bancos…). O GearMod os injeta ao rodar cada agente; não altera os arquivos de configuração do Claude ou do Codex. ${project ? 'Os globais podem ser desligados só para este projeto.' : 'Cada projeto também pode ter os seus.'}`,
     addButton: '＋ Adicionar',
     recommended: 'Recomendados',
     installed: 'Instalados',
@@ -374,7 +374,7 @@ export const settings = {
     updateFilesDisabled: 'A atualização dos arquivos do projeto está desativada até ser validada com o limite de versão; suas configurações existentes serão preservadas.',
     integrationNotDetected: 'A integração usada neste repositório não foi detectada.',
     updateAvailable: (from: string, to: string) => `Atualização disponível: ${from} → ${to}`,
-    newerThanCeiling: (ceiling: string) => `Existe uma versão mais nova que o limite de atualização do AgentBoard (${ceiling}). A equipe revisará versões posteriores em uma atualização futura.`,
+    newerThanCeiling: (ceiling: string) => `Existe uma versão mais nova que o limite de atualização do GearMod (${ceiling}). A equipe revisará versões posteriores em uma atualização futura.`,
     checked: (ago: string) => `Verificado ${ago}`,
     notChecked: 'Ainda não verificado',
     checking: 'Verificando…',
@@ -392,13 +392,13 @@ export const settings = {
 
   playwright: {
     title: 'Testes no navegador: Playwright CLI (opcional)',
-    description: 'Permite que o testador explore a interface, tire screenshots como evidência e valide os critérios visuais. É uma ferramenta do próprio AgentBoard: fica numa pasta do app, não dentro do seu projeto, e várias versões podem conviver.',
-    badgeApp: 'pasta do AgentBoard',
+    description: 'Permite que o testador explore a interface, tire screenshots como evidência e valide os critérios visuais. É uma ferramenta do próprio GearMod: fica numa pasta do app, não dentro do seu projeto, e várias versões podem conviver.',
+    badgeApp: 'pasta do GearMod',
     badgeVersions: 'várias versões',
     badgeConfirm: 'sob confirmação',
-    nodeTip: 'O Playwright CLI precisa do Node.js 18 ou mais novo. Se a máquina não tiver, o AgentBoard baixa um Node só para esta ferramenta.',
+    nodeTip: 'O Playwright CLI precisa do Node.js 18 ou mais novo. Se a máquina não tiver, o GearMod baixa um Node só para esta ferramenta.',
     nodeSystem: (version: string) => `Node.js ${version} (do sistema)`,
-    nodeManaged: (version: string) => `Node.js ${version} (do AgentBoard)`,
+    nodeManaged: (version: string) => `Node.js ${version} (do GearMod)`,
     nodeWillDownload: 'Node.js será baixado na instalação',
     folderChip: 'Pasta das ferramentas',
     browserDownloaded: 'Navegador de teste · baixado',
@@ -429,7 +429,7 @@ export const settings = {
     checking: 'Verificando…',
     taskTitle: 'Instalar Playwright CLI',
     confirmTitle: 'Instalar o Playwright CLI?',
-    confirmText: 'A versão é instalada na pasta de ferramentas do AgentBoard e passa a ser a usada neste projeto. Nada é alterado no seu repositório, a não ser que você peça a skill do agente.',
+    confirmText: 'A versão é instalada na pasta de ferramentas do GearMod e passa a ser a usada neste projeto. Nada é alterado no seu repositório, a não ser que você peça a skill do agente.',
     command: 'Comando',
     installIn: (folder: string) => `Pasta: ${folder}`,
     downloadBrowserOption: 'Baixar o navegador de teste',

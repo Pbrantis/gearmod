@@ -1,6 +1,6 @@
-import { providerLabels } from '@agentboard/contracts'
+import { providerLabels } from '@gearmod/contracts'
 import { useEffect, useState } from 'react'
-import type { AgentPermission } from '@agentboard/contracts'
+import type { AgentPermission } from '@gearmod/contracts'
 import { explainCommand, riskLabel, shortPath, type Risk } from './permissionExplain'
 import { plainError } from './NoticeDialog'
 import { tr, useT } from './i18n'
@@ -14,16 +14,16 @@ export function AgentPermissions({ chatId }: { chatId?: string }): React.JSX.Ele
     let disposed = false, revision = 0
     const load = (): void => {
       const current = ++revision
-      void window.agentboard.invoke('agents:permissions', { chatId }).then((items) => { if (!disposed && current === revision) setRequests(items) }).catch((reason: unknown) => { if (!disposed) setError(plainError(reason)) })
+      void window.gearmod.invoke('agents:permissions', { chatId }).then((items) => { if (!disposed && current === revision) setRequests(items) }).catch((reason: unknown) => { if (!disposed) setError(plainError(reason)) })
     }
-    const off = window.agentboard.onRunEvent((event) => { if (event.eventType.startsWith('agentboard/permission-') && event.payload.chatId === chatId) load() })
+    const off = window.gearmod.onRunEvent((event) => { if (event.eventType.startsWith('gearmod/permission-') && event.payload.chatId === chatId) load() })
     load()
     return () => { disposed = true; off() }
   }, [chatId])
   const decide = async (request: AgentPermission, allow: boolean): Promise<void> => {
     setBusy(request.id); setError('')
     try {
-      const result = await window.agentboard.invoke('agents:permission-decide', { runId: request.runId, requestId: request.id, allow })
+      const result = await window.gearmod.invoke('agents:permission-decide', { runId: request.runId, requestId: request.id, allow })
       setRequests((items) => items.filter((item) => item.id !== request.id))
       if (!result.decided) setError(t.chat.permission.alreadyAnswered)
     } catch (reason) { setError(plainError(reason)) } finally { setBusy(undefined) }

@@ -14,7 +14,7 @@ it('redige literais, comentários, dollar quotes e SQL malformado', () => {
   expect(redactSql("SELECT E'abc\\'private-value', $tag$other-secret$tag$ /* nested /* hidden */ still-hidden */")).not.toMatch(/private-value|other-secret|hidden/)
 })
 it('mantém apenas hash e resumo sem valores e não apaga a auditoria ao limpar histórico', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-dbaudit-')), id = randomUUID(), db = new AppDatabase(join(root, 'db.sqlite'), '0.1')
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-dbaudit-')), id = randomUUID(), db = new AppDatabase(join(root, 'db.sqlite'), '0.1')
   await db.open()
   try {
     const audit = new DbAudit(db, join(root, 'history'))

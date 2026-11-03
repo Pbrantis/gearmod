@@ -1,17 +1,17 @@
 ---
-name: agentboard-tasks
-description: Writes and updates the Tasks document of an AgentBoard card in SDD style (T001 tasks in phases, [P] parallelism marker, traceability to the story, file paths) with acceptance criteria inside each task. Use during planning to break down the Plan and during execution to mark what was completed.
+name: gearmod-tasks
+description: Writes and updates the Tasks document of an GearMod card in SDD style (T001 tasks in phases, [P] parallelism marker, traceability to the story, file paths) with acceptance criteria inside each task. Use during planning to break down the Plan and during execution to mark what was completed.
 ---
 
 # Document: Tasks
 
-The Tasks are the checklist that execution follows. The structure follows the GitHub Spec Kit tasks template, trimmed down for a card, with one AgentBoard difference: **each task carries its own acceptance criteria** (there is no separate criteria document). The number on the board card (e.g. 2/5) counts the tasks.
+The Tasks are the checklist that execution follows. The structure follows the GitHub Spec Kit tasks template, trimmed down for a card, with one GearMod difference: **each task carries its own acceptance criteria** (there is no separate criteria document). The number on the board card (e.g. 2/5) counts the tasks.
 
 ## Language
 
 Write everything you produce for the user — documents, headings, labels, descriptive IDs, questions and chat replies — in the language given in `idioma` (e.g. `pt-BR`, `en`). These instructions are in English; that does not change the output language. Use `templates/<idioma>.md`; if there is none, translate `templates/pt-BR.md`. The IDs and markers (`T001`, `[P]`, the story tag such as `[H1]`) follow the template of that language.
 
-## Format (mandatory: AgentBoard reads this format)
+## Format (mandatory: GearMod reads this format)
 
 - A `## Tasks` heading at the top and one `### Phase ...` section per phase (phase heading in the language of `idioma`).
 - Each task is a **top-level** list item:
@@ -39,7 +39,7 @@ A task is development work that the developer does and delivers. **Do not create
 - checking regressions, running the whole suite and validating criteria on screen belong to the **test stage**: write that in the Plan's test plan section, and the tester runs it;
 - running lint, type-check and the tests of the changed area is the **developer's definition of done**; it already applies to every task and does not become an item.
 
-AgentBoard rejects a Tasks document with such a task and returns the error for you to fix. This also applies when the project's method (Spec Kit, OpenSpec or another) has validation tasks in its own template.
+GearMod rejects a Tasks document with such a task and returns the error for you to fix. This also applies when the project's method (Spec Kit, OpenSpec or another) has validation tasks in its own template.
 
 ## Rules during planning
 
@@ -58,4 +58,4 @@ AgentBoard rejects a Tasks document with such a task and returns the error for y
 
 ## Delivery
 
-Send it with `tipo` = `tasks` (tool `agentboard_write_document` or markers, as described in `agentboard-planning`). During execution, if the `agentboard_mark_task` tool exists, use it to mark items instead of resending the document.
+Send it with `tipo` = `tasks` (tool `gearmod_write_document` or markers, as described in `gearmod-planning`). During execution, if the `gearmod_mark_task` tool exists, use it to mark items instead of resending the document.

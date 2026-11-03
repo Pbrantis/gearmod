@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { GitRow } from '@agentboard/contracts'
+import type { GitRow } from '@gearmod/contracts'
 import { agoLabel, ghostChip, graphEdges, initials, refChips, shortAgo, splitPath } from './gitView'
 
 const now = Date.parse('2026-10-22T12:00:00Z')

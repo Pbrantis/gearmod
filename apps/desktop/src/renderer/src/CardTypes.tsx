@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { agentColorPalette, branchPrefixOf, type CardTypeDef, type Project } from '@agentboard/contracts'
+import { agentColorPalette, branchPrefixOf, type CardTypeDef, type Project } from '@gearmod/contracts'
 import { ConfirmDialog } from './ConfirmDialog'
 import { TrashIcon } from './icons'
 import { plainError } from './NoticeDialog'
@@ -90,20 +90,20 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
 export function DefaultCardTypes(): React.JSX.Element {
   const t = useT().settings.cardTypes
   const [types, setTypes] = useState<CardTypeDef[]>()
-  useEffect(() => { void window.agentboard.invoke('card-types:get-default', undefined).then(setTypes).catch(() => setTypes([])) }, [])
+  useEffect(() => { void window.gearmod.invoke('card-types:get-default', undefined).then(setTypes).catch(() => setTypes([])) }, [])
   return <div className="f"><span>{t.title}</span><p className="hint" style={{ margin: 0 }}>{t.defaultHint}</p>
-    {types && <CardTypesEditor types={types} save={async (next) => { setTypes(await window.agentboard.invoke('card-types:set-default', { types: next })); window.dispatchEvent(new Event('agentboard:board-changed')) }} usage={() => window.agentboard.invoke('card-types:usage', {})} />}</div>
+    {types && <CardTypesEditor types={types} save={async (next) => { setTypes(await window.gearmod.invoke('card-types:set-default', { types: next })); window.dispatchEvent(new Event('gearmod:board-changed')) }} usage={() => window.gearmod.invoke('card-types:usage', {})} />}</div>
 }
 
 /** Configurar projeto › Geral: tipos do projeto. Mexer na lista cria a lista própria; "Voltar à lista padrão" a descarta. */
 export function ProjectCardTypes({ project }: { project: Project }): React.JSX.Element {
   const t = useT().settings.cardTypes
   const [state, setState] = useState({ types: project.cardTypes, custom: project.customCardTypes }), [error, setError] = useState('')
-  const apply = (next: Project): void => { setState({ types: next.cardTypes, custom: next.customCardTypes }); window.dispatchEvent(new Event('agentboard:board-changed')) }
-  const reset = async (): Promise<void> => { try { setError(''); apply(await window.agentboard.invoke('projects:set-card-types', { projectId: project.id, types: null })) } catch (reason) { setError(plainError(reason)) } }
+  const apply = (next: Project): void => { setState({ types: next.cardTypes, custom: next.customCardTypes }); window.dispatchEvent(new Event('gearmod:board-changed')) }
+  const reset = async (): Promise<void> => { try { setError(''); apply(await window.gearmod.invoke('projects:set-card-types', { projectId: project.id, types: null })) } catch (reason) { setError(plainError(reason)) } }
   return <div className="stack" style={{ gap: 8 }}><span className="sectitle">{t.title}</span>
     <small className="hint">{t.projectHint} {state.custom ? t.customList : t.usingDefault}</small>
-    <CardTypesEditor types={state.types} save={async (next) => apply(await window.agentboard.invoke('projects:set-card-types', { projectId: project.id, types: next }))} usage={() => window.agentboard.invoke('card-types:usage', { projectId: project.id })} />
+    <CardTypesEditor types={state.types} save={async (next) => apply(await window.gearmod.invoke('projects:set-card-types', { projectId: project.id, types: next }))} usage={() => window.gearmod.invoke('card-types:usage', { projectId: project.id })} />
     {state.custom && <button type="button" className="mini secondary" style={{ justifySelf: 'start' }} onClick={() => void reset()}>{t.useDefault}</button>}
     {error && <p className="error">{error}</p>}
   </div>

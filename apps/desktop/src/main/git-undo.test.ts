@@ -17,14 +17,14 @@ const git = (dir: string, ...args: string[]): Promise<{ stdout: string }> => exe
 const out = async (dir: string, ...args: string[]): Promise<string> => (await git(dir, ...args)).stdout.trim()
 const head = (dir: string): Promise<string> => out(dir, 'rev-parse', 'HEAD')
 const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false)
-const refs = async (dir: string): Promise<string[]> => (await out(dir, 'for-each-ref', '--format=%(refname)', 'refs/agentboard/undo')).split(/\r?\n/).filter(Boolean)
+const refs = async (dir: string): Promise<string[]> => (await out(dir, 'for-each-ref', '--format=%(refname)', 'refs/gearmod/undo')).split(/\r?\n/).filter(Boolean)
 
 /** Repositório temporário registrado num projeto; `remote` liga um bare como origin, `empty` deixa o repositório sem commit. */
 async function setup(options: { remote?: boolean; empty?: boolean } = {}): Promise<{ root: string; repo: string; remote: string; backup: string; database: AppDatabase; manager: GitManager; projectId: string; sourceId: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'agentboard-undo-')); roots.push(root)
+  const root = await mkdtemp(join(tmpdir(), 'gearmod-undo-')); roots.push(root)
   const repo = join(root, 'repo'), remote = join(root, 'remote.git'), backup = join(root, 'backup'), trash = join(root, 'trash')
   await exec('git', ['init', '-b', 'main', repo])
-  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'AgentBoard Test'); await git(repo, 'config', 'core.autocrlf', 'false')
+  await git(repo, 'config', 'user.email', 'test@example.invalid'); await git(repo, 'config', 'user.name', 'GearMod Test'); await git(repo, 'config', 'core.autocrlf', 'false')
   if (!options.empty) { await writeFile(join(repo, 'README.md'), '# fixture\n'); await git(repo, 'add', 'README.md'); await git(repo, 'commit', '-m', 'primeiro') }
   if (options.remote) { await exec('git', ['init', '--bare', '-b', 'main', remote]); await git(repo, 'remote', 'add', 'origin', remote); await git(repo, 'push', '-u', 'origin', 'main') }
   const database = new AppDatabase(join(root, 'data', 'db.sqlite'), '0.1.0'); await database.open(); opened.push(database)
@@ -482,7 +482,7 @@ describe('limpeza da pilha e proteção contra o gc', { timeout: 30_000 }, () =>
 
   it('ao abrir, apaga as refs e as cópias que sobraram da sessão anterior', async () => {
     const { database, repo, backup, projectId } = await setup()
-    await git(repo, 'update-ref', 'refs/agentboard/undo/velha-0', await head(repo))
+    await git(repo, 'update-ref', 'refs/gearmod/undo/velha-0', await head(repo))
     await mkdir(join(backup, 'velha'), { recursive: true }); await writeFile(join(backup, 'velha', 'x'), 'x')
     const reopened = new GitManager(database, undefined, undefined, undefined, undefined, backup)
     await reopened.repos(projectId)

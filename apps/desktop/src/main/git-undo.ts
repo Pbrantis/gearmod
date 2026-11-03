@@ -5,7 +5,7 @@ import { tm } from './i18n'
 /** Onde a pasta está: commit do HEAD (null em repositório sem commit) e branch (null com HEAD solto). */
 export interface GitState { head: string | null; branch: string | null }
 export type UndoKind = 'commit' | 'checkout' | 'create-branch' | 'delete-branch' | 'tag' | 'reset' | 'reset-hard-dirty' | 'discard' | 'stash' | 'stash-drop' | 'ignore'
-/** Uma ação da tela de Git que dá para desfazer. `dir` é a pasta onde ela rodou; `pins` são as refs `refs/agentboard/undo/*` que seguram os hashes dela. */
+/** Uma ação da tela de Git que dá para desfazer. `dir` é a pasta onde ela rodou; `pins` são as refs `refs/gearmod/undo/*` que seguram os hashes dela. */
 export interface UndoEntry { id: string; kind: UndoKind; at: string; before: GitState; after: GitState; dir: string; pins: string[]; data: Record<string, unknown> }
 
 /** Quantas ações ficam na pilha de cada pasta; a mais antiga sai. */

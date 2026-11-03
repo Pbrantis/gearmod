@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { defaultAgentColor, type AgentProfile, type CardUsage, type TokenCount } from '@agentboard/contracts'
+import { defaultAgentColor, type AgentProfile, type CardUsage, type TokenCount } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { TokenIcon } from './icons'
 import { useEscape } from './useEscape'
@@ -19,8 +19,8 @@ export function TokenUsage({ cardId, small = false, compact = false, onOpenDetai
   const all = useT().chat, t = all.tokens
   const steps = stepKeys.map((key) => ({ key, label: all.steps[key] }))
   const [usage, setUsage] = useState<CardUsage>(), [profiles, setProfiles] = useState<AgentProfile[]>([]), [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; up: boolean } | null>(null), button = useRef<HTMLButtonElement>(null), box = useRef<HTMLDivElement>(null)
-  useEffect(() => { void window.agentboard.invoke('cards:usage', { cardId }).then(setUsage).catch(() => undefined) }, [cardId])
-  useEffect(() => { if (!compact) void window.agentboard.invoke('profiles:list', undefined).then(setProfiles).catch(() => undefined) }, [compact])
+  useEffect(() => { void window.gearmod.invoke('cards:usage', { cardId }).then(setUsage).catch(() => undefined) }, [cardId])
+  useEffect(() => { if (!compact) void window.gearmod.invoke('profiles:list', undefined).then(setProfiles).catch(() => undefined) }, [compact])
   // Com `onOpenDetails` o resumo abre ao passar o mouse e o clique leva aos detalhes; sem ele, o resumo abre por clique (fecha ao clicar fora ou com Esc).
   useEffect(() => {
     if (compact || onOpenDetails || !pos) return

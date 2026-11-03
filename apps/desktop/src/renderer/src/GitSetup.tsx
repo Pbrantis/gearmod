@@ -1,24 +1,24 @@
 import React, { useEffect, useState } from 'react'
-import type { GitRepo } from '@agentboard/contracts'
+import type { GitRepo } from '@gearmod/contracts'
 import { plainError } from './NoticeDialog'
 import { Select } from './Select'
 import { useEscape } from './useEscape'
 import { useT } from './i18n'
 
 /** Avisa o app inteiro que o cadastro de repositórios do projeto mudou (o quadro recarrega o projeto). */
-export const gitChangedEvent = 'agentboard:git-changed'
+export const gitChangedEvent = 'gearmod:git-changed'
 
 /** Diálogo único (Git do quadro e Configurar projeto → Git): iniciar o Git do zero ou vincular uma origin SSH/HTTPS. */
 export function GitSetupDialog({ projectId, close, done }: { projectId: string; close(): void; done(repos: GitRepo[]): void }): React.JSX.Element {
   const { common, git: { setup: t } } = useT()
   const [targets, setTargets] = useState<Array<{ sourceId: string; name: string; path: string }>>(), [sourceId, setSourceId] = useState(''), [mode, setMode] = useState<'init' | 'origin'>('init'), [url, setUrl] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
-  useEffect(() => { void window.agentboard.invoke('git:setup-targets', { projectId }).then((items) => { setTargets(items); setSourceId((current) => current || items[0]?.sourceId || '') }).catch((reason: unknown) => setError(plainError(reason))) }, [projectId])
+  useEffect(() => { void window.gearmod.invoke('git:setup-targets', { projectId }).then((items) => { setTargets(items); setSourceId((current) => current || items[0]?.sourceId || '') }).catch((reason: unknown) => setError(plainError(reason))) }, [projectId])
   useEscape(close, !busy)
   const target = targets?.find((item) => item.sourceId === sourceId)
   const submit = async (): Promise<void> => {
     if (!target) return
     setBusy(true); setError('')
-    try { const repos = await window.agentboard.invoke('git:setup', { projectId, sourceId: target.sourceId, mode, url: mode === 'origin' ? url.trim() : undefined }); window.dispatchEvent(new Event(gitChangedEvent)); done(repos) }
+    try { const repos = await window.gearmod.invoke('git:setup', { projectId, sourceId: target.sourceId, mode, url: mode === 'origin' ? url.trim() : undefined }); window.dispatchEvent(new Event(gitChangedEvent)); done(repos) }
     catch (reason) { setError(plainError(reason)); setBusy(false) }
   }
   return <div className="overlay top" role="dialog" aria-label={t.addGit}><div className="modal" style={{ width: 'min(480px,100%)' }}>
@@ -59,7 +59,7 @@ export function GitUpstreamDialog({ sourceId, cardId, branch, remotes, close, do
   const submit = async (): Promise<void> => {
     if (!name.trim() || !remote) return
     setBusy(true); setError('')
-    try { await window.agentboard.invoke('git:set-upstream', { sourceId, cardId, remote, branch: name.trim() }); done() } catch (reason) { setError(plainError(reason)); setBusy(false) }
+    try { await window.gearmod.invoke('git:set-upstream', { sourceId, cardId, remote, branch: name.trim() }); done() } catch (reason) { setError(plainError(reason)); setBusy(false) }
   }
   return <div className="overlay top" role="dialog" aria-label={t.upstreamAria}><form className="modal" style={{ width: 'min(520px,100%)' }} onSubmit={(event) => { event.preventDefault(); void submit() }}>
     <header><div><div className="eyebrow">Pull</div><h2>{t.upstreamTitle}</h2></div></header>

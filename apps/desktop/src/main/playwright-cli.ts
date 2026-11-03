@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
-import type { PlaywrightStatus } from '@agentboard/contracts'
+import type { PlaywrightStatus } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import type { CardHistoryService } from './history'
 import { applyEnvPolicy } from './env-policy'
@@ -34,7 +34,7 @@ export const nodeRelease = {
 }
 const minNodeMajor = 18
 const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
-const wrapperName = 'agentboard-playwright-cli.cmd'
+const wrapperName = 'gearmod-playwright-cli.cmd'
 
 const compareVersions = (a: string, b: string): number => {
   const parts = (value: string): number[] => value.split('-')[0]!.split('.').map((item) => Number(item) || 0)
@@ -49,11 +49,11 @@ export interface PlaywrightDeps {
 }
 
 /**
- * Playwright CLI (`@playwright/cli`) como ferramenta do próprio AgentBoard (docs/09, fase 11): fica numa pasta do app, nunca dentro do projeto.
+ * Playwright CLI (`@playwright/cli`) como ferramenta do próprio GearMod (docs/09, fase 11): fica numa pasta do app, nunca dentro do projeto.
  * Cada versão instalada tem a sua pasta e o projeto escolhe qual usar; instalar uma versão nova não mexe nas outras. Os navegadores são
  * compartilhados. Sem Node 18+ na máquina, o app baixa um Node portátil (conferido por SHA-256) e usa só para esta ferramenta.
  *
- *   <toolsDir>/playwright-cli/<versão>/   pacote + node_modules + agentboard-playwright-cli.cmd (o comando que o agente recebe)
+ *   <toolsDir>/playwright-cli/<versão>/   pacote + node_modules + gearmod-playwright-cli.cmd (o comando que o agente recebe)
  *   <toolsDir>/playwright-browsers/       navegadores
  *   <toolsDir>/node/                      Node portátil, se precisar
  */
@@ -61,7 +61,7 @@ export class PlaywrightCliService {
   private log = ''
   private error: string | null = null
 
-  constructor(private readonly database: AppDatabase, private readonly history: Pick<CardHistoryService, 'config' | 'setConfig' | 'artifactsDir'>, private readonly commands: CommandRunner = nativeCommands, private readonly toolsDir: string = join(process.cwd(), '.agentboard-tools'), private readonly deps: PlaywrightDeps = {}) {}
+  constructor(private readonly database: AppDatabase, private readonly history: Pick<CardHistoryService, 'config' | 'setConfig' | 'artifactsDir'>, private readonly commands: CommandRunner = nativeCommands, private readonly toolsDir: string = join(process.cwd(), '.gearmod-tools'), private readonly deps: PlaywrightDeps = {}) {}
 
   private get cliRoot(): string { return join(this.toolsDir, 'playwright-cli') }
   private get browsersDir(): string { return join(this.toolsDir, 'playwright-browsers') }
@@ -154,7 +154,7 @@ export class PlaywrightCliService {
       if (!versionPattern.test(version)) throw new Error(tm().playwrightCli.invalidVersion(input.version))
       const dir = this.versionDir(version)
       await mkdir(dir, { recursive: true })
-      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'agentboard-playwright-cli', private: true }), 'utf8')
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'gearmod-playwright-cli', private: true }), 'utf8')
       await step(`npm install @playwright/cli@${version}`, () => this.commands.run(npm, ['install', '--no-audit', '--no-fund', '--no-package-lock', `@playwright/cli@${version}`], dir, 10 * 60_000, extra()))
       if (!existsSync(this.bin(version))) throw new Error(tm().playwrightCli.binNotFound)
       // O comando que o agente recebe: aponta para o Node certo e para os navegadores compartilhados, onde quer que o agente rode.

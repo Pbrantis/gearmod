@@ -1,4 +1,4 @@
-import { builtinCardTypes, cardTypeListSchema, languageSchema, type CardTypeDef } from '@agentboard/contracts'
+import { builtinCardTypes, cardTypeListSchema, languageSchema, type CardTypeDef } from '@gearmod/contracts'
 import type Database from 'better-sqlite3'
 
 /** Chave da lista padrão em `settings` (fora de `app.%`, que é o formulário de Configurações). */

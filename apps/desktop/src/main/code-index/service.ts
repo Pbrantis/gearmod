@@ -71,7 +71,7 @@ export class CodeIndexService {
   /** Começa a indexar em segundo plano (ao abrir o projeto, ao criar a worktree do card). */
   prewarm(roots: string[]): void { if (this.enabled) for (const root of roots) if (existsSync(root)) void this.ensure(root).catch(() => undefined) }
 
-  /** Ferramenta MCP (agentboard_code_*) sobre as pastas da execução; com várias pastas, uma seção por pasta. */
+  /** Ferramenta MCP (gearmod_code_*) sobre as pastas da execução; com várias pastas, uma seção por pasta. */
   async tool(name: string, args: Record<string, unknown>, roots: string[]): Promise<string> {
     const tool = codeToolNames[name]
     if (!tool) throw new Error(`Unknown code tool: ${name}`)

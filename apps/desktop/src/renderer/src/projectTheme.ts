@@ -1,7 +1,7 @@
-import { themeSchema, type AppTheme } from '@agentboard/contracts'
+import { themeSchema, type AppTheme } from '@gearmod/contracts'
 
-const key = (projectId: string): string => `agentboard.projectTheme.${projectId}`
-export const projectThemeEvent = 'agentboard:project-theme'
+const key = (projectId: string): string => `gearmod.projectTheme.${projectId}`
+export const projectThemeEvent = 'gearmod:project-theme'
 
 /** Tema escolhido só para este projeto (vazio = segue o tema do app). Fica salvo neste computador, igual para todo mundo que usa o app aqui. */
 export function projectTheme(projectId: string | undefined): AppTheme | null {

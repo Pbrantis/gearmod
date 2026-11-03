@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import type { McpPreset, McpServer, McpServerInput } from '@agentboard/contracts'
+import type { McpPreset, McpServer, McpServerInput } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { SecretStore, type SecureStorage } from './secrets'
 import { tm } from './i18n'
@@ -23,12 +23,12 @@ export const mcpPresets: McpPreset[] = [
 ]
 
 const nameRule = /^[a-z0-9][a-z0-9_-]{0,39}$/i
-const reserved = new Set(['agentboard'])
+const reserved = new Set(['gearmod'])
 type Secrets = { env: Record<string, string>; headers: Record<string, string> }
 type Row = { id: string; scope: 'global' | 'project'; projectId: string | null; name: string; presetId: string | null; transport: 'stdio' | 'http'; command: string | null; argsJson: string; url: string | null; envKeysJson: string; headerKeysJson: string; providersJson: string; enabled: number }
 
 /**
- * Cadastro de servidores MCP do AgentBoard: uma lista global e uma por projeto, com liga/desliga por agente.
+ * Cadastro de servidores MCP do GearMod: uma lista global e uma por projeto, com liga/desliga por agente.
  * Os servidores são injetados na hora de rodar cada agente; os arquivos de configuração do Claude/Codex não são tocados.
  * Valores de env e cabeçalhos ficam no cofre do sistema, nunca no SQLite nem no renderer.
  */
