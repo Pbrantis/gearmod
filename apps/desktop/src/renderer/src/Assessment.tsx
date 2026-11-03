@@ -9,7 +9,8 @@ import { useEscape } from './useEscape'
 import { dateLocale, tr, useT } from './i18n'
 
 /** Indicador de complexidade (Kanban, editor e chat): só os pontos; ao passar o mouse desce um cartão com nível, fluxo, variação e confiança. `full` mostra tudo no próprio selo, como no editor do card. */
-export function ComplexityBadge({ complexity, onClick, full = false }: { complexity: CardComplexity | null; onClick?(): void; full?: boolean }): React.JSX.Element | null {
+/** `workflowText`: nome do fluxo já escolhido, no lugar da sigla do fluxo recomendado. */
+export function ComplexityBadge({ complexity, onClick, full = false, workflowText }: { complexity: CardComplexity | null; onClick?(): void; full?: boolean; workflowText?: string }): React.JSX.Element | null {
   const tb = useT().board, t = tb.assessment
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null), button = useRef<HTMLButtonElement>(null)
   if (!complexity) return null
@@ -21,7 +22,7 @@ export function ComplexityBadge({ complexity, onClick, full = false }: { complex
   }
   return <button type="button" ref={button} className={`cx-badge ${complexity.level}`} aria-label={t.complexityAria(complexity.total, tb.levelLabels[complexity.level])} onMouseEnter={show} onMouseLeave={() => setPos(null)} onFocus={show} onBlur={() => setPos(null)} onClick={(event) => { event.stopPropagation(); setPos(null); onClick?.() }}>
     <b>{complexity.preliminary ? '~' : ''}{complexity.total}</b>
-    {full && <>{tb.levelLabels[complexity.level]}{delta !== null && delta !== 0 && <span className={`cx-delta ${delta > 0 ? 'up' : 'down'}`}>{delta > 0 ? `▲${delta}` : `▼${-delta}`}</span>}<span className="cx-wf">{t.shortWorkflow[wf]}</span></>}
+    {full && <>{tb.levelLabels[complexity.level]}{delta !== null && delta !== 0 && <span className={`cx-delta ${delta > 0 ? 'up' : 'down'}`}>{delta > 0 ? `▲${delta}` : `▼${-delta}`}</span>}<span className="cx-wf">{workflowText ?? t.shortWorkflow[wf]}</span></>}
     {pos && createPortal(<span className="cx-pop" role="tooltip" style={{ left: pos.left, top: pos.top, bottom: pos.bottom }}>
       <span className="cx-pop-head"><span className={`cx-pop-score ${complexity.level}`}>{complexity.preliminary ? '~' : ''}{complexity.total}</span><span className="cx-pop-title"><b>{tb.levelLabels[complexity.level]}</b><small>{t.complexityPoints}{complexity.preliminary ? ` · ${t.preliminary}` : ''}</small></span>
         {delta !== null && delta !== 0 && <span className={`cx-pop-delta ${delta > 0 ? 'up' : 'down'}`}>{delta > 0 ? '▲' : '▼'} {Math.abs(delta)}</span>}</span>
