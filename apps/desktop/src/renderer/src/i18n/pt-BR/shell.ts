@@ -167,7 +167,6 @@ export const shell = {
     byAgent: 'Por agente',
     byAgentHint: 'Tokens e custo de cada agente; passe o mouse no custo para ver o tipo.',
     agentColumn: 'Agente',
-    tokensColumn: 'Tokens (entrada · cache · saída)',
     costColumn: 'Custo',
     removedAgent: 'Agente removido',
     costBreakdown: (billed: string, equivalent: string, unknown: string) => `Faturado ${billed} · Equivalente API ${equivalent} · Desconhecido ${unknown}`,

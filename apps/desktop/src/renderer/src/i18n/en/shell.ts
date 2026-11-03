@@ -168,7 +168,6 @@ export const shell: typeof source = {
     byAgent: 'By agent',
     byAgentHint: 'Tokens and cost of each agent; hover the cost to see its type.',
     agentColumn: 'Agent',
-    tokensColumn: 'Tokens (input · cache · output)',
     costColumn: 'Cost',
     removedAgent: 'Removed agent',
     costBreakdown: (billed: string, equivalent: string, unknown: string) => `Billed ${billed} · API equivalent ${equivalent} · Unknown ${unknown}`,
