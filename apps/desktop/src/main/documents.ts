@@ -9,6 +9,8 @@ type Actor = 'user' | 'agent' | 'system'
 
 /** Os 4 documentos Markdown do card (Resumo, Especificação, Plano e Tasks) e o histórico de versões de cada um. */
 export class DocumentRepository {
+  /** Chamado depois de cada gravação que mudou o documento (usado para manter as cópias em arquivo iguais). */
+  onWrite?: (cardId: string, kind: CardDocumentKind) => void
   constructor(private readonly database: AppDatabase) {}
 
   get(cardId: string): CardDocuments {
@@ -44,6 +46,7 @@ export class DocumentRepository {
       else this.database.db.prepare('UPDATE cards SET updated_at = ? WHERE id = ?').run(now, cardId)
     })
     save()
+    try { this.onWrite?.(cardId, kind) } catch { /* a cópia em arquivo é melhor esforço */ }
     return this.get(cardId)[kind]
   }
 

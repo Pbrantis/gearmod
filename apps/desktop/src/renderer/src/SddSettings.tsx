@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { Project, SddConfig, IpcOutput } from '@agentboard/contracts'
 import { plainError } from './NoticeDialog'
 import { Select } from './Select'
@@ -30,6 +30,16 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
       setMessage(t.saved)
     } catch (e) { setMessage(plainError(e)) } finally { setBusy(false) }
   }
+  // Salva sozinho a cada mudança (depois de um instante), sem botão: o primeiro valor carregado não conta como mudança.
+  const lastSaved = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!config || !source) return
+    const snapshot = JSON.stringify({ config, branch })
+    if (lastSaved.current === undefined) { lastSaved.current = snapshot; return }
+    if (lastSaved.current === snapshot || !branch) return
+    const timer = window.setTimeout(() => { lastSaved.current = snapshot; void save() }, 700)
+    return () => window.clearTimeout(timer)
+  }, [config, branch])
   if (!config) return <p>{message || t.loadingLocation}</p>
   const set = (patch: Partial<SddConfig>): void => { setConfig({ ...config, ...patch }); setPreview(undefined) }
   const relativeToSource = (path: string): string => {
@@ -64,15 +74,14 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
     })
     setMessage(isSpecKit ? t.specKitSelected : t.agentBoardSelected)
   }
-  return <section className="cx-wfcard"><h4>{t.title}</h4>
+  return <section className="cx-wfcard"><h4 className="cx-labelrow">{t.title}<button type="button" className="cx-tiny" disabled={busy} onClick={() => { setMessage(''); void window.agentboard.invoke('sdd:detect-constitutions', { projectId: project.id }).then(setPreview).catch((e) => setMessage(plainError(e))) }}>{t.detect}</button></h4>
     <p className="cx-note">{t.note}</p>
     {!sources.length ? <p className="error">{t.addGitRepo}</p> : <div className="stack">
       <div className="f"><span>{t.repository}</span><Select label={t.sddRepository} value={config.sourceId ?? ''} options={[{ value: '', label: t.firstGitRepo }, ...sources.map((item) => ({ value: item.id, label: item.name }))]} onChange={(value) => set({ sourceId: value || null })} /></div>
       <div className="f"><span>{t.projectBaseBranch}</span><Select label={t.projectBaseBranch} value={branch} options={[...(!branches.includes(branch) && branch ? [{ value: branch, label: t.notFound(branch) }] : []), ...branches.map((name) => ({ value: name, label: name }))]} onChange={setBranch} /></div>
       <div className="f"><span>{t.sddFolder}</span>{!editRoot ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{config.root ? t.chosenFolder : t.repoRoot}</b><code>{absolutePath(config.root)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditRoot(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={config.root} onChange={(event) => set({ root: event.target.value })} placeholder={t.repoRoot} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('root')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditRoot(false)}>{t.done}</button></div>}</div>
-      <div className="f"><span>{t.constitutionPath(config.method === 'native' ? t.methodNames.native : t.methodNames.speckit)}</span>{!editConstitution ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{t.chosenFolder}</b><code>{absolutePath(constitutionFolder)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditConstitution(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={constitutionFolder} onChange={(event) => set({ constitution: { ...config.constitution, [config.method]: [event.target.value, 'constitution.md'].filter(Boolean).join('/') } })} placeholder={config.method === 'native' ? '.agentboard' : '.specify/memory'} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('constitution')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditConstitution(false)}>{t.done}</button></div>}<span className="actions"><button type="button" className="mini secondary" disabled={busy} onClick={() => chooseConstitutionSource(config.method === 'native' ? 'speckit' : 'native')}>{config.method === 'native' ? t.useSpecKitPath : t.useAgentBoardPath}</button></span></div>
+      <div className="f"><span className="cx-labelrow">{t.constitutionPath(config.method === 'native' ? t.methodNames.native : t.methodNames.speckit)}<button type="button" className="cx-tiny" disabled={busy} onClick={() => chooseConstitutionSource(config.method === 'native' ? 'speckit' : 'native')}>{config.method === 'native' ? t.useSpecKitPath : t.useAgentBoardPath}</button></span>{!editConstitution ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{t.chosenFolder}</b><code>{absolutePath(constitutionFolder)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditConstitution(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={constitutionFolder} onChange={(event) => set({ constitution: { ...config.constitution, [config.method]: [event.target.value, 'constitution.md'].filter(Boolean).join('/') } })} placeholder={config.method === 'native' ? '.agentboard' : '.specify/memory'} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('constitution')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditConstitution(false)}>{t.done}</button></div>}</div>
       <section className="cx-wfcard"><span className="sectitle">{t.constitution}</span><ConstitutionPanel projectId={project.id} openChat={openConstitutionChat} onOpenReference={onOpenReference} /></section>
-      <div className="actions"><button type="button" disabled={busy || !branch} onClick={() => void save()}>{t.saveLocation}</button><button type="button" className="secondary" disabled={busy} onClick={() => { setMessage(''); void window.agentboard.invoke('sdd:detect-constitutions', { projectId: project.id }).then(setPreview).catch((e) => setMessage(plainError(e))) }}>{t.detect}</button></div>
     </div>}
     {message && <p role="status">{message}</p>}
     {preview && <div><p>{t.result(preview.kind, preview.action)}</p>{(['db', 'native', 'speckit'] as const).map((key) => <p key={key}><b>{key}</b>: {preview.candidates[key]?.sha256 ?? t.absent}</p>)}</div>}

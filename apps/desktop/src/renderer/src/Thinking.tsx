@@ -17,7 +17,7 @@ export function activityVerb(messages: ChatMessage[]): string | null {
   const t = tr().shell.thinking
   if (['read', 'grep', 'glob', 'ls'].includes(name)) return t.readingProject
   if (['bash', 'comando'].includes(name)) return t.runningCommand
-  if (['write', 'edit', 'multiedit', 'alterou', 'agentboard_escrever_documento'].includes(name)) return t.writing
+  if (['write', 'edit', 'multiedit', 'alterou', 'agentboard_write_document'].includes(name)) return t.writing
   if (['websearch', 'webfetch'].includes(name)) return t.searching
   if (name.startsWith('agentboard_')) return t.updatingCard
   return null

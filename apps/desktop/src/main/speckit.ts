@@ -3,6 +3,7 @@ import { join, relative, resolve, sep } from 'node:path'
 import type { PermissionMode } from '@agentboard/contracts'
 import type { Approval, ApprovalService } from './approvals'
 import { specKitSkill, type SpecKitStage } from './spec-tools'
+import { setTaskChecked } from './tasks'
 import { tm } from './i18n'
 
 /**
@@ -195,6 +196,19 @@ export class SpecKitRuntime {
     }
     // "Plano pronto" só enquanto os três arquivos da feature do card existirem; qualquer outra coisa limpa o selo.
     try { this.deps.board.setSpecKitReady?.(cardId, found.ready) } catch { /* sem banco: nada a sincronizar */ }
+  }
+
+  /**
+   * Marca (ou desmarca) uma linha do tasks.md REAL da feature, que é a fonte da aba Tasks, e espelha de volta no card.
+   * Sem isso a marca ficaria só no banco e a próxima sincronização a apagaria. `false` = o card não usa Spec Kit ou ainda não tem tasks.md.
+   */
+  setTask(cardId: string, line: number, checked: boolean): boolean {
+    if (!this.active(cardId)) return false
+    const path = this.artifacts(cardId).tasks
+    if (!path) return false
+    writeFileSync(path, setTaskChecked(readFileSync(path, 'utf8'), line, checked), 'utf8')
+    this.sync(cardId)
+    return true
   }
 
   /** Depois da run: se spec, plan e tasks da feature do card existem, o planejamento está pronto. Devolve o aviso de próxima etapa. */

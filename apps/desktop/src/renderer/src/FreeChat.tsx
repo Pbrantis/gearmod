@@ -37,7 +37,7 @@ const readSaved = (projectId: string): Saved | null => { try { return JSON.parse
 
 /**
  * Chat livre: conversa solta com um agente, sem card e sem alterar arquivos. Se a conversa virar um planejamento, o agente cria o
- * card (agentboard_criar_card) e este mesmo chat passa a ser o chat de planejamento dele; aí `onConverted` abre o card.
+ * card (agentboard_create_card) e este mesmo chat passa a ser o chat de planejamento dele; aí `onConverted` abre o card.
  * Com `mode="constitution"` é o chat da Constituição do projeto; `prompt` já envia o primeiro pedido ao abrir.
  */
 export function FreeChat({ project, profiles, chat: start, close, onConverted, changed, mode = 'free', prompt: firstPrompt }: { project: Project; profiles: AgentProfile[]; chat?: Chat; close(): void; onConverted(cardId: string): void; changed(): void; mode?: 'free' | 'constitution'; prompt?: string }): React.JSX.Element {

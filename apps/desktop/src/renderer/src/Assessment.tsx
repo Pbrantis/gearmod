@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { complexityDimensions, type Assessment, type Card, type CardComplexity, type CardHistory, type DimensionScores, type RunMetric, type WorkflowKind } from '@agentboard/contracts'
 import { plainError } from './NoticeDialog'
 import { ConfirmDialog } from './ConfirmDialog'
+import { Select } from './Select'
 import { Markdown } from './markdown'
 import { useEscape } from './useEscape'
 import { dateLocale, tr, useT } from './i18n'
@@ -35,25 +36,57 @@ export function ComplexityBadge({ complexity, onClick, full = false }: { complex
   </button>
 }
 
-type Tab = 'avaliacao' | 'decisoes' | 'entendimento' | 'metricas' | 'eventos'
+type Stage = { state: string; run: Card['run']; hasPlan: boolean; planningOpen: boolean }
+export type Tab = 'avaliacao' | 'riscos' | 'decisoes' | 'entendimento' | 'metricas' | 'eventos'
 
 /** Histórico auditável do card: versões da avaliação, comparação, evidências, decisões, contestação e escolha do fluxo. */
-export function AssessmentDialog({ card, close, changed }: { card: Card; close(): void; changed(): void }): React.JSX.Element {
+export function AssessmentDialog({ card, close, changed, initialTab = 'avaliacao' }: { card: Card; close(): void; changed(): void; initialTab?: Tab }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.assessment
-  const [history, setHistory] = useState<CardHistory>(), [metrics, setMetrics] = useState<RunMetric[]>([]), [selected, setSelected] = useState<string>(), [tab, setTab] = useState<Tab>('avaliacao'), [error, setError] = useState(''), [contesting, setContesting] = useState(false)
+  const [history, setHistory] = useState<CardHistory>(), [metrics, setMetrics] = useState<RunMetric[]>([]), [selected, setSelected] = useState<string>(), [tab, setTab] = useState<Tab>(initialTab), [riskFocus, setRiskFocus] = useState<string>(), [stage, setStage] = useState<Stage>(), [pendingFlow, setPendingFlow] = useState<{ workflow: WorkflowKind; method?: 'native' | 'speckit'; warnings: string[] }>(), [error, setError] = useState(''), [contesting, setContesting] = useState(false)
+  /** Onde o card está agora (coluna, execução, plano pronto), sempre lido de novo: é o que decide travar ou avisar. */
+  const readStage = async (): Promise<Stage | undefined> => {
+    try {
+      const board = await window.agentboard.invoke('board:get', { projectId: card.projectId }), fresh = board.cards.find((item) => item.id === card.id), column = board.columns.find((item) => item.id === fresh?.columnId)
+      const next = fresh && column ? { state: column.semanticState, run: fresh.run, hasPlan: fresh.hasPlan, planningOpen: fresh.planningOpen } : undefined
+      setStage(next); return next
+    } catch { return undefined }
+  }
   const load = async (): Promise<void> => {
+    void readStage()
     try { const [next, runs] = await Promise.all([window.agentboard.invoke('history:get', { cardId: card.id }), window.agentboard.invoke('metrics:card', { cardId: card.id })]); setHistory(next); setMetrics(runs) } catch (reason) { setError(plainError(reason)) }
   }
   const [specKit, setSpecKit] = useState<{ enabled: boolean; reason: string | null }>({ enabled: false, reason: t.specKitDisabled })
   useEffect(() => { void window.agentboard.invoke('speckit:availability', { projectId: card.projectId }).then(setSpecKit).catch(() => undefined) }, [card.projectId])
   useEffect(() => { void load() }, [card.id])
   useEscape(close)
+  const warningsFor = (now: Stage): string[] => {
+    const list: string[] = []
+    if (now.run.state === 'running' || now.run.state === 'planning') list.push(t.flowWarnRunning(now.run.purpose ? t.flowPurposes[now.run.purpose] : ''))
+    if (now.state === 'test') list.push(t.flowWarnTest)
+    else if (now.state === 'doing') list.push(t.flowWarnDoing)
+    if (now.hasPlan || now.planningOpen) list.push(t.flowWarnPlan)
+    return list
+  }
+  const choose = (workflow: WorkflowKind, method: 'native' | 'speckit' | undefined, reason?: string): Promise<void> => apply(window.agentboard.invoke('history:select-workflow', { cardId: card.id, workflow, ...(method ? { method } : {}), ...(reason ? { reason } : {}) }))
+  // Mudar o fluxo nunca é barrado (menos em card concluído), mas avisa quando já há execução, plano, desenvolvimento ou teste; o que ele confirma vai para as decisões.
+  const askBeforeChoosing = async (workflow: WorkflowKind, method?: 'native' | 'speckit'): Promise<void> => {
+    const now = await readStage()
+    if (now?.state === 'done') return
+    const warnings = now ? warningsFor(now) : []
+    if (!warnings.length) { await choose(workflow, method); return }
+    setPendingFlow({ workflow, method, warnings })
+  }
   const apply = async (task: Promise<CardHistory>): Promise<void> => { try { setHistory(await task); setError(''); changed() } catch (reason) { setError(plainError(reason)) } }
   const assessments = history?.assessments ?? [], current = assessments.find((item) => item.id === selected) ?? assessments.at(-1)
   const previous = current ? assessments.find((item) => item.version === current.version - 1) : undefined
+  const confirmFlow = (): void => {
+    const pending = pendingFlow; setPendingFlow(undefined)
+    if (!pending) return
+    void choose(pending.workflow, pending.method, t.flowChangeReason(pending.warnings))
+  }
   return <div className="overlay top" role="dialog" aria-label={t.historyLabel} onClick={close}><div className="modal cx-dialog" onClick={(event) => event.stopPropagation()}>
     <header><div><div className="eyebrow">{t.eyebrow}</div><h2>{card.title || t.untitledCard}</h2></div><button type="button" className="x" onClick={close} aria-label={common.close}>×</button></header>
-    <div className="cx-tabrow"><div className="tabs" role="tablist">{([['avaliacao', t.tabs.assessment], ['decisoes', t.tabs.decisions(history?.decisions.length ?? 0)], ['entendimento', t.tabs.understanding], ['metricas', t.tabs.metrics], ['eventos', t.tabs.events]] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div><button type="button" className="mini secondary cx-open" onClick={() => { void window.agentboard.invoke('history:open-folder', { cardId: card.id }).catch((reason) => setError(plainError(reason))) }}>{t.openArtifacts}</button></div>
+    <div className="cx-tabrow"><div className="tabs" role="tablist">{([['avaliacao', t.tabs.assessment], ['riscos', t.tabs.risks(assessments.at(-1)?.criticalRisks.length ?? 0)], ['decisoes', t.tabs.decisions(history?.decisions.length ?? 0)], ['entendimento', t.tabs.understanding], ['metricas', t.tabs.metrics], ['eventos', t.tabs.events]] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}</button>)}</div><button type="button" className="mini secondary cx-open" onClick={() => { void window.agentboard.invoke('history:open-folder', { cardId: card.id }).catch((reason) => setError(plainError(reason))) }}>{t.openArtifacts}</button></div>
     {error && <div className="cx-error" role="alert">{error}</div>}
     {!history ? <p className="cx-muted">{common.loading}</p> : <div className={`cx-body ${tab === 'decisoes' ? 'cx-body-decisions' : tab === 'eventos' ? 'cx-body-events' : ''}`}>
       {tab === 'avaliacao' && <div className="cx-grid">
@@ -61,17 +94,18 @@ export function AssessmentDialog({ card, close, changed }: { card: Card; close()
           <span className={`cx-dot ${item.level}`} /><b>v{item.version}</b><span>{item.preliminary ? '~' : ''}{item.total} {t.pts} · {tb.levelLabels[item.level]}</span><small>{tb.triggerLabels[item.trigger]} · {item.actor === 'user' ? t.you : item.model ?? item.provider ?? t.agentFallback}</small><small>{formatDate(item.createdAt)}</small>
         </button>) : <p className="cx-muted">{t.noAssessmentYet}</p>}</aside>
         <section className="cx-detail">{contesting || !current ? <ContestForm current={current} cancel={current ? () => setContesting(false) : undefined} submit={(scores, reason) => apply(window.agentboard.invoke('history:contest', { cardId: card.id, scores, reason }).then((next) => { setSelected(undefined); setContesting(false); return next }))} />
-          : <AssessmentView item={current} previous={previous} latest={current.id === assessments.at(-1)?.id} history={history} specKit={specKit} contest={() => setContesting(true)} choose={(workflow, method) => apply(window.agentboard.invoke('history:select-workflow', { cardId: card.id, workflow, ...(method ? { method } : {}) }))} />}</section>
+          : <AssessmentView item={current} previous={previous} latest={current.id === assessments.at(-1)?.id} history={history} specKit={specKit} seeRisks={() => { setRiskFocus(current.id); setTab('riscos') }} contest={() => setContesting(true)} locked={stage?.state === 'done'} choose={(workflow, method) => void askBeforeChoosing(workflow, method)} />}</section>
       </div>}
+      {tab === 'riscos' && <CriticalRisks assessments={assessments} focus={riskFocus} />}
       {tab === 'decisoes' && <Decisions history={history} set={(decisionId, status) => apply(window.agentboard.invoke('history:set-decision', { decisionId, status }))} add={(statement) => apply(window.agentboard.invoke('history:add-decision', { cardId: card.id, kind: 'other', statement }))} />}
       {tab === 'entendimento' && <Understanding history={history} />}
       {tab === 'metricas' && <Metrics runs={metrics} simple={card.workflow === 'light'} />}
       {tab === 'eventos' && <Events history={history} rebuild={async () => { try { const result = await window.agentboard.invoke('history:rebuild', { cardId: card.id }); setError(t.rebuilt(result.events, result.assessments, result.decisions)); await load(); changed() } catch (reason) { setError(plainError(reason)) } }} />}
     </div>}
-  </div></div>
+  </div>{pendingFlow && <ConfirmDialog eyebrow={t.flowChangeEyebrow} title={t.flowChangeTitle} text={t.flowChangeText(pendingFlow.warnings)} ok={t.flowChangeOk} cancel={() => setPendingFlow(undefined)} confirm={confirmFlow} />}</div>
 }
 
-function AssessmentView({ item, previous, latest, history, specKit, contest, choose }: { item: Assessment; previous?: Assessment; latest: boolean; history: CardHistory; specKit: { enabled: boolean; reason: string | null }; contest(): void; choose(workflow: WorkflowKind, method?: 'native' | 'speckit'): void }): React.JSX.Element {
+function AssessmentView({ item, previous, latest, history, specKit, contest, choose, seeRisks, locked }: { locked: boolean; seeRisks(): void; item: Assessment; previous?: Assessment; latest: boolean; history: CardHistory; specKit: { enabled: boolean; reason: string | null }; contest(): void; choose(workflow: WorkflowKind, method?: 'native' | 'speckit'): void }): React.JSX.Element {
   const tb = useT().board, t = tb.assessment
   const { workflow, sddMethod, recommendedSddMethod, sddMethodReason } = history
   const delta = previous ? item.total - previous.total : null
@@ -82,6 +116,7 @@ function AssessmentView({ item, previous, latest, history, specKit, contest, cho
         <div>{t.confidence} <b>{tb.confidenceLabels[item.confidence]}</b> · {t.evidenceCount(item.evidence.length)}{delta !== null && <> · <span className={delta > 0 ? 'cx-up' : delta < 0 ? 'cx-down' : ''}>{t.sinceVersion(delta, previous!.version)}</span></>}</div>
         <div>{item.actor === 'user' ? <b>{t.userCorrection}</b> : <>{t.agentRecommendation} <b>{[item.provider, item.model, item.effort].filter(Boolean).join(' · ') || t.agentFallback}</b></>} · {formatDate(item.createdAt)}</div>
         <div className="cx-muted">{tb.triggerLabels[item.trigger]}: {item.reason}</div>
+        {item.criticalRisks.length > 0 && <div><button type="button" className="mini secondary" onClick={seeRisks}>{t.seeRisks(item.criticalRisks.length)}</button></div>}
         {item.codeVersion && <div className="cx-muted">{t.codeAnalyzed} <code>{item.codeVersion}</code></div>}
       </div>
     </div>
@@ -89,16 +124,33 @@ function AssessmentView({ item, previous, latest, history, specKit, contest, cho
       {complexityDimensions.map((dimension) => { const before = previous?.scores[dimension], diff = before === undefined ? 0 : item.scores[dimension] - before
         return <tr key={dimension} className={diff ? 'changed' : ''}><td>{tb.dimensionLabels[dimension]}</td><td><Dots value={item.scores[dimension]} />{diff !== 0 && <span className={`cx-delta ${diff > 0 ? 'up' : 'down'}`}>{diff > 0 ? `+${diff}` : diff}</span>}</td><td>×{item.weights[dimension]}</td><td>{item.scores[dimension] * item.weights[dimension]}</td><td>{item.justifications[dimension] || <span className="cx-muted">—</span>}</td></tr> })}
     </tbody></table>
-    {item.criticalRisks.length > 0 && <div className="cx-risks"><b>{t.criticalRisks}</b><ul>{item.criticalRisks.map((risk) => <li key={risk}>{risk}</li>)}</ul></div>}
     {item.evidence.length > 0 && <div className="cx-evidence"><b>{t.evidence}</b><ul>{item.evidence.map((evidence, index) => <li key={index}><span className="cx-kind">{evidence.kind}</span><code>{evidence.ref}{evidence.line ? `:${evidence.line}` : ''}</code>{evidence.commit && <small> @ {evidence.commit}</small>}{evidence.detail && <span> — {evidence.detail}</span>}</li>)}</ul></div>}
     {latest && <div className="cx-flow">
-      <div className="cx-flowhead"><b>{t.cardFlow}</b><span className="cx-muted">{t.cardFlowHint}</span></div>
+      <div className="cx-flowhead"><b>{t.cardFlow}</b><span className="cx-muted">{locked ? t.flowLocked : t.cardFlowHint}</span></div>
       <div className="cx-flowstat"><span>{t.recommendedByAgent}</span><span className="cx-chip rec">{t.flowTitle[item.workflow]}</span><span className="cx-sep">·</span><span>{t.chosenByYou}</span>{workflow ? <span className={`cx-chip ${workflow === item.workflow ? 'ok' : 'diff'}`}>{t.flowTitle[workflow]}</span> : <span className="cx-muted">{t.notChosenYet}</span>}{workflow && workflow !== item.workflow && <span className="cx-warn">{t.differsFromRecommended}</span>}</div>
-      <div className="cx-flowpick" role="radiogroup" aria-label={t.cardFlow}>{(['light', 'spec'] as const).map((value) => <button type="button" role="radio" aria-checked={workflow === value} key={value} className={`cx-opt ${workflow === value ? 'on' : ''}`} onClick={() => workflow !== value && choose(value)}><span className="cx-opt-t">{t.flowTitle[value]}{item.workflow === value && <em>{t.recommendedTag}</em>}</span><small>{t.flowAbout[value]}</small></button>)}{(['native', 'speckit'] as const).map((method) => <button type="button" role="radio" aria-checked={workflow === 'sdd' && sddMethod === method} key={method} disabled={method === 'speckit' && !specKit.enabled} data-tip={method === 'speckit' && !specKit.enabled ? specKit.reason ?? undefined : undefined} className={`cx-opt ${workflow === 'sdd' && sddMethod === method ? 'on' : ''}`} onClick={() => (workflow !== 'sdd' || sddMethod !== method) && choose('sdd', method)}><span className="cx-opt-t">{t.methodNames[method]}{item.workflow === 'sdd' && recommendedSddMethod === method && <em>{t.recommendedTag}</em>}</span><small>{t.methodAbout[method]}</small></button>)}</div>
+      <div className="cx-flowpick" role="radiogroup" aria-label={t.cardFlow}>{(['light', 'spec'] as const).map((value) => <button type="button" role="radio" aria-checked={workflow === value} key={value} disabled={locked} className={`cx-opt ${workflow === value ? 'on' : ''}`} onClick={() => workflow !== value && choose(value)}><span className="cx-opt-t">{t.flowTitle[value]}{item.workflow === value && <em>{t.recommendedTag}</em>}</span><small>{t.flowAbout[value]}</small></button>)}{(['native', 'speckit'] as const).map((method) => <button type="button" role="radio" aria-checked={workflow === 'sdd' && sddMethod === method} key={method} disabled={locked || (method === 'speckit' && !specKit.enabled)} data-tip={method === 'speckit' && !specKit.enabled ? specKit.reason ?? undefined : undefined} className={`cx-opt ${workflow === 'sdd' && sddMethod === method ? 'on' : ''}`} onClick={() => (workflow !== 'sdd' || sddMethod !== method) && choose('sdd', method)}><span className="cx-opt-t">{t.methodNames[method]}{item.workflow === 'sdd' && recommendedSddMethod === method && <em>{t.recommendedTag}</em>}</span><small>{t.methodAbout[method]}</small></button>)}</div>
       {(item.workflow === 'sdd' || workflow === 'sdd') && <div className="cx-flowmethod"><span>{t.methodForCard}</span>{sddMethod ? <span className="cx-chip ok">{t.methodNames[sddMethod]}</span> : <span className="cx-muted">{t.chooseMethod}</span>}{recommendedSddMethod && <span className="cx-muted">{t.aiRecommendation} {t.methodNames[recommendedSddMethod]}{sddMethodReason ? ` — ${sddMethodReason}` : ''}</span>}</div>}
-      <div className="cx-flowfoot"><span className="cx-muted">{t.disagree}</span><button type="button" className="mini secondary" onClick={contest}>{t.contest}</button></div>
+      <div className="cx-flowfoot">{locked ? <span className="cx-muted">{t.flowLockedNote}</span> : <><span className="cx-muted">{t.disagree}</span><button type="button" className="mini secondary" onClick={contest}>{t.contest}</button></>}</div>
     </div>}
   </>
+}
+
+/** Riscos críticos por avaliação: a mais recente aberta e as antigas encolhidas; só entram avaliações que apontaram algum risco. */
+function CriticalRisks({ assessments, focus }: { assessments: Assessment[]; focus?: string }): React.JSX.Element {
+  const t = useT().board.assessment, tb = useT().board
+  const withRisks = [...assessments].reverse().filter((item) => item.criticalRisks.length > 0)
+  const latestId = assessments.at(-1)?.id
+  const [open, setOpen] = useState<string[]>(() => (focus && withRisks.some((item) => item.id === focus) ? [focus] : withRisks.slice(0, 1).map((item) => item.id)))
+  if (!withRisks.length) return <div className="cx-riskpane"><div className="cx-empty"><b>{t.noRisks}</b></div></div>
+  const toggle = (id: string): void => setOpen(open.includes(id) ? open.filter((value) => value !== id) : [...open, id])
+  return <div className="cx-riskpane">
+    <div className="cx-riskpick"><span className="cx-muted">{t.riskAssessment}</span><Select label={t.riskAssessment} value={open[0] ?? withRisks[0]!.id} options={withRisks.map((item) => ({ value: item.id, label: `v${item.version} · ${t.risksCount(item.criticalRisks.length)}${item.id === latestId ? ` · ${t.latest}` : ''}` }))} onChange={(id) => setOpen([id])} /></div>
+    <div className="cx-riskgroups">{withRisks.map((item) => { const shown = open.includes(item.id)
+      return <section className={`cx-riskgroup ${shown ? 'open' : ''}`} key={item.id}>
+        <button type="button" className="cx-riskhead" aria-expanded={shown} onClick={() => toggle(item.id)}><span className="cx-chev">{shown ? '▾' : '▸'}</span><b>v{item.version}</b>{item.id === latestId && <span className="cx-kind">{t.latest}</span>}<span className="cx-muted">{item.preliminary ? '~' : ''}{item.total} {t.pts} · {tb.levelLabels[item.level]} · {formatDate(item.createdAt)}</span><span className="cx-spacer" /><span className="cx-count">{item.criticalRisks.length}</span></button>
+        {shown && <ul className="cx-risklist">{item.criticalRisks.map((risk, index) => <li key={`${index}-${risk}`}>{risk}</li>)}</ul>}
+      </section> })}</div>
+  </div>
 }
 
 function ContestForm({ current, cancel, submit }: { current?: Assessment; cancel?(): void; submit(scores: DimensionScores, reason: string): Promise<void> }): React.JSX.Element {
@@ -152,10 +204,35 @@ const fmt = (value: number): string => value.toLocaleString(dateLocale())
 const compact = (value: number): string => { const t = tr().board.assessment; return (value < 1000 ? String(value) : value < 1_000_000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}${t.thousandUnit}` : `${(value / 1_000_000).toFixed(1)}${t.millionUnit}`).replace('.', t.decimalSeparator) }
 const seconds = (ms: number): string => ms < 90_000 ? `${Math.round(ms / 1000)} s` : ms < 5_400_000 ? `${Math.round(ms / 60_000)} min` : `${(ms / 3_600_000).toFixed(1).replace('.', tr().board.assessment.decimalSeparator)} h`
 
+/** Um card da fileira de métricas: rosca de entrada, cache e saída de um conjunto de execuções, com os números alinhados e o resumo embaixo. */
+function MixCard({ title, runs }: { title: string; runs: RunMetric[] }): React.JSX.Element {
+  const t = useT().board.assessment
+  const input = runs.reduce((sum, run) => sum + run.input, 0), cached = runs.reduce((sum, run) => sum + run.cached, 0), output = runs.reduce((sum, run) => sum + run.output, 0)
+  const cost = runs.reduce((sum, run) => sum + (run.costUsd ?? 0), 0), unknown = runs.filter((run) => run.costUsd === null).length
+  const ms = runs.reduce((sum, run) => sum + (run.durationMs ?? 0), 0), chars = runs.reduce((sum, run) => sum + (run.promptChars ?? 0), 0)
+  const parts = [{ key: 'read', label: t.mixRead, value: input }, { key: 'cache', label: t.mixCache, value: cached }, { key: 'written', label: t.mixWritten, value: output }], all = input + cached + output
+  return <section className="cx-card cx-mix"><h4>{title}<small>{t.runCount(runs.length)}</small></h4>
+    <Donut parts={parts} center={compact(all)} label={t.tokens} />
+    <ul className="cx-mixlegend">{parts.map((part) => <li key={part.key}><i className={part.key} /><span>{part.label}</span><b>{fmt(part.value)}</b><small>{all ? Math.round((part.value / all) * 100) : 0}%</small></li>)}</ul>
+    <dl className="cx-facts2"><div><dt>{t.contextSent}</dt><dd>{t.charsCount(fmt(chars))}</dd></div><div><dt>{t.reportedCost}</dt><dd data-tip={unknown > 0 ? t.costUnknownTip(unknown) : undefined}>{t.usd(cost.toFixed(2))}{unknown > 0 ? '*' : ''}</dd></div><div><dt>{t.runTime}</dt><dd>{seconds(ms)}</dd></div></dl>
+  </section>
+}
+
+/** Pizza (rosca) de entrada, cache e saída; o total vai no meio. */
+function Donut({ parts, center, label }: { parts: Array<{ key: string; value: number }>; center: string; label: string }): React.JSX.Element {
+  const sum = parts.reduce((total, part) => total + part.value, 0)
+  let offset = 0
+  return <svg className="cx-donut" viewBox="0 0 42 42" role="img" aria-label={label}>
+    <circle className="cx-donut-bg" cx="21" cy="21" r="15.9155" />
+    {sum > 0 && parts.map((part) => { const share = (part.value / sum) * 100, circle = <circle key={part.key} className={`cx-donut-arc ${part.key}`} cx="21" cy="21" r="15.9155" strokeDasharray={`${share} ${100 - share}`} strokeDashoffset={25 - offset} />; offset += share; return circle })}
+    <text x="21" y="21.5" className="cx-donut-n">{center}</text><text x="21" y="26.5" className="cx-donut-l">{label}</text>
+  </svg>
+}
+
 function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): React.JSX.Element {
   const t = useT().board.assessment
   const [view, setView] = useState<'dashboard' | 'tabela'>(() => { try { return localStorage.getItem('agentboard.metricsView') === 'tabela' ? 'tabela' : 'dashboard' } catch { return 'dashboard' } })
-  const [runsOpen, setRunsOpen] = useState(false)
+  const [openSteps, setOpenSteps] = useState<string[]>([])
   const choose = (value: 'dashboard' | 'tabela'): void => { setView(value); try { localStorage.setItem('agentboard.metricsView', value) } catch { /* só conveniência */ } }
   if (!runs.length) return <div className="cx-empty"><b>{t.noRuns}</b><span>{t.noRunsHint}</span></div>
   const total = runs.reduce((sum, run) => ({ input: sum.input + run.input, cached: sum.cached + run.cached, output: sum.output + run.output, cost: sum.cost + (run.costUsd ?? 0), unknown: sum.unknown + (run.costUsd === null ? 1 : 0), ms: sum.ms + (run.durationMs ?? 0) }), { input: 0, cached: 0, output: 0, cost: 0, unknown: 0, ms: 0 })
@@ -166,6 +243,7 @@ function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): Reac
   const singleAgent = simple && steps.length === 1 && steps[0]?.key !== 'test'
   const stepName = (purpose: string | null): string => singleAgent && purpose === steps[0]?.key ? t.agentFallbackTitle : (t.stepLabels as Record<string, string>)[purpose ?? ''] ?? purpose ?? '—'
   const biggest = Math.max(1, ...steps.map((step) => step.input + step.output))
+  const groups = [...steps.filter((step) => step.runs > 0).map((step) => ({ key: step.key, title: stepName(step.key), runs: runs.filter((run) => run.purpose === step.key) })), ...(steps.filter((step) => step.runs > 0).length > 1 ? [{ key: 'total', title: t.totalTitle, runs }] : [])]
   return <div className="cx-metrics">
     <div className="cx-sechead"><h3>{t.metricsTitle}</h3><span className="cx-count">{runs.length}</span><span className="cx-spacer" />
       <div className="cx-seg" role="tablist" aria-label={t.viewLabel}><button type="button" role="tab" aria-selected={view === 'dashboard'} className={view === 'dashboard' ? 'on' : ''} onClick={() => choose('dashboard')}>{t.dashboard}</button><button type="button" role="tab" aria-selected={view === 'tabela'} className={view === 'tabela' ? 'on' : ''} onClick={() => choose('tabela')}>{t.table}</button></div></div>
@@ -178,15 +256,24 @@ function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): Reac
         <div className="cx-tile"><span>{t.reportedCost}</span><b>{t.usd(total.cost.toFixed(2))}</b>{total.unknown > 0 && <small>{t.runsWithoutValue(total.unknown)}</small>}</div>
         <div className="cx-tile"><span>{t.runTime}</span><b>{seconds(total.ms)}</b></div>
       </div>
+      <div className="cx-mixrow">{groups.map((group) => <MixCard key={group.key} title={group.title} runs={group.runs} />)}</div>
       <section className="cx-card"><h4>{t.tokensByStep}</h4>
-        <div className="cx-bars">{steps.map((step) => <div className="cx-bar" key={step.key}><span className="cx-bl">{stepName(step.key)}<small>{t.runCount(step.runs)} · {seconds(step.ms)}</small></span>
-          <div className="cx-track" data-tip={t.trackTip(fmt(step.input), fmt(step.output), fmt(step.cached))}><i className="in" style={{ width: `${(step.input / biggest) * 100}%` }} /><i className="out" style={{ width: `${(step.output / biggest) * 100}%` }} /></div>
-          <b>{compact(step.input + step.output)}</b></div>)}</div>
-        <div className="cx-legend"><span><i className="in" />{t.read}</span><span><i className="out" />{t.written}</span></div></section>
-      <section className="cx-card"><h4><button type="button" className="cx-fold" aria-expanded={runsOpen} onClick={() => setRunsOpen(!runsOpen)}><span className="cx-chev">{runsOpen ? '▾' : '▸'}</span>{t.runs}<span className="cx-count">{runs.length}</span></button></h4>
-        {runsOpen && <ul className="cx-runs">{[...runs].reverse().map((run) => <li key={run.runId}><span className={`cx-dot ${run.status === 'failed' ? 'complex' : run.status === 'running' ? 'medium' : 'simple'}`} />
-          <div><b>{stepName(run.purpose)}</b>{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}<small>{[run.provider, run.modelEffective && run.modelEffective !== run.model ? `${run.model} → ${run.modelEffective}` : run.model, run.effort].filter(Boolean).join(' · ') || '—'}</small></div>
-          <span className="cx-run-n">{compact(run.input + run.output)}<small>{t.tokens}</small></span><span className="cx-run-n">{run.durationMs === null ? '—' : seconds(run.durationMs)}<small>{t.duration}</small></span><span className="cx-run-n">{run.costUsd === null ? '—' : t.usd(run.costUsd.toFixed(2))}<small>{t.cost}</small></span></li>)}</ul>}</section>
+          <div className="cx-bars2">{steps.map((step) => { const items = runs.filter((run) => run.purpose === step.key), cost = items.reduce((sum, run) => sum + (run.costUsd ?? 0), 0), unknown = items.filter((run) => run.costUsd === null).length
+            return <div className="cx-bar2" key={step.key}>
+              <div className="cx-barhead"><b>{stepName(step.key)}</b><small>{t.runCount(step.runs)}</small><span className="cx-spacer" /><span data-tip={t.runTime}>{seconds(step.ms)}</span><span data-tip={unknown > 0 ? t.costUnknownTip(unknown) : t.reportedCost}>{t.usd(cost.toFixed(2))}{unknown > 0 ? '*' : ''}</span></div>
+              <div className="cx-barline"><div className="cx-track" data-tip={t.trackTip(fmt(step.input), fmt(step.output), fmt(step.cached))}><i className="in" style={{ width: `${(step.input / biggest) * 100}%` }} /><i className="out" style={{ width: `${(step.output / biggest) * 100}%` }} /></div><b>{compact(step.input + step.output)}</b></div>
+              <small className="cx-muted">{t.readWrittenCache(fmt(step.input), fmt(step.output), fmt(step.cached))}</small>
+            </div> })}</div>
+          <div className="cx-legend"><span><i className="in" />{t.read}</span><span><i className="out" />{t.written}</span></div></section>
+      <section className="cx-card"><h4>{t.runs}</h4>
+        <div className="cx-groups">{steps.filter((step) => step.runs > 0).map((step) => { const shown = openSteps.includes(step.key), items = runs.filter((run) => run.purpose === step.key), cost = items.reduce((sum, run) => sum + (run.costUsd ?? 0), 0), noCost = items.filter((run) => run.costUsd === null).length
+          return <div className={`cx-stepgroup ${shown ? 'open' : ''}`} key={step.key}>
+            <button type="button" className="cx-grouphead" aria-expanded={shown} onClick={() => setOpenSteps(shown ? openSteps.filter((key) => key !== step.key) : [...openSteps, step.key])}><span className="cx-gname"><span className="cx-chev">{shown ? '▾' : '▸'}</span><b>{stepName(step.key)}</b><span className="cx-count">{step.runs}</span></span><span className="cx-run-n">{compact(step.input + step.output)}<small>{t.tokens}</small></span><span className="cx-run-n">{seconds(step.ms)}<small>{t.duration}</small></span><span className="cx-run-n" data-tip={noCost ? t.costUnknownTip(noCost) : undefined}>{t.usd(cost.toFixed(2))}{noCost ? '*' : ''}<small>{t.cost}</small></span></button>
+            {shown && <ul className="cx-runs">{[...items].reverse().map((run) => <li key={run.runId}><span className={`cx-dot ${run.status === 'failed' ? 'complex' : run.status === 'running' ? 'medium' : 'simple'}`} />
+              <div><b>{formatDate(run.startedAt)}</b>{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}<small>{[run.provider, run.modelEffective && run.modelEffective !== run.model ? `${run.model} → ${run.modelEffective}` : run.model, run.effort].filter(Boolean).join(' · ') || '—'}</small></div>
+              <span className="cx-run-n">{compact(run.input + run.output)}<small>{t.tokens}</small></span><span className="cx-run-n">{run.durationMs === null ? '—' : seconds(run.durationMs)}<small>{t.duration}</small></span><span className="cx-run-n" data-tip={run.costUsd === null ? t.costUnknownTip(1) : undefined}>{run.costUsd === null ? '—' : t.usd(run.costUsd.toFixed(2))}<small>{t.cost}</small></span></li>)}</ul>}
+          </div> })}</div>
+      </section>
     </> : <div className="cx-tablewrap"><table className="cx-table cx-mtable"><thead><tr><th>{t.step}</th><th>{t.status}</th><th>{t.agentModel}</th><th>{t.effort}</th><th className="num">{t.durationHeader}</th><th className="num">{t.input}</th><th className="num">{t.cache}</th><th className="num">{t.output}</th><th className="num">{t.contextSent}</th><th className="num">{t.costHeader}</th></tr></thead><tbody>
       {runs.map((run) => <tr key={run.runId}><td>{stepName(run.purpose)}{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}</td><td><span className={`cx-pill ${run.status === 'failed' ? 'bad' : run.status === 'running' ? 'warn' : 'ok'}`}>{run.status}</span></td><td>{[run.provider, run.modelEffective && run.modelEffective !== run.model ? `${run.model} → ${run.modelEffective}` : run.model].filter(Boolean).join(' · ') || '—'}</td><td>{run.effort ?? '—'}</td><td className="num">{run.durationMs === null ? '—' : seconds(run.durationMs)}</td><td className="num">{fmt(run.input)}</td><td className="num">{fmt(run.cached)}</td><td className="num">{fmt(run.output)}</td><td className="num">{run.promptChars === null ? '—' : t.chars(fmt(run.promptChars))}</td><td className="num">{run.costUsd === null ? <span className="cx-muted">{t.notReported}</span> : t.usd(run.costUsd.toFixed(4))}</td></tr>)}
       <tr className="cx-total"><td colSpan={5}>{t.total(runs.length)}</td><td className="num">{fmt(total.input)}</td><td className="num">{fmt(total.cached)}</td><td className="num">{fmt(total.output)}</td><td /><td className="num">{t.usd(total.cost.toFixed(4))}{total.unknown ? ` + ${t.withoutValue(total.unknown)}` : ''}</td></tr>

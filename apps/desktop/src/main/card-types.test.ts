@@ -22,11 +22,11 @@ async function setup() {
 }
 
 describe('tipos de card', () => {
-  it('projeto novo usa a lista padrão de fábrica (Feature, Bug, Melhoria) no idioma do app', async () => {
+  it('projeto novo usa a lista padrão de fábrica (Feature, Bug, Improvement)', async () => {
     const { database, project } = await setup()
     expect(project.customCardTypes).toBe(false)
     expect(project.cardTypes.map((item) => item.id)).toEqual(['feature', 'bug', 'improvement'])
-    expect(project.cardTypes[2]!.name).toBe('Melhoria')
+    expect(project.cardTypes[2]!.name).toBe('Improvement')
     new SettingsRepository(database).update({ idioma: 'en' })
     expect(defaultCardTypes(database.db)[2]!.name).toBe('Improvement')
     database.close()

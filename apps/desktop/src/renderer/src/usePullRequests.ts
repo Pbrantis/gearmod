@@ -46,8 +46,8 @@ export function usePullRequests(projectId: string): PullRequestsState {
   useEffect(() => {
     void refresh()
     const timer = window.setInterval(() => { if (!document.hidden) void refresh() }, pollMs), onFocus = (): void => { void refresh() }
-    window.addEventListener('focus', onFocus)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
+    window.addEventListener('focus', onFocus); window.addEventListener('agentboard:git-accounts-changed', onFocus)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); window.removeEventListener('agentboard:git-accounts-changed', onFocus) }
   }, [refresh])
 
   const isUnread = useCallback((sourceId: string, pr: PullRequestSummary): boolean => {

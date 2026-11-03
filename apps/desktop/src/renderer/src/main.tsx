@@ -7,6 +7,7 @@ import './prototype.css'
 import { Board } from './Board'
 import { ProjectAgentsDialog, ProjectConfigDialog, ProjectDialog } from './ProjectDialogs'
 import { applySettings, applyTheme, SettingsDialog } from './SettingsDialog'
+import { RunLimitPrompt } from './RunLimitPrompt'
 import { projectTheme, projectThemeEvent } from './projectTheme'
 import { Sidebar } from './Sidebar'
 import { FolderGlyph } from './icons'
@@ -18,6 +19,7 @@ import { applyMessageSpacing } from './chatPrefs'
 import { TerminalPanel } from './TerminalPanel'
 import { terminal, useTerminal } from './terminalStore'
 import { WorkspaceFiles } from './WorkspaceFiles'
+import { shortcutEvent, shortcutFor } from './shortcuts'
 import { FileContextMenu } from './FileContextMenu'
 import { WindowIcon } from './WindowLayoutMenu'
 import { gitChangedEvent } from './GitSetup'
@@ -30,7 +32,7 @@ import { refreshGit } from './gitConfigCache'
 import type { FileChange } from './changes'
 import { hasAttachmentTarget, hasCommentTarget, queueContextFile, queueContextText } from './Attachments'
 
-const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true, fotosGravatar: false }
+const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true, fotosGravatar: false, execucoesSimultaneas: null }
 /** Último projeto aberto na janela principal (localStorage: só uma preferência local). */
 const lastProjectKey = 'agentboard.lastProject'
 
@@ -48,7 +50,8 @@ function App(): React.JSX.Element {
     setFileSessions((all) => all.some((item) => item.projectId === target.projectId && item.cardId === target.cardId) ? all.map((item) => item.projectId === target.projectId && item.cardId === target.cardId ? { ...item, ...target } : item) : [...all, target]); setFileContext(target); setFilesOpen(true)
   }
   const [projects, setProjects] = useState<Project[]>([]), [profiles, setProfiles] = useState<AgentProfile[]>([]), [selected, setSelected] = useState<string | undefined>(pop?.projectId), [board, setBoard] = useState<ProjectBoard>()
-  const [removed, setRemoved] = useState<AgentProfile[]>([]), [freeRequest, setFreeRequest] = useState<{ projectId: string; at: number }>(), [constitutionRequest, setConstitutionRequest] = useState<{ projectId: string; prompt?: string; at: number }>(), [openTarget, setOpenTarget] = useState<{ projectId: string; cardId: string | null; chatId: string | null; purpose: string | null } | undefined>(pop?.kind === 'chat' && (pop.cardId || pop.chatId) ? { projectId: pop.projectId, cardId: pop.cardId, chatId: pop.chatId, purpose: pop.purpose } : undefined), [newProject, setNewProject] = useState(false), [settingsOpen, setSettingsOpen] = useState(false), [projectConfig, setProjectConfig] = useState<string>(), [settings, setSettings] = useState<AppSettings>(defaultSettings), [collapsed, setCollapsed] = useState(false), [agentsPrompt, setAgentsPrompt] = useState<string>(), [error, setError] = useState(''), [deleting, setDeleting] = useState<Project>()
+  const selectedRef = useRef(selected); selectedRef.current = selected
+  const [removed, setRemoved] = useState<AgentProfile[]>([]), [freeRequest, setFreeRequest] = useState<{ projectId: string; at: number }>(), [constitutionRequest, setConstitutionRequest] = useState<{ projectId: string; prompt?: string; at: number }>(), [openTarget, setOpenTarget] = useState<{ projectId: string; cardId: string | null; chatId: string | null; purpose: string | null } | undefined>(pop?.kind === 'chat' && (pop.cardId || pop.chatId) ? { projectId: pop.projectId, cardId: pop.cardId, chatId: pop.chatId, purpose: pop.purpose } : undefined), [newProject, setNewProject] = useState(false), [settingsOpen, setSettingsOpen] = useState(false), [settingsTab, setSettingsTab] = useState<'general'>(), [projectConfig, setProjectConfig] = useState<string>(), [settings, setSettings] = useState<AppSettings>(defaultSettings), [collapsed, setCollapsed] = useState(false), [agentsPrompt, setAgentsPrompt] = useState<string>(), [error, setError] = useState(''), [deleting, setDeleting] = useState<Project>()
   const [configTab, setConfigTab] = useState<'general' | 'git'>('general')
   const [panelMenu, setPanelMenu] = useState<{ kind: 'files' | 'terminal'; x: number; y: number }>()
   const openPanelWindow = async (kind: 'files' | 'terminal'): Promise<void> => {
@@ -76,8 +79,14 @@ function App(): React.JSX.Element {
   }, [selected])
   useEffect(() => {
     const key = (event: KeyboardEvent): void => {
-      if (event.ctrlKey && event.shiftKey && event.code === 'KeyF') { event.preventDefault(); toggleFiles() }
-      else if (event.ctrlKey && (event.key === '^' || event.key === '`' || event.key === 'Dead' || event.code === 'Backquote')) { event.preventDefault(); toggleTerminal() }
+      if (event.repeat) return
+      const id = shortcutFor(event)
+      if (!id) return
+      event.preventDefault()
+      if (id === 'toggleFiles') toggleFiles()
+      else if (id === 'toggleTerminal') toggleTerminal()
+      else if (id === 'toggleSidebar') { autoCollapsed.current = false; setCollapsed((value) => !value) }
+      else window.dispatchEvent(new CustomEvent(shortcutEvent, { detail: { id } }))
     }
     window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key)
   }, [selected, filesOpen, fileContext])
@@ -99,10 +108,12 @@ function App(): React.JSX.Element {
     setSelected(target.projectId); showFiles(target)
   }), [])
   useEffect(() => {
-    const open = (event: Event): void => { const target = (event as CustomEvent<{ projectId: string; cardId: string | null; path: string; directory?: boolean }>).detail; setSelected(target.projectId); showFiles(target.directory ? { projectId: target.projectId, cardId: target.cardId, path: undefined, reveal: { path: target.path, at: Date.now() } } : { ...target, reveal: undefined }) }
+    const open = (event: Event): void => { const target = (event as CustomEvent<{ projectId: string; cardId: string | null; path?: string; directory?: boolean }>).detail; setSelected(target.projectId); showFiles(target.directory ? { projectId: target.projectId, cardId: target.cardId, path: undefined, reveal: target.path ? { path: target.path, at: Date.now() } : undefined } : { ...target, reveal: undefined }) }
     const changes = (event: Event): void => { const detail = (event as CustomEvent<{ projectId: string; cardId: string; files: FileChange[] }>).detail; setSelected(detail.projectId); setChangesView({ ...detail, at: Date.now() }) }
+    const config = (event: Event): void => { const tab = (event as CustomEvent<{ tab?: 'general' | 'git' }>).detail?.tab; setConfigTab(tab ?? 'general'); setProjectConfig(selectedRef.current) }
+    window.addEventListener('agentboard:open-project-config', config)
     window.addEventListener('agentboard:open-file', open); window.addEventListener('agentboard:open-changes', changes)
-    return () => { window.removeEventListener('agentboard:open-file', open); window.removeEventListener('agentboard:open-changes', changes) }
+    return () => { window.removeEventListener('agentboard:open-file', open); window.removeEventListener('agentboard:open-changes', changes); window.removeEventListener('agentboard:open-project-config', config) }
   }, [])
   useEffect(() => { void window.agentboard.invoke('settings:get', undefined).then(setSettings).catch((e: unknown) => setError(plainError(e))) }, [])
   const [themeTick, setThemeTick] = useState(0)
@@ -160,7 +171,8 @@ function App(): React.JSX.Element {
     {filePopout || pop?.kind === 'terminal' ? <div /> : board ? <Board key={board.project.id} slots={{ view: viewSlot, gear: gearSlot, tray: traySlot }} board={board} profiles={profiles} history={[...profiles, ...removed]} refresh={refresh} onProjectConfig={(tab) => { setConfigTab(tab ?? 'general'); setProjectConfig(board.project.id) }} openSettings={() => setSettingsOpen(true)} freeRequest={freeRequest} freeHandled={() => setFreeRequest(undefined)} constitutionRequest={constitutionRequest} constitutionHandled={() => setConstitutionRequest(undefined)} openTarget={openTarget} targetHandled={() => setOpenTarget(undefined)} />
       : <div className="content"><main><div className="head"><div className="lead"><div><div className="eyebrow">{t.shell.app.emptyEyebrow}</div><h1>{projects.length ? t.shell.app.pickProject : t.shell.app.startWithFolder}</h1><p>{t.shell.app.emptyText}</p></div></div></div>{!projects.length && <button style={{ marginTop: 18 }} onClick={() => setNewProject(true)}>{t.shell.app.addFirstProject}</button>}{error && <p className="error" style={{ marginTop: 14 }}>{error}</p>}</main></div>}
     {newProject && <ProjectDialog close={() => setNewProject(false)} created={async (project) => { setNewProject(false); await reloadProjects(); setSelected(project.id); setAgentsPrompt(project.id) }} />}
-    {settingsOpen && <SettingsDialog profiles={profiles} settings={settings} close={() => setSettingsOpen(false)} changed={refresh} settingsChanged={setSettings} />}
+    {settingsOpen && <SettingsDialog profiles={profiles} settings={settings} initialTab={settingsTab} close={() => { setSettingsOpen(false); setSettingsTab(undefined) }} changed={refresh} settingsChanged={setSettings} />}
+    <RunLimitPrompt openSettings={() => { setSettingsTab('general'); setSettingsOpen(true) }} />
     {agentsPrompt && !settingsOpen && !newProject && projects.find((item) => item.id === agentsPrompt) && <ProjectAgentsDialog project={projects.find((item) => item.id === agentsPrompt)!} profiles={profiles} close={() => setAgentsPrompt(undefined)} saved={async () => { setAgentsPrompt(undefined); await refresh() }} openSettings={() => setSettingsOpen(true)} />}
     {configProject && <ProjectConfigDialog initialTab={configTab} project={configProject} profiles={profiles} renamed={() => void reloadProjects()} saved={async () => { setProjectConfig(undefined); await refresh() }} openConstitutionChat={(prompt) => { setProjectConfig(undefined); setSelected(configProject.id); setConstitutionRequest({ projectId: configProject.id, prompt, at: Date.now() }) }} />}
     {deleting && <ConfirmDialog eyebrow={t.shell.app.deleteProject} title={deleting.name} text={t.shell.app.deleteProjectText} ok={t.shell.app.deleteProject} danger cancel={() => setDeleting(undefined)} confirm={() => { const gone = deleting; setDeleting(undefined); void window.agentboard.invoke('projects:delete', { projectId: gone.id }).then(async () => { if (selected === gone.id) setSelected(undefined); await reloadProjects() }).catch((e: unknown) => setError(plainError(e).replace(/^Error invoking remote method '[^']+': /, '').replace(/^Error: /, ''))) }} />}

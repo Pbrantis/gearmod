@@ -1,3 +1,4 @@
+import { machineInfo, recommendedConcurrency } from './capacity'
 import { homedir } from 'node:os'
 import { systemDocumentKinds, ipcContracts, type AppLanguage, type VoiceModel, type AppTheme, type AgentConfig, type AgentPurpose, type GitPolicy, type CardDocumentKind, type IpcChannel, type IpcOutput } from '@agentboard/contracts'
 import type { PopoutTarget, WindowPlacement } from './windows'
@@ -23,8 +24,10 @@ import type { UsageService } from './usage'
 import type { CollaborationService } from './collaboration'
 import type { GitManager } from './git-manager'
 import type { PullRequestService } from './pull-requests'
+import type { GitAccounts } from './git-accounts'
 import { fileVersions } from './file-versions'
 import { grepProject } from './workspace-grep'
+import { suggestCommitMessage } from './adapters'
 import { nativeGit } from './worktrees'
 import { allowedPath, createProjectItem, listProjectDirectory, readProjectFile, resolveProjectReferences, renameProjectItem, saveMarkdownImage, searchProjectFiles, trashablePath, writeProjectFile } from './file-viewer'
 import type { CardHistoryService } from './history'
@@ -86,6 +89,7 @@ interface Services {
   collab: CollaborationService
   gitManager: GitManager
   pullRequests: PullRequestService
+  gitAccounts: GitAccounts
   history: CardHistoryService
   playwright: PlaywrightCliService
   fileWatch: FileWatchService
@@ -111,6 +115,8 @@ interface Services {
   openFileExternal?(path: string, target: 'explorer' | 'default' | 'vscode'): Promise<void>
   trashItem?(path: string): Promise<void>
   openExternal(url: string): Promise<void>
+  /** Cor dos botões de janela do Windows (minimizar, maximizar, fechar): escuros no tema claro, claros no escuro. */
+  setTitleBarTheme?(light: boolean): void
   chooseSkillSource(): Promise<string | null>
   saveTextFile(input: { content: string; defaultName: string }): Promise<{ saved: boolean; path: string | null }>
   appVersion: string
@@ -292,7 +298,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       return { restored: true as const }
     },
     'settings:get': () => services.settings.get(),
-    'settings:update': (input: { tema?: AppTheme; idioma?: AppLanguage; voz?: VoiceModel }) => { const updated = services.settings.update(input); setMainLocale(updated.idioma); return updated },
+    'settings:update': (input: { tema?: AppTheme; idioma?: AppLanguage; voz?: VoiceModel; execucoesSimultaneas?: number | null }) => { const updated = services.settings.update(input); setMainLocale(updated.idioma); services.orchestrator.refill(); return updated },
     'profiles:list': () => services.profiles.list(),
     'profiles:create': (input: { provider: 'codex' | 'claude' | 'gemini'; label: string; scope: string; color?: string }) => services.profiles.create(input),
     'profiles:update': (input: { profileId: string; label: string; scope: string; color?: string; billingMode?: 'subscription' | 'api' | 'credits' | 'unknown' }) => services.profiles.update(input),
@@ -352,7 +358,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'collab:answer-question': (input: { questionId: string; answer: string }) => services.collab.answerByUser(input.questionId, input.answer),
     'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => (systemDocumentKinds as readonly string[]).includes(input.kind) ? (() => { throw new Error(tm().ipc.documentGeneratedBySystem) })() : services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
     'cards:document-versions': (input: { cardId: string; kind: CardDocumentKind }) => services.board.documents.versions(input.cardId, input.kind),
-    'cards:toggle-task': (input: { cardId: string; line: number; checked: boolean }) => services.board.documents.setTask(input.cardId, input.line, input.checked, 'user'),
+    // Spec Kit: o tasks.md da feature é a fonte; marcar no card grava nele (senão o espelho apagaria a marca).
+    'cards:toggle-task': (input: { cardId: string; line: number; checked: boolean }) => services.speckit.setTask(input.cardId, input.line, input.checked) ? services.board.documents.get(input.cardId).tasks : services.board.documents.setTask(input.cardId, input.line, input.checked, 'user'),
     'cards:start': (input: { cardId: string; config: AgentConfig; purpose?: 'execution' | 'test'; baseBranch?: string }) => { const run = services.executions.start(input.cardId, input.config, input.purpose, input.baseBranch); services.speckit.settleStart(input.cardId); return run },
     'cards:branches': (input: { cardId: string }) => services.executions.branches(input.cardId),
     'agents:options': (input: { profileId: string }) => services.agentConfigs.options(input.profileId),
@@ -366,7 +373,15 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'constitution:get': async (input: { projectId: string }) => {
       const state = services.constitution.state(input.projectId)
       const view = await services.sddResolver.constitution({ projectId: input.projectId }).catch(() => null)
-      return { ...state, constitution: { ...state.constitution, contentMd: view?.content ?? '' } }
+      let contentMd = view?.content ?? ''
+      // A branch base pode não ter o arquivo (ou a leitura pelo Git falhar): se a Constituição está na pasta do repositório SDD, mostra a do disco.
+      if (!contentMd.trim()) {
+        try {
+          const config = services.history.config(input.projectId).sdd, location = await services.sddResolver.locate({ projectId: input.projectId })
+          contentMd = readFileSync(join(location.repo, config.root, config.constitution[config.method]), 'utf8')
+        } catch { /* sem arquivo na pasta: segue vazio */ }
+      }
+      return { ...state, constitution: { ...state.constitution, contentMd } }
     },
     'constitution:save': (): never => { throw new Error(tm().ipc.constitutionSaveViaCard) },
     'constitution:import': (input: { projectId: string }) => services.constitution.importSpecKit(input.projectId),
@@ -425,7 +440,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'code-index:references': (input: { projectId: string; cardId: string | null; name: string; path?: string }) => code.references(input),
     'code-index:status': (input: { projectId: string; cardId: string | null }) => code.status(input),
     'code-index:set-enabled': (input: { projectId: string; enabled: boolean }) => code.setEnabled(input),
-    'code-index:reindex': (input: { projectId: string }) => code.reindex(input),
+    'code-index:reindex': (input: { projectId: string; root?: string }) => code.reindex(input),
     'files:read': (input: { chatId: string; path: string }) => {
       const context = services.conversations.context(input.chatId), worktree = context.cardId ? services.worktrees.get(context.cardId) : null
       // Card com worktree: a pasta dela e a de cada repositório dela (é onde o agente trabalha), mesmo que o estado esteja desatualizado.
@@ -438,6 +453,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       if (!/^(https?:\/\/|mailto:)/i.test(input.url) || input.url.length > 2048) throw new Error(tm().ipc.linkNotAllowed)
       await services.openExternal(input.url); return { opened: true as const }
     },
+    'app:set-titlebar-theme': (input: { light: boolean }) => { services.setTitleBarTheme?.(input.light); return { ok: true as const } },
     'files:preview': (input: { path: string }) => {
       const mime = imageMime[extname(input.path).toLowerCase()]
       try { return mime && isLocalAbsolutePath(input.path) && statSync(input.path).size < 8_000_000 ? `data:${mime};base64,${readFileSync(input.path).toString('base64')}` : null } catch { return null }
@@ -451,7 +467,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'usage:refresh': () => services.usage.refresh(true),
     'cards:usage': (input: { cardId: string }) => services.conversations.cardUsage(input.cardId),
     'cards:checklist': (input: { cardId: string }) => services.checklists.get(input.cardId),
-    'cards:checklist-toggle': (input: { cardId: string; line: number; text: string; checked: boolean }) => services.checklists.toggle(input.cardId, input.line, input.text, input.checked),
+    'cards:checklist-toggle': (input: { cardId: string; line: number; text: string; checked: boolean }) => { const next = services.checklists.toggle(input.cardId, input.line, input.text, input.checked); services.history.sync(input.cardId); return next },
     'cards:delete': async (input: { cardId: string; deleteArtifacts?: boolean }) => {
       const card = services.board.card(input.cardId)
       // D8: a worktree e a branch do card não ficam para trás. Com alteração sem commit a exclusão é recusada (nada é perdido em silêncio);
@@ -477,6 +493,9 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     },
     'cards:set-repos': (input: { cardId: string; sourceIds: string[] | null }) => services.board.setRepos(input.cardId, input.sourceIds),
     'git:create-prs': (input: { cardId: string; draft: boolean; title?: string; body?: string; sourceId?: string }) => services.gitManager.createPullRequests(input.cardId, input),
+    'git-accounts:state': (input: { projectId: string }) => services.gitAccounts.state(input.projectId),
+    'git-accounts:set': (input: { projectId: string; sourceId?: string; provider: 'github' | 'gitlab'; host: string; token: string }) => services.gitAccounts.set(input),
+    'git-accounts:remove': (input: { projectId: string; sourceId?: string; host: string }) => services.gitAccounts.remove(input),
     'prs:list': (input: { sourceId: string }) => services.pullRequests.list(input.sourceId),
     'prs:view': (input: { sourceId: string; number: number }) => services.pullRequests.view(input.sourceId, input.number),
     'prs:comment': async (input: { sourceId: string; number: number; body: string }) => { await services.pullRequests.comment(input.sourceId, input.number, input.body); return {} },
@@ -485,6 +504,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'prs:open': async (input: { sourceId: string; url: string }) => { await services.openExternal(await services.pullRequests.assertUrl(input.sourceId, input.url)); return { opened: true as const } },
     'git:open-pr': async (input: { cardId: string; url: string }) => { await services.openExternal(services.gitManager.prUrlOf(input.cardId, input.url)); return { opened: true as const } },
     'playwright:sources': (input: { projectId: string }) => services.playwright.nodeSources(input.projectId),
+    'playwright:versions': () => services.playwright.availableVersions(),
     'playwright:status': (input: { projectId: string }) => services.playwright.status(input.projectId),
     'playwright:install-browser': (input: { projectId: string }) => services.playwright.installBrowser(input),
     'playwright:install': (input: { projectId: string; version: string; browser: boolean; skills: Array<'claude' | 'agents'>; sourceId?: string }) => services.playwright.install(input),
@@ -537,6 +557,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'agents:permissions': (input: { chatId: string }) => services.orchestrator.permissions.list(input.chatId)
     , 'agents:permission-decide': (input: { runId: string; requestId: string; allow: boolean }) => ({ decided: services.orchestrator.permissions.decide(input.runId, input.requestId, input.allow) })
     , 'agents:cancel': (input: { runId: string }) => ({ cancelled: services.orchestrator.cancel(input.runId) })
+    , 'agents:run-now': (input: { runId: string }) => ({ started: services.orchestrator.runNow(input.runId) })
+    , 'agents:capacity': () => ({ ...services.orchestrator.capacity(), recommended: recommendedConcurrency(), ...machineInfo() })
     , 'plans:list': (input: { cardId: string }) => services.conversations.listPlans(input.cardId)
     , 'plans:approve': (input: { planId: string }) => services.conversations.approvePlan(input.planId)
     , 'worktrees:get': (input: { cardId: string }) => services.worktrees.get(input.cardId)
@@ -564,6 +586,18 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'git:discard-unstaged': (input: { sourceId: string; cardId: string | null; paths: string[] }) => services.gitManager.discardUnstaged(input.sourceId, input.cardId, input.paths)
     , 'git:stash-file': (input: { sourceId: string; cardId: string | null; path: string }) => services.gitManager.stashFile(input.sourceId, input.cardId, input.path)
     , 'git:ignore-file': (input: { sourceId: string; cardId: string | null; path: string; kind: 'file' | 'directory' | 'extension' }) => services.gitManager.ignoreFile(input.sourceId, input.cardId, input.path, input.kind)
+    , 'git:suggest-message': async (input: { sourceId: string; cardId: string | null; paths?: string[] }) => {
+      // Primeiro os agentes configurados no próprio card; depois qualquer outro perfil do Claude (um com a conta vencida não deve travar os demais).
+      const claude = services.profiles.list().filter((item) => item.provider === 'claude')
+      if (!claude.length) throw new Error(tm().adapters.commitSuggestNoClaude)
+      const cardAgents = input.cardId ? services.agentConfigs.get(input.cardId) : null
+      const preferred = [cardAgents?.execution, cardAgents?.planning, cardAgents?.test].map((config) => config?.profileId)
+      const ordered = [...new Set([...preferred, ...claude.map((item) => item.id)])].map((id) => claude.find((item) => item.id === id)).filter((item): item is typeof claude[number] => Boolean(item))
+      const context = await services.gitManager.suggestionContext(input.sourceId, input.cardId, input.paths ?? [])
+      let failure: unknown
+      for (const profile of ordered) { try { return { message: await suggestCommitMessage(profile, context) } } catch (error) { failure = error } }
+      throw failure
+    }
     , 'git:commit': (input: { sourceId: string; cardId: string | null; message: string; description?: string; amend?: boolean; paths?: string[] }) => services.gitManager.commit(input)
     , 'git:rename-commit': (input: { sourceId: string; cardId: string | null; hash: string; message: string }) => services.gitManager.renameCommit(input)
     , 'git:sync': (input: { sourceId: string; cardId: string | null; action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop'; pull?: 'ff' | 'ff-only' | 'rebase'; force?: boolean }) => services.gitManager.sync(input.sourceId, input.cardId, input.action, input.pull, input.force)

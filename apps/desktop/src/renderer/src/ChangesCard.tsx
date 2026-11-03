@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { errorCodeOf, withoutErrorCode, type Review, type TestRun } from '@agentboard/contracts'
 import { parseChanges, type FileChange } from './changes'
 import { CheckIcon, DiffIcon, ExpandIcon, RefreshIcon } from './icons'
@@ -20,18 +20,31 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
   const [files, setFiles] = useState<FileChange[]>(), [test, setTest] = useState<TestRun | null>(null), [review, setReview] = useState<Review | null>(null)
   const [command, setCommand] = useState(() => readCommand(projectId)), [draftCommand, setDraftCommand] = useState(() => readCommand(projectId))
   const [ask, setAsk] = useState<'' | 'test' | 'review'>(''), [configuring, setConfiguring] = useState<'' | 'save' | 'run'>(''), [working, setWorking] = useState<'' | 'refresh' | 'test' | 'review'>(''), [error, setError] = useState('')
-  const refresh = useCallback(async () => {
-    setWorking('refresh')
+  const loading = useRef(false)
+  // `silent`: atualização automática; não mostra o carregando nem sobrepõe uma leitura que ainda está em andamento.
+  const refresh = useCallback(async (silent = false) => {
+    if (loading.current) return
+    loading.current = true
+    if (!silent) setWorking('refresh')
     try {
       const [snapshot, quality] = await Promise.all([window.agentboard.invoke('worktrees:snapshot', { cardId }), window.agentboard.invoke('quality:status', { cardId })])
       setFiles(snapshot.exists ? parseChanges(snapshot) : []); setTest(quality.test); setReview(quality.review); setError(''); setNoWorktree(false)
     } catch (reason) {
       // Card sem worktree (ainda não executou, ou o trabalho foi feito na de outro card): não é erro, só oferece vincular.
       if (errorCodeOf(plainError(reason)) === 'no-worktree') { setFiles([]); setNoWorktree(true); setError('') } else setError(withoutErrorCode(plainError(reason)))
-    } finally { setWorking('') }
+    } finally { loading.current = false; if (!silent) setWorking('') }
   }, [cardId])
   // Recarrega ao abrir e quando o agente termina um turno (é aí que os arquivos mudam).
   useEffect(() => { if (!busy) void refresh() }, [busy, refresh])
+  // Os arquivos também mudam por fora (outro chat, você no editor, o testador): atualiza sozinho, em silêncio, a cada poucos segundos,
+  // ao voltar para a janela e quando o card ou uma ferramenta avisa que algo mudou.
+  useEffect(() => {
+    const again = (): void => { if (!document.hidden) void refresh(true) }
+    const timer = window.setInterval(again, 6000)
+    const off = window.agentboard.onRunEvent((event) => { if (['agentboard/card-updated', 'agentboard/run-completed'].includes(event.eventType)) again() })
+    window.addEventListener('focus', again)
+    return () => { window.clearInterval(timer); off(); window.removeEventListener('focus', again) }
+  }, [refresh])
 
   const runTest = async (value = command): Promise<void> => {
     const nextCommand = value.trim(), parts = nextCommand.split(/\s+/).filter(Boolean)
@@ -68,7 +81,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
     <button type="button" className="ch-row ch-rowbtn" disabled={!files?.length} data-tip={t.viewFiles} aria-label={t.viewFiles} onClick={showAll}>
       <DiffIcon />
       {files === undefined ? <span className="ch-muted">{common.loading}</span>
-        : files.length ? <><span className="ch-add">+{added}</span><span className="ch-del">−{removed}</span><span className="ch-muted">{t.fileCount(files.length)}</span><span className="chev" aria-hidden="true">›</span></>
+        : files.length ? <><span className="ch-add">+{added}</span><span className="ch-del">−{removed}</span><span className="ch-muted">{t.fileCount(files.length)}</span><span className="chev chev-box" aria-hidden="true"><svg className="chev-svg" viewBox="0 0 12 12" aria-hidden="true"><path d="m3 4.5 3 3 3-3" /></svg></span></>
           : <span className="ch-muted">{t.noChangesYet}</span>}
     </button>
     {shared && <p className="ch-muted ch-shared">{t.usingWorktreeOf(shared)} · <button type="button" className="linklike" onClick={() => void window.agentboard.invoke('worktrees:link', { cardId, fromCardId: null }).then(() => { window.dispatchEvent(new Event('agentboard:board-changed')); void refresh() })}>{t.unlink}</button></p>}

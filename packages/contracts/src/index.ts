@@ -35,16 +35,22 @@ const uuid = z.string().uuid()
  */
 export const cardTypeSchema = z.string().trim().min(1).max(40)
 export const cardTypeColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
-export const cardTypeDefSchema = z.object({ id: z.string().trim().min(1).max(40).regex(/^[a-z0-9][a-z0-9_-]*$/), name: z.string().trim().min(1).max(40), color: cardTypeColorSchema })
+/** `branchPrefix`: início do nome da branch dos cards deste tipo (`feature/...`). Sem ele vale o padrão em inglês do tipo (`branchPrefixOf`). */
+export const branchPrefixSchema = z.string().trim().min(1).max(40).regex(/^[a-z0-9][a-z0-9._-]*$/)
+export const cardTypeDefSchema = z.object({ id: z.string().trim().min(1).max(40).regex(/^[a-z0-9][a-z0-9_-]*$/), name: z.string().trim().min(1).max(40), color: cardTypeColorSchema, branchPrefix: branchPrefixSchema.optional() })
+const defaultBranchPrefixes: Record<string, string> = { feature: 'feature', bug: 'fix', fix: 'fix', hotfix: 'hotfix', improvement: 'improvement', task: 'task', chore: 'chore' }
+/** Prefixo da branch de um card pelo tipo dele: o escolhido no tipo; senão o padrão em inglês (feature, fix, hotfix...); senão o próprio id do tipo. */
+export const branchPrefixOf = (type: { id: string; branchPrefix?: string | undefined } | undefined, typeId: string): string => type?.branchPrefix || defaultBranchPrefixes[type?.id ?? typeId] || (/^[a-z0-9][a-z0-9-]*$/.test(type?.id ?? typeId) ? (type?.id ?? typeId) : 'feature')
 /** Lista de tipos de card: 1 a 30, ids e nomes sem repetir. */
 export const cardTypeListSchema = z.array(cardTypeDefSchema).min(1).max(30)
   .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Tipos de card com id repetido')
   .refine((items) => new Set(items.map((item) => item.name.toLocaleLowerCase())).size === items.length, 'Tipos de card com nome repetido')
 /** Tipos padrão (projetos sem lista própria e o padrão global enquanto o usuário não muda nada). */
-export const builtinCardTypes = (language: 'pt-BR' | 'en' = 'pt-BR'): Array<z.infer<typeof cardTypeDefSchema>> => [
+/** Nomes em inglês em qualquer idioma (combinam com os prefixos de branch: feature/, fix/, improvement/); quem quiser troca o nome do tipo. */
+export const builtinCardTypes = (_language: 'pt-BR' | 'en' = 'pt-BR'): Array<z.infer<typeof cardTypeDefSchema>> => [
   { id: 'feature', name: 'Feature', color: '#8fb8d6' },
   { id: 'bug', name: 'Bug', color: '#f08a8a' },
-  { id: 'improvement', name: language === 'en' ? 'Improvement' : 'Melhoria', color: '#9ccf6f' }
+  { id: 'improvement', name: 'Improvement', color: '#9ccf6f' }
 ]
 /** Acha o tipo pelo id ou pelo nome (sem diferenciar maiúsculas). */
 export const findCardType = <T extends { id: string; name: string }>(types: readonly T[], value: string): T | undefined => {
@@ -68,8 +74,11 @@ export const languageSchema = z.enum(['pt-BR', 'en'])
 export const voiceModelSchema = z.enum(['small', 'large-v3-turbo', 'groq'])
 /** `retomarSozinho`: quando o limite de uso acaba no meio de uma execução, retoma de onde parou assim que ele volta. */
 /** `idioma`: idioma da interface e do que os agentes escrevem. */
-export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema, notificacoes: z.boolean(), retomarSozinho: z.boolean(), fotosGravatar: z.boolean() })
-export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional(), notificacoes: z.boolean().optional(), retomarSozinho: z.boolean().optional(), fotosGravatar: z.boolean().optional() }).strict()
+/** `execucoesSimultaneas`: quantos agentes rodam ao mesmo tempo; `null` = ainda não escolhido, vale a recomendação calculada pelo hardware. */
+export const concurrencyLimitSchema = z.number().int().min(1).max(16)
+export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema, notificacoes: z.boolean(), retomarSozinho: z.boolean(), fotosGravatar: z.boolean(), execucoesSimultaneas: concurrencyLimitSchema.nullable() })
+export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional(), notificacoes: z.boolean().optional(), retomarSozinho: z.boolean().optional(), fotosGravatar: z.boolean().optional(), execucoesSimultaneas: concurrencyLimitSchema.nullable().optional() }).strict()
+export const runCapacitySchema = z.object({ active: z.number(), queued: z.number(), limit: z.number(), recommended: z.number(), cores: z.number(), memoryGb: z.number() })
 export const voiceStatusSchema = z.object({ model: voiceModelSchema, cloud: z.boolean(), modelInstalled: z.boolean(), engineInstalled: z.boolean(), canInstallEngine: z.boolean(), sizeMb: z.number(), downloading: z.object({ item: z.enum(['programa', 'modelo']), received: z.number(), total: z.number().nullable() }).nullable() })
 export type VoiceModel = z.infer<typeof voiceModelSchema>
 export type VoiceStatus = z.infer<typeof voiceStatusSchema>
@@ -311,7 +320,11 @@ export const backgroundTaskSchema = z.object({ id: z.string(), runId: z.string()
 export type BackgroundTask = z.output<typeof backgroundTaskSchema>
 export const gitCommitFileSchema = z.object({ path: z.string(), status: z.enum(['M', 'A', 'D']), additions: z.number().int().nonnegative(), deletions: z.number().int().nonnegative() })
 export const pullRequestSummarySchema = z.object({ number: z.number().int(), title: z.string(), url: z.string(), draft: z.boolean(), head: z.string(), base: z.string(), updatedAt: z.string(), reviewDecision: z.string().nullable(), author: z.string(), comments: z.number().int().nonnegative(), reviewRequested: z.boolean() })
-export const pullRequestListSchema = z.object({ supported: z.boolean(), provider: z.enum(['github', 'gitlab']).nullable(), error: z.string().nullable(), viewer: z.string().nullable(), prs: z.array(pullRequestSummarySchema) })
+export const pullRequestListSchema = z.object({ supported: z.boolean(), provider: z.enum(['github', 'gitlab']).nullable(), error: z.string().nullable(), viewer: z.string().nullable(), prs: z.array(pullRequestSummarySchema), via: z.enum(['token', 'cli']).nullable().optional(), problem: z.enum(['no-cli', 'not-logged-in', 'invalid-token']).nullable().optional(), host: z.string().nullable().optional() })
+export const gitAccountInfoSchema = z.object({ scope: z.enum(['project', 'repo']), host: z.string(), provider: z.enum(['github', 'gitlab']), login: z.string(), name: z.string(), email: z.string().nullable(), hint: z.string(), invalid: z.boolean(), savedAt: z.string() })
+export const gitAccountsStateSchema = z.object({ hosts: z.array(z.object({ host: z.string(), provider: z.enum(['github', 'gitlab']).nullable(), project: gitAccountInfoSchema.nullable(), repos: z.array(z.object({ sourceId: z.string(), name: z.string(), own: gitAccountInfoSchema.nullable(), using: z.enum(['repo', 'project']).nullable() })) })) })
+export type GitAccountInfo = z.output<typeof gitAccountInfoSchema>
+export type GitAccountsState = z.output<typeof gitAccountsStateSchema>
 export const pullRequestDetailSchema = z.object({ number: z.number().int(), title: z.string(), body: z.string(), url: z.string(), state: z.string(), draft: z.boolean(), head: z.string(), base: z.string(), reviewDecision: z.string().nullable(), author: z.string(), additions: z.number().int(), deletions: z.number().int(), mergeable: z.string().nullable(), files: z.array(z.object({ path: z.string(), additions: z.number().int(), deletions: z.number().int() })), comments: z.array(z.object({ author: z.string(), body: z.string(), at: z.string() })), reviews: z.array(z.object({ author: z.string(), body: z.string(), state: z.string(), at: z.string() })), diff: z.string() })
 export type PullRequestSummary = z.output<typeof pullRequestSummarySchema>
 export type PullRequestList = z.output<typeof pullRequestListSchema>
@@ -358,7 +371,7 @@ export type ConstitutionView = z.output<typeof constitutionViewSchema>
 const codeSymbolSchema = z.object({ name: z.string(), qname: z.string(), kind: z.string(), path: z.string(), relative: z.string(), line: z.number().int(), endLine: z.number().int(), signature: z.string() })
 export type CodeSymbol = z.output<typeof codeSymbolSchema>
 /** Estado do índice de código num projeto: ligado ou não e, por pasta, arquivos, símbolos e a última indexação (ms desde 1970). */
-const codeIndexStatusSchema = z.object({ enabled: z.boolean(), roots: z.array(z.object({ root: z.string(), files: z.number().int(), symbols: z.number().int(), indexedAt: z.number().nullable(), ms: z.number().nullable() })) })
+const codeIndexStatusSchema = z.object({ enabled: z.boolean(), roots: z.array(z.object({ root: z.string(), files: z.number().int(), symbols: z.number().int(), expected: z.number().int(), indexedAt: z.number().nullable(), ms: z.number().nullable() })) })
 export type CodeIndexStatus = z.output<typeof codeIndexStatusSchema>
 
 export const ipcContracts = {
@@ -494,7 +507,7 @@ export const ipcContracts = {
   , 'code-index:references': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), name: z.string().trim().min(1).max(200), path: z.string().min(1).max(4096).optional() }).strict(), output: z.array(z.object({ path: z.string(), relative: z.string(), line: z.number().int(), caller: z.string() })) }
   , 'code-index:status': { input: z.object({ projectId: uuid, cardId: uuid.nullable() }).strict(), output: codeIndexStatusSchema }
   , 'code-index:set-enabled': { input: z.object({ projectId: uuid, enabled: z.boolean() }).strict(), output: codeIndexStatusSchema }
-  , 'code-index:reindex': { input: z.object({ projectId: uuid }).strict(), output: codeIndexStatusSchema }
+  , 'code-index:reindex': { input: z.object({ projectId: uuid, root: z.string().min(1).max(4096).optional() }).strict(), output: codeIndexStatusSchema }
   , 'files:read': { input: z.object({ chatId: uuid, path: z.string().trim().min(1).max(2048) }).strict(), output: z.object({ path: z.string(), relative: z.string(), content: z.string(), truncated: z.boolean(), size: z.number(), binary: z.boolean() }) }
   , 'workspace:roots': { input: z.object({ projectId: uuid, cardId: uuid.nullable() }).strict(), output: z.array(z.object({ path: z.string(), name: z.string(), branch: z.string().nullable(), worktree: z.boolean(), primary: z.boolean(), cardId: uuid.nullable(), cardTitle: z.string().nullable() })) }
   , 'workspace:external': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096), target: z.enum(['explorer', 'default', 'vscode']) }).strict(), output: z.object({}) }
@@ -521,6 +534,9 @@ export const ipcContracts = {
   , 'cards:delete': { input: z.object({ cardId: uuid, deleteArtifacts: z.boolean().optional() }).strict(), output: z.object({ deleted: z.boolean() }) }
   , 'cards:set-repos': { input: z.object({ cardId: uuid, sourceIds: z.array(uuid).max(50).nullable() }).strict(), output: cardSchema }
   , 'git:create-prs': { input: z.object({ cardId: uuid, draft: z.boolean().default(true), title: z.string().trim().max(240).optional(), body: z.string().max(20_000).optional(), sourceId: uuid.optional() }).strict(), output: z.object({ results: z.array(z.object({ repo: z.string(), url: z.string().nullable(), error: z.string().nullable() })) }) }
+  , 'git-accounts:state': { input: z.object({ projectId: uuid }).strict(), output: gitAccountsStateSchema }
+  , 'git-accounts:set': { input: z.object({ projectId: uuid, sourceId: uuid.optional(), provider: z.enum(['github', 'gitlab']), host: z.string().trim().min(1).max(253).regex(/^[a-z0-9.-]+(:[0-9]{1,5})?$/i), token: z.string().trim().min(1).max(500) }).strict(), output: gitAccountsStateSchema }
+  , 'git-accounts:remove': { input: z.object({ projectId: uuid, sourceId: uuid.optional(), host: z.string().trim().min(1).max(253) }).strict(), output: gitAccountsStateSchema }
   , 'prs:list': { input: z.object({ sourceId: uuid }).strict(), output: pullRequestListSchema }
   , 'prs:view': { input: z.object({ sourceId: uuid, number: z.number().int().positive() }).strict(), output: pullRequestDetailSchema }
   , 'prs:comment': { input: z.object({ sourceId: uuid, number: z.number().int().positive(), body: z.string().trim().min(1).max(20_000) }).strict(), output: z.object({}) }
@@ -529,6 +545,7 @@ export const ipcContracts = {
   , 'prs:open': { input: z.object({ sourceId: uuid, url: z.string().url().max(2000) }).strict(), output: z.object({ opened: z.literal(true) }) }
   , 'git:open-pr': { input: z.object({ cardId: uuid, url: z.string().url().max(2000) }).strict(), output: z.object({ opened: z.literal(true) }) }
   , 'playwright:sources': { input: projectIdInput, output: z.array(z.object({ id: uuid, name: z.string(), node: z.boolean() })) }
+  , 'playwright:versions': { input: z.undefined(), output: z.array(z.string()) }
   , 'playwright:status': { input: projectIdInput, output: playwrightStatusSchema }
   , 'playwright:install-browser': { input: projectIdInput, output: playwrightStatusSchema }
   , 'playwright:install': { input: z.object({ projectId: uuid, version: z.string().trim().min(1).max(40), browser: z.boolean(), skills: z.array(z.enum(['claude', 'agents'])).max(2), sourceId: uuid.optional() }).strict(), output: playwrightStatusSchema }
@@ -567,6 +584,8 @@ export const ipcContracts = {
   , 'files:choose': { input: z.undefined(), output: z.array(z.string()) }
   , 'files:save-pasted': { input: z.object({ name: z.string().max(200), base64: z.string().max(40_000_000) }).strict(), output: z.string() }
   , 'agents:cancel': { input: z.object({ runId: uuid }).strict(), output: z.object({ cancelled: z.boolean() }) }
+  , 'agents:run-now': { input: z.object({ runId: uuid }).strict(), output: z.object({ started: z.boolean() }) }
+  , 'agents:capacity': { input: z.undefined(), output: runCapacitySchema }
   , 'plans:list': { input: cardIdInput, output: z.array(planSchema) }
   , 'plans:approve': { input: z.object({ planId: uuid }).strict(), output: planSchema }
   , 'worktrees:get': { input: cardIdInput, output: worktreeSchema.nullable() }
@@ -596,6 +615,7 @@ export const ipcContracts = {
   , 'git:stash-file': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096) }).strict(), output: gitChangesSchema }
   , 'git:ignore-file': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096), kind: z.enum(['file', 'directory', 'extension']) }).strict(), output: gitChangesSchema }
   , 'git:commit': { input: z.object({ ...gitTarget, message: z.string().max(2000), description: z.string().max(20_000).optional(), amend: z.boolean().optional(), paths: z.array(z.string().min(1).max(4096)).max(5000).optional() }).strict(), output: z.object({ hash: z.string() }) }
+  , 'git:suggest-message': { input: z.object({ ...gitTarget, paths: z.array(z.string().min(1).max(4096)).max(5000).optional() }).strict(), output: z.object({ message: z.string() }) }
   , 'git:rename-commit': { input: z.object({ ...gitTarget, hash: z.string().regex(/^[0-9a-f]{40,64}$/), message: z.string().trim().min(1).max(2000) }).strict(), output: z.object({ hash: z.string() }) }
   , 'git:branch-action': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['checkout', 'pull', 'pull-rebase', 'push', 'rebase-onto', 'merge', 'create', 'delete', 'delete-remote']), name: z.string().min(1).max(250), newName: z.string().max(250).optional() }).strict(), output: z.object({ output: z.string() }) }
   , 'git:checkout-remote': { input: z.object({ ...gitTarget, name: z.string().min(1).max(250) }).strict(), output: z.object({ output: z.string() }) }
@@ -613,6 +633,7 @@ export const ipcContracts = {
   , 'git:file-versions': { input: z.object({ ...gitTarget, path: z.string().min(1).max(4096), mode: z.enum(['unstaged', 'staged', 'commit']), hash: z.string().regex(/^[0-9a-f]{7,64}$/).optional() }).strict(), output: z.object({ before: z.string().nullable(), after: z.string().nullable(), binary: z.boolean(), truncated: z.boolean() }) }
   , 'git:conflict-resolve': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000), side: z.enum(['ours', 'theirs', 'marked']) }).strict(), output: z.object({ left: z.number().int() }) }
   , 'git:conflict-finish': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['continue', 'abort']) }).strict(), output: z.object({ output: z.string() }) }
+  , 'app:set-titlebar-theme': { input: z.object({ light: z.boolean() }).strict(), output: z.object({ ok: z.literal(true) }) }
   , 'app:open-link': { input: z.object({ url: z.string().min(1).max(2048) }).strict(), output: z.object({ opened: z.literal(true) }) }
   , 'git:sync': { input: z.object({ ...gitTarget, action: z.enum(['fetch', 'pull', 'push', 'stash', 'pop']), pull: z.enum(['ff', 'ff-only', 'rebase']).optional(), force: z.boolean().optional() }).strict(), output: z.object({ output: z.string(), conflicts: z.number().int().nonnegative().optional() }) }
   , 'git:card': { input: cardIdInput, output: gitCardSchema }

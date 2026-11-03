@@ -5,6 +5,7 @@ import { dropToken, InputMirror, useAtMention } from './AtMention'
 import { defaultPermissionMode, permissionModes, type AgentProfile, type AgentPurpose, type Card, type Chat, type ChatMessage, type Project, type ProjectBoard, type Run, type SkillEntry, type SkillRef } from '@agentboard/contracts'
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
+import { shortcutEvent } from './shortcuts'
 import { WindowIcon } from './WindowLayoutMenu'
 import { BranchIcon, CheckIcon, CloseIcon, CollapseIcon, ExpandIcon, MicIcon, SendIcon, StopIcon } from './icons'
 import { ModelMenu, permissionModeText, useAgentConfig } from './ModelMenu'
@@ -35,7 +36,6 @@ import { terminal } from './terminalStore'
 import { useDictation } from './useDictation'
 import { useStickToBottom } from './useStickToBottom'
 import { pop } from './popout'
-import { Switch } from './Switch'
 import { useT } from './i18n'
 
 /** Estado do dock que sobrevive à troca de aba (o chat remonta a cada etapa): recolhido/expandido e largura. */
@@ -63,7 +63,7 @@ const typeColor: Record<Card['type'], string> = { feature: 'var(--blue)', bug: '
 const SearchGlyph = (): React.JSX.Element => <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2L17 17" /></svg>
 
 /** Ações do cabeçalho agrupadas quando o dock estreito não comporta todos os botões. */
-export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose, expand, view, searchRequest = 0 }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; projectId: string; cardId?: string; chatId?: string; purpose?: AgentPurpose; expand(): void; close(): void; view?: { git: boolean; set(value: 'chat' | 'git'): void }; searchRequest?: number }): React.JSX.Element {
+export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose, expand, view, openCard, searchRequest = 0 }: { openCard?(): void; messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; projectId: string; cardId?: string; chatId?: string; purpose?: AgentPurpose; expand(): void; close(): void; view?: { git: boolean; set(value: 'chat' | 'git'): void }; searchRequest?: number }): React.JSX.Element {
   const t = useT(), m = t.chat.moreMenu
   const [open, setOpen] = useState(false), [page, setPage] = useState<'main' | 'search' | 'window'>('main'), [query, setQuery] = useState('')
   const box = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), menu = useRef<HTMLDivElement>(null), results = searchMessages(messages, query)
@@ -96,6 +96,7 @@ export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose
     {open && <div className="popmenu dockmore-menu" ref={menu} role={page === 'search' ? 'dialog' : 'menu'} aria-label={m.chatMoreOptions}>
       {page !== 'main' && <button type="button" className="pm-back" onClick={() => setPage('main')}>‹ <span>{page === 'search' ? m.search : pop ? m.moveWindow : m.openInOtherWindow}</span></button>}
       {page === 'main' && <>
+        {openCard && <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => { dismiss(); openCard() }}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="2.5" /><path d="M7 8h6M7 11.5h4" /></svg>{m.openCard}</button>}
         {view && <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => { dismiss(); view.set(view.git ? 'chat' : 'git') }}><BranchIcon />{view.git ? m.backToChat : m.viewCardGit}</button>}
         <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => setPage('search')}><SearchGlyph />{m.searchInChat} <small>Ctrl+F</small></button>
         {(cardId || chatId) && <button type="button" role="menuitem" className="pm-item pm-ico" onClick={() => setPage('window')}><WindowIcon />{pop ? m.moveThisWindow : m.openInOtherWindow}</button>}
@@ -125,12 +126,12 @@ function Activity({ board, cardId, profiles, openEdit, hide }: { board: ProjectB
   const cards = board.cards.filter((card) => !card.archivedAt && board.columns.find((column) => column.id === card.columnId)?.semanticState !== 'done'), running = cards.filter((card) => card.run.state === 'running')
   const rank = (card: Card): number => card.id === cardId ? 0 : card.run.state === 'finished' ? 0.5 : card.run.state === 'planning' ? 1 : card.hasPlan && card.run.state === 'idle' ? 2 : 3 + board.columns.findIndex((column) => column.id === card.columnId)
   const rest = cards.filter((card) => card.run.state !== 'running').sort((a, b) => rank(a) - rank(b))
-  return <section className="activity"><div className="qv-head"><div className="eyebrow">{t.quickView}</div><button type="button" className="side-toggle qv-toggle tip" data-tip={t.hide} aria-label={t.hide} onClick={hide}><svg viewBox="0 0 20 20" aria-hidden="true" style={{ transform: 'rotate(180deg)' }}><path d="m12 4-6 6 6 6" /></svg></button></div>
+  return <section className="activity qv-wrap"><button type="button" className="side-toggle qv-toggle tip" data-tip={t.hide} aria-label={t.hide} onClick={hide}><svg viewBox="0 0 20 20" aria-hidden="true" style={{ transform: 'rotate(180deg)' }}><path d="m12 4-6 6 6 6" /></svg></button><div className="qv-inner"><div className="qv-head"><div className="eyebrow">{t.quickView}</div></div>
     <div className="agrp"><span>{t.running}</span><b>{running.length}</b></div>
     <div className="tilecol">{running.length ? running.map((card) => <Tile key={card.id} card={card} board={board} here={card.id === cardId} profiles={profiles} open={() => openEdit(card)} />) : <div className="emptyact">{t.nothingRunning}</div>}</div>
     <div className="agrp"><span>{t.otherCards}</span><b>{rest.length}</b></div>
     <div className="tilecol">{rest.map((card) => <Tile key={card.id} card={card} board={board} here={card.id === cardId} profiles={profiles} open={() => openEdit(card)} />)}</div>
-  </section>
+  </div></section>
 }
 
 /** Chat do card (planejamento ou execução) como o dock do protótipo: encaixado à direita ou em tela cheia com a visão rápida. */
@@ -156,6 +157,12 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const chatSearch = useChatSearchShortcut(expanded)
   useEffect(() => { const navigate = (): void => { if (expanded) close() }; window.addEventListener('agentboard:select-view', navigate); return () => window.removeEventListener('agentboard:select-view', navigate) }, [expanded, close])
   const [quickHidden, setQuickHiddenState] = useState(() => { try { return localStorage.getItem('agentboard.quickView.hidden') === '1' } catch { return false } })
+  const quickHiddenRef = useRef(quickHidden), expandedRef = useRef(expanded), diffOpenRef = useRef(false)
+  quickHiddenRef.current = quickHidden; expandedRef.current = expanded
+  useEffect(() => {
+    const onShortcut = (event: Event): void => { if ((event as CustomEvent<{ id: string }>).detail.id === 'toggleQuickView' && expandedRef.current && !diffOpenRef.current) setQuickHidden(!quickHiddenRef.current) }
+    window.addEventListener(shortcutEvent, onShortcut); return () => window.removeEventListener(shortcutEvent, onShortcut)
+  }, [])
   const setQuickHidden = (value: boolean): void => { setQuickHiddenState(value); try { localStorage.setItem('agentboard.quickView.hidden', value ? '1' : '0') } catch { /* só conveniência */ } }
   useEffect(() => { if (!card.id) return; terminal.setContext({ projectId: project.id, cardId: card.id }); return () => terminal.setContext({ projectId: project.id, cardId: null }) }, [card.id, project.id])
   const viewer = useFileViewer(width, setWidth)
@@ -282,13 +289,12 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     try { await window.agentboard.invoke('windows:open', { kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode, placement: 'new', ...point }); close() } catch (reason) { setError(plainError(reason)) }
   }
   // Atalhos do modo teste, acima da caixa de conversa: cada botão manda um pedido pronto ao testador (entra na fila se ele estiver ocupado).
-  const [headed, setHeaded] = useState(() => { try { return localStorage.getItem('agentboard.testHeaded') === '1' } catch { return false } })
-  const toggleHeaded = (): void => { const next = !headed; setHeaded(next); try { localStorage.setItem('agentboard.testHeaded', next ? '1' : '0') } catch { /* só vale nesta sessão */ } }
-  const testShortcuts = mode === 'test' ? [
-    { label: c.runProjectTests, prompt: 'Rode os testes, o lint e o typecheck do projeto e registre cada resultado no checklist do teste.' },
-    { label: c.testOnScreen, prompt: `Teste os critérios de aceite que dependem da tela usando o Playwright CLI, seguindo a skill agentboard-testar.${headed ? ' Rode com o navegador visível (--headed) e com slowMo para eu acompanhar.' : ' Rode sem janela (headless), guardando screenshot e trace do que falhar.'}` },
-    { label: c.testAgain, prompt: 'Refaça o teste deste card do começo: monte o checklist de novo, rode tudo e me diga o que passou e o que falhou.' }
-  ] : []
+  // Um botão só: a skill de teste já roda os testes, o lint e o typecheck e, com o Playwright CLI ligado no projeto, também os critérios de tela.
+  // Com o Playwright ligado, pergunta se é para ver o navegador ou rodar em segundo plano.
+  const [pwReady, setPwReady] = useState(false), [testChoice, setTestChoice] = useState(false)
+  useEffect(() => { if (mode !== 'test') return; void window.agentboard.invoke('playwright:status', { projectId: project.id }).then((status) => setPwReady(status.enabled && Boolean(status.selected))).catch(() => setPwReady(false)) }, [mode, project.id])
+  const retestPrompt = (headed?: boolean): string => `Refaça o teste deste card do começo: reabra o checklist que já existe (mantenha os mesmos itens, desmarque todos e revalide um a um, acrescentando só o que for novo), rode os testes automatizados, o lint e o typecheck${pwReady ? ' e confira os critérios de tela com o Playwright CLI, seguindo a skill agentboard-test.' : '.'}${headed === undefined ? '' : headed ? ' Rode o Playwright com o navegador visível (--headed) e com slowMo para eu acompanhar.' : ' Rode o Playwright sem janela (headless), guardando screenshot e trace do que falhar.'} Me diga o que passou e o que falhou.`
+  const testShortcuts = mode === 'test' ? [{ label: c.testAgain, run: () => { if (pwReady) setTestChoice(true); else answerQuestions(retestPrompt()) } }] : []
   const resetAndSwitch = async (target: AgentProfile): Promise<void> => {
     setSwitchTo(undefined)
     try {
@@ -315,6 +321,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const testing = mode === 'test'
 
   const diffOpen = Boolean(diff) && view === 'git' && Boolean(card.id) && !planning
+  diffOpenRef.current = diffOpen
   const viewing = !expanded && (viewer.requested !== null || diffOpen)
   return <section ref={chatSearch.ref} className={`dock open ${expanded ? 'full' : ''} ${expanded && quickHidden ? 'noactivity' : ''} ${viewing ? 'withviewer' : ''} ${dragging || viewer.dragging ? 'dragging' : ''}`} aria-label={c.ariaChat} style={expanded ? undefined : { width: width + (viewing ? viewer.width : 0) }}>
     {viewer.dialog}{!expanded && <div className="dockgrip" role="separator" aria-orientation="vertical" aria-label={viewing ? d.adjustFileWidth : d.adjustChatWidth} onPointerDown={viewing ? viewer.startResize : startResize} onDoubleClick={viewing ? undefined : resetWidth} />}
@@ -323,7 +330,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     <div className="dock-in" style={expanded ? undefined : { width }}>
       <div className="dock-head" draggable={Boolean(card.id) && !pop} onDoubleClick={(event) => { if (!(event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) setExpanded(!expanded) }} onDragStart={(event) => { if ((event.target as HTMLElement).closest('button,input,textarea,[role="tab"],.dock-tools')) { event.preventDefault(); return }; event.preventDefault(); void detachChat({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><div className="top"><div><div className="headrow">          <div className="tabs stepTabs" role="tablist" aria-label={c.cardChats}>{(['planning', 'execution', 'test'] as const).filter((step) => singleChat ? step === (chats[0]?.purpose ?? mode) : step === mode || chats.some((item) => item.purpose === step)).map((step) => { const working = card.run.purpose === step && (card.run.state === 'running' || card.run.state === 'planning'); return <button key={step} role="tab" aria-selected={mode === step} className={`tab ${mode === step ? 'on' : ''}`} onClick={() => step !== mode && onSwitch(step)}>{singleChat ? t.chat.roles.assistant : t.chat.steps[step]}{working ? <span className="spin sm" /> : null}</button> })}</div></div>
           <h2>{card.title || t.chat.tile.newCard}</h2><div className="ctxline"><span className="ctxchip">{columnLabel}</span>{card.id && <ComplexityBadge complexity={card.complexity} onClick={() => setAssessing(true)} />}{assessing && createPortal(<AssessmentDialog card={card} close={() => setAssessing(false)} changed={() => undefined} />, document.body)}{card.workspace && <span className="ctxchip ws tip" data-tip={c.worktreeTip(card.workspace.path)}><BranchIcon /><span className="wsname">{card.workspace.branch} · {worktreeName(card.workspace.path)}</span></span>}</div></div>
-        <div className="dock-tools"><div className="dock-tools-wide">{card.id && !planning && <div className="viewtoggle sm" role="group" aria-label={c.chatOrGit}><button type="button" className={gitView ? '' : 'on'} aria-pressed={!gitView} onClick={() => setView('chat')}>{c.chatTab}</button><button type="button" className={gitView ? 'on' : ''} aria-pressed={gitView} onClick={() => setView('git')}><BranchIcon />Git{card.pending.commits > 0 && <i className="pendot" />}</button></div>}<ChatSearch messages={messages} log={log} request={chatSearch.request} reveal={gitView ? () => setView('chat') : undefined} />{card.id && <PopMenu target={{ kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode }} />}<button type="button" className="ibtn tip" data-tip={expanded ? d.backToCorner : d.expandFull} aria-label={expanded ? d.backToCorner : d.expandFull} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label={d.closeChat} onClick={close}><CloseIcon /></button></div><div className="dock-tools-compact"><ChatMoreMenu searchRequest={chatSearch.request} messages={messages} log={log} projectId={project.id} cardId={card.id || undefined} purpose={mode} expand={() => setExpanded(true)} close={close} view={card.id && !planning ? { git: gitView, set: setView } : undefined} /><button className="x" aria-label={d.closeChat} onClick={close}><CloseIcon /></button></div></div></div></div>
+        <div className="dock-tools"><div className="dock-tools-wide">{card.id && !planning && <div className="viewtoggle sm" role="group" aria-label={c.chatOrGit}><button type="button" className={gitView ? '' : 'on'} aria-pressed={!gitView} onClick={() => setView('chat')}>{c.chatTab}</button><button type="button" className={gitView ? 'on' : ''} aria-pressed={gitView} onClick={() => setView('git')}><BranchIcon />Git{card.pending.commits > 0 && <i className="pendot" />}</button></div>}<ChatSearch messages={messages} log={log} request={chatSearch.request} reveal={gitView ? () => setView('chat') : undefined} />{card.id && <button type="button" className="ibtn tip" data-tip={t.chat.contextMenu.openCard} aria-label={t.chat.contextMenu.openCard} onClick={() => openEdit(card)}><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="3.5" width="13" height="13" rx="2.5" /><path d="M7 8h6M7 11.5h4" /></svg></button>}{card.id && <PopMenu target={{ kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode }} />}<button type="button" className="ibtn tip" data-tip={expanded ? d.backToCorner : d.expandFull} aria-label={expanded ? d.backToCorner : d.expandFull} onClick={() => setExpanded(!expanded)}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button><button className="x" aria-label={d.closeChat} onClick={close}><CloseIcon /></button></div><div className="dock-tools-compact"><ChatMoreMenu openCard={card.id ? () => openEdit(card) : undefined} searchRequest={chatSearch.request} messages={messages} log={log} projectId={project.id} cardId={card.id || undefined} purpose={mode} expand={() => setExpanded(true)} close={close} view={card.id && !planning ? { git: gitView, set: setView } : undefined} /><button className="x" aria-label={d.closeChat} onClick={close}><CloseIcon /></button></div></div></div></div>
       {gitView && <GitCardPanel cardId={card.id} profiles={profiles} openRules={() => openRules?.()} openGraph={(id) => openGraph?.(id)} diff={diff} setDiff={setDiff} />}
       <div className="chatlog" ref={log} style={gitView ? { display: 'none' } : undefined}>
         {!messages.length && !live && <div className="msg sys">{planning ? (specKit.state?.active ? c.emptySpecKit : c.emptyPlanning) : testing ? c.emptyTest : c.emptyExecution}</div>}
@@ -345,8 +352,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
         <div className="skdock-host" ref={setDockHost} />
         <div className={`cbox ${attach.dragging ? 'dropping' : ''}`} {...attach.dropProps}>
           {((!inactive && testShortcuts.length > 0) || attach.files.length > 0 || replies.items.length > 0) && <div className="cbox-top">
-            {!inactive && testShortcuts.length > 0 && <div className="testbar" role="group" aria-label={c.testShortcuts}>{testShortcuts.map((item) => <button type="button" key={item.label} className="mini secondary" onClick={() => answerQuestions(item.prompt)}>{item.label}</button>)}
-          <Switch className="tip" tip={c.seeBrowserTip} checked={headed} onChange={toggleHeaded}>{c.seeBrowser}</Switch></div>}
+            {!inactive && testShortcuts.length > 0 && <div className="testbar" role="group" aria-label={c.testShortcuts}>{testShortcuts.map((item) => <button type="button" key={item.label} className="mini secondary" onClick={item.run}>{item.label}</button>)}</div>}
             <AttachmentChips files={attach.files} remove={attach.remove} />
             <ReplyContextCards replies={replies.items} remove={replies.remove} />
           </div>}
@@ -370,6 +376,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       </div>
     </div>
     </QuestionAnswerContext.Provider></FileOpenContext.Provider>
+    {testChoice && <ConfirmDialog eyebrow={c.testChoiceEyebrow} title={c.testChoiceTitle} text={c.testChoiceText} ok={c.watchBrowser} secondary={{ label: c.runBackground, run: () => { setTestChoice(false); answerQuestions(retestPrompt(false)) } }} cancel={() => setTestChoice(false)} confirm={() => { setTestChoice(false); answerQuestions(retestPrompt(true)) }} />}
     {switchTo && <ConfirmDialog eyebrow={d.switchAgent} title={c.restartWith(switchTo.label)} text={c.restartText} ok={c.switchAndRestart} danger cancel={() => setSwitchTo(undefined)} confirm={() => void resetAndSwitch(switchTo)} />}
     {/* Só com o chat em tela cheia: coluna à esquerda com o progresso (Tasks ou checklist do teste) e as Alterações. Dividindo a tela com o quadro, não aparece. */}
     {expanded && diffOpen && diff && <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} />}

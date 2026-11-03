@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { agentColorPalette, type CardTypeDef, type Project } from '@agentboard/contracts'
+import { agentColorPalette, branchPrefixOf, type CardTypeDef, type Project } from '@agentboard/contracts'
 import { ConfirmDialog } from './ConfirmDialog'
 import { TrashIcon } from './icons'
 import { plainError } from './NoticeDialog'
@@ -65,11 +65,16 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
     if (count === 0) void persist(types.filter((item) => item.id !== type.id))
     else setRemoving({ type, count })
   }
+  const setPrefix = (type: CardTypeDef, raw: string): void => {
+    const value = raw.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 40)
+    if ((value || undefined) === type.branchPrefix) return
+    void persist(types.map((item) => item.id === type.id ? (value ? { ...item, branchPrefix: value } : (({ branchPrefix: _drop, ...rest }) => rest)(item)) : item))
+  }
   return <div className="cardtypes">
     <ul className="cardtypes-list">{types.map((type) => <li key={type.id} className="cardtypes-row">
       <button type="button" className="cardtypes-swatch tip" disabled={disabled} data-tip={t.color} aria-label={t.colorOf(type.name)} aria-expanded={palette === type.id} style={{ background: type.color }} onClick={() => setPalette(palette === type.id ? undefined : type.id)} />
       <input className="in cardtypes-name" disabled={disabled} aria-label={t.name} maxLength={40} value={names[type.id] ?? type.name} onChange={(event) => setNames({ ...names, [type.id]: event.target.value })} onBlur={() => rename(type)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.stopPropagation(); forget(type.id) } }} />
-      <span className="pill cardtype-pill tc" style={{ '--tc': type.color } as React.CSSProperties}>{(names[type.id] ?? type.name) || type.id}</span>
+      <input key={`${type.id}:${type.branchPrefix ?? ''}`} className="in cardtypes-prefix tip" disabled={disabled} data-tip={t.branchPrefixTip} aria-label={t.branchPrefix} maxLength={40} spellCheck={false} placeholder={branchPrefixOf(undefined, type.id)} defaultValue={type.branchPrefix ?? ''} onBlur={(event) => setPrefix(type, event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }} />
       <button type="button" className="ibtn tip cardtypes-x" disabled={disabled || types.length <= 1} data-tip={types.length <= 1 ? t.lastOne : t.remove} aria-label={t.removeOf(type.name)} onClick={() => void askRemove(type)}><TrashIcon /></button>
       {palette === type.id && <div className="cardtypes-palette" role="listbox" aria-label={t.colorOf(type.name)}>{agentColorPalette.map((color) => <button type="button" role="option" aria-selected={color.toLowerCase() === type.color.toLowerCase()} key={color} className={color.toLowerCase() === type.color.toLowerCase() ? 'on' : ''} style={{ background: color }} aria-label={color} onClick={() => recolor(type, color)} />)}<label className="cardtypes-custom tip" data-tip={t.customColor}><input type="color" aria-label={t.customColor} value={type.color} onChange={(event) => recolor(type, event.target.value)} /></label></div>}
     </li>)}

@@ -7,6 +7,7 @@ import { FolderGlyph } from './icons'
 import { SkillsPanel } from './SkillsPanel'
 import { McpPanel } from './McpPanel'
 import { GitPolicyPanel } from './GitPolicyPanel'
+import { GitAccountsPanel } from './GitAccountsPanel'
 import { WorkflowPanel } from './WorkflowPanel'
 import { SddSettings } from './SddSettings'
 import { ToolsPanel, useToolsPending } from './ToolsPanel'
@@ -39,8 +40,12 @@ export function ProjectDialog({ close, created }: { close(): void; created(proje
   return <div className="overlay" role="dialog" aria-label={tp.newTitle}><div className="modal">
     <header><div><div className="eyebrow">{tp.newTitle}</div><h2>{tp.createTitle}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
     <div className="stack">
-      <label className="f">{tp.nameLabel}<input className="in" placeholder={tp.nameLabel} value={name} onChange={(e) => setName(e.target.value)} /></label>
-      <ProjectIconPicker name={name} icon={icon} onChange={setIcon} />
+      <div className="f"><span>{tp.nameLabel}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ProjectIconPicker compact name={name} icon={icon} onChange={setIcon} />
+          <input className="in" style={{ flex: 1, minWidth: 0 }} aria-label={tp.nameLabel} placeholder={tp.nameLabel} value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+      </div>
       {sources.map((source) => <div className="srcbox" key={source.localPath}>
         <div className="srchead"><span className="t"><b>{source.name}</b><small>{source.localPath}</small></span><button type="button" className="mini secondary" onClick={() => setSources((current) => current.filter((item) => item.localPath !== source.localPath))}>{t.common.remove}</button></div>
         {source.repositories.length ? <><span className="sectitle">{tp.repoCount(source.repositories.length)}</span>
@@ -145,7 +150,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
         <section className="cx-wfcard"><ProjectCodeIndex project={project} /></section>
         </div>
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>
-      : tab === 'git' ? <GitPolicyPanel projectId={project.id} />
+      : tab === 'git' ? <><GitPolicyPanel projectId={project.id} /><GitAccountsPanel projectId={project.id} /></>
       : tab === 'workflow' ? <WorkflowPanel projectId={project.id} />
       : tab === 'sdd' ? <SddSettings project={project} openConstitutionChat={openConstitutionChat} onOpenReference={() => void finish()} />
       : tab === 'tools' ? <ToolsPanel projectId={project.id} openedTerminal={() => void finish()} />

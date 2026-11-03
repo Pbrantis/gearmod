@@ -347,8 +347,8 @@ export class GitManager {
     if (!card || !wt) return null
     const { rule } = this.ruleFor(card.projectId, wt.branch)
     if (rule === 'never') return `Do not commit on this branch (${wt.branch}): leave the changes in the worktree, the user does the committing. Do not run git commit.`
-    if (rule === 'auto') return 'When you close each task, commit with the agentboard_pedir_commit tool (short message in the language given in `idioma`, imperative mood). Do not run git commit directly.'
-    return 'To commit, ask with the agentboard_pedir_commit tool (message and files): the user authorizes it on the card. Do not run git commit directly.'
+    if (rule === 'auto') return 'When you close each task, commit with the agentboard_request_commit tool (short message in the language given in `idioma`, imperative mood). Do not run git commit directly.'
+    return 'To commit, ask with the agentboard_request_commit tool (message and files): the user authorizes it on the card. Do not run git commit directly.'
   }
 
   private latestWorktree(cardId: string): { id: string; branch: string } | undefined {
@@ -636,6 +636,28 @@ export class GitManager {
     else if (!input.amend && !(await this.run(dir, ['diff', '--cached', '--name-only'])).trim()) throw new Error(tm().git.nothingStaged)
     try { await this.run(dir, args) } finally { if (listDir) await rm(listDir, { recursive: true, force: true }).catch(() => undefined) }
     return (await this.run(dir, ['rev-parse', 'HEAD'])).trim()
+  }
+
+  /** Texto para a IA sugerir a mensagem do commit: commits recentes (estilo), resumo e diff dos arquivos marcados. */
+  async suggestionContext(sourceId: string, cardId: string | null, paths: string[]): Promise<string> {
+    const dir = (await this.target(this.source(sourceId), cardId)).dir, listed = paths.slice(0, 200)
+    const recent = (await this.tryRun(dir, ['log', '-8', '--format=%s']))?.trim() ?? ''
+    const untracked = new Set((await this.tryRun(dir, ['ls-files', '--others', '--exclude-standard']))?.split(/\r?\n/).filter(Boolean) ?? [])
+    const scope = listed.length ? ['--', ...listed] : []
+    const stat = (await this.tryRun(dir, ['diff', 'HEAD', '--no-ext-diff', '--stat', ...scope]))?.trim() ?? ''
+    const diff = ((await this.tryRun(dir, ['diff', 'HEAD', '--no-ext-diff', '-U2', ...scope])) ?? '').slice(0, 24_000)
+    const added = paths.filter((path) => untracked.has(path)).slice(0, 60)
+    return `Commits recentes:
+${recent || '(nenhum)'}
+
+Resumo:
+${stat}${added.length ? `
+
+Arquivos novos:
+${added.join(', ')}` : ''}
+
+Diff:
+${diff}`
   }
 
   async commit(input: { sourceId: string; cardId: string | null; message: string; description?: string; amend?: boolean; paths?: string[] }): Promise<{ hash: string }> {
@@ -1108,7 +1130,8 @@ export class GitManager {
   async baseOptions(sourceId: string): Promise<string[]> {
     const source = this.source(sourceId)
     const out = await this.tryRun(source.path, ['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes/origin'])
-    return [...new Set((out ?? '').split(/\r?\n/).map((line) => line.trim()).filter((name) => name && name !== 'origin' && name !== 'origin/HEAD' && !name.startsWith('agentboard/')))]
+    const cardBranches = new Set(this.database.db.prepare('SELECT branch FROM worktrees').pluck().all() as string[])
+    return [...new Set((out ?? '').split(/\r?\n/).map((line) => line.trim()).filter((name) => name && name !== 'origin' && name !== 'origin/HEAD' && !name.startsWith('agentboard/') && !cardBranches.has(name) && !cardBranches.has(name.replace(/^origin\//, ''))))]
   }
 
   /** Troca a origem de UM repositório do card (a dos outros não muda): os commits do card passam a ser contados a partir dela. */

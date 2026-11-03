@@ -13,7 +13,10 @@ describe('IPC contracts', () => {
   it('validates document kinds, hex agent colors and app settings', () => {
     expect(ipcContracts['cards:write-document'].input.safeParse({ cardId: ids.cardId, kind: 'criterios', contentMd: '' }).success).toBe(false)
     expect(ipcContracts['profiles:create'].input.safeParse({ provider: 'codex', label: 'A', scope: 'x', color: 'vermelho' }).success).toBe(false)
-    expect(appSettingsSchema.safeParse({ tema: 'purple', idioma: 'en', voz: 'large-v3-turbo', notificacoes: true, retomarSozinho: false, fotosGravatar: false }).success).toBe(true)
+    expect(appSettingsSchema.safeParse({ tema: 'purple', idioma: 'en', voz: 'large-v3-turbo', notificacoes: true, retomarSozinho: false, fotosGravatar: false, execucoesSimultaneas: null }).success).toBe(true)
+    expect(ipcContracts['settings:update'].input.safeParse({ execucoesSimultaneas: 4 }).success).toBe(true)
+    expect(ipcContracts['settings:update'].input.safeParse({ execucoesSimultaneas: 0 }).success).toBe(false)
+    expect(ipcContracts['settings:update'].input.safeParse({ execucoesSimultaneas: 17 }).success).toBe(false)
     expect(appSettingsSchema.safeParse({ tema: 'rosa', idioma: 'pt-BR', voz: 'small' }).success).toBe(false)
   })
 })

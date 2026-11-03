@@ -215,6 +215,7 @@ export const chat: typeof source = {
   tokens: {
     million: 'M',
     detail: (input: string, output: string, cached: string, runs: number) => `${input} read · ${output} written · ${cached} from cache · ${runs} ${runs === 1 ? 'run' : 'runs'}`,
+    clickForDetails: 'Click for more details',
     perStep: 'Tokens per step',
     used: 'Tokens used',
     plusCache: (amount: string) => `+ ${amount} cached`,
@@ -263,6 +264,7 @@ export const chat: typeof source = {
   },
   moreMenu: {
     moreOptions: 'More options',
+    openCard: 'Open card',
     chatMoreOptions: 'More chat options',
     search: 'Search',
     moveWindow: 'Move window',
@@ -325,6 +327,11 @@ export const chat: typeof source = {
     runProjectTests: 'Run project tests',
     testOnScreen: 'Test on screen (Playwright)',
     testAgain: 'Test again',
+    testChoiceEyebrow: 'Test',
+    testChoiceTitle: 'How should Playwright run?',
+    testChoiceText: 'Playwright CLI is on for this project. You can watch the test in the browser or run it without a window, in the background.',
+    watchBrowser: 'Watch in the browser',
+    runBackground: 'In the background',
     ariaChat: 'Card chat',
     cardChats: 'Card chats',
     worktreeTip: (path: string) => `Worktree: ${path}`,

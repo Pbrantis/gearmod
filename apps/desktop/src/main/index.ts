@@ -16,6 +16,7 @@ import { SpecKitRuntime } from './speckit'
 import { McpRegistry } from './mcp-registry'
 import { GeminiCliAdapter } from './gemini-adapter'
 import { NoteRepository } from './repository'
+import { recommendedConcurrency } from './capacity'
 import { SettingsRepository } from './settings'
 import { AgentContextService } from './agent-context'
 import { McpBridge } from './mcp-bridge'
@@ -36,10 +37,11 @@ import { AgentOrchestrator } from './orchestrator'
 import { WorktreeService } from './worktrees'
 import { GitManager } from './git-manager'
 import { PullRequestService } from './pull-requests'
+import { GitAccounts } from './git-accounts'
 import { QualityService } from './quality'
 import { ConstitutionRepository } from './constitution'
 import { CardHistoryService } from './history'
-import { exportPlanArtifacts, resolvedSddRoot } from './workflows'
+import { exportPlanArtifacts, refreshArtifactCopies, resolvedSddRoot } from './workflows'
 import { HarnessService } from './harness'
 import { PlaywrightCliService } from './playwright-cli'
 import { ChecklistRepository } from './checklists'
@@ -102,8 +104,11 @@ const approvals = new ApprovalService(database)
 const policy = new PolicyEngine(database)
 const gitManager = new GitManager(database, undefined, undefined, approvals, (path) => fileActions.trashItem(path), join(dataDir, 'git-undo'))
 gitManager.onFolderRemoved = (path) => { void codeIndex.forget(path).catch(() => undefined) }
-const pullRequests = new PullRequestService(database)
+const gitAccounts = new GitAccounts(database, new SecretStore(join(dataDir, 'git-accounts.bin'), safeStorage))
+const pullRequests = new PullRequestService(database, undefined, undefined, gitAccounts)
 const history = new CardHistoryService(database, dataDir)
+// As cópias spec.md/plan.md/tasks.md da pasta de artefatos acompanham os documentos do card (marcar uma task regrava tasks.md).
+board.documents.onWrite = (cardId, kind) => { if (kind === 'especificacao' || kind === 'plano' || kind === 'tasks') refreshArtifactCopies(history, board, cardId) }
 const sddResolver = new SddResolver(history, board, projects, worktrees)
 const sddWriter = new SddWriter(worktrees)
 const playwright = new PlaywrightCliService(database, history, undefined, join(dataDir, 'tools'))
@@ -115,10 +120,10 @@ const agentContext = new AgentContextService(board, settings, existsSync(pluginD
   const repos = worktrees.repositories(cardId)
   const repositorios = sources.length > 1 ? sources.map((source) => {
     const member = repos.find((repo) => repo.repoPath.toLowerCase() === source.localPath.toLowerCase())
-    return { nome: source.name, noCard: !card.repoIds || card.repoIds.includes(source.id), ...(member ? { pasta: member.path, estado: member.status, ...(member.error ? { erro: member.error } : {}) } : {}) }
+    return { nome: source.name, noCard: card.repoIds ? card.repoIds.includes(source.id) : source.id === sources[0]?.id, ...(member ? { pasta: member.path, estado: member.status, ...(member.error ? { erro: member.error } : {}) } : {}) }
   }) : undefined
   const playwrightCli = playwright.forCard(cardId)
-  return { ...(repositorios ? { repositorios, regraRepositorios: 'Só os repositórios com noCard=true ganham worktree. Se precisar de outro, chame agentboard_definir_repositorios.' } : {}), ...(playwrightCli ? { playwrightCli } : {}) }
+  return { ...(repositorios ? { repositorios, regraRepositorios: 'Só os repositórios com noCard=true ganham worktree. Se precisar de outro, chame agentboard_set_repositories.' } : {}), ...(playwrightCli ? { playwrightCli } : {}) }
 }, sddResolver)
 const agentConfigs = new AgentConfigRepository(database, board, profiles, (profileId) => listCodexModels(profiles.get(profileId)))
 const usageLedger = new UsageLedgerService(database)
@@ -157,7 +162,7 @@ const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppS
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
   // A contagem só baixa depois que a run sai da fila do orquestrador, por isso o pequeno atraso.
   if (event.eventType.startsWith('agentboard/run-')) setTimeout(updateTray, 100)
-}, worktrees, 2, agentContext, writeback, agentConfigs, usage, collab, (info) => {
+}, worktrees, () => settings.get().execucoesSimultaneas ?? recommendedConcurrency(), agentContext, writeback, agentConfigs, usage, collab, (info) => {
   if (info.cardId) void cardUsageExport.export(info.cardId).catch(() => console.error('Falha ao exportar consumo do card.'))
   // Evento do fim da execução (métricas e relatórios de implementação/verificação na pasta de artefatos do card).
   if (info.cardId && info.purpose !== 'free' && info.purpose !== 'constitution') { try { history.runFinished({ cardId: info.cardId, runId: info.runId, chatId: info.chatId, purpose: info.purpose, status: info.status }) } catch { /* artefato é best-effort */ } }
@@ -394,7 +399,7 @@ app.whenReady().then(async () => {
   await openDatabase()
   setMainLocale(settings.get().idioma)  // só depois de abrir o banco: antes disso as configurações não podem ser lidas
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, codeIndexSettings, ...fileActions, openExternal: (url) => shell.openExternal(url), openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, gitAccounts, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, codeIndexSettings, ...fileActions, openExternal: (url) => shell.openExternal(url), setTitleBarTheme: (light) => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.setTitleBarOverlay({ color: '#00000000', symbolColor: light ? '#26303a' : '#d4d9d5', height: titleBarHeight }) }, openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
   Menu.setApplicationMenu(null)  // sem File/Edit/View/Window/Help: a faixa de cima é do app
   createTray()
   await createWindow()

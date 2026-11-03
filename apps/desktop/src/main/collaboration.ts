@@ -82,7 +82,7 @@ export class CollaborationService {
 
   /** Dúvida do desenvolvedor ou do testador. Fica "aberta" até a execução dele terminar; aí o app aciona o planejador. */
   askQuestion(input: { cardId: string; chatId: string; purpose: AgentPurpose; question: string }): Question {
-    if (input.purpose === 'planning') throw new Error('The planner does not ask itself; if it needs a decision from the user, use agentboard_pedir_ao_usuario')
+    if (input.purpose === 'planning') throw new Error('The planner does not ask itself; if it needs a decision from the user, use agentboard_ask_user')
     const id = randomUUID(), number = this.next('card_questions', input.cardId)
     this.database.db.prepare(`INSERT INTO card_questions(id, card_id, number, asker_purpose, asker_chat_id, question, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`).run(id, input.cardId, number, input.purpose, input.chatId, input.question.trim(), new Date().toISOString())
     this.render(input.cardId)
@@ -141,8 +141,8 @@ export class CollaborationService {
     } else {
       const action = this.plannerAction(row.cardId, [
         decision === 'accept'
-          ? `The user AUTHORIZED change ${mLabel(change.number)}, proposed by the ${promptRole[change.proposerPurpose]}: ${change.title}.\n\nDetails: ${change.details}\nReason: ${change.reason}\n\nUpdate the Specification, the Plan (including the test plan) and the Tasks to include the change, with agentboard_escrever_documento. Do not implement anything.`
-          : `The user did NOT accept change ${mLabel(change.number)} as proposed (${change.title}) and suggested a different view: ${note!.trim()}\n\nOriginal proposal: ${change.details}\n\nReassess and update the Specification, the Plan (including the test plan) and the Tasks according to the user's view, with agentboard_escrever_documento. If it is not feasible, tell the user why with agentboard_pedir_ao_usuario. Do not implement anything.`
+          ? `The user AUTHORIZED change ${mLabel(change.number)}, proposed by the ${promptRole[change.proposerPurpose]}: ${change.title}.\n\nDetails: ${change.details}\nReason: ${change.reason}\n\nUpdate the Specification, the Plan (including the test plan) and the Tasks to include the change, with agentboard_write_document. Do not implement anything.`
+          : `The user did NOT accept change ${mLabel(change.number)} as proposed (${change.title}) and suggested a different view: ${note!.trim()}\n\nOriginal proposal: ${change.details}\n\nReassess and update the Specification, the Plan (including the test plan) and the Tasks according to the user's view, with agentboard_write_document. If it is not feasible, tell the user why with agentboard_ask_user. Do not implement anything.`
       ].join(''))
       if (action) this.start(action)
     }
@@ -217,7 +217,7 @@ export class CollaborationService {
 
   private plannerQuestionsPrompt(items: QuestionRow[], retry = false): string {
     const lines = items.map((item) => `${qLabel(item.number)} (${promptRole[item.askerPurpose]}): ${item.question}`).join('\n')
-    return `${retry ? 'You have not answered the questions below yet. ' : ''}Questions from the ${[...new Set(items.map((item) => promptRole[item.askerPurpose]))].join(' and ')} of this card. Answer each one by calling agentboard_responder_duvida (numero and resposta). If the answer changes the Specification, the Plan or the Tasks, update the documents FIRST with agentboard_escrever_documento. If only the user can decide, call agentboard_pedir_ao_usuario (numero and a clear question). Do not implement anything.\n\n${lines}`
+    return `${retry ? 'You have not answered the questions below yet. ' : ''}Questions from the ${[...new Set(items.map((item) => promptRole[item.askerPurpose]))].join(' and ')} of this card. Answer each one by calling agentboard_answer_question (numero and resposta). If the answer changes the Specification, the Plan or the Tasks, update the documents FIRST with agentboard_write_document. If only the user can decide, call agentboard_ask_user (numero and a clear question). Do not implement anything.\n\n${lines}`
   }
 
   private resumeChange(change: ChangeRow, prompt: string): FollowUp {

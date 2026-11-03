@@ -340,7 +340,7 @@ describe('commit do agente', () => {
   it('pedir permissão: registra o pedido, autoriza, commita só os arquivos e marca o agente como autor', async () => {
     const { manager, projectId, sourceId, cardId, chatId, wt, profileId, database } = await setup()
     await writeFile(join(wt, 'a.txt'), 'a\n'); await writeFile(join(wt, 'b.txt'), 'b\n')
-    expect(manager.agentRule(cardId)).toContain('agentboard_pedir_commit')
+    expect(manager.agentRule(cardId)).toContain('agentboard_request_commit')
     const asked = await manager.agentCommit({ cardId, chatId, message: 'Cria a e b\n\nDetalhes', files: ['a.txt'] })
     expect(asked.rule).toBe('ask')
     const [request] = manager.requests(cardId)

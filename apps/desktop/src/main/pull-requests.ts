@@ -3,6 +3,8 @@ import type { AppDatabase } from './database'
 import { nativeCli, type CliRunner } from './git-manager'
 import { nativeGit, type GitRunner } from './worktrees'
 import { tm } from './i18n'
+import type { GitAccounts } from './git-accounts'
+import { guessProvider, HostApi, HostAuthError, type RemoteRef } from './git-host-api'
 
 type Provider = 'github' | 'gitlab'
 const MAX_DIFF = 300_000
@@ -13,6 +15,10 @@ const cliError = (provider: Provider, error: unknown): string => {
   if (/ENOENT|not recognized|não é reconhecido/i.test(text)) return tm().pullRequests.installCli(name, cli)
   if (/auth login|not logged in|authentication|401/i.test(text)) return tm().pullRequests.notAuthenticated(name, cli)
   return text.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !/^Command failed/i.test(line))?.slice(0, 300) ?? tm().pullRequests.cliFailed(name)
+}
+const problemOf = (error: unknown): 'no-cli' | 'not-logged-in' | null => {
+  const text = [(error as { stderr?: string })?.stderr, error instanceof Error ? error.message : String(error)].filter(Boolean).join(' ')
+  return /ENOENT|not recognized|não é reconhecido|Instale o|Install /i.test(text) ? 'no-cli' : /auth login|not logged in|authentication|401|não está autenticado|not authenticated/i.test(text) ? 'not-logged-in' : null
 }
 const countDiff = (diff: string): { additions: number; deletions: number } => {
   let additions = 0, deletions = 0
@@ -33,7 +39,18 @@ interface RawMr {
 /** Pull requests (GitHub, pelo gh) e merge requests (GitLab, pelo glab) por repositório do projeto. Só roda quando a tela pede; nunca guarda credencial. */
 export class PullRequestService {
   private viewers = new Map<Provider, string | null>()
-  constructor(private readonly database: AppDatabase, private readonly cli: CliRunner = nativeCli, private readonly git: GitRunner = nativeGit) {}
+  constructor(private readonly database: AppDatabase, private readonly cli: CliRunner = nativeCli, private readonly git: GitRunner = nativeGit, private readonly accounts?: GitAccounts) {}
+
+  /** Roda pela API com o token do projeto/repositório, se houver; sem token devolve `used: false` e quem chamou cai no gh/glab. */
+  private async viaToken<T>(sourceId: string, run: (api: HostApi, remote: RemoteRef, login: string) => Promise<T>): Promise<{ used: true; value: T } | { used: false }> {
+    const found = await this.accounts?.lookup(sourceId)
+    if (!found || found.status === 'none') return { used: false }
+    if (found.status === 'invalid') throw new Error(tm().gitAccounts.invalidToken(found.remote.host))
+    try { return { used: true, value: await run(new HostApi(found.access), found.remote, found.login) } } catch (error) {
+      if (error instanceof HostAuthError) { await this.accounts!.markInvalid(found.key); throw new Error(tm().gitAccounts.invalidToken(found.remote.host)) }
+      throw error
+    }
+  }
 
   private path(sourceId: string): string {
     const row = this.database.db.prepare('SELECT local_path FROM project_sources WHERE id = ?').pluck().get(sourceId) as string | undefined
@@ -66,7 +83,15 @@ export class PullRequestService {
   }
 
   async list(sourceId: string): Promise<PullRequestList> {
-    const dir = this.path(sourceId), provider = await this.provider(dir)
+    const dir = this.path(sourceId), found = await this.accounts?.lookup(sourceId)
+    if (found?.status === 'invalid') return { supported: true, provider: guessProvider(found.remote.host), error: tm().gitAccounts.invalidToken(found.remote.host), viewer: null, prs: [], via: 'token', problem: 'invalid-token', host: found.remote.host }
+    if (found?.status === 'ok') {
+      try { const prs = await new HostApi(found.access).list(found.remote, found.login); return { supported: true, provider: found.access.provider, error: null, viewer: found.login, prs, via: 'token', problem: null, host: found.remote.host } } catch (error) {
+        if (error instanceof HostAuthError) { await this.accounts!.markInvalid(found.key); return { supported: true, provider: found.access.provider, error: tm().gitAccounts.invalidToken(found.remote.host), viewer: null, prs: [], via: 'token', problem: 'invalid-token', host: found.remote.host } }
+        return { supported: true, provider: found.access.provider, error: (error as Error).message, viewer: null, prs: [], via: 'token', problem: null, host: found.remote.host }
+      }
+    }
+    const provider = await this.provider(dir)
     if (!provider) return { supported: false, provider: null, error: tm().pullRequests.unsupportedRepo, viewer: null, prs: [] }
     try {
       const viewer = await this.viewer(provider, dir)
@@ -86,11 +111,13 @@ export class PullRequestService {
           reviewRequested: Boolean(viewer && mr.reviewers?.some((item) => item.username === viewer))
         }))
       }
-      return { supported: true, provider, error: null, viewer, prs }
-    } catch (error) { return { supported: true, provider, error: error instanceof SyntaxError ? `Resposta inesperada do ${cliOf(provider)}.` : (error as Error).message, viewer: null, prs: [] } }
+      return { supported: true, provider, error: null, viewer, prs, via: 'cli', problem: null, host: found?.remote?.host ?? null }
+    } catch (error) { return { supported: true, provider, error: error instanceof SyntaxError ? `Resposta inesperada do ${cliOf(provider)}.` : (error as Error).message, viewer: null, prs: [], via: 'cli', problem: problemOf(error), host: found?.remote?.host ?? null } }
   }
 
   async view(sourceId: string, number: number): Promise<PullRequestDetail> {
+    const viaApi = await this.viaToken(sourceId, (api, remote) => api.view(remote, number))
+    if (viaApi.used) return viaApi.value
     const dir = this.path(sourceId), provider = await this.need(dir)
     if (provider === 'gitlab') return this.viewMr(dir, number)
     const raw = JSON.parse(await this.exec(provider, dir, ['pr', 'view', String(number), '--json', 'number,title,body,url,state,isDraft,headRefName,baseRefName,reviewDecision,author,comments,reviews,files,additions,deletions,mergeable'])) as {
@@ -134,11 +161,18 @@ export class PullRequestService {
   }
 
   async comment(sourceId: string, number: number, body: string): Promise<void> {
+    if ((await this.viaToken(sourceId, (api, remote) => api.comment(remote, number, body))).used) return
     const dir = this.path(sourceId), provider = await this.need(dir)
     await this.exec(provider, dir, provider === 'gitlab' ? ['mr', 'note', String(number), '-m', body] : ['pr', 'comment', String(number), '--body', body])
   }
 
   async review(sourceId: string, number: number, action: 'approve' | 'request-changes' | 'comment', body: string): Promise<void> {
+    if (await this.accounts?.lookup(sourceId).then((found) => found.status !== 'none')) {
+      const found = await this.accounts!.lookup(sourceId)
+      if (found.status === 'ok' && found.access.provider === 'gitlab' && action === 'request-changes') throw new Error(tm().pullRequests.gitlabNoRequestChanges)
+      if (action !== 'approve' && !body.trim()) throw new Error(tm().pullRequests.writeReviewComment)
+      if ((await this.viaToken(sourceId, (api, remote) => api.review(remote, number, action, body))).used) return
+    }
     const dir = this.path(sourceId), provider = await this.need(dir)
     if (provider === 'gitlab') {
       if (action === 'request-changes') throw new Error(tm().pullRequests.gitlabNoRequestChanges)
@@ -153,8 +187,11 @@ export class PullRequestService {
 
   /** Publica a branch e abre o PR/MR. O título e o corpo vêm da tela; nada é enviado sem o usuário pedir. */
   async create(sourceId: string, input: { head: string; base: string; title: string; body: string; draft: boolean }): Promise<{ url: string }> {
-    const dir = this.path(sourceId), provider = await this.need(dir)
+    const dir = this.path(sourceId), provider = await this.provider(dir) ?? 'gitlab'
     try { await this.git.run(['-C', dir, 'push', '-u', 'origin', input.head]) } catch (error) { throw new Error(tm().pullRequests.couldNotPublishBranch(cliError(provider, error))) }
+    const viaApi = await this.viaToken(sourceId, (api, remote) => api.create(remote, input))
+    if (viaApi.used) return viaApi.value
+    await this.need(dir)
     const output = await this.exec(provider, dir, provider === 'gitlab'
       ? ['mr', 'create', '--source-branch', input.head, '--target-branch', input.base, '--title', input.title, '--description', input.body, '--yes', ...(input.draft ? ['--draft'] : [])]
       : ['pr', 'create', '--head', input.head, '--base', input.base, '--title', input.title, '--body', input.body, ...(input.draft ? ['--draft'] : [])])

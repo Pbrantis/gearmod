@@ -9,7 +9,7 @@ const elapsed = (from: string, to: string | null, now: number): string => {
 /** Subagentes e comandos em segundo plano do chat, lidos dos eventos que o agente já emite. Some quando o chat nunca usou segundo plano. */
 export function AgentBackground({ chatId }: { chatId?: string }): React.JSX.Element | null {
   const t = useT().chat.background
-  const [tasks, setTasks] = useState<BackgroundTask[]>([]), [open, setOpen] = useState(false), [now, setNow] = useState(Date.now()), box = useRef<HTMLSpanElement>(null)
+  const [tasks, setTasks] = useState<BackgroundTask[]>([]), [open, setOpen] = useState(false), [now, setNow] = useState(Date.now()), [expanded, setExpanded] = useState<string[]>([]), box = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     setTasks([]); setOpen(false)
     if (!chatId) return
@@ -29,12 +29,14 @@ export function AgentBackground({ chatId }: { chatId?: string }): React.JSX.Elem
   return <span className="modewrap bgtasks" ref={box}>
     <button type="button" className={`modechip ${open ? 'on' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => { setNow(Date.now()); setOpen(!open) }} data-tip={t.tip}>{running > 0 && <i className="bgdot" />}{running > 0 ? t.runningCount(running) : t.title}</button>
     {open && <div className="modemenu bgmenu" role="dialog" aria-label={t.tasks}><div className="mm-title">{t.title}</div>
-      {tasks.map((task) => <div className={`bgtask ${task.status}`} key={task.id}>
-        <div className="bgrow"><b>{task.kind === 'subagent' ? t.subagent : t.command}</b><span className="bgstate">{t.status[task.status]} · {elapsed(task.startedAt, task.endedAt, now)}</span></div>
-        <div className="bgtitle" data-tip={task.title}>{task.title || t.noDescription}</div>
-        {task.status === 'running' && task.activity && <small className="bgact" data-tip={task.activity}>{task.activity}</small>}
-        {task.status !== 'running' && task.summary && task.summary !== task.title && <small className="bgact" data-tip={task.summary}>{task.summary}</small>}
-      </div>)}
+      <div className="bglist">{tasks.map((task) => { const shown = expanded.includes(task.id), detail = task.status === 'running' ? task.activity : task.summary
+        return <div className={`bgtask ${task.status} ${shown ? 'open' : ''}`} key={task.id}>
+          <button type="button" className="bghead" aria-expanded={shown} onClick={() => setExpanded(shown ? expanded.filter((id) => id !== task.id) : [...expanded, task.id])}>
+            <span className="bgrow"><b>{task.kind === 'subagent' ? t.subagent : t.command}</b><span className="bgstate"><span className={`bgico ${task.status}`} role="img" aria-label={t.status[task.status]} data-tip={t.status[task.status]}>{task.status === 'running' ? <i className="bgspin" /> : <svg viewBox="0 0 16 16" aria-hidden="true">{task.status === 'completed' ? <path d="m3.5 8.5 3 3 6-6.5" /> : task.status === 'failed' ? <path d="m4 4 8 8M12 4l-8 8" /> : <rect x="4.5" y="4.5" width="7" height="7" rx="1" />}</svg>}</span>{elapsed(task.startedAt, task.endedAt, now)}</span><span className="chev" aria-hidden="true">›</span></span>
+            {!shown && <span className="bgtitle">{task.title || t.noDescription}</span>}
+          </button>
+          {shown && <div className="bgfull"><pre>{task.title || t.noDescription}</pre>{detail && detail !== task.title && <pre className="bgdetail">{detail}</pre>}</div>}
+        </div> })}</div>
     </div>}
   </span>
 }

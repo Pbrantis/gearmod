@@ -6,6 +6,8 @@ import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { withErrorCode, type GitSnapshot, type Worktree } from '@agentboard/contracts'
 import type { AppDatabase } from './database'
+import { branchPrefixOf, findCardType } from '@agentboard/contracts'
+import { projectCardTypes } from './card-types'
 import { tm } from './i18n'
 
 const exec = promisify(execFile)
@@ -55,7 +57,7 @@ export class WorktreeService {
   }
 
   /**
-   * Worktree composta do card: uma pasta por repositório envolvido (`cards.repo_ids`; vazio = todos do projeto, como antes), todas na
+   * Worktree composta do card: uma pasta por repositório envolvido (`cards.repo_ids`; vazio = só o primeiro repositório do projeto, os outros entram sob demanda), todas na
    * mesma branch. Falha num repositório não desfaz os outros: ele fica `failed` com o erro e a próxima preparação tenta de novo.
    * Repositório que entra no card depois (o agente descobriu que precisa) ganha a sua pasta na worktree que já existe.
    */
@@ -74,20 +76,22 @@ export class WorktreeService {
     const existing = this.get(cardId)
     const alive = existing && await exists(existing.path) ? existing : null
     if (existing && !alive) this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'missing' WHERE id = ?`).run(existing.id)
-    const card = this.database.db.prepare(`SELECT c.title, c.project_id AS projectId, c.base_branch AS baseBranch, c.repo_ids AS repoIds, p.local_path AS projectPath
-      FROM cards c JOIN projects p ON p.id = c.project_id WHERE c.id = ?`).get(cardId) as { title: string; projectId: string; baseBranch: string | null; repoIds: string | null; projectPath: string } | undefined
+    const card = this.database.db.prepare(`SELECT c.title, c.type AS type, c.project_id AS projectId, c.base_branch AS baseBranch, c.repo_ids AS repoIds, p.local_path AS projectPath
+      FROM cards c JOIN projects p ON p.id = c.project_id WHERE c.id = ?`).get(cardId) as { title: string; type: string; projectId: string; baseBranch: string | null; repoIds: string | null; projectPath: string } | undefined
     if (!card) throw new Error(tm().common.cardNotFound)
     const all = await this.gitSources(card.projectId, card.projectPath)
     if (!all.length) throw new Error(tm().worktrees.noGitRepoFound)
     const wanted = card.repoIds ? JSON.parse(card.repoIds) as string[] : null
-    const sources = wanted?.length ? all.filter((source) => wanted.includes(source.id)) : all
+    // Sem repositórios escolhidos no card, só o primeiro ganha worktree; os outros entram sob demanda (ensureMember) quando o agente precisar.
+    const sources = wanted?.length ? all.filter((source) => wanted.includes(source.id)) : all.slice(0, 1)
     if (!sources.length) throw new Error(tm().worktrees.chosenReposGone)
     // Caminho curto (wt/<8 letras do card>/<repo>): no Windows o limite de 260 caracteres quebra repositórios com nomes longos (migrations etc.).
     const short = cardId.slice(0, 8), path = alive?.path ?? join(this.dataDir, 'wt', short)
     await mkdir(path, { recursive: true })
     const slug = plain(card.title).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 36) || 'task'
     // Worktree recriada (pasta apagada) continua na branch que já tinha, mesmo que o nome gerado tenha mudado.
-    const branch = existing?.branch ?? `agentboard/${slug}-${short}`
+    // A branch nasce com o prefixo do tipo do card, em inglês por padrão (feature/, fix/, hotfix/...); quem quiser muda o prefixo no tipo.
+    const branch = existing?.branch ?? `${branchPrefixOf(findCardType(projectCardTypes(this.database.db, card.projectId).types, card.type), card.type)}/${slug}-${short}`
     const current = alive ? this.members(alive.id) : []
     const todo = sources.filter((source) => !current.some((member) => same(member.repoPath, source.repoPath) && member.status === 'active' && existsSync(member.path)))
     if (alive && !todo.length) return alive

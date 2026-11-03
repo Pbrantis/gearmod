@@ -7,7 +7,8 @@ import { cardDocumentKinds, permissionModes, defaultPermissionMode, type AgentPr
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
 import { DeleteCardDialog } from './DeleteCardDialog'
-import { BranchIcon, ChatIcon, CollapseIcon, TreeIcon, ExpandIcon, EyeIcon, PencilIcon, SplitIcon } from './icons'
+import { WorktreeDeleteDialog } from './WorktreeDelete'
+import { BranchIcon, ChatIcon, FolderGlyph, TrashIcon, CollapseIcon, TreeIcon, ExpandIcon, EyeIcon, PencilIcon, SplitIcon } from './icons'
 import { Markdown } from './markdown'
 import { TokenUsage } from './TokenUsage'
 import { TestChecklist } from './TestChecklist'
@@ -41,10 +42,10 @@ const toTexts = (docs: CardDocuments): Texts => ({ resumo: docs.resumo.contentMd
 const topLevel = (markdown: string): { done: number; total: number } => { const items = markdown.split('\n').filter((line) => /^[-*+]\s+\[( |x|X)\]/.test(line)); return { total: items.length, done: items.filter((line) => !/\[ \]/.test(line)).length } }
 
 /** Editor do card (protótipo): dados e agentes à esquerda, documento Markdown no meio e a lista dos 4 documentos à direita. */
-export function CardEditor({ projectId, sources, profiles, cardTypes, draft: start, close, saved, openChat, onStart, pending, onPending }: { projectId: string; sources: ProjectSource[]; profiles: AgentProfile[]; cardTypes: CardTypeDef[]; pending?: { changes: number; questions: number; toSend?: number }; onPending?(): void; draft: Draft; close(): void; saved(): void; openChat?(purpose: AgentPurpose): void; onStart?(purpose: 'execution' | 'test'): void }): React.JSX.Element {
-  const { board: tb, common } = useT(), t = tb.editor, labels = tb.docKinds
+export function CardEditor({ projectId, sources, profiles, cardTypes, draft: start, close, saved, openChat, onStart, pending, onPending }: { projectId: string; sources: ProjectSource[]; profiles: AgentProfile[]; cardTypes: CardTypeDef[]; pending?: { changes: number; questions: number; toSend?: number }; onPending?(): void; draft: Draft; close(): void; saved(): void; openChat?(purpose?: AgentPurpose): void; onStart?(purpose: 'execution' | 'test'): void }): React.JSX.Element {
+  const { board: tb, common, git: tg } = useT(), t = tb.editor, labels = tb.docKinds, tw = tg.worktreeDelete
   const priorityOptions = priorities.map((item) => ({ ...item, label: tb.priority[item.value] }))
-  const [workspace, setWorkspace] = useState<Card['workspace']>(null), [complexity, setComplexity] = useState<Card>(), [assessing, setAssessing] = useState(false)
+  const [workspace, setWorkspace] = useState<Card['workspace']>(null), [complexity, setComplexity] = useState<Card>(), [assessing, setAssessing] = useState(false), [assessTab, setAssessTab] = useState<'avaliacao' | 'metricas'>('avaliacao')
   useEffect(() => { if (start.id) void window.agentboard.invoke('cards:get', { cardId: start.id }).then((card) => { setWorkspace(card.workspace); setComplexity(card) }).catch(() => undefined) }, [start.id])
   const [d, set] = useState(start), [chosenKind, setKind] = useState<CardDocumentKind>('resumo'), [mode, setMode] = useState<Mode>(start.id ? 'prev' : 'write'), [texts, setTexts] = useState<Texts>(empty), [original, setOriginal] = useState<Texts>(empty)
   // Fluxo curto só tem o Resumo, que aqui é o "O que fazer"; os outros documentos não existem nele.
@@ -130,7 +131,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
       {chat && <button type="button" className="mini danger delchat" onClick={() => setDeleting(purpose)}>{t.deleteChat}</button>}
     </div>
   }
-  const [wsOpen, setWsOpen] = useState(false), [wide, setWide] = useState(false), [wsRepos, setWsRepos] = useState<GitCard['repos']>(), [openRepos, setOpenRepos] = useState<string[]>([])
+  const [wsOpen, setWsOpen] = useState(false), [wsDeleteRepo, setWsDeleteRepo] = useState<string>(), [wide, setWide] = useState(false), [wsRepos, setWsRepos] = useState<GitCard['repos']>(), [openRepos, setOpenRepos] = useState<string[]>([]), [wsDelete, setWsDelete] = useState(false)
   const [openSec, setOpenSec] =useState<Partial<Record<AgentPurpose, boolean>>>({})
   const startLabel: Record<'execution' | 'test', string> = { execution: tb.start.startExecution, test: tb.start.startTest }
   // Planejamento sempre aparece; execução e teste só depois de iniciados (antes disso é um botão que escolhe o agente e já começa).
@@ -150,11 +151,11 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
   useEffect(() => { if (wsOpen && d.id) void window.agentboard.invoke('git:card', { cardId: d.id }).then((git) => setWsRepos(git.repos)).catch(() => setWsRepos([])) }, [wsOpen, d.id])
   const text = texts[kind]
   return <div className="overlay full card-editor-overlay"><div className="modal wide" role="dialog" aria-label={d.id ? t.editCard : tb.newCard}>
-    <header><div><h2><input className="titlein" aria-label={t.title} value={d.title} placeholder={tb.untitled} onChange={(e) => set({ ...d, title: e.target.value })} /></h2>{assessing && complexity && <AssessmentDialog card={complexity} close={() => setAssessing(false)} changed={() => { void window.agentboard.invoke('cards:get', { cardId: complexity.id }).then(setComplexity).catch(() => undefined) }} />}</div><div className="hdr-actions">{d.id && pending && (pending.changes > 0 || pending.questions > 0) && <button type="button" className="mini ask" onClick={onPending}>{t.authorizeChanges(pending.changes + pending.questions)}</button>}{d.id && openChat && <button type="button" className="mini secondary openchat" onClick={() => openChat('planning')}><ChatIcon />{tb.tile.openChat}</button>}<button type="button" className="x" onClick={close} aria-label={common.close}>×</button></div></header>
+    <header><div><h2><input className="titlein" aria-label={t.title} value={d.title} placeholder={tb.untitled} onChange={(e) => set({ ...d, title: e.target.value })} /></h2>{assessing && complexity && <AssessmentDialog initialTab={assessTab} card={complexity} close={() => setAssessing(false)} changed={() => { void window.agentboard.invoke('cards:get', { cardId: complexity.id }).then(setComplexity).catch(() => undefined) }} />}</div><div className="hdr-actions">{d.id && pending && (pending.changes > 0 || pending.questions > 0) && <button type="button" className="mini ask" onClick={onPending}>{t.authorizeChanges(pending.changes + pending.questions)}</button>}{d.id && <button type="button" className="mini secondary openchat" onClick={() => window.dispatchEvent(new CustomEvent('agentboard:open-file', { detail: { projectId, cardId: d.id } }))}><FolderGlyph />{tb.tile.openCardFiles}</button>}{d.id && openChat && <button type="button" className="mini secondary openchat" onClick={() => openChat()}><ChatIcon />{tb.tile.openChat}</button>}<button type="button" className="x" onClick={close} aria-label={common.close}>×</button></div></header>
     <form onSubmit={(e) => void submit(e)} style={{ display: 'contents' }}>
       <div className={`editor docs ${small ? 'smallcard' : ''} ${wide ? 'wide' : ''}`}>
         <div className="stack pane-left" style={{ alignContent: 'start' }}>
-          {complexity && <div className="cxtop"><ComplexityBadge full complexity={complexity.complexity} onClick={() => setAssessing(true)} /></div>}
+          {complexity && <div className="cxtop"><ComplexityBadge full complexity={complexity.complexity} onClick={() => { setAssessTab('avaliacao'); setAssessing(true) }} />{d.id && <button type="button" className="mini secondary tip cx-artifacts" data-tip={tb.assessment.openArtifacts} aria-label={tb.assessment.openArtifacts} onClick={() => { void window.agentboard.invoke('history:open-folder', { cardId: d.id! }).catch((reason) => setError(plainError(reason))) }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.5h6l3 3v8a1.5 1.5 0 0 1-1.5 1.5h-7.5A1.5 1.5 0 0 1 4.5 14.5v-9A1.5 1.5 0 0 1 6 3.5Z" /><path d="M12 3.5v3h3M7.5 10h5M7.5 13h3.5" /></svg></button>}</div>}
           <div className="f"><span>{t.type}</span><Select label={t.type} options={cardTypeOptions(cardTypes, d.type)} value={d.type} onChange={(value) => set({ ...d, type: value })} /></div>
           <div className="f"><span>{t.priority}</span><Select label={t.priority} options={priorityOptions} value={d.priority} onChange={(value) => set({ ...d, priority: value as Card['priority'] })} /></div>
           {d.id && complexity && <div className="f"><span>{t.flow.label}</span><span className={`flowchip tip ${complexity.workflow ? '' : 'none'}`} data-tip={t.flow.tip}>{!complexity.workflow ? t.flow.none : complexity.workflow === 'sdd' ? t.flow[complexity.sddMethod ?? 'sdd'] : t.flow[complexity.workflow]}</span></div>}
@@ -165,7 +166,6 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
             // Tarefa pequena que o próprio planejador já tocou: é um agente só (planeja, executa e valida) e um chat só, então aparece como "Agente".
             ? section('planning', planAgent, common.agent)
             : <>{!small && section('planning', planAgent)}{section('execution', execAgent)}{!small && section('test', testAgent)}</>)}
-          {d.id && small && <TokenUsage cardId={d.id} small />}
           {d.id && workspace && <div className="f"><span>{t.branchAndWorktree}</span><div className="wsbox"><button type="button" className="wsfold" aria-expanded={wsOpen} onClick={() => setWsOpen(!wsOpen)}><BranchIcon /><b>{workspace.branch}</b><span className="chev" aria-hidden="true">›</span></button><div className="wsmeta"><small className="wsbase">{t.base(workspace.baseRef)}</small></div>{wsOpen && (wsRepos?.length ? <ul className="wsrepos">{wsRepos.map((repo) => { const shown = openRepos.includes(repo.sourceId), touched = repo.ahead > 0 || repo.files.length > 0
     return <li key={repo.sourceId} className={`wstree ${touched ? 'touched' : ''}`}>
       <button type="button" className="wstree-head" aria-expanded={shown} onClick={() => setOpenRepos(shown ? openRepos.filter((id) => id !== repo.sourceId) : [...openRepos, repo.sourceId])}>
@@ -173,8 +173,8 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
         {repo.state !== 'active' && <small className="cx-warn">{repo.state === 'failed' ? tb.delivery.repoState.failed : tb.delivery.repoState.missing}</small>}
         {touched && <small className="wstree-n" data-tip={t.cardTouchedRepo}>{repo.ahead > 0 ? tb.delivery.commitCount(repo.ahead) : ''}{repo.ahead > 0 && repo.files.length > 0 ? ' · ' : ''}{repo.files.length > 0 ? tb.delivery.uncommitted(repo.files.length) : ''}</small>}
         <span className="chev" aria-hidden="true">›</span></button>
-      {shown && <div className="wstree-body"><small className="wstree-path" data-tip={repo.worktreePath}>{repo.worktreePath}</small><small className="wsbase">{t.base(repo.baseRef)}</small></div>}
-    </li> })}</ul> : <small data-tip={workspace.path}>Worktree: {workspace.path}</small>)}</div></div>}
+      {shown && <div className="wstree-body"><small className="wstree-path" data-tip={repo.worktreePath}>{repo.worktreePath}</small><small className="wsbase">{t.base(repo.baseRef)}</small><button type="button" className="wsdel" onClick={() => setWsDeleteRepo(repo.sourceId)}><TrashIcon />{tw.deleteOne}</button></div>}
+    </li> })}</ul> : <small data-tip={workspace.path}>Worktree: {workspace.path}</small>)}{wsOpen && <button type="button" className="wsdel all" onClick={() => setWsDelete(true)}><TrashIcon />{tw.deleteButton}</button>}</div>{wsDelete && <WorktreeDeleteDialog cardId={d.id!} close={() => setWsDelete(false)} done={() => { setWsDelete(false); setWsRepos(undefined); window.dispatchEvent(new Event('agentboard:board-changed')) }} />}{wsDeleteRepo && <WorktreeDeleteDialog cardId={d.id!} sourceId={wsDeleteRepo} close={() => setWsDeleteRepo(undefined)} done={() => { setWsDeleteRepo(undefined); setWsRepos(undefined); window.dispatchEvent(new Event('agentboard:board-changed')) }} />}</div>}
           {gitSources.length === 0 && <p className="hint">{t.noGit}</p>}
         </div>
         <div className="stack pane-mid" style={{ minWidth: 0 }}>
@@ -196,11 +196,10 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
           {checklist.trim() && <button type="button" className={`docbtn ${testsView ? 'on' : ''}`} onClick={() => setTestsView(true)}><span className="dn">{t.tests}</span><span className="ds">{testItems ? `${testDone}/${testItems}` : t.written}</span>{testItems > 0 && <span className="dprog"><i style={{ width: `${Math.round((testDone / testItems) * 100)}%` }} /></span>}</button>}
           {hiddenKinds.length > 0 && <div className="docadd">{addingDoc ? hiddenKinds.map((k) => <button type="button" key={k} className="mini secondary" onClick={() => { setAddingDoc(false); setKind(k); setMode('write') }}>{labels[k]}</button>)
             : <button type="button" className="mini secondary" onClick={() => setAddingDoc(true)}>{t.addDocument}</button>}</div>}
-          {d.id && <TokenUsage cardId={d.id} />}
         </div>}
       </div>
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
-      <div className="actions">{d.id && <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={() => setConfirming(true)}>{tb.contextMenu.deleteCard}</button>}{d.id && <Switch className="tip" tip={t.autosaveTip} checked={auto} onChange={setAutoSave}>{t.autosave}{auto && autoState && <small>{autoState === 'saving' ? common.saving : t.saved}</small>}</Switch>}<button type="button" className="secondary" onClick={close}>{common.cancel}</button><button disabled={busy || !loaded || !d.title.trim()}>{busy ? common.saving : t.saveCard}</button></div>
+      <div className="actions">{d.id && <button type="button" className="danger" onClick={() => setConfirming(true)}>{tb.contextMenu.deleteCard}</button>}{d.id && <div className="cefoot-tokens"><TokenUsage cardId={d.id} small={small} onOpenDetails={complexity ? () => { setAssessTab('metricas'); setAssessing(true) } : undefined} /></div>}<span className="grow1" />{d.id && <Switch className="tip" tip={t.autosaveTip} checked={auto} onChange={setAutoSave}>{t.autosave}{auto && autoState && <small>{autoState === 'saving' ? common.saving : t.saved}</small>}</Switch>}<button type="button" className="secondary" onClick={close}>{common.cancel}</button><button disabled={busy || !loaded || !d.title.trim()}>{busy ? common.saving : t.saveCard}</button></div>
     </form>
     {deleting && d.id && <ConfirmDialog eyebrow={t.deleteChat} title={t.deleteChatTitle(stepTitle[deleting].toLowerCase())} text={t.deleteChatText} ok={t.deleteChat} danger cancel={() => setDeleting(undefined)} confirm={() => { const chat = chatOf(deleting); setDeleting(undefined); if (chat) void window.agentboard.invoke('chats:reset', { chatId: chat.id }).then(() => loadChats()).catch((reason: unknown) => setError(plainError(reason))) }} />}
     {resetting && d.id && <ConfirmDialog eyebrow={t.switchAgent} title={t.resetChatTitle} text={t.resetChatText} ok={t.resetChat} danger cancel={() => setResetting(undefined)} confirm={() => { const purpose = resetting, chat = chatOf(purpose); setResetting(undefined); if (chat) void window.agentboard.invoke('chats:reset', { chatId: chat.id }).then(() => loadChats()).catch((reason: unknown) => setError(plainError(reason))) }} />}

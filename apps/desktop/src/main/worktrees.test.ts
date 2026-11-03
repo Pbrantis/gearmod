@@ -52,13 +52,13 @@ describe('WorktreeService', () => {
     expect(a.id).toBe(b.id)
     // Uma tentativa anterior que falhou deixou a branch presa numa worktree pela metade: a próxima solta e recria.
     const accented = board.create({ projectId: project.id, columnId: column.id, title: 'Botão de reset', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
-    const stale = join(data, 'worktrees', 'antiga'), branch = `agentboard/botao-de-reset-${accented.id.slice(0, 8)}`
+    const stale = join(data, 'worktrees', 'antiga'), branch = `task/botao-de-reset-${accented.id.slice(0, 8)}`
     await exec('git', ['-C', repo, 'worktree', 'add', '-b', branch, stale, 'dev'])
     // D5: branch velha sem commits próprios é recriada na base de agora; com commits próprios é reaproveitada.
     const oldTip = (await exec('git', ['-C', repo, 'rev-parse', 'dev'])).stdout.trim()
     const parked = board.create({ projectId: project.id, columnId: column.id, title: 'Parada', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const kept = board.create({ projectId: project.id, columnId: column.id, title: 'Com trabalho', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
-    const parkedBranch = `agentboard/parada-${parked.id.slice(0, 8)}`, keptBranch = `agentboard/com-trabalho-${kept.id.slice(0, 8)}`
+    const parkedBranch = `task/parada-${parked.id.slice(0, 8)}`, keptBranch = `task/com-trabalho-${kept.id.slice(0, 8)}`
     await exec('git', ['-C', repo, 'branch', parkedBranch, oldTip]); await exec('git', ['-C', repo, 'branch', keptBranch, oldTip])
     await exec('git', ['-C', repo, 'worktree', 'add', join(data, 'tmp-kept'), keptBranch]); await writeFile(join(data, 'tmp-kept', 'meu.txt'), 'x')
     await exec('git', ['-C', join(data, 'tmp-kept'), 'add', '.']); await exec('git', ['-C', join(data, 'tmp-kept'), 'commit', '-m', 'trabalho antigo']); await exec('git', ['-C', repo, 'worktree', 'remove', '--force', join(data, 'tmp-kept')])

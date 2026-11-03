@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import type { PullRequestDetail, PullRequestSummary } from '@agentboard/contracts'
+import type { PullRequestDetail, PullRequestList, PullRequestSummary } from '@agentboard/contracts'
 import { toast } from './toasts'
 import type { PullRequestsState } from './usePullRequests'
 import { plainError } from './NoticeDialog'
@@ -70,12 +70,24 @@ function PrCreate({ sourceId, branches, head, back, created }: { sourceId: strin
   </form>
 }
 
+/** Abre a configuração do projeto na aba Git, onde ficam as contas (tokens). */
+export const openGitAccounts = (): void => { window.dispatchEvent(new CustomEvent('agentboard:open-project-config', { detail: { tab: 'git' } })) }
+
+/** Por que os PRs não carregaram, com a saída certa: atualizar o token vencido ou adicionar um (no lugar do gh/glab). */
+export function PrAccessNotice({ list }: { list: PullRequestList }): React.JSX.Element | null {
+  const ta = useT().git.accounts
+  if (list.problem === 'invalid-token') return <div className="cx-note warn gacc-note"><i className="gacc-dot" aria-hidden="true" /><span>{list.error ?? ta.invalidBanner}</span><button type="button" className="mini" onClick={openGitAccounts}>{ta.updateToken}</button></div>
+  if (list.problem === 'no-cli' || list.problem === 'not-logged-in') return <div className="cx-note gacc-note"><span>{list.error}</span><button type="button" className="mini" onClick={openGitAccounts}>{ta.needToken}</button></div>
+  return list.error ? <p className="error">{list.error}</p> : null
+}
+
 /** Lateral direita do Git: PRs abertos do repositório, com a bolinha amarela nos que têm novidade. */
-export function PrPanel({ sourceId, repoName, branches, head, prs, close }: { sourceId: string; repoName: string; branches: string[]; head: string | null; prs: PullRequestsState; close(): void }): React.JSX.Element {
+export function PrPanel({ sourceId, repoName, branches, head, prs, focus, close }: { focus?: { number: number; at: number }; sourceId: string; repoName: string; branches: string[]; head: string | null; prs: PullRequestsState; close(): void }): React.JSX.Element {
   const { common, git: { pr: t } } = useT(), decisionLabel = t.decision
   const [open, setOpen] = useState<PullRequestSummary>(), [creating, setCreating] = useState(false), [loading, setLoading] = useState(false)
   const list = prs.lists[sourceId]
   useEffect(() => { setOpen(undefined); setCreating(false) }, [sourceId])
+  useEffect(() => { const found = focus && list?.prs.find((item) => item.number === focus.number); if (found) { prs.markSeen(sourceId, found); setCreating(false); setOpen(found) } }, [focus?.at])
   const pick = (pr: PullRequestSummary): void => { prs.markSeen(sourceId, pr); setOpen(pr) }
   const reload = (): void => { setLoading(true); void prs.refresh(sourceId).finally(() => setLoading(false)) }
   if (creating) return <aside className="gdetail gprs"><PrCreate sourceId={sourceId} branches={branches} head={head} back={() => setCreating(false)} created={() => { setCreating(false); reload() }} /></aside>
@@ -85,7 +97,7 @@ export function PrPanel({ sourceId, repoName, branches, head, prs, close }: { so
     <div className="pract"><button type="button" className="mini" onClick={() => setCreating(true)} disabled={list?.supported === false || branches.length < 2}>{t.newButton}</button><button type="button" className="mini" onClick={reload} disabled={loading}>{loading ? '…' : common.refresh}</button></div>
     {!list && <p className="gempty">{common.loading}</p>}
     {list && !list.supported && <p className="hint">{list.error}</p>}
-    {list?.supported && list.error && <p className="error">{list.error}</p>}
+    {list?.supported && list.error && <PrAccessNotice list={list} />}
     {list?.supported && !list.error && !list.prs.length && <p className="gempty">{t.noOpen}</p>}
     {list?.prs.map((pr) => <button type="button" className="prrow" key={pr.number} onClick={() => pick(pr)}>
       <span className="prtitle">{prs.isUnread(sourceId, pr) && <i className="ydot" data-tip={t.newsTip} />}#{pr.number} {pr.title}</span>

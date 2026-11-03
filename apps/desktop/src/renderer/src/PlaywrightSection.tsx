@@ -16,7 +16,7 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
   const [status, setStatus] = useState<PlaywrightStatus>(), [sources, setSources] = useState<Array<{ id: string; name: string; node: boolean }>>([]), [sourceId, setSourceId] = useState('')
   const [version, setVersion] = useState(''), [browser, setBrowser] = useState(true), [skills, setSkills] = useState<Array<'claude' | 'agents'>>([])
   const [confirming, setConfirming] = useState(false), [removing, setRemoving] = useState<string>(), [downloading, setDownloading] = useState(false), [error, setError] = useState('')
-  const [processId, setProcessId] = useState<string>(), [processOpen, setProcessOpen] = useState(false)
+  const [picking, setPicking] = useState(false), [available, setAvailable] = useState<string[]>(), [pickError, setPickError] = useState(''), [processId, setProcessId] = useState<string>(), [processOpen, setProcessOpen] = useState(false)
   useEffect(() => {
     void window.agentboard.invoke('playwright:status', { projectId }).then(setStatus).catch((reason) => setError(plainError(reason)))
     void window.agentboard.invoke('playwright:sources', { projectId }).then((found) => { setSources(found); setSourceId((current) => current || found[0]?.id || '') }).catch(() => undefined)
@@ -31,6 +31,10 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
   }, [busy, projectId])
   const act = async (call: () => Promise<PlaywrightStatus>): Promise<void> => { setError(''); try { setStatus(await call()) } catch (reason) { setError(plainError(reason)) } }
   const downloadBrowser = async (): Promise<void> => { setDownloading(true); await act(() => window.agentboard.invoke('playwright:install-browser', { projectId })); setDownloading(false) }
+  const openPicker = async (): Promise<void> => {
+    setPicking(true); setAvailable(undefined); setPickError('')
+    try { const list = await window.agentboard.invoke('playwright:versions', undefined); setAvailable(list); setVersion((current) => list.includes(current) ? current : list[0] ?? '') } catch (reason) { setPickError(plainError(reason)) }
+  }
   const runInstall = (): void => {
     setConfirming(false); setError('')
     const wanted = version.trim() || 'latest'
@@ -67,22 +71,25 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
       <div className="cx-offerrow">
         <label className="ck-line"><Checkbox checked={enabled} disabled={status.versions.length === 0} onChange={toggle} /> {tw.offer}</label>
       </div>
-      <h5 className="pw-subtitle">{tw.installNew}</h5>
       <div className="pw-install-row">
-        <label className="f"><span>{tw.versionLabel}</span><input className="in" value={version} placeholder={tw.versionPlaceholder} onChange={(event) => setVersion(event.target.value)} /></label>
-        <button type="button" className="mini secondary" disabled={busy || !version.trim()} onClick={() => setConfirming(true)}>{busy ? tw.installing : tw.install}</button>
+        <button type="button" className="mini secondary" disabled={busy} onClick={() => void openPicker()}>{busy ? tw.installing : tw.installNew}</button>
+        {newerThanInstalled && latest && <span className="cx-muted">{tw.latestHint(latest)}</span>}
       </div>
-      {newerThanInstalled && latest && <p className="cx-muted">{tw.latestHint(latest)}</p>}
       {status.error && <div className="cx-error">{status.error}</div>}
     </> : <p className="cx-muted">{tw.checking}</p>}
     </section>
     {error && <div className="cx-error">{error}</div>}
+    {picking && !confirming && <ConfirmDialog eyebrow="Playwright CLI" title={tw.pickTitle} text={tw.pickText} extra={<div className="pw-pick">
+      {pickError ? <div className="cx-error">{pickError}</div> : !available ? <p className="cx-muted">{tw.loadingVersions}</p> : <ul className="pw-pick-list" role="listbox" aria-label={tw.pickTitle}>{available.map((item, index) => { const installed = status?.versions.some((entry) => entry.version === item) ?? false
+        return <li key={item}><button type="button" role="option" aria-selected={version === item} disabled={installed} className={`pw-pick-row ${version === item ? 'on' : ''}`} onClick={() => setVersion(item)}>
+          <code>v{item}</code>{index === 0 && <span className="pw-chip">{tw.newest}</span>}{installed && <span className="pw-chip ok"><i aria-hidden="true" />{tw.installedTag}</span>}</button></li> })}</ul>}
+    </div>} ok={tw.install} okDisabled={!version.trim() || !available || (status?.versions.some((entry) => entry.version === version) ?? false)} cancel={() => setPicking(false)} confirm={() => setConfirming(true)} />}
     {confirming && <ConfirmDialog eyebrow="Playwright CLI" title={tw.confirmTitle} text={tw.confirmText} extra={<div className="pw-install">
       <div className="pw-plan"><span className="pw-planlabel">{tw.command}</span><code>npm install @playwright/cli@{version.trim() || 'latest'}</code><small>{tw.installIn(status?.toolsDir ?? '')}</small></div>
       <label className="ck-line"><Checkbox checked={browser} onChange={setBrowser} /><span className="t">{tw.downloadBrowserOption}<small>{tw.downloadBrowserHint}</small></span></label>
       <label className="f"><span>{tw.agentSkill}</span><MultiSelect label={tw.agentSkill} empty={tw.noSkill} value={skills} options={[{ value: 'claude', label: tw.optionClaude }, { value: 'agents', label: tw.optionCodex }]} onChange={(value) => setSkills(value as Array<'claude' | 'agents'>)} /></label>
       {skills.length > 0 && <><label className="f"><span>{tw.skillRepo}</span><Select label={tw.skillRepo} value={sourceId} options={sources.map((item) => ({ value: item.id, label: item.name, disabled: false }))} onChange={setSourceId} /></label><div className="pw-skillnote">{tw.skillNote}</div></>}
-    </div>} ok={tw.install} okDisabled={skills.length > 0 && !sourceId} cancel={() => setConfirming(false)} confirm={runInstall} />}
+    </div>} ok={tw.install} okDisabled={skills.length > 0 && !sourceId} cancel={() => setConfirming(false)} confirm={() => { setPicking(false); runInstall() }} />}
     {removing && <ConfirmDialog eyebrow="Playwright CLI" title={tw.removeTitle(removing)} text={tw.removeText} ok={tw.remove} danger cancel={() => setRemoving(undefined)} confirm={() => { const target = removing; setRemoving(undefined); void act(() => window.agentboard.invoke('playwright:remove', { projectId, version: target })) }} />}
     {processOpen && processId && <ProcessDialog taskId={processId} title={tw.processTitle} log={status?.log} background={() => setProcessOpen(false)} close={() => setProcessOpen(false)} />}
   </div>

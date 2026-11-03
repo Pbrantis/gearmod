@@ -30,7 +30,7 @@ export function GitMenu<K extends string>({ x, y, title, label, items, run, clos
   return <div className="ctxmenu" ref={root} role="menu" aria-label={label} style={pos} onContextMenu={(event) => event.preventDefault()}>
     <div className="ctxtitle" data-tip={title}>{title}</div>
     {list.map((item, index) => <React.Fragment key={item.key}>
-      {item.danger && <div className="ctxsep" />}
+      {item.danger && index > 0 &&<div className="ctxsep" />}
       <button type="button" role="menuitem" disabled={Boolean(item.off)} className={`ctxitem ${item.danger ? 'danger' : ''} ${index === active ? 'on' : ''}`} onMouseEnter={() => setActive(index)} onClick={() => go(item)}><span>{item.label}</span>{item.off && <kbd>{item.off}</kbd>}</button>
     </React.Fragment>)}
   </div>

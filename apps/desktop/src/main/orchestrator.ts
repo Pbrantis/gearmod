@@ -38,7 +38,8 @@ export class AgentOrchestrator {
     private readonly adapters: Record<'codex' | 'claude' | 'gemini', AgentAdapter>,
     private readonly emit: (event: { runId: string; eventType: string; payload: Record<string, unknown> }) => void,
     private readonly worktrees: WorktreeService,
-    private readonly concurrency = 2,
+    /** Limite de execuções simultâneas; função para valer na hora quando o usuário muda a configuração. */
+    private readonly concurrency: number | (() => number) = 2,
     private readonly agentContext?: Pick<AgentContextService, 'prompt' | 'freePrompt' | 'constitutionPrompt' | 'freeInstructions' | 'developerInstructions' | 'pluginDir'>,
     private readonly writeback?: AgentWriteback,
     private readonly configs?: Pick<AgentConfigRepository, 'resolve' | 'recordUse'>,
@@ -77,9 +78,27 @@ export class AgentOrchestrator {
     if (context.chat.purpose !== 'free') input = { ...input, choice: undefined }
     this.conversations.addMessage(input.notice ? { chatId: input.chatId, role: 'system', body: input.notice, status: 'complete' } : { chatId: input.chatId, role: 'user', body: input.prompt, status: 'complete' })
     const run = this.conversations.createRun({ cardId: context.cardId, chatId: input.chatId, profileId: context.profile.id })
+    const full = this.active >= this.limit()
     this.queue.push({ run, ...input }); this.pump()
+    // Pedido do usuário que não coube: ele fica na fila e a tela pergunta se quer rodar mesmo assim ou mudar o limite. Retomadas automáticas esperam em silêncio.
+    if (full && !input.automatic) this.emit({ runId: run.id, eventType: 'agentboard/run-queued', payload: { chatId: input.chatId, cardId: context.cardId, active: this.active, limit: this.limit() } })
     return run
   }
+
+  private limit(): number { return Math.max(1, typeof this.concurrency === 'function' ? this.concurrency() : this.concurrency) }
+
+  capacity(): { active: number; queued: number; limit: number } { return { active: this.active, queued: this.queue.length, limit: this.limit() } }
+
+  /** O usuário decidiu ultrapassar o limite: tira a execução da fila e roda agora. */
+  runNow(runId: string): boolean {
+    const index = this.queue.findIndex((job) => job.run.id === runId)
+    if (index < 0) return false
+    this.launch(this.queue.splice(index, 1)[0]!)
+    return true
+  }
+
+  /** Chamar quando o limite mudou: se subiu, o que estava na fila começa. */
+  refill(): void { this.pump() }
 
   /** Execuções rodando ou na fila: o que morre se o app fechar. */
   pendingCount(): number { return this.active + this.queue.length }
@@ -97,10 +116,12 @@ export class AgentOrchestrator {
   }
 
   private pump(): void {
-    while (this.active < this.concurrency && this.queue.length) {
-      const job = this.queue.shift()!; this.active += 1
-      void this.execute(job).finally(() => { this.active -= 1; this.pump() })
-    }
+    while (this.active < this.limit() && this.queue.length) this.launch(this.queue.shift()!)
+  }
+
+  private launch(job: Job): void {
+    this.active += 1
+    void this.execute(job).finally(() => { this.active -= 1; this.pump() })
   }
 
   private async execute(initial: Job): Promise<void> {
@@ -178,7 +199,7 @@ export class AgentOrchestrator {
       try { this.ledger?.recordRun(job.run.id, result.usage, result.status !== 'completed') } catch { /* ledger é informativo; nunca derruba a run */ }
       if (result.apiKeySource) try { this.profiles?.recordBillingHint(context.profile.id, result.apiKeySource) } catch { /* indício é informativo; só sugere na UI */ }
       if (result.text) this.conversations.addMessage({ chatId: job.chatId, role: 'assistant', body: result.text, status: result.status === 'completed' ? 'complete' : 'failed' })
-      // O chat livre pode ter virado planejamento durante o turno (ferramenta agentboard_criar_card): daqui em diante vale o card novo.
+      // O chat livre pode ter virado planejamento durante o turno (ferramenta agentboard_create_card): daqui em diante vale o card novo.
       const after = free ? this.conversations.context(job.chatId) : context
       const planned = job.planning || (free && after.chat.purpose === 'planning')
       const applied = this.writeback?.finish({ runId: job.run.id, cardId: after.cardId, planning: planned, completed: result.status === 'completed', text: result.text, prompt: job.prompt, publish: (type, payload) => publish({ type, payload }) })

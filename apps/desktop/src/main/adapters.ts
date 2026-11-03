@@ -247,6 +247,21 @@ export async function probeClaudeLimits(profile: AgentProfile, processes: Proces
   })
 }
 
+/** Pede ao Haiku (modelo barato) uma mensagem de commit para as alterações; devolve só o resumo de uma linha. */
+export async function suggestCommitMessage(profile: AgentProfile, context: string, processes: ProcessFactory = nodeProcesses, timeoutMs = 60_000): Promise<string> {
+  const child = processes.start(profile.executablePath || 'claude', ['--print', '--output-format', 'text', '--model', 'haiku', '--no-session-persistence'], { cwd: tmpdir(), env: { ...applyEnvPolicy(profile, process.env), CLAUDE_CONFIG_DIR: profile.configDir } })
+  child.stdin.end(`Escreva a mensagem de commit destas alterações. Responda só com UMA linha (até 72 caracteres), sem aspas, sem ponto final, sem explicação, no mesmo idioma e estilo dos commits recentes.
+
+${context}`)
+  return new Promise((resolve, reject) => {
+    let out = '', done = false
+    const finish = (error?: Error): void => { if (done) return; done = true; clearTimeout(timer); if (!child.killed) child.kill(); const line = out.split(/\r?\n/).map((item) => item.trim()).find(Boolean)?.replace(/^["'`]+|["'`]+$/g, '') ?? ''; if (error) reject(error); else if (line) resolve(line.slice(0, 200)); else reject(new Error(tm().adapters.commitSuggestEmpty)) }
+    const timer = setTimeout(() => finish(new Error(tm().adapters.commitSuggestTimeout)), timeoutMs)
+    child.stdout.on('data', (chunk: Buffer | string) => { out += chunk.toString() })
+    child.on('error', (error: Error) => finish(error)); child.on('exit', (code: number | null) => finish(code ? new Error(out.trim().slice(0, 300) || tm().adapters.commitSuggestEmpty) : undefined))
+  })
+}
+
 export class ClaudeCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses, private readonly timing = { graceMs: 60_000, pendingIdleMs: 10 * 60_000 }) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {

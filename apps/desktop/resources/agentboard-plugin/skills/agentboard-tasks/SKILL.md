@@ -58,4 +58,4 @@ AgentBoard rejects a Tasks document with such a task and returns the error for y
 
 ## Delivery
 
-Send it with `tipo` = `tasks` (tool `agentboard_escrever_documento` or markers, as described in `agentboard-planejamento`). During execution, if the `agentboard_marcar_task` tool exists, use it to mark items instead of resending the document.
+Send it with `tipo` = `tasks` (tool `agentboard_write_document` or markers, as described in `agentboard-planning`). During execution, if the `agentboard_mark_task` tool exists, use it to mark items instead of resending the document.

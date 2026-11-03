@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import type Database from 'better-sqlite3'
 import {
@@ -70,9 +70,52 @@ export class CardHistoryService {
 
   defaultArtifactsRoot(projectId: string): string { return join(this.dataDir, 'artifacts', projectId) }
 
+  /**
+   * Pasta dos artefatos do card. Se a pasta de artefatos configurada fica dentro de um repositório do projeto e o card já tem worktree
+   * desse repositório, a pasta é a da worktree (os arquivos entram no commit do card); senão, a pasta configurada de sempre.
+   */
   artifactsDir(cardId: string): string {
-    const projectId = this.projectOf(cardId)
-    return join(this.config(projectId).artifactsDir ?? this.defaultArtifactsRoot(projectId), `card-${cardId.slice(0, 8)}`)
+    const projectId = this.projectOf(cardId), root = this.config(projectId).artifactsDir ?? this.defaultArtifactsRoot(projectId)
+    return this.cardFolder(this.worktreeBase(cardId, root) ?? root, cardId)
+  }
+
+  /** Mesma pasta, mas no lugar de antes (fora da worktree), para trazer o que já foi gravado lá. */
+  private previousDir(cardId: string): string | null {
+    const projectId = this.projectOf(cardId), root = this.config(projectId).artifactsDir ?? this.defaultArtifactsRoot(projectId), found = this.existingFolder(root, cardId)
+    return found ? join(root, found) : null
+  }
+
+  private worktreeBase(cardId: string, root: string): string | null {
+    const same = (value: string): string => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    const members = this.db.prepare(`SELECT wm.repo_path AS repoPath, wm.path AS path FROM worktree_members wm JOIN worktrees w ON w.id = wm.worktree_id WHERE w.card_id = ? AND wm.status = 'active'`).all(cardId) as Array<{ repoPath: string; path: string }>
+    const target = same(root)
+    for (const member of members) {
+      const repo = same(member.repoPath)
+      if ((target === repo || target.startsWith(`${repo}/`)) && existsSync(member.path)) return join(member.path, root.replace(/\\/g, '/').slice(repo.length).replace(/^\/+/, ''))
+    }
+    return null
+  }
+
+  private existingFolder(base: string, cardId: string): string | null {
+    const short = cardId.slice(0, 8)
+    try { return existsSync(base) ? readdirSync(base).find((name) => name === `card-${short}` || name.endsWith(`-${short}`)) ?? null : null } catch { return null }
+  }
+
+  /** Nome claro: o título do card em minúsculas com hífens e o código curto (`login-page-redesign-2e84d10e`); a pasta que já existe mantém o nome. */
+  private cardFolder(base: string, cardId: string): string {
+    const existing = this.existingFolder(base, cardId)
+    if (existing) return join(base, existing)
+    const title = (this.db.prepare('SELECT title FROM cards WHERE id = ?').pluck().get(cardId) as string | undefined) ?? ''
+    const slug = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 44).replace(/-$/, '')
+    return join(base, `${slug || 'card'}-${cardId.slice(0, 8)}`)
+  }
+
+  /** Primeira gravação no lugar novo (worktree): traz o que já existia na pasta antiga, sem sobrescrever nada. */
+  private adopt(cardId: string, dir: string): void {
+    if (existsSync(join(dir, 'history.jsonl'))) return
+    const old = this.previousDir(cardId)
+    if (!old || resolve(old) === resolve(dir) || !existsSync(old)) return
+    try { cpSync(old, dir, { recursive: true, force: false, errorOnExist: false }) } catch { /* melhor esforço: o que faltar é regravado pela sincronização */ }
   }
 
   /** Spec Kit (`.specify/`) e OpenSpec (`openspec/`) já instalados na pasta do projeto ou nos repositórios dele. Nada é instalado aqui. */
@@ -263,6 +306,7 @@ export class CardHistoryService {
     const dir = this.artifactsDir(cardId)
     try {
       mkdirSync(dir, { recursive: true })
+      this.adopt(cardId, dir)
       const file = join(dir, 'history.jsonl'), known = existsSync(file) ? new Set(readJsonl(file).map((event) => event.id)) : new Set<string>()
       const pending = this.db.prepare(`SELECT ${eventColumns} FROM card_events WHERE card_id = ? AND (synced_at IS NULL OR type IN ('policy.decided', 'approval.requested', 'approval.approved', 'approval.denied', 'approval.consumed')) ORDER BY created_at, rowid`).all(cardId) as EventRow[]
       const lines = pending.filter((item) => !known.has(item.id)).map((item) => `${JSON.stringify(eventFromRow(item))}\n`).join('')
@@ -318,7 +362,8 @@ export class CardHistoryService {
     if (tests.length) {
       const checklist = (this.db.prepare("SELECT content_md FROM card_checklists WHERE card_id = ? AND purpose = 'test'").pluck().get(cardId) as string | undefined)?.trim()
       const commands = this.db.prepare('SELECT command, status, exit_code AS exitCode, started_at AS startedAt FROM test_runs WHERE card_id = ? ORDER BY started_at').all(cardId) as Array<{ command: string; status: string; exitCode: number | null; startedAt: string }>
-      writeAtomic(join(dir, 'verification.md'), `# Verificação — ${card.title}\n\n${runTable(tests)}\n\n## Checklist do testador\n\n${checklist || '(sem checklist)'}\n${commands.length ? `\n## Comandos de teste\n\n| Quando | Comando | Resultado |\n|---|---|---|\n${commands.map((item) => `| ${item.startedAt} | \`${item.command}\` | ${item.status}${item.exitCode === null ? '' : ` (${item.exitCode})`} |`).join('\n')}\n` : ''}`)
+      const report = this.db.prepare("SELECT m.body AS body, m.created_at AS at FROM chat_messages m JOIN chats c ON c.id = m.chat_id WHERE c.card_id = ? AND c.purpose = 'test' AND m.role = 'assistant' AND TRIM(m.body) <> '' ORDER BY m.created_at DESC LIMIT 1").get(cardId) as { body: string; at: string } | undefined
+      writeAtomic(join(dir, 'verification.md'), `# Verificação — ${card.title}\n\n${runTable(tests)}\n\n## Checklist do testador\n\n${checklist || '(sem checklist)'}\n${report ? `\n## Relatório do testador\n\n_${report.at}_\n\n${report.body.trim()}\n` : ''}${commands.length ? `\n## Comandos de teste\n\n| Quando | Comando | Resultado |\n|---|---|---|\n${commands.map((item) => `| ${item.startedAt} | \`${item.command}\` | ${item.status}${item.exitCode === null ? '' : ` (${item.exitCode})`} |`).join('\n')}\n` : ''}`)
     }
   }
 

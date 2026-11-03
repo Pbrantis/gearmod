@@ -1,11 +1,11 @@
 import { existsSync, watch, type FSWatcher } from 'node:fs'
 import { sep } from 'node:path'
 import { gc, openStore, type Db } from './store'
-import { ignored, indexRoot, updatePaths, type IndexResult, type UpdateResult } from './indexer'
+import { ignored, indexRoot, listFiles, updatePaths, type IndexResult, type UpdateResult } from './indexer'
 import { langOf } from './languages'
 import { Queries } from './query'
 
-export interface RootStatus { root: string; files: number; symbols: number; indexedAt: number | null; ms: number | null }
+export interface RootStatus { root: string; files: number; symbols: number; expected: number; indexedAt: number | null; ms: number | null }
 
 /**
  * Índice de código de várias pastas (projeto e worktrees dos cards) num banco só. As escritas são feitas uma de cada
@@ -52,7 +52,10 @@ export class CodeIndex {
     // contado na hora: as atualizações do watcher não mexem no total gravado na indexação completa
     const files = row ? this.db.prepare('select count(*) from trees where root = ?').pluck().get(root) as number : 0
     const symbols = row ? this.db.prepare('select count(*) from symbols s join trees t on t.sha = s.sha and t.root = ? where s.idx > 0').pluck().get(root) as number : 0
-    return { root, files, symbols, indexedAt: row?.indexed_at ?? null, ms: row?.ms ?? null }
+    // arquivos que o indexador enxerga hoje na pasta: a barra da tela é files ÷ expected
+    let expected = files
+    if (existsSync(root)) { try { expected = listFiles(root).files.size } catch { /* pasta ilegível: sem total, a barra fica cheia */ } }
+    return { root, files, symbols, expected: Math.max(expected, files), indexedAt: row?.indexed_at ?? null, ms: row?.ms ?? null }
   }
 
   /** Observa a pasta e atualiza o índice sozinho (lotes de 300 ms). */

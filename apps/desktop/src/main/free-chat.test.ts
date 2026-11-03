@@ -70,12 +70,12 @@ describe('free chat', () => {
 
     const changes: unknown[] = []
     const token = bridge.register(run.id, null, (change) => changes.push(change), { id: chat.id, purpose: 'free' }).env.AGENTBOARD_TOKEN!
-    expect(call(token, 'agentboard_ler_skill', { nome: 'agentboard-discovery' })).toMatchObject({ ok: true, text: expect.stringContaining('# Request discovery (AgentBoard)') })
-    expect(call(token, 'agentboard_ler_skill', { nome: 'skill-inexistente' })).toMatchObject({ ok: false })
-    expect(call(token, 'agentboard_escrever_documento', { tipo: 'plano', markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('agentboard_criar_card') })
-    expect(call(token, 'agentboard_criar_card', { titulo: ' ' })).toMatchObject({ ok: false })
+    expect(call(token, 'agentboard_read_skill', { nome: 'agentboard-discovery' })).toMatchObject({ ok: true, text: expect.stringContaining('# Request discovery (AgentBoard)') })
+    expect(call(token, 'agentboard_read_skill', { nome: 'skill-inexistente' })).toMatchObject({ ok: false })
+    expect(call(token, 'agentboard_write_document', { tipo: 'plano', markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('agentboard_create_card') })
+    expect(call(token, 'agentboard_create_card', { titulo: ' ' })).toMatchObject({ ok: false })
 
-    const created = call(token, 'agentboard_criar_card', { titulo: 'Separar dados e tela', tipo: 'improvement', prioridade: 'high', resumo: 'Ideia nascida no chat' })
+    const created = call(token, 'agentboard_create_card', { titulo: 'Separar dados e tela', tipo: 'improvement', prioridade: 'high', resumo: 'Ideia nascida no chat' })
     expect(created.ok).toBe(true)
     const card = board.get(project.id).cards.find((item) => item.title === 'Separar dados e tela')!
     expect(card).toMatchObject({ type: 'improvement', priority: 'high' })
@@ -84,9 +84,9 @@ describe('free chat', () => {
     expect(database.db.prepare('SELECT card_id AS cardId FROM runs WHERE id = ?').get(run.id)).toEqual({ cardId: card.id })
     expect(changes).toContainEqual({ type: 'converted', cardId: card.id, chatId: chat.id })
     // Depois da conversão o mesmo run já age como planejamento do card.
-    expect(call(token, 'agentboard_escrever_documento', { tipo: 'especificacao', markdown: '## Spec' })).toMatchObject({ ok: true })
+    expect(call(token, 'agentboard_write_document', { tipo: 'especificacao', markdown: '## Spec' })).toMatchObject({ ok: true })
     expect(board.documents.read(card.id, 'especificacao')).toBe('## Spec')
-    expect(call(token, 'agentboard_criar_card', { titulo: 'Outro' })).toMatchObject({ ok: false, error: expect.stringContaining('already has a card') })
+    expect(call(token, 'agentboard_create_card', { titulo: 'Outro' })).toMatchObject({ ok: false, error: expect.stringContaining('already has a card') })
     database.close()
   })
 

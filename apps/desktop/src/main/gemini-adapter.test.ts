@@ -100,9 +100,9 @@ describe('adaptador do Gemini CLI', () => {
 
   it('copia as skills do plugin do AgentBoard para a pasta de skills do perfil', () => {
     const root = mkdtempSync(join(tmpdir(), 'agentboard-gskills-')); dirs.push(root)
-    mkdirSync(join(root, 'plugin', 'skills', 'agentboard-planejamento'), { recursive: true }); writeFileSync(join(root, 'plugin', 'skills', 'agentboard-planejamento', 'SKILL.md'), '# x')
+    mkdirSync(join(root, 'plugin', 'skills', 'agentboard-planning'), { recursive: true }); writeFileSync(join(root, 'plugin', 'skills', 'agentboard-planning', 'SKILL.md'), '# x')
     syncGeminiSkills(join(root, 'plugin'), join(root, 'home'))
-    expect(existsSync(join(root, 'home', '.gemini', 'skills', 'agentboard-planejamento', 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(root, 'home', '.gemini', 'skills', 'agentboard-planning', 'SKILL.md'))).toBe(true)
     expect(() => syncGeminiSkills(null, join(root, 'home'))).not.toThrow()
   })
 })

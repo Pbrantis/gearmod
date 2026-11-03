@@ -54,7 +54,7 @@ describe('IPC do SDD file-first (G10)', () => {
       chooseDirectory: async () => null, chooseFiles: async () => [], agentProbes: unavailable, conversations: unavailable,
       orchestrator: unavailable, worktrees, quality: unavailable, executions: unavailable, agentConfigs: unavailable, skills: unavailable,
       constitution: new ConstitutionRepository(database), checklists: unavailable, voice: unavailable, usage: unavailable, collab: unavailable,
-      gitManager: unavailable, pullRequests: unavailable, history, playwright: unavailable, fileWatch: unavailable, specTools: unavailable, speckit: unavailable, mcp: unavailable, toolUpdates: unavailable,
+      gitManager: unavailable, pullRequests: unavailable, gitAccounts: unavailable, history, playwright: unavailable, fileWatch: unavailable, specTools: unavailable, speckit: unavailable, mcp: unavailable, toolUpdates: unavailable,
       approvals: new ApprovalService(database), sddResolver, sddWriter, openPath: async () => undefined, terminals: unavailable,
       openWindow: () => undefined, placeWindow: () => undefined, openExternal: async () => undefined, chooseSkillSource: async () => null,
       saveTextFile: async () => ({ saved: false, path: null }), appVersion: '0.1.0', dataDir: data, reopen: async () => { await database.open() }

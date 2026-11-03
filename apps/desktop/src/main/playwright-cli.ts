@@ -96,6 +96,14 @@ export class PlaywrightCliService {
   }
   private managedNode(): string | null { return existsSync(join(this.managedNodeDir(), 'node.exe')) ? this.release.version : null }
 
+  /** Versões publicadas no npm (só as estáveis, da mais nova para a mais antiga) para a tela escolher qual instalar. */
+  async availableVersions(): Promise<string[]> {
+    const response = await (this.deps.fetchImpl ?? fetch)('https://registry.npmjs.org/@playwright%2fcli', { headers: { accept: 'application/vnd.npm.install-v1+json' }, signal: AbortSignal.timeout(20_000) })
+    if (!response.ok) throw new Error(tm().voice.downloadFailed('npm', response.status))
+    const body = await response.json() as { versions?: Record<string, unknown> }
+    return Object.keys(body.versions ?? {}).filter((version) => /^\d+\.\d+\.\d+$/.test(version)).sort((a, b) => compareVersions(b, a)).slice(0, 60)
+  }
+
   async status(projectId: string): Promise<PlaywrightStatus> {
     const sys = await this.commands.run('node', ['--version'], process.cwd(), 15_000).then((text) => text.trim() || null, () => null)
     return {
@@ -203,7 +211,7 @@ export class PlaywrightCliService {
     if (!version) return null
     return {
       comando: this.wrapper(version), sessao: `ab-${cardId.slice(0, 8)}`, evidencias: join(this.history.artifactsDir(cardId), 'playwright'),
-      regra: 'Always use -s=<sessao>; headless (default). Prefer snapshot and refs over screenshots; only take a screenshot (--filename inside evidencias) to prove a criterion or a failure. Close with close when done.'
+      regra: 'Always use -s=<sessao>. Headless is the default; when the user asks to watch the browser, open with --headed (open <url> --headed) and say so if no window appeared. Prefer snapshot and refs over screenshots; only take a screenshot (--filename inside evidencias) to prove a criterion or a failure. Close with close when done.'
     }
   }
 

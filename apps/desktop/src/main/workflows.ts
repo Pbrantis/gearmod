@@ -34,7 +34,7 @@ export interface MethodAdapter {
 export const methodAdapters: Record<SddMethod, MethodAdapter> = {
   native: {
     method: 'native', label: 'SDD do AgentBoard',
-    instructions: () => 'Full AgentBoard SDD: Specification with prioritized stories, RF requirements and success criteria; Plan with decisions, risks, contracts and a test plan; Tasks by phase with acceptance criteria. Use the skills agentboard-especificacao, agentboard-plano and agentboard-tasks.'
+    instructions: () => 'Full AgentBoard SDD: Specification with prioritized stories, RF requirements and success criteria; Plan with decisions, risks, contracts and a test plan; Tasks by phase with acceptance criteria. Use the skills agentboard-specification, agentboard-plan and agentboard-tasks.'
   },
   speckit: {
     method: 'speckit', label: 'GitHub Spec Kit',
@@ -105,6 +105,21 @@ export function exportPlanArtifacts(history: CardHistoryService, board: BoardRep
   }
   if (written.length) history.recordArtifacts(cardId, written)
   return { written, notices }
+}
+
+/**
+ * Mantém as cópias que já existem (spec.md, plan.md, tasks.md) iguais aos documentos do card: marcar uma task, ajustar o plano etc. regrava o arquivo.
+ * Só atualiza arquivos já criados na conclusão do planejamento; no Spec Kit os arquivos reais são outros e não passam por aqui.
+ */
+export function refreshArtifactCopies(history: CardHistoryService, board: BoardRepository, cardId: string): void {
+  const card = board.card(cardId)
+  if (card.workflow === 'light' || (history.workflow(cardId) === 'sdd' && history.sddMethod(cardId) === 'speckit')) return
+  const documents = board.documents.get(cardId), dir = history.artifactsDir(cardId)
+  for (const [name, kind] of [['spec.md', 'especificacao'], ['plan.md', 'plano'], ['tasks.md', 'tasks']] as const) {
+    const file = join(dir, name), text = documents[kind].contentMd.trim()
+    if (!existsSync(file) || !text) continue
+    const temp = `${file}.tmp`; writeFileSync(temp, `${text}\n`, 'utf8'); renameSync(temp, file)
+  }
 }
 
 function slug(value: string): string {

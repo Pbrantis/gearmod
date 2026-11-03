@@ -1,5 +1,5 @@
 ---
-name: agentboard-especificacao
+name: agentboard-specification
 description: Writes the Specification document of an AgentBoard card in SDD style (user stories with priority, Given/When/Then acceptance scenarios, numbered functional requirements and measurable success criteria), without saying how to implement.
 ---
 
@@ -41,4 +41,4 @@ Replace the stories with: **How to reproduce** (numbered steps), **Current behav
 
 ## Delivery
 
-Send with `tipo` = `especificacao` (the `agentboard_escrever_documento` tool or markers, as in `agentboard-planejamento`).
+Send with `tipo` = `especificacao` (the `agentboard_write_document` tool or markers, as in `agentboard-planning`).

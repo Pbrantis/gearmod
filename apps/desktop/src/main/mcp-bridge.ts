@@ -27,8 +27,8 @@ interface RunState { runId: string; cardId: string | null; chatId: string; purpo
 export interface RunReport { written: CardDocumentKind[]; pendingMove: string | null }
 type Reply = { ok: true; text: string } | { ok: false; error: string }
 
-const historyTools = new Set(['agentboard_avaliar_complexidade', 'agentboard_escolher_fluxo', 'agentboard_registrar_decisao', 'agentboard_registrar_entendimento', 'agentboard_registrar_exploracao'])
-const cardTypeError = (types: Array<{ id: string; name: string }>): string => `tipo must be one of the project's card types: ${types.map((item) => `${item.id} (${item.name})`).join(', ')}. The short workflow is not a type: choose it with agentboard_escolher_fluxo (fluxo light).`
+const historyTools = new Set(['agentboard_assess_complexity', 'agentboard_choose_workflow', 'agentboard_record_decision', 'agentboard_record_understanding', 'agentboard_record_exploration'])
+const cardTypeError = (types: Array<{ id: string; name: string }>): string => `tipo must be one of the project's card types: ${types.map((item) => `${item.id} (${item.name})`).join(', ')}. The short workflow is not a type: choose it with agentboard_choose_workflow (fluxo light).`
 
 const normalize = (value: string): string => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
@@ -43,7 +43,7 @@ export class McpBridge {
   private readonly dir: string
   readonly socketPath: string
 
-  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; approvals?: ApprovalService; policy?: PolicyEngine; sddResolver?: Pick<SddResolver, 'constitution' | 'locate'>; sddWriter?: Pick<SddWriter, 'write'>; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }>; agentMoveApproval?: boolean; codeIndex?: Pick<CodeIndexService, 'tool' | 'isTool' | 'prewarm'>; codeRoots?: (run: { cardId: string | null; chatId: string }) => string[]; codeEnabled?: (run: { cardId: string | null; chatId: string }) => boolean }) {
+  constructor(private readonly deps: { board: BoardRepository; context: Pick<AgentContextService, 'block' | 'skillInstructions'>; serverScript: string; runtime?: string; collab?: CollaborationService; conversations?: Pick<ConversationRepository, 'projectOf' | 'convertToPlanning'>; constitution?: Pick<ConstitutionRepository, 'get' | 'write' | 'propose'>; checklists?: Pick<ChecklistRepository, 'write' | 'get'>; git?: Pick<GitManager, 'agentCommit'>; history?: CardHistoryService; approvals?: ApprovalService; policy?: PolicyEngine; sddResolver?: Pick<SddResolver, 'constitution' | 'locate'>; sddWriter?: Pick<SddWriter, 'write'>; planReady?: (cardId: string) => { notices: string[] }; prepareWorktree?: (cardId: string) => Promise<unknown>; repositories?: (cardId: string) => Array<{ path: string; status: string }>; agentMoveApproval?: boolean; codeIndex?: Pick<CodeIndexService, 'tool' | 'isTool' | 'prewarm'>; codeRoots?: (run: { cardId: string | null; chatId: string }) => string[]; codeEnabled?: (run: { cardId: string | null; chatId: string }) => boolean }) {
     const id = randomBytes(6).toString('hex')
     this.dir = join(tmpdir(), `agentboard-${id}`)
     this.socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\agentboard-${id}` : join(this.dir, 'mcp.sock')
@@ -96,12 +96,12 @@ export class McpBridge {
     if (!run) return { ok: false, error: 'Unknown run, or it has already ended.' }
     const { board, context } = this.deps
     try {
-      if (tool === 'agentboard_ler_skill') {
+      if (tool === 'agentboard_read_skill') {
         if (typeof args.nome !== 'string' || !args.nome.trim()) return { ok: false, error: 'nome must be a skill from the catalog' }
         const instructions = context.skillInstructions(args.nome.trim())
         return instructions ? { ok: true, text: instructions } : { ok: false, error: `Unknown skill: ${args.nome}` }
       }
-      if (tool === 'agentboard_criar_card') {
+      if (tool === 'agentboard_create_card') {
         // Chat da Constituição também pode criar um card (ex.: para gravar uma mudança de verdade, G09); a conversa passa a ser a dele.
         if ((run.purpose !== 'free' && run.purpose !== 'constitution') || run.cardId) return { ok: false, error: 'This conversation already has a card.' }
         if (!this.deps.conversations) return { ok: false, error: 'Free chat is not available' }
@@ -121,17 +121,17 @@ export class McpBridge {
         this.deps.conversations.convertToPlanning(run.chatId, card.id)
         run.cardId = card.id; run.purpose = 'planning'
         run.notify({ type: 'converted', cardId: card.id, chatId: run.chatId })
-        return { ok: true, text: constitutionChat ? `Card "${card.title}" created in ${column.label}. Send the complete text with agentboard_escrever_constituicao for review and approval on the card.` : `Card "${card.title}" created in ${column.label}. This chat is now its planning chat: load agentboard-planejamento with agentboard_ler_skill, follow the skill, save the Specification, Plan and Tasks with agentboard_escrever_documento and call agentboard_concluir_planejamento when done.` }
+        return { ok: true, text: constitutionChat ? `Card "${card.title}" created in ${column.label}. Send the complete text with agentboard_write_constitution for review and approval on the card.` : `Card "${card.title}" created in ${column.label}. This chat is now its planning chat: load agentboard-planning with agentboard_read_skill, follow the skill, save the Specification, Plan and Tasks with agentboard_write_document and call agentboard_finish_planning when done.` }
       }
-      if (tool === 'agentboard_ler_constituicao' || tool === 'agentboard_escrever_constituicao' || tool === 'agentboard_propor_constituicao') return this.constitution(run, tool, args)
+      if (tool === 'agentboard_read_constitution' || tool === 'agentboard_write_constitution' || tool === 'agentboard_propose_constitution') return this.constitution(run, tool, args)
       // índice de código: só leitura, nas pastas desta conversa (worktree do card ou pastas do projeto); vale também no chat livre
       if (tool.startsWith('agentboard_code_')) return this.codeTool(run, tool, args)
-      if (!run.cardId) return { ok: false, error: 'This conversation has no card yet. If the user asks to plan something, call agentboard_criar_card first.' }
-      if (tool === 'agentboard_pedir_commit') return this.requestCommit(run, args)
+      if (!run.cardId) return { ok: false, error: 'This conversation has no card yet. If the user asks to plan something, call agentboard_create_card first.' }
+      if (tool === 'agentboard_request_commit') return this.requestCommit(run, args)
       if (historyTools.has(tool)) return this.history(run, tool, args)
-      if (tool === 'agentboard_definir_repositorios') return this.setRepositories(run, args)
-      if (tool === 'agentboard_contexto_do_card') return context.block(run.cardId, run.purpose === 'planning').then((text) => ({ ok: true as const, text }))
-      if (tool === 'agentboard_escrever_documento') {
+      if (tool === 'agentboard_set_repositories') return this.setRepositories(run, args)
+      if (tool === 'agentboard_card_context') return context.block(run.cardId, run.purpose === 'planning').then((text) => ({ ok: true as const, text }))
+      if (tool === 'agentboard_write_document') {
         const kind = args.tipo, markdown = args.markdown
         if (this.deps.history?.sddMethod(run.cardId) === 'speckit' && (kind === 'especificacao' || kind === 'plano' || kind === 'tasks')) return { ok: false, error: 'Spec Kit artifacts must be created by the native skills (speckit-specify, speckit-plan, speckit-tasks) in the card worktree; do not use this tool.' }
         if (typeof kind !== 'string' || !(cardDocumentKinds as readonly string[]).includes(kind) || (systemDocumentKinds as readonly string[]).includes(kind)) return { ok: false, error: `tipo must be one of: ${cardDocumentKinds.filter((item) => !(systemDocumentKinds as readonly string[]).includes(item)).join(', ')}` }
@@ -140,14 +140,15 @@ export class McpBridge {
         run.written.add(kind as CardDocumentKind); run.notify({ type: 'document', kind: kind as CardDocumentKind })
         return { ok: true, text: `Document ${kind} saved.` }
       }
-      if (tool === 'agentboard_checklist_teste') {
+      if (tool === 'agentboard_test_checklist') {
         if (run.purpose !== 'test') return { ok: false, error: 'This tool is for the tester.' }
         if (!this.deps.checklists) return { ok: false, error: 'The test checklist is not available' }
+        if (args.markdown === undefined) return { ok: true, text: this.deps.checklists.get(run.cardId).contentMd || '(no checklist saved yet)' }
         if (typeof args.markdown !== 'string' || args.markdown.length > 50_000) return { ok: false, error: 'markdown must be the complete checklist (up to 50,000 characters)' }
-        this.deps.checklists.write(run.cardId, args.markdown); run.notify({ type: 'checklist' })
+        this.deps.checklists.write(run.cardId, args.markdown); this.deps.history?.sync(run.cardId); run.notify({ type: 'checklist' })
         return { ok: true, text: 'Test checklist saved.' }
       }
-      if (tool === 'agentboard_concluir_planejamento') {
+      if (tool === 'agentboard_finish_planning') {
         if (run.purpose !== 'planning') return { ok: false, error: 'This tool is for the planner.' }
         if (this.deps.history?.sddMethod(run.cardId) === 'speckit') return { ok: false, error: 'In Spec Kit, planning is ready when the specification, plan and tasks of the card feature exist in the worktree; AgentBoard checks this on its own after each stage.' }
         const missing = board.markPlanReady(run.cardId)
@@ -157,12 +158,12 @@ export class McpBridge {
         let notices: string[] = []; try { notices = this.deps.planReady?.(run.cardId).notices ?? [] } catch (error) { notices = [error instanceof Error ? error.message : String(error)] }
         return { ok: true, text: `Planning concluded; the card now shows as "Plan ready".${notices.length ? ` Notices: ${notices.join(' ')}` : ''}` }
       }
-      if (tool === 'agentboard_marcar_task') {
+      if (tool === 'agentboard_mark_task') {
         if (!Number.isInteger(args.linha) || (args.linha as number) < 1 || typeof args.feito !== 'boolean') return { ok: false, error: 'linha must be an integer from 1 and feito a boolean' }
         board.documents.setTask(run.cardId, (args.linha as number) - 1, args.feito, 'agent'); run.notify({ type: 'task' })
         return { ok: true, text: `Line ${String(args.linha)} ${args.feito ? 'checked' : 'unchecked'}.` }
       }
-      if (tool === 'agentboard_atualizar_card') {
+      if (tool === 'agentboard_update_card') {
         const current = board.card(run.cardId)
         const title = args.titulo === undefined ? current.title : args.titulo, type = args.tipo === undefined ? current.type : args.tipo, priority = args.prioridade === undefined ? current.priority : args.prioridade
         if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo must be a text of 1 to 240 characters' }
@@ -175,10 +176,10 @@ export class McpBridge {
         run.notify({ type: 'card' })
         return { ok: true, text: `Card updated: ${title.trim()} (${resolvedType}, ${String(priority)}).` }
       }
-      if (tool === 'agentboard_propor_mudanca' || tool === 'agentboard_perguntar_ao_planejador') {
+      if (tool === 'agentboard_propose_change' || tool === 'agentboard_ask_planner') {
         if (!this.deps.collab) return { ok: false, error: 'Collaboration between stages is not available' }
         if (run.purpose !== 'execution' && run.purpose !== 'test') return { ok: false, error: 'This tool is for the developer and the tester; the planner changes the documents directly.' }
-        if (tool === 'agentboard_perguntar_ao_planejador') {
+        if (tool === 'agentboard_ask_planner') {
           if (typeof args.pergunta !== 'string' || !args.pergunta.trim()) return { ok: false, error: 'provide the pergunta' }
           const question = this.deps.collab.askQuestion({ cardId: run.cardId, chatId: run.chatId, purpose: run.purpose, question: args.pergunta })
           run.notify({ type: 'card' })
@@ -189,16 +190,16 @@ export class McpBridge {
         run.notify({ type: 'card' })
         return { ok: true, text: `Proposal M${String(change.number).padStart(3, '0')} registered and awaiting the user's authorization. Do NOT implement this change. Continue only with what is in the documents and end this run; the app resumes you when there is a decision.` }
       }
-      if (tool === 'agentboard_responder_duvida' || tool === 'agentboard_pedir_ao_usuario') {
+      if (tool === 'agentboard_answer_question' || tool === 'agentboard_ask_user') {
         if (!this.deps.collab) return { ok: false, error: 'Collaboration between stages is not available' }
         if (run.purpose !== 'planning') return { ok: false, error: 'This tool is for the planner.' }
-        if (!Number.isInteger(args.numero) || typeof (tool === 'agentboard_responder_duvida' ? args.resposta : args.pergunta) !== 'string') return { ok: false, error: 'provide numero (integer) and ' + (tool === 'agentboard_responder_duvida' ? 'resposta' : 'pergunta') }
-        if (tool === 'agentboard_responder_duvida') this.deps.collab.answerFromPlanner(run.cardId, args.numero as number, args.resposta as string)
+        if (!Number.isInteger(args.numero) || typeof (tool === 'agentboard_answer_question' ? args.resposta : args.pergunta) !== 'string') return { ok: false, error: 'provide numero (integer) and ' + (tool === 'agentboard_answer_question' ? 'resposta' : 'pergunta') }
+        if (tool === 'agentboard_answer_question') this.deps.collab.answerFromPlanner(run.cardId, args.numero as number, args.resposta as string)
         else this.deps.collab.escalateToUser(run.cardId, args.numero as number, args.pergunta as string)
         run.notify({ type: 'card' })
-        return { ok: true, text: tool === 'agentboard_responder_duvida' ? `Question ${String(args.numero)} answered; the app returns the answer to whoever asked.` : `Question ${String(args.numero)} sent to the user; the app resumes whoever asked when the user answers.` }
+        return { ok: true, text: tool === 'agentboard_answer_question' ? `Question ${String(args.numero)} answered; the app returns the answer to whoever asked.` : `Question ${String(args.numero)} sent to the user; the app resumes whoever asked when the user answers.` }
       }
-      if (tool === 'agentboard_mover_card') {
+      if (tool === 'agentboard_move_card') {
         if (typeof args.coluna !== 'string' || (args.quando !== 'agora' && args.quando !== 'ao_terminar')) return { ok: false, error: 'provide coluna and quando ("agora" or "ao_terminar")' }
         const column = this.findColumn(run.cardId, args.coluna)
         if (!column) return { ok: false, error: `Column not found: ${args.coluna}` }
@@ -265,7 +266,7 @@ export class McpBridge {
     const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()) : []
     const evidence = (value: unknown): Evidence[] => (Array.isArray(value) ? value : []).map((item: Record<string, unknown>) => evidenceSchema.parse({ kind: item?.tipo, ref: item?.referencia, detail: typeof item?.detalhe === 'string' ? item.detalhe : '', line: Number.isInteger(item?.linha) ? item.linha : null, commit: typeof item?.commit === 'string' ? item.commit : null }))
     try {
-      if (tool === 'agentboard_avaliar_complexidade') {
+      if (tool === 'agentboard_assess_complexity') {
         const notes = (args.notas ?? {}) as Record<string, unknown>
         const scores = dimensionScoresSchema.safeParse(Object.fromEntries(complexityDimensions.map((dimension) => [dimension, notes[dimension]])))
         if (!scores.success) return { ok: false, error: `notas must have ${complexityDimensions.join(', ')}, each from 0 to 3` }
@@ -279,9 +280,9 @@ export class McpBridge {
         const { assessment, previous } = history.assess({ cardId: cardId, scores: scores.data, justifications, confidence, preliminary: args.preliminar === true, criticalRisks: strings(args.riscos_criticos), evidence: evidence(args.evidencias), trigger: trigger.data, reason: args.motivo, source })
         run.notify({ type: 'card' })
         const delta = previous ? ` (before ${previous.total}; ${assessment.total - previous.total >= 0 ? '+' : ''}${assessment.total - previous.total})` : ''
-        return { ok: true, text: `Assessment v${assessment.version} registered: ${assessment.total} points${delta}, ${levelLabels[assessment.level]} task${assessment.preliminary ? ' (preliminary)' : ''}. Recommended workflow: ${workflowLabels[assessment.workflow]}. Present the recommendation to the user; when they confirm (or choose another), call agentboard_escolher_fluxo.` }
+        return { ok: true, text: `Assessment v${assessment.version} registered: ${assessment.total} points${delta}, ${levelLabels[assessment.level]} task${assessment.preliminary ? ' (preliminary)' : ''}. Recommended workflow: ${workflowLabels[assessment.workflow]}. Present the recommendation to the user; when they confirm (or choose another), call agentboard_choose_workflow.` }
       }
-      if (tool === 'agentboard_escolher_fluxo') {
+      if (tool === 'agentboard_choose_workflow') {
         const workflow = workflowKindSchema.safeParse(args.fluxo)
         if (!workflow.success) return { ok: false, error: 'fluxo must be light, spec or sdd' }
         const method = args.metodo === 'native' || args.metodo === 'speckit' ? args.metodo : undefined
@@ -293,7 +294,7 @@ export class McpBridge {
         run.notify({ type: 'card' })
         return { ok: true, text: `Workflow proposal ${workflowLabels[workflow.data]}${method ? ` — ${method === 'native' ? 'AgentBoard SDD' : 'GitHub Spec Kit'}` : ''} registered for the user's approval (${approval.id}). Wait for the decision before continuing in the workflow.` }
       }
-      if (tool === 'agentboard_registrar_decisao') {
+      if (tool === 'agentboard_record_decision') {
         const kind = decisionKindSchema.safeParse(args.tipo ?? 'other')
         if (!kind.success) return { ok: false, error: `tipo must be one of: ${decisionKindSchema.options.join(', ')}` }
         if (typeof args.decisao !== 'string' || !args.decisao.trim()) return { ok: false, error: 'provide the decisao' }
@@ -306,14 +307,14 @@ export class McpBridge {
         run.notify({ type: 'card' })
         return { ok: true, text: `Decision D${String(decision.number).padStart(3, '0')} registered as a proposal, awaiting the user${args.origem === 'usuario' ? ' (the origin declared by the agent was downgraded)' : ''}.` }
       }
-      if (tool === 'agentboard_registrar_entendimento') {
+      if (tool === 'agentboard_record_understanding') {
         const readiness = args.prontidao === 'pronto' ? 'pronto' : args.prontidao === 'precisa_esclarecer' ? 'precisa-esclarecer' : null
         if (!readiness || typeof args.objetivo !== 'string' || !args.objetivo.trim()) return { ok: false, error: 'provide objetivo and prontidao ("pronto" or "precisa_esclarecer")' }
         history.recordDiscovery(cardId, { objetivo: args.objetivo.trim(), motivacao: typeof args.motivacao === 'string' ? args.motivacao : '', escopo: strings(args.escopo), exclusoes: strings(args.exclusoes), criterios: strings(args.criterios), pendencias: strings(args.pendencias), contextoTecnico: typeof args.contexto_tecnico === 'string' ? args.contexto_tecnico : '', prontidao: readiness }, source)
         run.notify({ type: 'card' })
-        return { ok: true, text: readiness === 'pronto' ? 'Understanding registered. Now assess the complexity with agentboard_avaliar_complexidade.' : 'Understanding registered with open items. Clarify with the user before assessing the complexity (or register a preliminary assessment).' }
+        return { ok: true, text: readiness === 'pronto' ? 'Understanding registered. Now assess the complexity with agentboard_assess_complexity.' : 'Understanding registered with open items. Clarify with the user before assessing the complexity (or register a preliminary assessment).' }
       }
-      if (tool === 'agentboard_registrar_exploracao') {
+      if (tool === 'agentboard_record_exploration') {
         if (typeof args.resumo !== 'string' || !args.resumo.trim()) return { ok: false, error: 'provide the resumo of the exploration' }
         const saved = history.recordExploration(cardId, { summary: args.resumo.trim().slice(0, 8000), modules: strings(args.modulos), repositories: strings(args.repositorios), evidence: evidence(args.evidencias) }, source)
         run.notify({ type: 'card' })
@@ -347,7 +348,7 @@ export class McpBridge {
     const { constitution, conversations } = this.deps
     if (!conversations) return { ok: false, error: 'The Constitution is not available' }
     const projectId = conversations.projectOf(run.chatId)
-    if (tool === 'agentboard_ler_constituicao') {
+    if (tool === 'agentboard_read_constitution') {
       if (this.deps.sddResolver) {
         try {
           const view = await this.deps.sddResolver.constitution({ projectId, cardId: run.cardId ?? undefined })
@@ -356,8 +357,8 @@ export class McpBridge {
       }
       return { ok: true, text: 'The project has no Constitution yet.' }
     }
-    if (tool === 'agentboard_escrever_constituicao') {
-      if (!run.cardId) return { ok: false, error: 'This tool writes to a card worktree. Create a card (agentboard_criar_card) to make this change.' }
+    if (tool === 'agentboard_write_constitution') {
+      if (!run.cardId) return { ok: false, error: 'This tool writes to a card worktree. Create a card (agentboard_create_card) to make this change.' }
       if (typeof args.markdown !== 'string' || !args.markdown.trim() || args.markdown.length > 400_000) return { ok: false, error: 'markdown must be the complete text of the Constitution (up to 400,000 characters)' }
       if (!this.deps.sddResolver || !this.deps.approvals) return { ok: false, error: 'SDD approval is not available' }
       const [view, location] = await Promise.all([
@@ -369,7 +370,7 @@ export class McpBridge {
       return { ok: true, text: `Proposal registered for ${view.path}. Wait for the user's review and approval on the card; the file has not been changed yet.` }
     }
     if (!constitution) return { ok: false, error: 'The Constitution is not available' }
-    if (run.purpose === 'constitution') return { ok: false, error: 'To actually write it, create a card (agentboard_criar_card) and save with agentboard_escrever_constituicao from it.' }
+    if (run.purpose === 'constitution') return { ok: false, error: 'To actually write it, create a card (agentboard_create_card) and save with agentboard_write_constitution from it.' }
     if (![args.titulo, args.o_que_muda, args.motivo].every((value) => typeof value === 'string' && value.trim())) return { ok: false, error: 'provide titulo, o_que_muda and motivo' }
     const proposal = constitution.propose({ projectId, cardId: run.cardId, chatId: run.chatId, title: args.titulo as string, details: args.o_que_muda as string, reason: args.motivo as string })
     run.notify({ type: 'constitution' })

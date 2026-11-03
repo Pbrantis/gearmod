@@ -1,5 +1,5 @@
 ---
-name: agentboard-pequena
+name: agentboard-small
 description: Does an AgentBoard card in the short workflow from start to finish with a single agent (implements and validates), with no Specification, Plan, Tasks or separate test stage. Use when AgentBoard asks to do a card in the short workflow.
 ---
 
@@ -11,7 +11,7 @@ This card is in the short workflow (`fluxo: "curto"` in the context): a localize
 
 1. Read what you need from the project (only what the task touches) and make the change in the current worktree, preserving existing changes.
 2. Validate what you changed: run the project's tests, lint and typecheck and review your own diff. Fix what fails.
-3. When done, update the Summary with `agentboard_escrever_documento` (type `resumo`): keep the original text and add a "Result" section (in the language of `idioma`) with what changed, how it was validated and what is left pending, if anything.
+3. When done, update the Summary with `agentboard_write_document` (type `resumo`): keep the original text and add a "Result" section (in the language of `idioma`) with what changed, how it was validated and what is left pending, if anything.
 4. Do only what the description asks. If the task turns out bigger than it seemed (several modules, design decisions, real risk), stop and tell the user instead of going on: it deserves full planning.
 5. If you have a doubt only the user can resolve, ask in the conversation (closed options with the `agentboard-perguntas` block) and wait.
 6. Do not move the card to another column: that is up to the user.

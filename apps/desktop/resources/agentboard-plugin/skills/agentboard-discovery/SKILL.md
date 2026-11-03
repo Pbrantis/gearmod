@@ -22,17 +22,17 @@ Goal: turn an informal conversation into requirements clear enough to plan or im
 - Use `agentboard_code_impact` to see everything a change touches (callers with the line of each call, mentions in strings/mocks, tests to run) and `agentboard_code_node` for one symbol or file. Use Grep/Glob only for plain text (messages, config keys) or when the index has no answer. Read only the relevant parts; never the whole workspace.
 - For a truly broad exploration, delegate it to the `agentboard-explorer` subagent when it is available (it uses the same index and returns a short report); the extra cost has to pay off.
 - Look for: affected modules and repositories, similar implementations, contracts/APIs, dependencies and existing tests.
-- Record the result with `agentboard_registrar_exploracao` (compact summary + evidence with path and line). The app stores the code version alongside it.
+- Record the result with `agentboard_record_exploration` (compact summary + evidence with path and line). The app stores the code version alongside it.
 
 ## 3. Record the understanding
 
-Call `agentboard_registrar_entendimento` with goal, motivation, scope, exclusions, acceptance criteria, open items, technical context (real paths) and `prontidao` (`pronto` or `precisa_esclarecer`; "ready" or "needs clarification"). Call it again only when something relevant changes.
+Call `agentboard_record_understanding` with goal, motivation, scope, exclusions, acceptance criteria, open items, technical context (real paths) and `prontidao` (`pronto` or `precisa_esclarecer`; "ready" or "needs clarification"). Call it again only when something relevant changes.
 
-Decisions the user makes in the chat: `agentboard_registrar_decisao` with `origem: "usuario"`. Your own recommendations: `origem: "agente"` (the user approves them on the card). To replace a decision, use `substitui`.
+Decisions the user makes in the chat: `agentboard_record_decision` with `origem: "usuario"`. Your own recommendations: `origem: "agente"` (the user approves them on the card). To replace a decision, use `substitui`.
 
 ## 4. Assess complexity
 
-Call `agentboard_avaliar_complexidade` with a score from 0 to 3 per dimension and an objective justification (a verifiable fact, not internal reasoning). The dimension names are the keys the app expects; keep them as written (the English gloss is in parentheses):
+Call `agentboard_assess_complexity` with a score from 0 to 3 per dimension and an objective justification (a verifiable fact, not internal reasoning). The dimension names are the keys the app expects; keep them as written (the English gloss is in parentheses):
 
 | Dimension | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
@@ -56,4 +56,4 @@ The app returns the score and the recommended flow. Present it in one or two sen
 - `spec` (medium): concise Specification, Plan and Tasks from AgentBoard.
 - `sdd` (complex): for this card, recommend either AgentBoard's SDD or GitHub Spec Kit, explaining the reason in the context of the task. Consider AgentBoard for evolving existing features and Spec Kit for new work, as suggestions, not fixed rules. The final choice is the user's.
 
-Call `agentboard_escolher_fluxo` to propose the flow; for SDD provide `metodo` and `motivo`. Wait for the user's approval. If they correct a premise, record the decision and reassess with the right trigger; the previous assessment stays in the history.
+Call `agentboard_choose_workflow` to propose the flow; for SDD provide `metodo` and `motivo`. Wait for the user's approval. If they correct a premise, record the decision and reassess with the right trigger; the previous assessment stays in the history.

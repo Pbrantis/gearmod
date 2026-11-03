@@ -5,6 +5,9 @@ export const en: typeof ptBR = {
     unsupportedCodexMode: (mode: string) => `Mode not supported by Codex: ${mode}`,
     noCodexModels: 'Codex returned no models.',
     codexModelsTimeout: 'Codex did not respond in time when listing models.',
+    commitSuggestEmpty: 'The AI did not return a message.',
+    commitSuggestTimeout: 'The AI took too long to suggest the message.',
+    commitSuggestNoClaude: 'No Claude profile is set up to suggest the message.',
     unsupportedClaudeMode: (mode: string) => `Mode not supported by Claude: ${mode}`,
     windowsExecutableRequired: 'On Windows, the agent must point to an .exe, .cmd or .bat file',
     safeExecutableNotFound: (command: string) => `Safe executable not found on PATH: ${command}`,
@@ -340,6 +343,13 @@ export const en: typeof ptBR = {
     lastTestFailed: 'The last automated test failed. Run it again and let it pass before moving to Done.',
     testsPassedReviewNeeded: 'The tests passed. Now use “Review” in the Changes panel to approve the changes before moving to Done.',
     agentRunningNow: (list: string) => `This agent is running now (${list}). Stop the execution before removing the agent.`,
+  },
+  gitAccounts: {
+    emptyToken: 'Paste the token.',
+    tokenRejected: (host: string) => `${host} did not accept that token. Check it is correct, has not expired and can read the API.`,
+    cannotReach: (host: string, detail: string) => `Could not reach ${host}: ${detail}`,
+    invalidToken: (host: string) => `The token for ${host} is no longer valid. Update it in the project's Git accounts.`,
+    needLogin: (cli: string) => `Log in to ${cli} (${cli} auth login) or add a token in the project's Git accounts.`,
   },
   pullRequests: {
     notGithubNorGitlab: 'This repository is not on GitHub or GitLab.',

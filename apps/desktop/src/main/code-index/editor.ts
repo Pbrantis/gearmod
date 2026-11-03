@@ -71,12 +71,18 @@ export function editorCodeQueries(index: EditorCodeIndex | undefined, codeRoots:
       if (!input.enabled) { for (const root of roots) await index.forget(root); return { enabled: false, roots: [] } }
       return { enabled: true, roots: await Promise.all(roots.map((root) => index.reindex(root))) }
     },
-    /** Indexa as pastas do projeto agora (o que não mudou é reaproveitado). */
-    async reindex(input: { projectId: string }): Promise<{ enabled: boolean; roots: RootStatus[] }> {
+    /** Indexa as pastas do projeto agora (o que não mudou é reaproveitado); com `root`, só essa pasta, e a tela chama uma por vez para mostrar o progresso. */
+    async reindex(input: { projectId: string; root?: string | undefined }): Promise<{ enabled: boolean; roots: RootStatus[] }> {
       const context = { projectId: input.projectId, cardId: null }
       if (!on(context)) return { enabled: false, roots: [] }
+      const all = codeRoots(context)
+      if (input.root !== undefined) {
+        if (!all.includes(input.root)) throw new Error('This folder does not belong to the project.')
+        await index!.reindex(input.root)
+        return { enabled: true, roots: await Promise.all(all.map((root) => index!.status(root))) }
+      }
       const out: RootStatus[] = []
-      for (const root of codeRoots(context)) out.push(await index!.reindex(root))
+      for (const root of all) out.push(await index!.reindex(root))
       return { enabled: true, roots: out }
     }
   }

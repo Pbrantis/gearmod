@@ -3,8 +3,8 @@ import { toolActivities } from './tool-activity'
 
 describe('toolActivities', () => {
   it('summarizes Claude tool_use blocks and ignores text', () => {
-    const payload = { message: { content: [{ type: 'text', text: 'oi' }, { type: 'tool_use', name: 'Read', input: { file_path: 'a/b.ts' } }, { type: 'tool_use', name: 'mcp__agentboard__agentboard_escrever_documento', input: { tipo: 'plano' } }] } }
-    expect(toolActivities('claude/assistant', payload).map((item) => item.title)).toEqual(['Read a/b.ts', 'agentboard_escrever_documento'])
+    const payload = { message: { content: [{ type: 'text', text: 'oi' }, { type: 'tool_use', name: 'Read', input: { file_path: 'a/b.ts' } }, { type: 'tool_use', name: 'mcp__agentboard__agentboard_write_document', input: { tipo: 'plano' } }] } }
+    expect(toolActivities('claude/assistant', payload).map((item) => item.title)).toEqual(['Read a/b.ts', 'agentboard_write_document'])
   })
   it('summarizes Codex commands and ignores other events', () => {
     expect(toolActivities('item/started', { item: { type: 'commandExecution', command: 'git status' } })).toEqual([{ title: 'Comando git status', detail: 'git status' }])

@@ -214,6 +214,7 @@ export const chat = {
   tokens: {
     million: ' mi',
     detail: (input: string, output: string, cached: string, runs: number) => `${input} lidos · ${output} escritos · ${cached} do cache · ${runs} ${runs === 1 ? 'execução' : 'execuções'}`,
+    clickForDetails: 'Clique para ver mais detalhes',
     perStep: 'Tokens por etapa',
     used: 'Tokens usados',
     plusCache: (amount: string) => `+ ${amount} de cache`,
@@ -262,6 +263,7 @@ export const chat = {
   },
   moreMenu: {
     moreOptions: 'Mais opções',
+    openCard: 'Abrir card',
     chatMoreOptions: 'Mais opções do chat',
     search: 'Pesquisar',
     moveWindow: 'Mover janela',
@@ -324,6 +326,11 @@ export const chat = {
     runProjectTests: 'Rodar testes do projeto',
     testOnScreen: 'Testar na tela (Playwright)',
     testAgain: 'Testar de novo',
+    testChoiceEyebrow: 'Testar',
+    testChoiceTitle: 'Como rodar o Playwright?',
+    testChoiceText: 'O Playwright CLI está ligado neste projeto. Dá para acompanhar o teste no navegador ou rodar sem janela, em segundo plano.',
+    watchBrowser: 'Ver no navegador',
+    runBackground: 'Em segundo plano',
     ariaChat: 'Chat do card',
     cardChats: 'Chats do card',
     worktreeTip: (path: string) => `Worktree: ${path}`,
