@@ -1,0 +1,79 @@
+name: Release
+
+# Uma tag de versão (ex.: v0.1.0) gera o instalador do Windows e publica uma Release com ele e o SHA-256.
+# A versão da tag precisa ser igual à de apps/desktop/package.json. Instalador ainda sem assinatura.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Tag matches the app version
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME does not match apps/desktop/package.json version $version" }
+          "VERSION=$version" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Git identity (some tests commit in temporary repositories)
+        run: |
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "CI"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      - run: pnpm dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $exe = "apps/desktop/dist/GearMod-Setup-$env:VERSION-x64.exe"
+          if (-not (Test-Path $exe)) { throw "Installer not found: $exe" }
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  GearMod-Setup-$env:VERSION-x64.exe" | Out-File -Encoding ascii apps/desktop/dist/SHA256SUMS.txt
+          Get-Content apps/desktop/dist/SHA256SUMS.txt
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          ## Download
+
+          Download **GearMod-Setup-$env:VERSION-x64.exe** below and run it. Windows 10 or 11 (x64) only.
+
+          The installer is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Click **More info** and then **Run anyway**. You can check the download against ``SHA256SUMS.txt`` with:
+
+          ``````powershell
+          Get-FileHash .\GearMod-Setup-$env:VERSION-x64.exe -Algorithm SHA256
+          ``````
+          "@
+          $extra = @()
+          if ($env:VERSION -match '-') { $extra += '--prerelease' }
+          gh release create $env:GITHUB_REF_NAME `
+            "apps/desktop/dist/GearMod-Setup-$env:VERSION-x64.exe" `
+            apps/desktop/dist/SHA256SUMS.txt `
+            --title "GearMod $env:VERSION" --notes $notes --generate-notes @extra
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
