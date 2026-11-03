@@ -87,7 +87,7 @@ function McpDialog({ initial, preset, available, busy, cancel, save }: { initial
   const submit = async (): Promise<void> => { if (missing) { setError(missing); return } setError(''); const failure = await save(draft); if (failure) setError(failure) }
   const nameField = <label className="f">{t.common.name}<input className="in" value={draft.name} autoFocus={!preset} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder={tm.namePlaceholder} /></label>
   const agents = <fieldset className="mcp-agents"><legend>{tm.agentsUsing}</legend>{options.map((provider) => <Switch key={provider} className="dbsw" checked={draft.providers.includes(provider)} onChange={(value) => setDraft({ ...draft, providers: value ? [...draft.providers, provider] : draft.providers.filter((item) => item !== provider) })}>{providerNames[provider]}</Switch>)}</fieldset>
-  return <div className="overlay top" role="dialog" aria-label={title}><div className="modal mcp-dialog" style={{ width: 'min(560px,100%)' }}>
+  return <div className="overlay top" role="dialog" aria-label={title}><div className="modal mcp-dialog" style={{ width: 'min(760px,100%)' }}>
     <header><div><div className="eyebrow">MCP</div><h2>{title}</h2></div><button type="button" className="x" onClick={cancel} aria-label={t.common.close}>×</button></header>
     {preset?.note && <p className="mcp-note">{preset.note}</p>}
     <div className="dbform stack">

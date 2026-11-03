@@ -9,12 +9,13 @@ import { Select } from './Select'
 import { Checkbox } from './Checkbox'
 import { useT } from './i18n'
 import { TrashIcon } from './icons'
+import { loadLatest } from './toolUpdates'
 
 /** Playwright CLI: ferramenta do app, em pasta própria, com várias versões e uma escolhida por projeto. */
 export function PlaywrightSection({ projectId, enabled, toggle, latest }: { projectId: string; enabled: boolean; toggle(value: boolean): void; latest?: string | null }): React.JSX.Element {
   const t = useT(), tw = t.settings.playwright
   const [status, setStatus] = useState<PlaywrightStatus>(), [sources, setSources] = useState<Array<{ id: string; name: string; node: boolean }>>([]), [sourceId, setSourceId] = useState('')
-  const [version, setVersion] = useState(''), [browser, setBrowser] = useState(true), [skills, setSkills] = useState<Array<'claude' | 'agents'>>([])
+  const [checkingLatest, setCheckingLatest] = useState(false), [version, setVersion] = useState(''), [browser, setBrowser] = useState(true), [skills, setSkills] = useState<Array<'claude' | 'agents'>>([])
   const [confirming, setConfirming] = useState(false), [removing, setRemoving] = useState<string>(), [downloading, setDownloading] = useState(false), [error, setError] = useState('')
   const [picking, setPicking] = useState(false), [available, setAvailable] = useState<string[]>(), [pickError, setPickError] = useState(''), [processId, setProcessId] = useState<string>(), [processOpen, setProcessOpen] = useState(false)
   useEffect(() => {
@@ -48,7 +49,6 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
     void promise.catch(() => undefined)
   }
   const nodeChip = status ? (status.node.system ? tw.nodeSystem(status.node.system.replace(/^v/, '')) : status.node.managed ? tw.nodeManaged(status.node.managed) : null) : null
-  const newerThanInstalled = Boolean(latest && status && !status.versions.some((item) => item.version === latest) && (status.versions.length === 0 || isOutdated(status.versions[0]!.version, latest)))
   return <div className="cx-wfpanel">
     <section className="cx-wfcard">
     <h4>{tw.title}</h4>
@@ -61,19 +61,17 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
         <span className="pw-chip" data-tip={status.toolsDir}>{tw.folderChip}</span>
       </div>
       {status.versions.length > 0 && !status.browserReady && <div className="cx-note warn cx-browserrow"><span>{tw.browserMissing}</span><button type="button" className="mini" disabled={downloading || busy} onClick={() => void downloadBrowser()}>{downloading ? tw.downloading : tw.downloadBrowser}</button></div>}
-      <h5 className="pw-subtitle">{tw.versionsTitle}</h5>
+      <h5 className="pw-subtitle pw-subtitle-row"><span>{tw.versionsTitle}</span>{!latest && <button type="button" className="linklike" disabled={checkingLatest} onClick={() => { setCheckingLatest(true); void loadLatest(true).catch(() => undefined).finally(() => setCheckingLatest(false)) }}>{checkingLatest ? tw.checkingVersion : tw.checkNewVersion}</button>}</h5>
       {status.versions.length ? <ul className="pw-versions">{status.versions.map((item) => <li key={item.version} className={item.version === status.selected ? 'on' : ''}>
         <code data-tip={item.path}>v{item.version}</code>
         {item.version === status.selected ? <span className="pw-chip ok"><i aria-hidden="true" />{tw.inUse}</span> : <button type="button" className="mini secondary" disabled={busy} onClick={() => void act(() => window.gearmod.invoke('playwright:select', { projectId, version: item.version }))}>{tw.use}</button>}
+        {item.version === status.selected && latest && isOutdated(item.version, latest) && <><span className="pw-chip warn"><i aria-hidden="true" />{tw.newVersion(latest)}</span><button type="button" className="mini" disabled={busy} onClick={() => { setVersion(latest); void openPicker() }}>{tw.installVersion(latest)}</button></>}
         <span className="ch-spacer" />
         <button type="button" className="ibtn tip danger" data-tip={tw.removeVersion(item.version)} aria-label={tw.removeVersion(item.version)} disabled={busy} onClick={() => setRemoving(item.version)}><TrashIcon /></button>
       </li>)}</ul> : <p className="cx-muted">{tw.noVersions}</p>}
-      <div className="cx-offerrow">
+      <div className="cx-offerrow pw-install-row">
         <label className="ck-line"><Checkbox checked={enabled} disabled={status.versions.length === 0} onChange={toggle} /> {tw.offer}</label>
-      </div>
-      <div className="pw-install-row">
         <button type="button" className="mini secondary" disabled={busy} onClick={() => void openPicker()}>{busy ? tw.installing : tw.installNew}</button>
-        {newerThanInstalled && latest && <span className="cx-muted">{tw.latestHint(latest)}</span>}
       </div>
       {status.error && <div className="cx-error">{status.error}</div>}
     </> : <p className="cx-muted">{tw.checking}</p>}

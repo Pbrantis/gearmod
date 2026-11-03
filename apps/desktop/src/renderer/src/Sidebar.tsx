@@ -24,6 +24,17 @@ const Bar = ({ percent }: { percent: number }): React.JSX.Element => <div classN
 export function usageHistorySummary(rows: UsageHistoryRow[]): { input: number; cached: number; output: number; billed: number; equivalent: number; unknown: number } {
   return rows.reduce((total, row) => ({ input: total.input + row.input, cached: total.cached + row.cached, output: total.output + row.output, billed: total.billed + row.billedUsd, equivalent: total.equivalent + row.equivalentUsd, unknown: total.unknown + row.unknownUsd }), { input: 0, cached: 0, output: 0, billed: 0, equivalent: 0, unknown: 0 })
 }
+/** Consumo somado por agente (o histórico vem agrupado pelo id do agente), do maior custo para o menor. */
+export function usageByAgent(rows: UsageHistoryRow[]): Array<{ id: string; input: number; cached: number; output: number; billed: number; equivalent: number; unknown: number }> {
+  const byId = new Map<string, { id: string; input: number; cached: number; output: number; billed: number; equivalent: number; unknown: number }>()
+  for (const row of rows) {
+    const item = byId.get(row.group) ?? { id: row.group, input: 0, cached: 0, output: 0, billed: 0, equivalent: 0, unknown: 0 }
+    item.input += row.input; item.cached += row.cached; item.output += row.output; item.billed += row.billedUsd; item.equivalent += row.equivalentUsd; item.unknown += row.unknownUsd
+    byId.set(row.group, item)
+  }
+  const cost = (item: { billed: number; equivalent: number; unknown: number }): number => item.billed + item.equivalent + item.unknown
+  return [...byId.values()].sort((a, b) => cost(b) - cost(a) || b.input + b.output - (a.input + a.output))
+}
 const tokens = (value: number): string => new Intl.NumberFormat(dateLocale()).format(value)
 const money = (value: number): string => new Intl.NumberFormat(dateLocale(), { style: 'currency', currency: 'USD' }).format(value)
 
@@ -84,6 +95,7 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
   }, [current, only])
   const totals = usageHistorySummary(history)
   const [retentionBusy, setRetentionBusy] = useState(false), [retentionMessage, setRetentionMessage] = useState('')
+  const [usageTab, setUsageTab] = useState<'limits' | 'history'>('limits')
   const exportCsv = async (): Promise<void> => {
     setRetentionBusy(true); setRetentionMessage('')
     try {
@@ -105,17 +117,27 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
       setRetentionMessage(t.shell.sidebar.purged(deleted, saved))
     } catch (reason) { setRetentionMessage(plainError(reason)) } finally { setRetentionBusy(false) }
   }
-  return <div className="overlay top" role="dialog" aria-label={t.shell.sidebar.usageTitle}><div className="modal usage usage-history" style={{ width: 'min(620px,100%)' }}>{askDialog}<header><div><div className="eyebrow">{t.shell.sidebar.planUsage}</div><h2>{t.shell.sidebar.usageTitle}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
+  return <div className="overlay top" role="dialog" aria-label={t.shell.sidebar.usageTitle}><div className="modal usage usage-history" style={{ width: 'min(620px,100%)' }}>{askDialog}<header><div><div className="eyebrow">{t.shell.sidebar.planUsage}</div><h2>{t.shell.sidebar.usageTitle}</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header><div className="tabs" role="tablist">{([['limits', t.shell.sidebar.usageTabLimits], ['history', t.shell.sidebar.usageTabHistory]] as const).map(([value, label]) => <button type="button" key={value} role="tab" aria-selected={usageTab === value} className={`tab ${usageTab === value ? 'on' : ''}`} onClick={() => setUsageTab(value)}>{label}</button>)}</div>
+    <div className="usage-body">{usageTab === 'limits' ? 
     <section className="usage-area" aria-labelledby="quota-title"><div className="usage-area-title"><b id="quota-title">{t.shell.sidebar.accountQuota}</b><small>{t.shell.sidebar.accountQuotaHint}</small></div><div className="ugrid">{profiles.map((profile) => { const item = usage.find((entry) => entry.profileId === profile.id); return <section className={`ucard ${profile.id === current ? 'here' : ''}`} key={profile.id}>
       <div className="uhead"><AgentIcon profile={profile} size="lg" tip={false} /><span><b>{profile.label}</b><small>{providerLabels[profile.provider]}</small></span></div>
       {item?.windows.length ? item.windows.map((window) => <div className="ublk" key={window.id}><div className="uh"><span>{window.label}</span>{window.resetsAt && <small>{t.shell.sidebar.resetsAt(left(window.resetsAt), at(window.resetsAt))}</small>}<b>{window.usedPercent}%</b></div><Bar percent={window.usedPercent} /></div>) : <div className="ublk"><small>{profile.provider === 'claude' ? t.shell.sidebar.claudeReportsUsage : t.shell.sidebar.noCodexSessions}</small></div>}
     </section> })}</div></section>
+    : <>
     <section className="usage-area" aria-labelledby="tokens-title"><div className="usage-area-title"><b id="tokens-title">{t.shell.sidebar.assignedTokens}</b><small>{t.shell.sidebar.assignedTokensHint}</small></div>{historyLoading ? <p className="dim">{t.shell.sidebar.loadingHistory}</p> : history.length === 0 ? <p className="dim">{t.shell.sidebar.noTokensYet}</p> : <div className="history-grid"><div><small>{t.shell.sidebar.input}</small><b>{tokens(totals.input)}</b></div><div><small>{t.shell.sidebar.cache}</small><b>{tokens(totals.cached)}</b></div><div><small>{t.shell.sidebar.output}</small><b>{tokens(totals.output)}</b></div></div>}{historyError && <p className="error">{historyError}</p>}</section>
     <section className="usage-area" aria-labelledby="cost-title"><div className="usage-area-title"><b id="cost-title">{t.shell.sidebar.costsByType}</b><small>{t.shell.sidebar.costsHint}</small></div>{historyLoading ? <p className="dim">{t.shell.sidebar.loadingCosts}</p> : <div className="history-grid costs"><div><small>{t.shell.sidebar.billed}</small><b>{money(totals.billed)}</b></div><div><small>{t.shell.sidebar.apiEquivalent}</small><b>{money(totals.equivalent)}</b></div><div><small>{t.shell.sidebar.unknown}</small><b>{totals.unknown ? money(totals.unknown) : '—'}</b></div></div>}</section>
+    {!only && !historyLoading && history.length > 0 && <section className="usage-area" aria-labelledby="byagent-title"><div className="usage-area-title"><b id="byagent-title">{t.shell.sidebar.byAgent}</b><small>{t.shell.sidebar.byAgentHint}</small></div>
+      <table className="usage-agents"><thead><tr><th>{t.shell.sidebar.agentColumn}</th><th>{t.shell.sidebar.tokensColumn}</th><th>{t.shell.sidebar.costColumn}</th></tr></thead><tbody>{usageByAgent(history).map((item) => {
+        const profile = all.find((entry) => entry.id === item.id)
+        return <tr key={item.id}><td>{profile ? <span className="usage-agent">{<AgentIcon profile={profile} size="sm" tip={false} />}{profile.label}</span> : <span className="dim">{t.shell.sidebar.removedAgent}</span>}</td>
+          <td className="num">{tokens(item.input)} · {tokens(item.cached)} · {tokens(item.output)}</td>
+          <td className="num tip" data-tip={t.shell.sidebar.costBreakdown(money(item.billed), money(item.equivalent), money(item.unknown))}>{money(item.billed + item.equivalent + item.unknown)}</td></tr>
+      })}</tbody></table></section>}
     <section className="usage-area" aria-labelledby="retention-title"><div className="usage-area-title"><b id="retention-title">{t.shell.sidebar.historyPrivacy}</b><small>{t.shell.sidebar.historyPrivacyHint}</small></div>
       <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={retentionBusy} onClick={() => void exportCsv()}>{t.shell.sidebar.exportCsv}</button><button type="button" className="danger" disabled={retentionBusy} onClick={() => void purgeAll()}>{t.shell.sidebar.purgeUntilToday}</button></div>
       {retentionMessage && <p className="hint" role="status">{retentionMessage}</p>}
     </section>
+    </>}</div>
     </div></div>
 }
 
@@ -132,7 +154,7 @@ export function UsageDialog({ current, close }: { current?: string; close(): voi
   return <UsageModal profiles={profiles} usage={usage} current={current ?? ''} close={close} only={Boolean(current)} />
 }
 
-export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onProjectSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onSettings(): void; onProjectSettings(projectId: string): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
+export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onAddAgent, onProjectSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onAddAgent(): void; onSettings(): void; onProjectSettings(projectId: string): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
   const t = useT(), agentUpdates = useAgentUpdatesPending(profiles)
   // Arrastar: enquanto arrasta, a lista mostra o projeto já na posição nova; ao soltar, grava a ordem.
   const [drag, setDrag] = useState<{ id: string; over: number }>(), [menu, setMenu] = useState<{ project: Project; x: number; y: number }>()
@@ -177,7 +199,7 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
           <button type="button" className="projnew tip" data-tip={t.shell.sidebar.newFreeChatTip} aria-label={t.shell.sidebar.newFreeChatIn(project.name)} onClick={() => onNewChat(project.id)}><PlusIcon /></button></div>
       })}</nav>
       <VoiceInstallCard />
-      <div className="side-foot"><button className="iconbtn gearwrap" data-tip={agentUpdates ? t.shell.sidebar.settingsWithUpdate : t.common.settings} aria-label={agentUpdates ? t.shell.sidebar.settingsLabelWithUpdate : t.common.settings} onClick={onSettings}>⚙{agentUpdates && <i className="gear-dot" aria-hidden="true" />}</button><UsedAgents profiles={profiles} /></div>
+      <div className="side-foot"><button className="iconbtn gearwrap" data-tip={agentUpdates ? t.shell.sidebar.settingsWithUpdate : t.common.settings} aria-label={agentUpdates ? t.shell.sidebar.settingsLabelWithUpdate : t.common.settings} onClick={onSettings}>⚙{agentUpdates && <i className="gear-dot" aria-hidden="true" />}</button>{profiles.length ? <UsedAgents profiles={profiles} /> : <button type="button" className="mini secondary withicon side-addagent" onClick={onAddAgent}><PlusIcon />{t.shell.sidebar.addAgent}</button>}</div>
     </aside>
     {menu && <div ref={projectMenu} className="projmenu" role="menu" aria-label={t.shell.sidebar.projectActions(menu.project.name)} tabIndex={-1} style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
       <div className="ctxtitle">{menu.project.name}</div>

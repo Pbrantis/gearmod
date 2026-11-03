@@ -31,13 +31,16 @@ function newId(name: string, taken: readonly CardTypeDef[]): string {
   return id
 }
 
+/** Chave da paleta aberta para o tipo que ainda está sendo criado. */
+const newTypeKey = '__new__'
+
 /**
  * Editor da lista de tipos de card (nome + cor). Cada mudança grava na hora (`save`). Remover um tipo em uso pede confirmação:
  * os cards continuam, só passam a aparecer com cor neutra e o id como nome.
  */
 export function CardTypesEditor({ types, save, usage, disabled = false }: { types: CardTypeDef[]; save(types: CardTypeDef[]): Promise<void>; usage(): Promise<Record<string, number>>; disabled?: boolean }): React.JSX.Element {
   const t = useT().settings.cardTypes
-  const [error, setError] = useState(''), [palette, setPalette] = useState<string>(), [adding, setAdding] = useState<string | null>(null), [removing, setRemoving] = useState<{ type: CardTypeDef; count: number }>()
+  const [error, setError] = useState(''), [palette, setPalette] = useState<string>(), [adding, setAdding] = useState<string | null>(null), [newColor, setNewColor] = useState(''), [removing, setRemoving] = useState<{ type: CardTypeDef; count: number }>()
   const [names, setNames] = useState<Record<string, string>>({})
   const forget = (id: string): void => setNames((all) => { const next = { ...all }; delete next[id]; return next })
   const persist = async (next: CardTypeDef[]): Promise<boolean> => { try { setError(''); await save(next); return true } catch (reason) { setError(plainError(reason)); return false } }
@@ -50,13 +53,14 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
     void persist(types.map((item) => item.id === type.id ? { ...item, name: value.slice(0, 40) } : item))
   }
   const recolor = (type: CardTypeDef, color: string): void => { setPalette(undefined); if (color.toLowerCase() !== type.color.toLowerCase()) void persist(types.map((item) => item.id === type.id ? { ...item, color } : item)) }
+  const freeColor = (): string => { const used = new Set(types.map((item) => item.color.toLowerCase())); return agentColorPalette.find((item) => !used.has(item.toLowerCase())) ?? agentColorPalette[types.length % agentColorPalette.length]! }
+  const startAdding = (): void => { setAdding(''); setNewColor(freeColor()); setPalette(undefined) }
   const add = (): void => {
     const name = (adding ?? '').trim()
-    setAdding(null)
+    setAdding(null); setPalette(undefined)
     if (!name) return
     if (nameTaken(name)) { setError(t.duplicate); return }
-    const used = new Set(types.map((item) => item.color.toLowerCase())), color = agentColorPalette.find((item) => !used.has(item.toLowerCase())) ?? agentColorPalette[types.length % agentColorPalette.length]!
-    void persist([...types, { id: newId(name, types), name: name.slice(0, 40), color }])
+    void persist([...types, { id: newId(name, types), name: name.slice(0, 40), color: newColor || freeColor() }])
   }
   const askRemove = async (type: CardTypeDef): Promise<void> => {
     if (types.length <= 1) { setError(t.lastOne); return }
@@ -71,6 +75,7 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
     void persist(types.map((item) => item.id === type.id ? (value ? { ...item, branchPrefix: value } : (({ branchPrefix: _drop, ...rest }) => rest)(item)) : item))
   }
   return <div className="cardtypes">
+    <div className="cardtypes-row cardtypes-head" aria-hidden="true"><span>{t.color}</span><span>{t.name}</span><span>{t.branchPrefix}</span><span /></div>
     <ul className="cardtypes-list">{types.map((type) => <li key={type.id} className="cardtypes-row">
       <button type="button" className="cardtypes-swatch tip" disabled={disabled} data-tip={t.color} aria-label={t.colorOf(type.name)} aria-expanded={palette === type.id} style={{ background: type.color }} onClick={() => setPalette(palette === type.id ? undefined : type.id)} />
       <input className="in cardtypes-name" disabled={disabled} aria-label={t.name} maxLength={40} value={names[type.id] ?? type.name} onChange={(event) => setNames({ ...names, [type.id]: event.target.value })} onBlur={() => rename(type)} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.stopPropagation(); forget(type.id) } }} />
@@ -78,9 +83,14 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
       <button type="button" className="ibtn tip cardtypes-x" disabled={disabled || types.length <= 1} data-tip={types.length <= 1 ? t.lastOne : t.remove} aria-label={t.removeOf(type.name)} onClick={() => void askRemove(type)}><TrashIcon /></button>
       {palette === type.id && <div className="cardtypes-palette" role="listbox" aria-label={t.colorOf(type.name)}>{agentColorPalette.map((color) => <button type="button" role="option" aria-selected={color.toLowerCase() === type.color.toLowerCase()} key={color} className={color.toLowerCase() === type.color.toLowerCase() ? 'on' : ''} style={{ background: color }} aria-label={color} onClick={() => recolor(type, color)} />)}<label className="cardtypes-custom tip" data-tip={t.customColor}><input type="color" aria-label={t.customColor} value={type.color} onChange={(event) => recolor(type, event.target.value)} /></label></div>}
     </li>)}
-      {adding !== null && <li className="cardtypes-row"><span className="cardtypes-swatch" aria-hidden="true" /><input className="in cardtypes-name" autoFocus aria-label={t.name} maxLength={40} placeholder={t.newName} value={adding} onChange={(event) => setAdding(event.target.value)} onBlur={add} onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { event.stopPropagation(); setAdding(null) } }} /></li>}
+      {adding !== null && <li className="cardtypes-row" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) add() }}>
+        {/* Tipo novo: a cor pode ser escolhida antes de salvar; salva com Enter ou quando o foco sai da linha. */}
+        <button type="button" className="cardtypes-swatch tip" data-tip={t.color} aria-label={t.colorOf(adding || t.newName)} aria-expanded={palette === newTypeKey} style={{ background: newColor }} onClick={() => setPalette(palette === newTypeKey ? undefined : newTypeKey)} />
+        <input className="in cardtypes-name" autoFocus aria-label={t.name} maxLength={40} placeholder={t.newName} value={adding} onChange={(event) => setAdding(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') add(); if (event.key === 'Escape') { event.stopPropagation(); setAdding(null); setPalette(undefined) } }} />
+        {palette === newTypeKey && <div className="cardtypes-palette" role="listbox" aria-label={t.color}>{agentColorPalette.map((color) => <button type="button" role="option" aria-selected={color.toLowerCase() === newColor.toLowerCase()} key={color} className={color.toLowerCase() === newColor.toLowerCase() ? 'on' : ''} style={{ background: color }} aria-label={color} onClick={() => setNewColor(color)} />)}<label className="cardtypes-custom tip" data-tip={t.customColor}><input type="color" aria-label={t.customColor} value={newColor} onChange={(event) => setNewColor(event.target.value)} /></label></div>}
+      </li>}
     </ul>
-    <button type="button" className="mini secondary cardtypes-add" disabled={disabled || types.length >= 30} onClick={() => setAdding('')}>{t.add}</button>
+    <button type="button" className="addfull cardtypes-add" disabled={disabled || types.length >= 30} onClick={startAdding}>{t.add}</button>
     {error && <p className="error">{error}</p>}
     {removing && <ConfirmDialog eyebrow={t.title} title={t.removeTitle(removing.type.name)} text={removing.count < 0 ? t.removeUnknownText : t.removeText(removing.count)} ok={t.removeOk} danger cancel={() => setRemoving(undefined)} confirm={() => { const target = removing.type; setRemoving(undefined); void persist(types.filter((item) => item.id !== target.id)) }} />}
   </div>

@@ -55,7 +55,7 @@ export function ProjectCodeIndex({ project }: { project: Project }): React.JSX.E
       </div> : <small className="cidx-none">{t.notIndexed}</small>}
     </li>
   }
-  return <div className="stack" style={{ gap: 8 }}><span className="sectitle">{t.title}</span>
+  return <div className="stack" style={{ gap: 8 }}><div className="cidx-title"><span className="sectitle">{t.title}</span>{status?.enabled && <button type="button" className="mini secondary" disabled={busy} onClick={() => { void reindex() }}>{busy ? t.reindexing : status.roots.some((root) => root.indexedAt) ? t.reindexAgain : t.reindex}</button>}</div>
     <small className="hint">{t.hint}</small>
     {!status ? <small className="hint">{error || t.loading}</small> : <>
       <Switch checked={status.enabled} disabled={busy} onChange={toggle}>{t.toggle}</Switch>
@@ -64,7 +64,6 @@ export function ProjectCodeIndex({ project }: { project: Project }): React.JSX.E
           {queue && <div className="cidx-overall"><div className="cidx-head"><b>{t.progress(queue.done, queue.roots.length)}</b></div><div className="cidx-bar"><i style={{ width: `${Math.round(overall * 100)}%` }} /></div></div>}
           <ul className="cidx-roots">{status.roots.map(renderRoot)}</ul>
         </>}
-      {status.enabled && <button type="button" className="mini secondary" style={{ justifySelf: 'start' }} disabled={busy} onClick={() => { void reindex() }}>{busy ? t.reindexing : t.reindex}</button>}
     </>}
     {status && error && <p className="error">{error}</p>}
   </div>

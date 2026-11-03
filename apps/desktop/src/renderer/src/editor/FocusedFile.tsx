@@ -9,6 +9,7 @@ import { splitLineSuffix } from './position'
 import { usePreferences } from './preferences'
 import { useFileDocuments } from './useFileDocuments'
 import { QuickOpen, type QuickMode } from './QuickOpenDialog'
+import { shortcutFor } from '../shortcuts'
 import { pushRecent, readRecents } from './quickOpen'
 import { useT } from '../i18n'
 
@@ -51,12 +52,12 @@ export function FocusedFile({ projectId, cardId, chatId, request, close, setDirt
   const target = requestedTarget(effective.path)
   useEffect(() => { if (current) pushRecent(projectId, current.path) }, [current?.path])
   const keyDown = (event: React.KeyboardEvent): void => {
-    if (!event.ctrlKey || event.shiftKey || event.altKey) return
-    const mode: QuickMode | null = event.key.toLowerCase() === 'p' || event.key.toLowerCase() === 'e' ? 'files' : event.code === 'KeyT' ? 'symbols' : null
+    const id = shortcutFor(event.nativeEvent)
+    const mode: QuickMode | null = id === 'quickOpenFile' ? 'files' : id === 'searchSymbols' ? 'symbols' : null
     if (mode) { event.preventDefault(); event.stopPropagation(); setQuick(mode) }
   }
   return <aside className="fview" style={style} aria-label={t.files.editor.focused.label} onKeyDown={keyDown}>{dialog}
-    {quick && <QuickOpen context={context} roots={roots} recents={readRecents(projectId)} initialMode={quick} open={openAt} close={() => setQuick(null)} />}
+    {quick && <QuickOpen key={quick} context={context} roots={roots} recents={readRecents(projectId)} initialMode={quick} open={openAt} close={() => setQuick(null)} />}
     {current
       ? <FilePane doc={current} mode="focused" context={context} preferences={preferences} changePreferences={changePreferences} change={findChange(changes.current, current.path)} root={currentRoot} commentCardId={cardId} commentTarget={cardId ? t.files.editor.focused.commentCard : t.files.editor.focused.commentChat} update={update} save={save} reload={(path) => void reload(path)} afterComment={() => undefined} error={error} loading={loading} setError={setError} jump={jump} onJumped={() => setJump(undefined)} repoName={repoName} roots={roots} openAt={openAt}
         headerEnd={<><button type="button" className="wf-iconchip tip" data-tip={t.files.editor.focused.openInFiles} aria-label={t.files.editor.focused.openInFiles} onClick={() => window.dispatchEvent(new CustomEvent('gearmod:open-file', { detail: { projectId, cardId, path: current.path } }))}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8 3H3v14h14v-5M11 3h6v6m0-6-8 8" /></svg></button><button type="button" className="x" aria-label={t.files.editor.focused.closeFile} onClick={leave}><CloseIcon /></button></>} />

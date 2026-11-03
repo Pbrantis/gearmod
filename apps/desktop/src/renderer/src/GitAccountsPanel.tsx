@@ -1,5 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import type { GitAccountInfo, GitAccountsState } from '@gearmod/contracts'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import type { GitAccountInfo, GitAccountsState, GitRepo } from '@gearmod/contracts'
+import { gitIcons } from './GitPage'
+import { cachedGit, refreshGit } from './gitConfigCache'
+import { gitChangedEvent } from './GitSetup'
 import { plainError } from './NoticeDialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { Select } from './Select'
@@ -16,12 +19,29 @@ function Who({ info }: { info: GitAccountInfo }): React.JSX.Element {
   return <span className="gacc-who">{info.invalid && <i className="gacc-dot" aria-hidden="true" />}<b>{info.name}</b> <span className="cx-muted">@{info.login}{info.email ? ` · ${info.email}` : ''} · {info.hint}</span>{info.invalid && <small className="cx-warn"> {t.invalid}</small>}</span>
 }
 
-/** Contas Git do projeto: um token por servidor (vale para todos os repositórios dele) e, se quiser, um token próprio por repositório. */
-export function GitAccountsPanel({ projectId }: { projectId: string }): React.JSX.Element {
-  const { git: { accounts: t }, common } = useT()
+/** Repositórios e contas Git do projeto: um token por servidor (vale para todos os repositórios dele) e, se quiser, um token próprio por repositório.
+ * Cada repositório aparece uma vez, com a branch atual; os que não têm remoto ficam num bloco à parte. */
+export function GitAccountsPanel({ projectId, openFirst = false }: { projectId: string; openFirst?: boolean }): React.JSX.Element {
+  const { git: { accounts: t, policy: tp }, common } = useT()
+  const [repos, setRepos] = useState<GitRepo[]>(cachedGit(projectId).repos ?? [])
+  useEffect(() => {
+    const sync = (): void => setRepos(cachedGit(projectId).repos ?? [])
+    sync(); void refreshGit(projectId).then(sync).catch(() => undefined)
+    window.addEventListener(gitChangedEvent, sync); return () => window.removeEventListener(gitChangedEvent, sync)
+  }, [projectId])
+  const repoInfo = (sourceId: string): GitRepo | undefined => repos.find((item) => item.sourceId === sourceId)
+  const branch = (repo: GitRepo | undefined): React.JSX.Element | null => repo ? <span className="pillg ok" data-tip={tp.currentBranch}>{gitIcons.branch}{repo.head ?? '—'}</span> : null
   const [state, setState] = useState<GitAccountsState>(), [error, setError] = useState(''), [edit, setEdit] = useState<Target | null>(null), [token, setToken] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState<{ host: string; sourceId?: string; label: string } | null>(null)
   const load = useCallback(async (): Promise<void> => { try { setState(await window.gearmod.invoke('git-accounts:state', { projectId })); setError('') } catch (reason) { setError(plainError(reason)) } }, [projectId])
   useEffect(() => { void load() }, [load])
+  // Aberto pelo "Adicionar token" da página Git: com um servidor só e sem token, o diálogo já abre.
+  const autoOpened = useRef(false)
+  useEffect(() => {
+    if (!openFirst || autoOpened.current || !state) return
+    autoOpened.current = true
+    const only = state.hosts.length === 1 ? state.hosts[0] : undefined
+    if (only && !only.project) open({ host: only.host, provider: only.provider ?? 'gitlab' })
+  }, [openFirst, state])
   const changed = (next: GitAccountsState): void => { setState(next); window.dispatchEvent(new CustomEvent(gitAccountsChangedEvent, { detail: { projectId } })) }
   const open = (target: Target): void => { setEdit(target); setToken(''); setError('') }
   const save = async (): Promise<void> => {
@@ -40,12 +60,11 @@ export function GitAccountsPanel({ projectId }: { projectId: string }): React.JS
     <small className="hint">{target.provider === 'github' ? t.helpGithub : t.helpGitlab}</small>
     {error && <p className="error">{error}</p>}
     <div className="cgrow"><button type="button" className="mini" disabled={busy || !token.trim()} onClick={() => void save()}>{busy ? t.checking : t.save}</button><button type="button" className="mini secondary" disabled={busy} onClick={() => setEdit(null)}>{common.cancel}</button></div></div>
-  const editing = (target: Target): boolean => edit?.host === target.host && edit.sourceId === target.sourceId
   return <div className="stack gacc">
     <div className="sectitle">{t.title}</div>
     <small className="hint">{t.hint}</small>
     {error && !edit && <p className="error">{error}</p>}
-    {!state ? <small className="hint">{common.loading}</small> : !state.hosts.length ? <small className="hint">{t.noRemotes}</small> : state.hosts.map((host) => {
+    {!state ? <small className="hint">{common.loading}</small> : !state.hosts.length && !repos.length ? <small className="hint">{t.noRemotes}</small> : state.hosts.map((host) => {
       const provider = host.provider ?? 'gitlab', projectTarget: Target = { host: host.host, provider }
       return <section className="cx-wfcard gacc-host" key={host.host}>
         <h4>{host.host}<small className="cx-muted"> · {provider === 'github' ? 'GitHub' : 'GitLab'}</small></h4>
@@ -53,18 +72,30 @@ export function GitAccountsPanel({ projectId }: { projectId: string }): React.JS
           <span className="grow1" />
           <button type="button" className="mini secondary" onClick={() => open(projectTarget)}>{host.project ? t.replace : t.add}</button>
           {host.project && <button type="button" className="mini secondary" onClick={() => setRemoving({ host: host.host, label: host.host })}>{t.remove}</button>}</div>
-        {editing(projectTarget) && form(host, edit!)}
         {host.repos.length > 0 && <div className="gacc-repos">{host.repos.map((repo) => {
           const target: Target = { host: host.host, sourceId: repo.sourceId, provider: host.project?.provider ?? provider }
-          return <div key={repo.sourceId}><div className="gacc-row"><b>{repo.name}</b>
+          const info = repoInfo(repo.sourceId)
+          return <div key={repo.sourceId}><div className="gacc-row"><b data-tip={info?.path}>{repo.name}</b>{branch(info)}
             {repo.own ? <Who info={repo.own} /> : <span className="cx-muted">{repo.using === 'project' ? (host.project?.invalid ? t.projectInvalid : t.usesProject) : t.noToken}</span>}
             <span className="grow1" />
             <button type="button" className="mini secondary" onClick={() => open(target)}>{repo.own ? t.replace : t.ownToken}</button>
             {repo.own && <button type="button" className="mini secondary" onClick={() => setRemoving({ host: host.host, sourceId: repo.sourceId, label: repo.name })}>{t.remove}</button>}</div>
-            {editing(target) && form(host, edit!)}</div>
+          </div>
         })}</div>}
       </section>
     })}
+    {state && repos.some((repo) => !repo.hasRemote) && <section className="cx-wfcard gacc-host">
+      <h4>{t.noRemoteTitle}<small className="cx-muted"> · {t.noRemoteHint}</small></h4>
+      <div className="gacc-repos">{repos.filter((repo) => !repo.hasRemote).map((repo) => <div key={repo.sourceId} className="gacc-row"><b data-tip={repo.path}>{repo.name}</b>{branch(repo)}</div>)}</div>
+    </section>}
+    {edit && state && (() => {
+      const host = state.hosts.find((item) => item.host === edit.host), repo = edit.sourceId ? host?.repos.find((item) => item.sourceId === edit.sourceId) : undefined
+      if (!host) return null
+      return <div className="overlay" role="dialog" aria-label={t.token}><div className="modal tokdialog">
+        <header><div><div className="eyebrow">{host.host}</div><h2>{repo ? `${t.ownToken} · ${repo.name}` : t.projectToken}</h2></div><button type="button" className="x" aria-label={common.close} onClick={() => setEdit(null)}>×</button></header>
+        {form(host, edit)}
+      </div></div>
+    })()}
     {removing && <ConfirmDialog eyebrow={t.title} title={t.removeTitle(removing.label)} text={t.removeText} ok={t.remove} danger cancel={() => setRemoving(null)} confirm={() => void remove()} />}
   </div>
 }

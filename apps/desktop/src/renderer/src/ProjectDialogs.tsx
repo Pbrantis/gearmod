@@ -81,7 +81,26 @@ function AgentTeam({ profiles, allowed, setAllowed, probes }: { profiles: AgentP
   </div>
 }
 
-export function ProjectConfigDialog({ project, profiles, saved, renamed, openConstitutionChat, initialTab }: { project: Project; profiles: AgentProfile[]; saved(): void | Promise<void>; renamed?(): void; openConstitutionChat(prompt?: string): void; initialTab?: 'general' | 'git' }): React.JSX.Element {
+export function ProjectConfigDialog({ project, profiles, saved, renamed, openConstitutionChat, initialTab, initialFocus }: { initialFocus?: 'git-accounts'; project: Project; profiles: AgentProfile[]; saved(): void | Promise<void>; renamed?(): void; openConstitutionChat(prompt?: string): void; initialTab?: 'general' | 'git' }): React.JSX.Element {
+  // Aberto para cuidar das contas Git (ex.: "Adicionar token" na página Git): rola até elas e dá um destaque rápido.
+  useEffect(() => {
+    if (initialFocus !== 'git-accounts') return
+    let tries = 0, timer = 0
+    const find = (): void => {
+      // Espera as contas carregarem (os cartões dos servidores), senão a página ainda muda de altura depois da rolagem.
+      const target = document.querySelector<HTMLElement>('.modal.pcfg .gacc'), cards = [...document.querySelectorAll<HTMLElement>('.modal.pcfg .gacc .gacc-host')]
+      if (target && (cards.length || tries > 30)) {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+          target.scrollIntoView({ block: 'start' })
+          for (const card of cards) card.classList.add('focus-flash')
+          timer = window.setTimeout(() => cards.forEach((card) => card.classList.remove('focus-flash')), 1600)
+        }))
+        return
+      }
+      if (tries++ < 60) timer = window.setTimeout(find, 50)
+    }
+    find(); return () => window.clearTimeout(timer)
+  }, [initialFocus])
   const t = useT(), tp = t.settings.project
   const [tab, setTab] = useState<'general' | 'git' | 'workflow' | 'sdd' | 'tools' | 'theme' | 'constitution' | 'skills' | 'mcp'>(initialTab ?? 'general'), [name, setName] = useState(project.name), [icon, setIcon] = useState(project.icon), [allowed, setAllowed] = useState(project.allowedProfileIds), [editingName, setEditingName] = useState(false), [saveState, setSaveState] = useState<'idle' | 'waiting' | 'saving' | 'saved'>('idle'), [error, setError] = useState(''), [ownTheme, setOwnTheme] = useState<AppTheme | null>(() => projectTheme(project.id)), [probes, setProbes] = useState<Record<string, AgentProbe>>({})
   const toolsPending = useToolsPending(project.id)
@@ -150,7 +169,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
         <section className="cx-wfcard"><ProjectCodeIndex project={project} /></section>
         </div>
       {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>
-      : tab === 'git' ? <><GitPolicyPanel projectId={project.id} /><GitAccountsPanel projectId={project.id} /></>
+      : tab === 'git' ? <><GitPolicyPanel projectId={project.id} /><GitAccountsPanel projectId={project.id} openFirst={initialFocus === 'git-accounts'} /></>
       : tab === 'workflow' ? <WorkflowPanel projectId={project.id} />
       : tab === 'sdd' ? <SddSettings project={project} openConstitutionChat={openConstitutionChat} onOpenReference={() => void finish()} />
       : tab === 'tools' ? <ToolsPanel projectId={project.id} openedTerminal={() => void finish()} />

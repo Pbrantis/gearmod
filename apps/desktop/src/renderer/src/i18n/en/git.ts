@@ -358,7 +358,9 @@ export const git: typeof source = {
     seeFilesToCommit: 'See and check the files'
   },
   accounts: {
-    title: 'Git accounts',
+    title: 'Repositories and Git accounts',
+    noRemoteTitle: 'No remote',
+    noRemoteHint: 'Local only: no token needed.',
     hint: 'Access token to see and open pull requests and merge requests without installing gh or glab. It is stored encrypted on this computer and never shown again once saved.',
         noRemotes: "None of this project's repositories has a remote (origin) set up.",
     projectToken: 'Project token',

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { loadShortcuts } from '../shortcuts'
 import { FileTypeIcon } from '../FileAppearance'
 import { tabLabels, type ChangeRoot } from '../changes'
 import { slashed } from './documents'
@@ -45,9 +46,10 @@ export function QuickOpen({ context, roots, recents, open, close, initialMode = 
     else if (event.key === 'ArrowUp') { event.preventDefault(); setSelected((value) => Math.max(value - 1, 0)) }
     else if (event.key === 'Enter') { event.preventDefault(); choose(selected) }
   }
+  const keys = loadShortcuts()
   return <div className="qopen-back" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) close() }}>
     <div className="qopen" role="dialog" aria-modal="true" aria-label={t.files.editor.quickOpen.label} onKeyDown={keyDown}>
-      <div className="qopen-modes" role="tablist" aria-label={t.files.editor.quickOpen.modes}><button type="button" role="tab" aria-selected={mode === 'files'} onClick={() => setMode('files')}>{t.files.editor.quickOpen.files} <small>Ctrl+P</small></button><button type="button" role="tab" aria-selected={mode === 'content'} onClick={() => setMode('content')}>{t.files.editor.quickOpen.content} <small>Ctrl+Shift+F</small></button><button type="button" role="tab" aria-selected={mode === 'symbols'} onClick={() => setMode('symbols')}>{t.files.editor.codeNav.symbols} <small>Ctrl+T</small></button><button type="button" className="qopen-close" aria-label={t.files.editor.quickOpen.closeSearch} onClick={close}>×</button></div>
+      <div className="qopen-modes" role="tablist" aria-label={t.files.editor.quickOpen.modes}><button type="button" role="tab" aria-selected={mode === 'files'} onClick={() => setMode('files')}>{t.files.editor.quickOpen.files} <small>{keys.quickOpenFile}</small></button><button type="button" role="tab" aria-selected={mode === 'content'} onClick={() => setMode('content')}>{t.files.editor.quickOpen.content} <small>{keys.searchInFiles}</small></button><button type="button" role="tab" aria-selected={mode === 'symbols'} onClick={() => setMode('symbols')}>{t.files.editor.codeNav.symbols} <small>{keys.searchSymbols}</small></button><button type="button" className="qopen-close" aria-label={t.files.editor.quickOpen.closeSearch} onClick={close}>×</button></div>
       {mode === 'symbols' ? <SymbolSearch context={context} text={text} setText={setText} open={(path, line) => { close(); open(path, line) }} /> : mode === 'content' ? <ProjectSearch context={context} roots={roots} seed={{ text, at: 1 }} onQueryChange={setText} open={(path, line, column, length) => { close(); open(path, line, column, length) }} /> : <><input autoFocus className="in" placeholder={t.files.editor.quickOpen.placeholder} aria-label={t.files.editor.quickOpen.nameLabel} value={text} onChange={(event) => setText(event.target.value)} />
       <div className="qopen-list" role="listbox" ref={list}>
         {!target.path && ranked.length > 0 && <p className="qopen-note">{t.files.editor.quickOpen.recents}</p>}

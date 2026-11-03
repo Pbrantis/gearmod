@@ -6,20 +6,17 @@ import { tasks } from './backgroundTasks'
 import { plainError } from './NoticeDialog'
 import { CatalogLinks } from './McpPanel'
 import { Select } from './Select'
+import { ImportSkillDialog } from './ImportSkillDialog'
 import { useT } from './i18n'
 
 const providerName = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } as const
-const providerMaker = { claude: 'Anthropic', codex: 'OpenAI', gemini: 'Google' } as const
-// Agentes que se oferece como origem ou destino de conversão. Gemini está desativado no app: skills que já o têm só mostram o status.
-const offered = ['claude', 'codex'] as const
 const skillCatalogs = [{ key: 'skillsSh', url: 'https://skills.sh' }, { key: 'anthropic', url: 'https://github.com/anthropics/skills' }] as const
-const slug = (value: string): string => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
 
 /** Skills globais (pasta de cada agente) ou do projeto (detectadas no repositório): importar e converter para o outro agente. */
 export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope: SkillScope; projectId?: string; profiles: AgentProfile[]; globalCount?: number }): React.JSX.Element {
   const t = useT(), ts = t.settings.skills
   const [skills, setSkills] = useState<SkillEntry[]>([]), [loaded, setLoaded] = useState(false), [error, setError] = useState(''), [importing, setImporting] = useState(false), [converting, setConverting] = useState<{ name: string; to: 'claude' | 'codex' | 'gemini' }>()
-  const [source, setSource] = useState(''), [name, setName] = useState(''), [origin, setOrigin] = useState<'claude' | 'codex'>('claude'), [reviewer, setReviewer] = useState(''), [busy, setBusy] = useState(false)
+  const [reviewer, setReviewer] = useState(''), [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'one' | 'folder'>('one'), [menu, setMenu] = useState(false), [open, setOpen] = useState<string>(), [deleting, setDeleting] = useState<SkillEntry>(), [notice, setNotice] = useState('')
   const load = useCallback(async () => { try { setSkills(await window.gearmod.invoke('skills:list', { scope, projectId })); setLoaded(true); setError('') } catch (reason) { setError(plainError(reason)) } }, [scope, projectId])
   useEffect(() => { void load() }, [load])
@@ -28,18 +25,11 @@ export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope
     setBusy(true); setError('')
     try { if (process) await tasks.track(process, action).promise; else await action() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
-  const choose = async (): Promise<void> => { const picked = await window.gearmod.invoke(mode === 'folder' ? 'skills:choose-folder' : 'skills:choose-source', undefined); if (!picked) return; setSource(picked); if (mode === 'one' && !name) setName(slug(picked.replace(/[\\/]SKILL\.md$/i, '').split(/[\\/]/).pop() ?? '')) }
   const running = skills.find((skill) => skill.providers.claude === 'converting' || skill.providers.codex === 'converting' || skill.providers.gemini === 'converting')
   return <>
-    <div className="skhead"><span className="sk-count" data-tip={scope === 'project' ? ts.projectTip : ts.globalTip}>{loaded ? ts.found(skills.length) : error ? ts.cannotLoad : ts.loading}<span> · {scope === 'project' ? ts.scopeProject : ts.scopeGlobal}</span></span>{!importing && <span className="impmenu"><button type="button" className="mini" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>{ts.importMenu}</button>{menu && <div className="modemenu impdrop" role="menu"><button type="button" role="menuitem" className="modeopt" onClick={() => { setMenu(false); setMode('one'); setImporting(true); setSource(''); setName('') }}><span className="mo-t"><b>{ts.oneSkill}</b><small>{ts.oneSkillHint}</small></span></button><button type="button" role="menuitem" className="modeopt" onClick={() => { setMenu(false); setMode('folder'); setImporting(true); setSource(''); setName('') }}><span className="mo-t"><b>{ts.folderSkills}</b><small>{ts.folderSkillsHint}</small></span></button></div>}</span>}</div>
+    <div className="skhead"><span className="sk-count" data-tip={scope === 'project' ? ts.projectTip : ts.globalTip}>{loaded ? ts.found(skills.length) : error ? ts.cannotLoad : ts.loading}<span> · {scope === 'project' ? ts.scopeProject : ts.scopeGlobal}</span></span>{!importing && <span className="impmenu"><button type="button" className="mini" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>{ts.importMenu}</button>{menu && <div className="modemenu impdrop" role="menu"><button type="button" role="menuitem" className="modeopt" onClick={() => { setMenu(false); setMode('one'); setImporting(true) }}><span className="mo-t"><b>{ts.oneSkill}</b><small>{ts.oneSkillHint}</small></span></button><button type="button" role="menuitem" className="modeopt" onClick={() => { setMenu(false); setMode('folder'); setImporting(true) }}><span className="mo-t"><b>{ts.folderSkills}</b><small>{ts.folderSkillsHint}</small></span></button></div>}</span>}</div>
     <CatalogLinks label={ts.browse} links={skillCatalogs.map((item) => ({ label: ts.catalogs[item.key], url: item.url }))} />
-    {importing && <div className="impbox"><button type="button" className="filepick" onClick={() => void choose()}>📄 {source || (mode === 'folder' ? ts.chooseFolder : ts.chooseOne)}<small>{source ? ts.selected : ts.clickToChoose}</small></button>
-      {mode === 'one' && <label className="f">{t.common.name}<input className="in" value={name} placeholder={ts.namePlaceholder} onChange={(e) => setName(slug(e.target.value))} /></label>}
-      <div className="f"><span>{mode === 'folder' ? ts.whichAgentFolder : ts.whichAgentOne}</span><div className="provcards">{offered.map((provider) => <button type="button" key={provider} className={origin === provider ? 'sel' : ''} onClick={() => setOrigin(provider)}><i className={`av lg ${provider}`}><ProviderLogo provider={provider} /></i><span><b>{providerName[provider]}</b><small>{providerMaker[provider]}</small></span></button>)}</div></div>
-      <div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" onClick={() => setImporting(false)}>{t.common.cancel}</button><button type="button" disabled={busy || !source || (mode === 'one' && !name)} onClick={() => void guard(async () => {
-        if (mode === 'folder') { const result = await window.gearmod.invoke('skills:import-folder', { scope, projectId, folderPath: source, provider: origin }); setSkills(result.skills); setNotice(ts.imported(result.imported.length, result.skipped.length)) }
-        else setSkills(await window.gearmod.invoke('skills:import', { scope, projectId, sourcePath: source, name, provider: origin }))
-        setImporting(false) }, { title: mode === 'folder' ? ts.importFolderTitle : ts.importOneTitle(name), detail: source })}>{ts.import}</button></div></div>}
+    {importing && <ImportSkillDialog mode={mode} scope={scope} projectId={projectId} close={() => setImporting(false)} imported={(next, note) => { setSkills(next); if (note) setNotice(note) }} />}
     <div className="stack sklist" style={{ gap: 8 }}>{loaded && skills.length === 0 && !importing ? <div className="emptyBox">{scope === 'project' ? ts.emptyProject : ts.emptyGlobal}</div> : skills.map((skill) => {
       const from = skill.providers.claude === 'ready' ? 'claude' : skill.providers.codex === 'ready' ? 'codex' : 'gemini'
       const expanded = open === skill.id

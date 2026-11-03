@@ -3,6 +3,7 @@ import { toast } from './toasts'
 import { ColumnMenu } from './ColumnMenu'
 import { useToolsPending } from './ToolsPanel'
 import React, { useEffect, useRef, useState } from 'react'
+import { shortcutEvent } from './shortcuts'
 import { createPortal } from 'react-dom'
 import type { AgentProfile, AgentPurpose, Card, CardTypeDef, Chat, ProjectBoard } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
@@ -285,6 +286,19 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const gearControl = <button type="button" className={slots?.gear ? 'ibtn tip tb-gearbtn' : 'iconbtn'} data-tip={t.view.configureProject} aria-label={t.view.configureProject} onClick={() => onProjectConfig()}>{toolsPending && <i className="gear-dot" aria-hidden="true" />}{slots?.gear ? <SettingsIcon /> : '⚙'}</button>
   const currentView: ProjectView = gitOpen ? 'git' : dbOpen ? 'db' : chatsOpen ? 'chats' : 'board'
   const selectView = (value: ProjectView): void => { setDraft(undefined); window.dispatchEvent(new Event('gearmod:select-view')); setChatsOpen(value === 'chats'); setGitOpen(value === 'git'); setDbOpen(value === 'db') }
+  // Atalhos das vistas (Ctrl+1..4, Ctrl+Tab/Ctrl+Shift+Tab) e da configuração do projeto (Ctrl+,).
+  const viewKeys = useRef({ currentView, selectView, onProjectConfig, databaseEnabled }); viewKeys.current = { currentView, selectView, onProjectConfig, databaseEnabled }
+  useEffect(() => {
+    const direct: Partial<Record<string, ProjectView>> = { viewBoard: 'board', viewChats: 'chats', viewGit: 'git', viewDatabase: 'db' }
+    const handle = (event: Event): void => {
+      const id = (event as CustomEvent<{ id: string }>).detail?.id, now = viewKeys.current
+      const order: ProjectView[] = now.databaseEnabled ? ['board', 'chats', 'git', 'db'] : ['board', 'chats', 'git']
+      if (id === 'projectSettings') { now.onProjectConfig(); return }
+      const target = id === 'nextView' || id === 'previousView' ? order[(order.indexOf(now.currentView) + (id === 'nextView' ? 1 : order.length - 1)) % order.length] : direct[id ?? '']
+      if (target && order.includes(target) && target !== now.currentView) now.selectView(target)
+    }
+    window.addEventListener(shortcutEvent, handle); return () => window.removeEventListener(shortcutEvent, handle)
+  }, [])
   const popMenu = currentView === 'db' ? null : <PopMenu target={{ kind: currentView, projectId: board.project.id }} />
   const viewControls = <><ViewDock projectId={board.project.id} view={currentView} select={selectView} databaseEnabled={databaseEnabled} gitAlert={prs.total > 0} onDropPreview={setDropPreview} />{dropPreview && slots?.view && <ViewDockDropPreview databaseEnabled={databaseEnabled} />}{slots?.view && slots?.gear && gearControl}{!slots?.tray && popMenu}</>
   return <div className="content">

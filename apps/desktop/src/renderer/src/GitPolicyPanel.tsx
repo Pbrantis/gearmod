@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
 import type { GitPolicy, GitRepo, GitRule } from '@gearmod/contracts'
-import { gitIcons } from './GitPage'
 import { Select } from './Select'
 import { plainError } from './NoticeDialog'
 import { ruleLabel } from './gitView'
@@ -17,7 +16,7 @@ function Fold({ title, summary, closed = false, children }: { title: string; sum
   return <div className="f"><span className="foldh" role="button" tabIndex={0} aria-expanded={!shut} onClick={() => setShut(!shut)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShut(!shut) } }}><i>{shut ? '▸' : '▾'}</i>{title}{shut && <small>{summary}</small>}</span>{!shut && children}</div>
 }
 
-/** Aba Git de Configurar projeto: quem commita (padrão do projeto), exceções por branch e os repositórios. Salva ao mudar. */
+/** Aba Git de Configurar projeto: quem commita (padrão do projeto) e exceções por branch. Os repositórios aparecem nas contas Git. Salva ao mudar. */
 export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const { common, git: { policy: t } } = useT()
   const warm = cachedGit(projectId)
@@ -55,6 +54,5 @@ export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.
       <button type="button" className="mini secondary" style={{ justifySelf: 'start' }} onClick={() => setPolicy({ ...policy, rules: [...rules, { pattern: '', rule: 'auto' }] })}>{t.addException}</button></Fold>
     {askRemove !== null && rules[askRemove] && <ConfirmDialog eyebrow={t.exceptionEyebrow} title={t.removeExceptionTitle(rules[askRemove]!.pattern || t.unnamedBranch)} text={t.removeExceptionText} ok={common.remove} danger cancel={() => setAskRemove(null)} confirm={() => { const index = askRemove; setAskRemove(null); void save({ ...policy, rules: rules.filter((_, i) => i !== index) }) }} />}
     {error && <p className="error">{error}</p>}
-    <Fold title={t.reposTitle} closed summary={t.reposCount(repos.length)}><div className="stack" style={{ gap: 6 }}>{repos.map((repo) => <div className="grepo-row" key={repo.sourceId}>{gitIcons.repo}<span><b>{repo.name}</b><small>{repo.path}</small></span><span className="pillg ok" data-tip={t.currentBranch}>{gitIcons.branch}{repo.head ?? '—'}</span></div>)}{!repos.length && <small className="hint">{t.noRepos}</small>}</div></Fold>
   </div>
 }

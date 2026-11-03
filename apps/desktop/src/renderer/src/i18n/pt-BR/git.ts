@@ -372,7 +372,9 @@ export const git = {
     seeFilesToCommit: 'Ver e marcar os arquivos'
   },
   accounts: {
-    title: 'Contas Git',
+    title: 'Repositórios e contas Git',
+    noRemoteTitle: 'Sem remoto',
+    noRemoteHint: 'Só locais: não precisam de token.',
     hint: 'Token de acesso para ver e abrir pull requests e merge requests sem instalar o gh ou o glab. Fica guardado criptografado neste computador e não aparece de novo depois de salvo.',
     noRemotes: 'Nenhum repositório deste projeto tem um remoto (origin) configurado.',
     projectToken: 'Token do projeto',

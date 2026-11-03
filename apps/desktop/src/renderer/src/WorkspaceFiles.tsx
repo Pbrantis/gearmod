@@ -1,4 +1,5 @@
 import React, { startTransition, useEffect, useMemo, useRef, useState } from 'react'
+import { filesQuickEvent, shortcutFor } from './shortcuts'
 import type { IpcOutput } from '@gearmod/contracts'
 import { Checkbox } from './Checkbox'
 import { Select } from './Select'
@@ -305,15 +306,26 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
   const fill = (): void => { if (standalone) void window.gearmod.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded); setMenu(null) }
+  // Busca rápida: arquivos sem texto inicial; conteúdo e símbolos começam com o que estiver selecionado no editor.
+  const openQuickMode = (mode: QuickMode): void => { const picked = mode === 'files' ? '' : selectionText.current?.().split('\n')[0]?.trim() ?? ''; setQuick({ mode, text: picked }) }
+  const openQuickRef = useRef(openQuickMode); openQuickRef.current = openQuickMode
+  useEffect(() => {
+    const handle = (event: Event): void => {
+      const box = panel.current, host = box?.closest<HTMLElement>('.wf-host')
+      if (!box || (host && host.style.display === 'none')) return
+      const mode = (event as CustomEvent<{ mode: QuickMode }>).detail?.mode
+      if (mode) openQuickRef.current(mode)
+    }
+    window.addEventListener(filesQuickEvent, handle); return () => window.removeEventListener(filesQuickEvent, handle)
+  }, [])
   const keyDown = (event: React.KeyboardEvent): void => {
     if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); if (current) void save(current.path) }
     if (event.ctrlKey && !event.shiftKey && current && !current.binary) {
       const key = event.key.toLowerCase(), type = key === 'f' ? 'find' : key === 'h' ? 'replace' : key === 'g' ? 'goto' : null
       if (type) { event.preventDefault(); event.stopPropagation(); ask(type) }
     }
-    if (event.ctrlKey && !event.shiftKey && !event.altKey && (event.key.toLowerCase() === 'p' || event.key.toLowerCase() === 'e')) { event.preventDefault(); event.stopPropagation(); setQuick({ mode: 'files', text: '' }) }
-    if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyT') { event.preventDefault(); event.stopPropagation(); const picked = selectionText.current?.().split('\n')[0]?.trim() ?? ''; setQuick({ mode: 'symbols', text: picked }) }
-    if (event.ctrlKey && event.shiftKey && event.code === 'KeyF' && !changes) { event.preventDefault(); event.stopPropagation(); const picked = selectionText.current?.().split('\n')[0]?.trim() ?? ''; setQuick({ mode: 'content', text: picked }) }
+    const quickFor = { quickOpenFile: 'files', searchInFiles: 'content', searchSymbols: 'symbols' } as const, id = shortcutFor(event.nativeEvent)
+    if (id && id in quickFor && !(id === 'searchInFiles' && changes)) { event.preventDefault(); event.stopPropagation(); openQuickMode(quickFor[id as keyof typeof quickFor]) }
     if (event.ctrlKey && event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); cycleTabs(event.shiftKey) }
     if (event.key === 'Escape') setMenu(null)
   }
@@ -335,7 +347,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     </div></header>
     {shortcutsOpen && <div className="overlay top" role="dialog" aria-modal="true" aria-labelledby="wf-shortcuts-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setShortcutsOpen(false) }}><div className="modal wf-shortcuts-dialog"><header><div><div className="eyebrow">{t.files.workspace.shortcutsDialog.eyebrow}</div><h2 id="wf-shortcuts-title">{t.files.workspace.shortcutsDialog.title}</h2><p>{t.files.workspace.shortcutsDialog.description}</p></div><button type="button" className="x" autoFocus aria-label={t.files.workspace.shortcutsDialog.close} onClick={() => setShortcutsOpen(false)}>×</button></header><div className="wf-shortcuts">{shortcutList().map((item) => <div className="wf-shortcut" key={item.keys + item.label}><span>{item.label}</span><kbd>{item.keys}</kbd></div>)}</div></div></div>}
     {deleting && <ConfirmDialog eyebrow={t.files.workspace.trash.eyebrow} title={t.files.workspace.trash.title(deleting.name)} text={t.files.workspace.trash.text(deleting.directory, documents.some((file) => (slashed(file.path) === slashed(deleting.path) || slashed(file.path).startsWith(`${slashed(deleting.path)}/`)) && file.content !== file.saved))} ok={t.files.workspace.trash.ok} danger cancel={() => setDeleting(null)} confirm={() => void trash(deleting)} />}
-    {quick && <QuickOpen context={context} roots={roots} recents={readRecents(projectId)} open={openQuick} initialMode={quick.mode} initialText={quick.text} close={() => setQuick(null)} />}
+    {quick && <QuickOpen key={quick.mode} context={context} roots={roots} recents={readRecents(projectId)} open={openQuick} initialMode={quick.mode} initialText={quick.text} close={() => setQuick(null)} />}
     {tabMenu && <FileContextMenu x={tabMenu.x} y={tabMenu.y} items={fileMenu(tabMenu.entry)} close={() => setTabMenu(undefined)} find={() => ask('find', tabMenu.entry.path)} />}
     <div className="wf-tabbar">
       <button type="button" className={`ibtn wf-treebtn ${tree ? 'on' : ''}`} data-tip={tree ? t.files.workspace.tabs.hideTree : t.files.workspace.tabs.showTree} aria-label={t.files.workspace.tabs.tree} aria-pressed={tree} onClick={() => { setTreeVisible(true); change({ tree: !tree }) }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h2m3 0h7M4 10h2m3 0h7M4 16h2m3 0h7" /></svg></button>

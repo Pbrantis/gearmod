@@ -165,7 +165,7 @@ export function ThemePicker({ value, onChange, project = false }: { value: AppTh
 }
 
 
-export function SettingsDialog({ profiles, settings, initialTab, close, changed, settingsChanged }: { profiles: AgentProfile[]; settings: AppSettings; initialTab?: 'general'; close(): void; changed(): Promise<void>; settingsChanged(settings: AppSettings): void }): React.JSX.Element {
+export function SettingsDialog({ profiles, settings, initialTab, close, changed, settingsChanged }: { profiles: AgentProfile[]; settings: AppSettings; initialTab?: 'general' | 'agents'; close(): void; changed(): Promise<void>; settingsChanged(settings: AppSettings): void }): React.JSX.Element {
   const [tab, setTab] = useState<'agents' | 'skills' | 'mcp' | 'general' | 'shortcuts'>(initialTab ?? 'agents'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
   const [messageSpacing, setMessageSpacing] = useState<MessageSpacing>(() => readMessageSpacing())
   const t = useT(), td = t.settings.dialog
