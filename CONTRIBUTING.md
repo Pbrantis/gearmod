@@ -1,6 +1,6 @@
-# Contributing to AgentBoard
+# Contributing to GearMod
 
-Thanks for your interest. AgentBoard is source-available under the [PolyForm Shield License 1.0.0](LICENSE).
+Thanks for your interest. GearMod is source-available under the [PolyForm Shield License 1.0.0](LICENSE).
 
 ## Set up
 
@@ -11,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm install` rebuilds `better-sqlite3` for Electron. Use `AGENTBOARD_DATA_DIR=<folder>` to run the app against a throwaway data folder.
+`pnpm install` rebuilds `better-sqlite3` for Electron. Use `GEARMOD_DATA_DIR=<folder>` to run the app against a throwaway data folder.
 
 ## Before you open a pull request
 
@@ -38,9 +38,15 @@ pnpm test
 
 ## Contribution terms
 
-<!-- TODO(maintainer): decide between a CLA and a DCO sign-off and describe it here before accepting outside contributions. -->
+Contributions are accepted under the [GearMod Contributor License Agreement](CLA.md). You keep the copyright in your work and give the project a license to use it, including in commercial editions of GearMod. On your first pull request, an automated check asks you to sign it with a comment.
 
-The terms for contributions (CLA or DCO) are still to be defined. Until then, please open an issue to discuss a change before sending a large pull request.
+The CLA is still a draft pending legal review. Until it is adopted, outside pull requests are not merged; please open an issue to discuss a change first.
+
+Only send code you wrote yourself or that you have the right to contribute. Name any third-party code and its license in the pull request.
+
+## Trademarks
+
+The GearMod name and logo are not covered by the code license. See [TRADEMARKS.md](TRADEMARKS.md).
 
 ## Reporting security problems
 
