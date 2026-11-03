@@ -73,9 +73,9 @@ Open pull requests against `dev`. `main` only receives what is ready for a relea
 
 ## Contribution terms
 
-Contributions are accepted under the [GearMod Contributor License Agreement](CLA.md). You keep the copyright in your work and give the project a license to use it, including in commercial editions of GearMod. On your first pull request, an automated check asks you to sign it with a comment.
+Contributions are accepted under the [GearMod Contributor License Agreement](CLA.md). You keep the copyright in your work and give the project a license to use it, including in commercial editions of GearMod. On your first pull request, an automated check (the `CLA` status) asks you to accept it by replying with a comment; you only do this once. If you contribute on behalf of a company, the company must also sign the [Corporate CLA](CLA-CORPORATE.md).
 
-The CLA is still a draft pending legal review. Until it is adopted, outside pull requests are not merged; please open an issue to discuss a change first.
+For a large change, open an issue to discuss it before you send the pull request.
 
 Only send code you wrote yourself or that you have the right to contribute. Name any third-party code and its license in the pull request.
 
