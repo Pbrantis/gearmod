@@ -6,7 +6,7 @@ The GearMod marks are used as unregistered trademarks. This document does not cl
 
 ## The marks are not part of the code license
 
-The [PolyForm Shield License 1.0.0](LICENSE) covers the source code. It does **not** grant any right to use the GearMod marks, except to tell people truthfully where the software came from, as the license notice requires.
+The [PolyForm Shield License 1.0.0](LICENSE.md) covers the source code. It does **not** grant any right to use the GearMod marks, except to tell people truthfully where the software came from, as the license notice requires.
 
 ## What you can do without asking
 

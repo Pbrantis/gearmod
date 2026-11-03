@@ -1,6 +1,6 @@
 # Contributing to GearMod
 
-Thanks for your interest. GearMod is source-available under the [PolyForm Shield License 1.0.0](LICENSE).
+Thanks for your interest. GearMod is source-available under the [PolyForm Shield License 1.0.0](LICENSE.md).
 
 ## Set up
 

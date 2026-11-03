@@ -108,8 +108,8 @@
         "to": "tray"
       },
       {
-        "from": "../../LICENSE",
-        "to": "LICENSE"
+        "from": "../../LICENSE.md",
+        "to": "LICENSE.md"
       },
       {
         "from": "../../THIRD-PARTY-NOTICES.md",

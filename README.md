@@ -4,7 +4,7 @@
 
 GearMod is a local-first desktop app that organizes work as cards on a kanban board and runs coding agents (Claude Code and Codex; Gemini CLI support is disabled for now) on each card, every one in its own isolated Git worktree.
 
-> **License:** GearMod is **source-available** under the [PolyForm Shield License 1.0.0](LICENSE). You can read, use, modify and redistribute the code, except to provide a product that competes with GearMod. This is **not** an OSI-approved open source license.
+> **License:** GearMod is **source-available** under the [PolyForm Shield License 1.0.0](LICENSE.md). You can read, use, modify and redistribute the code, except to provide a product that competes with GearMod. This is **not** an OSI-approved open source license.
 
 <!-- TODO: add a screenshot or GIF of the board here. -->
 
@@ -73,6 +73,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are accepted under the [Co
 
 ## License and trademarks
 
-- Code: [PolyForm Shield License 1.0.0](LICENSE). See also [NOTICE](NOTICE).
+- Code: [PolyForm Shield License 1.0.0](LICENSE.md). See also [NOTICE](NOTICE).
 - Third-party packages keep their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 - The GearMod name and logo are not licensed under the PolyForm Shield License; see [TRADEMARKS.md](TRADEMARKS.md).
