@@ -31,6 +31,17 @@ function localPeriod(at: string, granularity: 'day' | 'week' | 'month', tz: stri
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
+/** Tipo do custo informado pela CLI: chave de API ou créditos é cobrado; assinatura é só o equivalente pelo preço da API; sem modo, desconhecido. */
+export const costKindOf = (billingMode: unknown): 'billed' | 'api_equivalent' | 'unknown' =>
+  billingMode === 'api' || billingMode === 'credits' ? 'billed' : billingMode === 'subscription' ? 'api_equivalent' : 'unknown'
+/** O registro é append-only: linhas antigas de assinatura gravadas como desconhecidas são lidas como equivalente. */
+export const effectiveCostKind = (costKind: unknown, billingMode: unknown): 'billed' | 'api_equivalent' | 'unknown' =>
+  costKind === 'billed' || costKind === 'api_equivalent' ? costKind : billingMode === 'subscription' ? 'api_equivalent' : 'unknown'
+/** Modo de cobrança da linha; nas antigas gravadas sem modo, vale o modo atual do agente que fez a execução. */
+export const billingModeSql = "(CASE WHEN usage_ledger.billing_mode = 'unknown' THEN COALESCE((SELECT ap.billing_mode FROM agent_profiles ap WHERE ap.id = usage_ledger.profile_id), 'unknown') ELSE usage_ledger.billing_mode END)"
+/** O mesmo, em SQL, para somas feitas direto no banco. */
+export const equivalentCostSql = `(cost_kind = 'api_equivalent' OR (cost_kind = 'unknown' AND ${billingModeSql} = 'subscription'))`
+
 export class UsageLedgerService {
   constructor(private readonly database: AppDatabase) {}
 
@@ -48,7 +59,7 @@ export class UsageLedgerService {
       id, at, run_id, seq, source, provider, profile_id, model_configured, model_effective, project_id, project_name, card_id, card_title, purpose,
       input_tokens, cached_read_tokens, output_tokens, billing_mode, cost_kind, cost_usd, partial
     ) VALUES (?, ?, ?, ?, 'run', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(randomUUID(), run.at, runId, finalSequence, run.provider, run.profileId, run.modelConfigured ?? null, run.modelEffective ?? null, run.projectId ?? null, run.projectName ?? null, run.cardId ?? null, run.cardTitle ?? null, run.purpose ?? null, existing ? 0 : usage.input, existing ? 0 : usage.cached, existing ? 0 : usage.output, run.billingMode ?? 'unknown', finalCost !== undefined && (run.billingMode === 'api' || run.billingMode === 'credits') ? 'billed' : 'unknown', finalCost ?? null, partial ? 1 : 0)
+      .run(randomUUID(), run.at, runId, finalSequence, run.provider, run.profileId, run.modelConfigured ?? null, run.modelEffective ?? null, run.projectId ?? null, run.projectName ?? null, run.cardId ?? null, run.cardTitle ?? null, run.purpose ?? null, existing ? 0 : usage.input, existing ? 0 : usage.cached, existing ? 0 : usage.output, run.billingMode ?? 'unknown', finalCost !== undefined ? costKindOf(run.billingMode) : 'unknown', finalCost ?? null, partial ? 1 : 0)
   }
 
   recordDelta(runId: string, usage: { input: number; cached: number; output: number }): void {
@@ -64,7 +75,7 @@ export class UsageLedgerService {
 
   recordAuxiliary(profile: { id: string; provider: string; billingMode: string }, source: 'probe' | 'skill-review', usage?: { input: number; cached: number; output: number; costUsd?: number }): void {
     this.database.db.prepare(`INSERT INTO usage_ledger(id,at,run_id,seq,source,provider,profile_id,input_tokens,cached_read_tokens,output_tokens,billing_mode,cost_kind,cost_usd,partial) VALUES (?,?,NULL,0,?,?,?,?,?,?,?,?,?,0)`)
-      .run(randomUUID(), new Date().toISOString(), source, profile.provider, profile.id, usage?.input ?? 0, usage?.cached ?? 0, usage?.output ?? 0, profile.billingMode, usage?.costUsd && (profile.billingMode === 'api' || profile.billingMode === 'credits') ? 'billed' : 'unknown', usage?.costUsd ?? null)
+      .run(randomUUID(), new Date().toISOString(), source, profile.provider, profile.id, usage?.input ?? 0, usage?.cached ?? 0, usage?.output ?? 0, profile.billingMode, usage?.costUsd ? costKindOf(profile.billingMode) : 'unknown', usage?.costUsd ?? null)
   }
 
   /**
@@ -79,14 +90,14 @@ export class UsageLedgerService {
     if (input.from) { where.push('at >= ?'); args.push(input.from) }
     if (input.to) { where.push('at <= ?'); args.push(input.to) }
     const group = groups[input.groupBy]
-    const rows = this.database.db.prepare(`SELECT at, ${group} AS "group", input_tokens AS input, cached_read_tokens AS cached, output_tokens AS output, cost_kind AS costKind, cost_usd AS costUsd FROM usage_ledger ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`).all(...args) as Array<{ at: string; group: string; input: number; cached: number; output: number; costKind: string; costUsd: number | null }>
+    const rows = this.database.db.prepare(`SELECT at, ${group} AS "group", input_tokens AS input, cached_read_tokens AS cached, output_tokens AS output, cost_kind AS costKind, ${billingModeSql} AS billingMode, cost_usd AS costUsd FROM usage_ledger ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`).all(...args) as Array<{ at: string; group: string; input: number; cached: number; output: number; billingMode: string; costKind: string; costUsd: number | null }>
     const buckets = new Map<string, { period: string; group: string; input: number; cached: number; output: number; billedUsd: number; equivalentUsd: number; unknownUsd: number }>()
     for (const row of rows) {
       const period = localPeriod(row.at, input.granularity, input.tz)
       const key = `${period}\u0000${row.group}`
       const bucket = buckets.get(key) ?? { period, group: row.group, input: 0, cached: 0, output: 0, billedUsd: 0, equivalentUsd: 0, unknownUsd: 0 }
       bucket.input += row.input; bucket.cached += row.cached; bucket.output += row.output
-      if (row.costUsd) { if (row.costKind === 'billed') bucket.billedUsd += row.costUsd; else if (row.costKind === 'api_equivalent') bucket.equivalentUsd += row.costUsd; else bucket.unknownUsd += row.costUsd }
+      if (row.costUsd) { const kind = effectiveCostKind(row.costKind, row.billingMode); if (kind === 'billed') bucket.billedUsd += row.costUsd; else if (kind === 'api_equivalent') bucket.equivalentUsd += row.costUsd; else bucket.unknownUsd += row.costUsd }
       buckets.set(key, bucket)
     }
     return [...buckets.values()].sort((a, b) => a.period === b.period ? (a.group < b.group ? -1 : a.group > b.group ? 1 : 0) : (a.period < b.period ? -1 : 1))

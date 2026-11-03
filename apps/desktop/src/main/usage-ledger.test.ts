@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AppDatabase } from './database'
-import { UsageLedgerService } from './usage-ledger'
+import { UsageLedgerService, costKindOf, effectiveCostKind } from './usage-ledger'
 import { ApprovalService } from './approvals'
 
 const roots: string[] = []
@@ -118,5 +118,28 @@ describe('UsageLedgerService', () => {
     expect(result).toMatchObject({ deleted: 1 }); expect(result.csv).toContain('inputTokens'); expect(result.csv).toContain('2026-01-01T00:00:00.000Z')
     ledger.recordRun('r', { input: 1, cached: 0, output: 0 })
     expect(() => database.db.prepare('DELETE FROM usage_ledger').run()).toThrow(/append-only/)
+  })
+})
+
+describe('tipo do custo pelo modo de cobrança do agente', () => {
+  it('chave de API e créditos são cobrados; assinatura é equivalente; sem modo é desconhecido', () => {
+    expect(costKindOf('api')).toBe('billed'); expect(costKindOf('credits')).toBe('billed')
+    expect(costKindOf('subscription')).toBe('api_equivalent')
+    expect(costKindOf('unknown')).toBe('unknown'); expect(costKindOf(null)).toBe('unknown')
+  })
+  it('linhas antigas de assinatura gravadas como desconhecidas são lidas como equivalente', () => {
+    expect(effectiveCostKind('unknown', 'subscription')).toBe('api_equivalent')
+    expect(effectiveCostKind('unknown', 'unknown')).toBe('unknown')
+    expect(effectiveCostKind('billed', 'subscription')).toBe('billed')
+  })
+})
+
+describe('custo de linhas antigas sem modo de cobrança', () => {
+  it('usa o modo atual do agente: assinatura vira equivalente API', async () => {
+    const { database } = await setup(), ledger = new UsageLedgerService(database)
+    database.db.prepare("UPDATE agent_profiles SET billing_mode='subscription' WHERE id='a'").run()
+    database.db.prepare("INSERT INTO usage_ledger(id,at,run_id,seq,source,provider,profile_id,input_tokens,cached_read_tokens,output_tokens,billing_mode,cost_kind,cost_usd,partial) VALUES ('x','2026-02-01T12:00:00.000Z',NULL,0,'probe','codex','a',1,0,1,'unknown','unknown',2.5,0)").run()
+    const [row] = ledger.history({ granularity: 'month', tz: 'UTC', groupBy: 'provider' })
+    expect(row).toMatchObject({ equivalentUsd: 2.5, unknownUsd: 0, billedUsd: 0 })
   })
 })

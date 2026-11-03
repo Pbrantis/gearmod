@@ -3,6 +3,7 @@ import type { AppDatabase } from './database'
 import type { CardHistoryService } from './history'
 import { nativeGit, type GitRunner, type WorktreeService } from './worktrees'
 import { getMainLocale, tm } from './i18n'
+import { equivalentCostSql } from './usage-ledger'
 
 /** O que o orquestrador consulta antes e depois de cada execução de card. */
 export interface RunHarness {
@@ -36,7 +37,7 @@ export class HarnessService implements RunHarness {
     const tokens = this.database.db.prepare('SELECT COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens FROM runs WHERE card_id = ?').get(input.cardId) as { tokens: number }
     if (limits.maxTokens !== null && tokens.tokens >= limits.maxTokens) return tm().harness.tokensExceeded(tokens.tokens.toLocaleString(getMainLocale()), limits.maxTokens.toLocaleString(getMainLocale()))
     // Custo: só o faturado (`cost_kind='billed'`) por padrão; `includeEquivalentCost` soma também o equivalente estimado de planos por assinatura.
-    const costKinds = limits.includeEquivalentCost ? "cost_kind IN ('billed','api_equivalent')" : "cost_kind='billed'"
+    const costKinds = limits.includeEquivalentCost ? `(cost_kind = 'billed' OR ${equivalentCostSql})` : "cost_kind='billed'"
     const cost = this.database.db.prepare(`SELECT COALESCE(SUM(CASE WHEN ${costKinds} THEN cost_usd ELSE 0 END), 0) AS cost FROM usage_ledger WHERE card_id = ?`).get(input.cardId) as { cost: number }
     if (limits.maxCostUsd !== null && cost.cost >= limits.maxCostUsd) return tm().harness.costExceeded(cost.cost.toFixed(2), limits.includeEquivalentCost, limits.maxCostUsd.toFixed(2))
     if (input.automatic) {
