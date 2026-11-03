@@ -17,6 +17,16 @@ const freeChangeRule = 'When the user asks for a new change to the project, brie
 const docLabels: Record<CardDocumentKind, string> = { resumo: 'Summary', especificacao: 'Specification', plano: 'Plan', tasks: 'Tasks', duvidas: 'Questions', mudancas: 'Changes' }
 
 /** Bloco que acompanha cada turno do agente: idioma, card, coluna atual, colunas disponíveis e os 4 documentos. */
+
+/** Pedido explícito da skill que o usuário escolheu com `/nome` (vazio sem skill). */
+const chosenSkillLead = (skill?: SkillRef | null): string => (skill ? `Use the ${skill.name} skill for this request.\n\n` : '')
+
+/** Conteúdo do SKILL.md da skill escolhida no chat, para as instruções do agente. */
+function chosenSkillText(skill?: SkillRef | null): string | undefined {
+  const file = skill ? join(skill.path, 'SKILL.md') : null
+  return file && existsSync(file) ? `## Skill chosen for this chat: ${skill!.name}\n${stripFrontMatter(readFileSync(file, 'utf8'))}` : undefined
+}
+
 export class AgentContextService {
   /** G06: cache por blob sha (chave `projectId:blobSha`) do trecho já formatado da Constituição, para não recalcular o índice a cada turno. */
   private readonly constitutionCache = new Map<string, string>()
@@ -103,11 +113,11 @@ export class AgentContextService {
   }
 
   /** Chat da Constituição: a versão atual inteira e as mudanças que os agentes sugeriram e ainda esperam decisão. */
-  constitutionPrompt(projectId: string, prompt: string): string {
+  constitutionPrompt(projectId: string, prompt: string, skill?: SkillRef | null): string {
     const current = this.constitution?.get(projectId), pending = this.constitution?.proposals(projectId).filter((item) => item.status === 'pending') ?? []
     const body = { idioma: this.language(), tipo: 'constituicao', versaoAtual: current?.version ?? 0, regra: 'This chat only writes the project Constitution: read the code freely, without changing files or cards. Always save the complete text with gearmod_write_constitution, and only after the user agrees to the change.', perguntasAoUsuario: questionRule }
     const proposals = pending.length ? `\n\n## Changes suggested by agents (awaiting decision)\n${pending.map((item) => `- C${String(item.number).padStart(3, '0')} ${item.title}\n  What changes: ${item.details}\n  Reason: ${item.reason}`).join('\n')}` : ''
-    return `<gearmod-contexto>\n${JSON.stringify(body, null, 2)}\n\n## Current Constitution\n${current?.contentMd.trim() || '(empty: the project has no Constitution yet)'}${proposals}\n</gearmod-contexto>\n\nUse the gearmod-constitution skill to run this chat.\n\n${prompt}`
+    return `<gearmod-contexto>\n${JSON.stringify(body, null, 2)}\n\n## Current Constitution\n${current?.contentMd.trim() || '(empty: the project has no Constitution yet)'}${proposals}\n</gearmod-contexto>\n\nUse the gearmod-constitution skill to run this chat.\n\n${chosenSkillLead(skill)}${prompt}`
   }
 
   /** Texto enviado ao agente: contexto + pedido. Em planejamento, pede explicitamente a skill de planejamento do sistema. */
@@ -127,16 +137,16 @@ export class AgentContextService {
   }
 
   /** Chat livre: conversa solta, somente leitura. Se a conversa virar um planejamento, o agente cria o card e passa a planejar. */
-  async freePrompt(prompt: string, projectId?: string, canEdit = false): Promise<string> {
+  async freePrompt(prompt: string, projectId?: string, canEdit = false, skill?: SkillRef | null): Promise<string> {
     const regra = canEdit ? 'Free conversation without a card: when the user asks, you may change project files and run commands, within the chosen permission mode. Do not create or change cards, except through the gearmod_create_card tool.' : 'Free conversation in read-only mode: you do not change files or cards, except through the gearmod_create_card tool.'
-    return `<gearmod-contexto>\n${JSON.stringify({ idioma: this.language(), tipo: 'chat-livre', regra, escolhaParaAlteracao: freeChangeRule, perguntasAoUsuario: questionRule }, null, 2)}${projectId ? await this.constitutionSection(projectId) : ''}\n</gearmod-contexto>\n\n${prompt}`
+    return `<gearmod-contexto>\n${JSON.stringify({ idioma: this.language(), tipo: 'chat-livre', regra, escolhaParaAlteracao: freeChangeRule, perguntasAoUsuario: questionRule }, null, 2)}${projectId ? await this.constitutionSection(projectId) : ''}\n</gearmod-contexto>\n\n${chosenSkillLead(skill)}${prompt}`
   }
 
   /** Instruções fixas do chat livre; no Codex levam só o catálogo, e a skill completa é lida sob demanda pelo MCP. */
-  freeInstructions(withSkills: boolean, canEdit = false): string {
+  freeInstructions(withSkills: boolean, canEdit = false, skill?: SkillRef | null): string {
     const base = `You are in an GearMod free chat: converse, answer questions and read the project freely${canEdit ? ', with changes allowed according to the permission mode' : ', without changing files'}. ${freeChangeRule} ${questionRule} Do not use a skill for ordinary conversation or a direct change to files. When the user asks for a card or planning, load gearmod-discovery with gearmod_read_skill, call gearmod_create_card with a short title, type, priority and a summary, record the understanding and the complexity assessment, then load and follow gearmod-planning in this same chat (documents with gearmod_write_document and, at the end, gearmod_finish_planning). Load any other skill from the catalog only when the request matches its description.`
     const skills = withSkills && this.pluginDir ? loadSkillCatalog(this.pluginDir, true) : undefined
-    return [base, skills].filter(Boolean).join('\n\n---\n\n')
+    return [base, skills, chosenSkillText(skill)].filter(Boolean).join('\n\n---\n\n')
   }
 
   /** Conteúdo integral de uma skill confiável do plugin, devolvido apenas quando o agente a ativa. */
@@ -152,9 +162,7 @@ export class AgentContextService {
   developerInstructions(planning: boolean, skill?: SkillRef | null, cardId?: string | null, purpose?: string): string | undefined {
     const which = purpose === 'constitution' ? ['gearmod-constitution'] : planning ? true : this.executionSkills(cardId, purpose)
     const system = this.pluginDir ? loadSkillInstructions(this.pluginDir, this.language(), which) : undefined
-    const file = skill ? join(skill.path, 'SKILL.md') : null
-    const chosen = file && existsSync(file) ? `## Skill chosen for this chat: ${skill!.name}\n${stripFrontMatter(readFileSync(file, 'utf8'))}` : undefined
-    return [system, chosen].filter(Boolean).join('\n\n---\n\n') || undefined
+    return [system, chosenSkillText(skill)].filter(Boolean).join('\n\n---\n\n') || undefined
   }
 
   /** Skills da etapa de execução: o fluxo curto tem a sua; os demais, a de implementar ou a de testar. */

@@ -2,7 +2,7 @@ import { AgentBackground } from './AgentBackground'
 import { AgentPermissions } from './AgentPermissions'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { dropToken, InputMirror, useAtMention } from './AtMention'
-import { defaultPermissionMode, permissionModes, type AgentProfile, type AgentPurpose, type Card, type Chat, type ChatMessage, type Project, type ProjectBoard, type Run, type SkillEntry, type SkillRef } from '@gearmod/contracts'
+import { defaultPermissionMode, permissionModes, type AgentProfile, type AgentPurpose, type Card, type Chat, type ChatMessage, type Project, type ProjectBoard, type Run, type SkillRef } from '@gearmod/contracts'
 import { AgentIcon } from './AgentIcon'
 import { ConfirmDialog } from './ConfirmDialog'
 import { shortcutEvent } from './shortcuts'
@@ -37,6 +37,7 @@ import { useDictation } from './useDictation'
 import { useStickToBottom } from './useStickToBottom'
 import { pop } from './popout'
 import { useT } from './i18n'
+import { useProjectSkills, useSlashSkills } from './SlashSkills'
 
 /** Estado do dock que sobrevive à troca de aba (o chat remonta a cada etapa): recolhido/expandido e largura. */
 const dockMin = 440
@@ -139,7 +140,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const t = useT(), c = t.chat.cardChat, d = t.chat.dock, act = t.chat.activity
   const usable = profiles.filter((profile) => project.allowedProfileIds.includes(profile.id))
   const [assessing, setAssessing] = useState(false), [chat, setChat] = useState<Chat>(), [messages, setMessages] = useState<ChatMessage[]>([]), [run, setRun] = useState<Run>(), [live, setLive] = useState('')
-  const [input, setInput] = useState(''), [inputCaret, setInputCaret] = useState(0), [skillIndex, setSkillIndex] = useState(0), [closedSkillAt, setClosedSkillAt] = useState(-1), [error, setError] = useState(''), [skills, setSkills] = useState<SkillEntry[]>([]), [skill, setSkill] = useState<SkillRef | null>(null)
+  const [input, setInput] = useState(''), [error, setError] = useState(''), [skill, setSkill] = useState<SkillRef | null>(null)
   const [menu, setMenu] = useState<'mode' | 'skill' | null>(null), [skillFilter, setSkillFilter] = useState(''), [voiceSetup, setVoiceSetup] = useState(false)
   const chatRef = useRef<Chat | undefined>(undefined)
   const log = useRef<HTMLDivElement>(null), runId =useRef<string | undefined>(undefined), wrap = useRef<HTMLDivElement>(null), skillFilterInput = useRef<HTMLInputElement>(null)
@@ -191,7 +192,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   // Chat aberto com a run já em andamento (saiu e voltou): adota a run para voltar a receber o stream.
   useEffect(() => { if (!runId.current && card.run.runId && card.run.purpose === mode && (card.run.state === 'running' || card.run.state === 'planning')) runId.current = card.run.runId }, [card.run.runId, card.run.state, card.run.purpose, mode])
   useStickToBottom(log)
-  useEffect(() => { void Promise.all([window.gearmod.invoke('skills:list', { scope: 'global' }), window.gearmod.invoke('skills:list', { scope: 'project', projectId: project.id })]).then(([global, local]) => setSkills([...local, ...global])).catch(() => undefined) }, [project.id])
+  const skills = useProjectSkills(project.id)
   useEffect(() => { setSkill(chat?.skill ?? null) }, [chat?.id, chat?.skill])
   useEffect(() => {
     if (!menu) return
@@ -218,25 +219,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       if (skillPreferenceKey) { if (next) localStorage.setItem(skillPreferenceKey, JSON.stringify(next)); else localStorage.removeItem(skillPreferenceKey) }
     } catch (reason) { setError(plainError(reason)) }
   }
-  const slash = /(^|\s)\/([^\s/]*)$/.exec(input.slice(0, inputCaret)), slashQuery = slash?.[2] ?? '', slashStart = slash ? inputCaret - slashQuery.length - 1 : -1
-  const slashSkills = slash ? available.filter((item) => `${item.name} ${item.description}`.toLocaleLowerCase().includes(slashQuery.toLocaleLowerCase())) : []
-  const slashOpen = slashStart !== closedSkillAt && slashSkills.length > 0
-  const slashMenu = useRef<HTMLDivElement>(null)
-  useEffect(() => { if (slashOpen) slashMenu.current?.querySelector<HTMLElement>('.atitem.on')?.scrollIntoView({ block: 'nearest' }) }, [slashOpen, skillIndex])
-  const chooseSlashSkill = (entry: SkillEntry): void => {
-    const path = provider ? entry.paths[provider] : null
-    if (!path) return
-    const written = `/${entry.name} `, next = input.slice(0, slashStart) + written + input.slice(inputCaret), caret = slashStart + written.length
-    setInput(next); setInputCaret(caret); setClosedSkillAt(-1); void chooseSkill({ name: entry.name, path })
-    window.requestAnimationFrame(() => { const area = mention.ref.current; if (area) { area.focus(); area.setSelectionRange(caret, caret) } })
-  }
-  const slashKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
-    if (!slashOpen || event.nativeEvent.isComposing) return false
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setSkillIndex((value) => (value + (event.key === 'ArrowDown' ? 1 : slashSkills.length - 1)) % slashSkills.length); return true }
-    if (event.key === 'Enter' || event.key === 'Tab') { event.preventDefault(); const entry = slashSkills[skillIndex]; if (entry) chooseSlashSkill(entry); return true }
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setClosedSkillAt(slashStart); return true }
-    return false
-  }
+  const slashSkill = useSlashSkills({ available, provider, input, setInput, area: mention.ref, choose: (next) => void chooseSkill(next) })
   const deliver = async (prompt: string, queuedFiles?: string[]): Promise<void> => {
     const files = queuedFiles ?? attach.take()
     if (inactive) { setError(c.agentRemoved(inactive.label.replace(' (desativado)', ''))); setInput(replies.restore(prompt)); attach.add(files); return }
@@ -357,7 +340,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
             <ReplyContextCards replies={replies.items} remove={replies.remove} />
           </div>}
           <AttachButton onClick={() => void attach.choose()} />
-          {mention.menu}{slashOpen && <div ref={slashMenu} className="atmenu skillslash-menu" role="listbox" aria-label={c.availableSkills} onMouseDown={(event) => event.preventDefault()}>{slashSkills.map((entry, index) => <button type="button" role="option" aria-selected={index === skillIndex} key={entry.id} className={`atitem ${index === skillIndex ? 'on' : ''}`} onMouseEnter={() => setSkillIndex(index)} onClick={() => chooseSlashSkill(entry)}><span className="skillslash-name">/{entry.name}</span><span className="atpath">{entry.description || (entry.scope === 'project' ? c.projectSkill : c.globalSkill)}</span></button>)}</div>}<div className="hlwrap"><InputMirror text={input} skillNames={skillNames} area={mention.ref} /><textarea rows={1} aria-label={d.messageToAgent} value={input} placeholder={dictation.recording ? d.listening : planning ? c.placeholderPlanning : testing ? c.placeholderTest : c.placeholderExecution} ref={mention.ref} onSelect={(e) => { mention.caret(e.currentTarget.selectionStart); setInputCaret(e.currentTarget.selectionStart) }} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart); setInputCaret(e.target.selectionStart); setSkillIndex(0) }} onKeyDown={(e) => { if (mention.keyDown(e) || slashKeyDown(e)) return; const dropped = dropToken(e, input, skillNames); if (dropped) { e.preventDefault(); setInput(dropped.text); setInputCaret(dropped.at); mention.caret(dropped.at); if (dropped.token.kind === 'skill' && skill?.name === dropped.token.word.slice(1)) void chooseSkill(null); window.requestAnimationFrame(() => mention.ref.current?.setSelectionRange(dropped.at, dropped.at)); return }; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} /></div>
+          {mention.menu}{slashSkill.menu}<div className="hlwrap"><InputMirror text={input} skillNames={skillNames} area={mention.ref} /><textarea rows={1} aria-label={d.messageToAgent} value={input} placeholder={dictation.recording ? d.listening : planning ? c.placeholderPlanning : testing ? c.placeholderTest : c.placeholderExecution} ref={mention.ref} onSelect={(e) => { mention.caret(e.currentTarget.selectionStart); slashSkill.caret(e.currentTarget.selectionStart) }} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart); slashSkill.caret(e.target.selectionStart); slashSkill.reset() }} onKeyDown={(e) => { if (mention.keyDown(e) || slashSkill.keyDown(e)) return; const dropped = dropToken(e, input, skillNames); if (dropped) { e.preventDefault(); setInput(dropped.text); slashSkill.caret(dropped.at); mention.caret(dropped.at); if (dropped.token.kind === 'skill' && skill?.name === dropped.token.word.slice(1)) void chooseSkill(null); window.requestAnimationFrame(() => mention.ref.current?.setSelectionRange(dropped.at, dropped.at)); return }; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} /></div>
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
           {busy && <button type="button" className="sendbtn stop tip" data-tip={d.stop} aria-label={d.stop} onClick={() => void stop()}><StopIcon /></button>}<button type="button" className="sendbtn tip" data-tip={busy ? d.queueTip : d.sendTip} aria-label={busy ? d.queue : d.send} hidden={!input.trim() && !replies.items.length && !attach.files.length} onClick={() => void send()}><SendIcon /></button>
           <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? d.stopListening : dictation.transcribing ? d.transcribing : d.dictate} aria-label={d.dictate} aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : setVoiceSetup(true))}>{dictation.transcribing ? <span className="spin sm" /> : <MicIcon />}</button>

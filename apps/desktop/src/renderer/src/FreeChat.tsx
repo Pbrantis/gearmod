@@ -30,6 +30,8 @@ import { useStickToBottom } from './useStickToBottom'
 import { pop } from './popout'
 import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
+import { useProjectSkills, useSlashSkills } from './SlashSkills'
+import { skillInText } from './skillText'
 
 type Saved = { profileId: string; model: string | null; effort: Effort | null; mode: PermissionMode }
 const savedKey = (projectId: string): string => `gearmod.freeChatAgent.${projectId}`
@@ -80,6 +82,11 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const attach = useAttachments({ projectId: project.id, cardId: null })
   const replies = useChatReplies()
   const mention = useAtMention({ projectId: project.id, cardId: null, input, setInput })
+  const skills = useProjectSkills(project.id)
+  const skillProvider = profiles.find((item) => item.id === (agentConfig?.profileId ?? chat?.profileId ?? profileId))?.provider
+  const available = skills.filter((item) => skillProvider && item.paths[skillProvider]), skillNames = available.map((item) => item.name)
+  // A skill vale para a mensagem que cita `/nome`: no envio, o chat passa a usá-la (ou deixa de usar).
+  const slashSkill = useSlashSkills({ available, provider: skillProvider, input, setInput, area: mention.ref, choose: () => undefined })
   useContextText({ projectId: project.id, cardId: null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []))
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
@@ -102,7 +109,9 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
     try {
       setError('')
       let current = chat
-      if (!current) { if (!profileId) throw new Error(t.chat.cardChat.chooseAgent); current = await window.gearmod.invoke('chats:create', { projectId: project.id, cardId: null, purpose: mode, profileId }); setChat(current) }
+      const skill = skillInText(prompt, available, skillProvider)
+      if (!current) { if (!profileId) throw new Error(t.chat.cardChat.chooseAgent); current = await window.gearmod.invoke('chats:create', { projectId: project.id, cardId: null, purpose: mode, profileId, skill }); setChat(current) }
+      else if ((current.skill?.name ?? null) !== (skill?.name ?? null) || (current.skill?.path ?? null) !== (skill?.path ?? null)) { current = await window.gearmod.invoke('chats:set-skill', { chatId: current.id, skill }); setChat(current) }
       const started = await window.gearmod.invoke('agents:start', { chatId: current.id, prompt, planning: readOnly, attachments: files.length ? files : undefined, choice: agentConfig ? { model: agentConfig.model, effort: agentConfig.effort, mode: agentConfig.mode } : undefined })
       runId.current = started.id; setBusy(true); setLive(''); await load(current.id); changed()
     } catch (reason) { setError(plainError(reason)); const restored = replies.restore(prompt); setInput((value) => [restored, value].filter(Boolean).join('\n\n')); attach.add(files) }
@@ -150,7 +159,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
         <div className={`cbox ${attach.dragging ? 'dropping' : ''}`} {...attach.dropProps}>
           {(attach.files.length > 0 || replies.items.length > 0) && <div className="cbox-top"><AttachmentChips files={attach.files} remove={attach.remove} /><ReplyContextCards replies={replies.items} remove={replies.remove} /></div>}
           <AttachButton onClick={() => void attach.choose()} />
-          {mention.menu}<div className="hlwrap"><InputMirror text={input} skillNames={[]} area={mention.ref} /><textarea rows={1} aria-label={d.messageToAgent} value={input} placeholder={dictation.recording ? d.listening : text.placeholder} ref={mention.ref} onSelect={(e) => mention.caret(e.currentTarget.selectionStart)} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart) }} onKeyDown={(e) => { if (mention.keyDown(e)) return; const dropped = dropToken(e, input, []); if (dropped) { e.preventDefault(); setInput(dropped.text); mention.caret(dropped.at); window.requestAnimationFrame(() => mention.ref.current?.setSelectionRange(dropped.at, dropped.at)); return }; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} /></div>
+          {mention.menu}{slashSkill.menu}<div className="hlwrap"><InputMirror text={input} skillNames={skillNames} area={mention.ref} /><textarea rows={1} aria-label={d.messageToAgent} value={input} placeholder={dictation.recording ? d.listening : text.placeholder} ref={mention.ref} onSelect={(e) => { mention.caret(e.currentTarget.selectionStart); slashSkill.caret(e.currentTarget.selectionStart) }} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart); slashSkill.caret(e.target.selectionStart); slashSkill.reset() }} onKeyDown={(e) => { if (mention.keyDown(e) || slashSkill.keyDown(e)) return; const dropped = dropToken(e, input, skillNames); if (dropped) { e.preventDefault(); setInput(dropped.text); mention.caret(dropped.at); slashSkill.caret(dropped.at); window.requestAnimationFrame(() => mention.ref.current?.setSelectionRange(dropped.at, dropped.at)); return }; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} /></div>
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
           {busy && <button type="button" className="sendbtn stop tip" data-tip={d.stop} aria-label={d.stop} onClick={() => void stop()}><StopIcon /></button>}<button type="button" className="sendbtn tip" data-tip={busy ? d.queueTip : d.sendTip} aria-label={busy ? d.queue : d.send} hidden={!input.trim() && !replies.items.length && !attach.files.length} onClick={() => void send()}><SendIcon /></button>
           <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? d.stopListening : dictation.transcribing ? d.transcribing : voiceReady ? d.dictate : f.installDictation} aria-label={d.dictate} aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : void startVoiceInstall())}>{dictation.transcribing ? <span className="spin sm" /> : <MicIcon />}</button>

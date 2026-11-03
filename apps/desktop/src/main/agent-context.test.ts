@@ -129,3 +129,17 @@ describe('loadSkillInstructions', () => {
     database.close()
   })
 })
+
+describe('skill escolhida com / nos chats sem card', () => {
+  it('chat livre e Constituição pedem a skill e recebem o SKILL.md dela', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-skill-')); roots.push(root)
+    await writeFile(join(root, 'SKILL.md'), '---\nname: revisar\n---\n# Revisar\nRevise com cuidado.', 'utf8')
+    const service = new AgentContextService({} as never, { get: () => ({ idioma: 'pt-BR' }) } as never, null)
+    const skill = { name: 'revisar', path: root }
+    expect(await service.freePrompt('Olhe o login', undefined, true, skill)).toContain('Use the revisar skill for this request.\n\nOlhe o login')
+    expect(service.freeInstructions(false, true, skill)).toContain('## Skill chosen for this chat: revisar\n# Revisar')
+    expect(service.constitutionPrompt('p', 'Atualize', skill)).toContain('Use the revisar skill for this request.\n\nAtualize')
+    expect(await service.freePrompt('Olhe o login')).not.toContain('skill for this request')
+    expect(service.freeInstructions(false)).not.toContain('Skill chosen for this chat')
+  })
+})
