@@ -299,7 +299,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
     }
     window.addEventListener(shortcutEvent, handle); return () => window.removeEventListener(shortcutEvent, handle)
   }, [])
-  const popMenu = currentView === 'db' ? null : <PopMenu target={{ kind: currentView, projectId: board.project.id }} />
+  const popMenu = <PopMenu target={{ kind: currentView, projectId: board.project.id }} />
   const viewControls = <><ViewDock projectId={board.project.id} view={currentView} select={selectView} databaseEnabled={databaseEnabled} gitAlert={prs.total > 0} onDropPreview={setDropPreview} />{dropPreview && slots?.view && <ViewDockDropPreview databaseEnabled={databaseEnabled} />}{slots?.view && slots?.gear && gearControl}{!slots?.tray && popMenu}</>
   return <div className="content">
     {slots?.view && createPortal(viewControls, slots.view)}{slots?.tray && createPortal(popMenu, slots.tray)}{slots?.gear && !slots?.view && createPortal(gearControl, slots.gear)}
