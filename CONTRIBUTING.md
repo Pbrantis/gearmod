@@ -2,6 +2,17 @@
 
 Thanks for your interest. GearMod is source-available under the [PolyForm Shield License 1.0.0](LICENSE.md).
 
+## Outside contributions are not open yet
+
+For now, GearMod does not accept pull requests from outside contributors. All changes are made by the maintainer.
+
+You can still help:
+
+- **Report a bug or suggest a change** by opening an issue, with the version, what you did, what you expected and what happened.
+- **Talk to the maintainer** at **sena.franciscolucas@gmail.com** if you want to propose something larger.
+
+Pull requests opened by other people are closed automatically with a note pointing here. The rest of this guide describes how the project is built and the conventions the maintainer follows; it will also apply to outside contributions once they open.
+
 ## Set up
 
 You need Windows 10/11, Git, Node.js 22+ and pnpm 11+.
@@ -73,9 +84,7 @@ Open pull requests against `dev`. `main` only receives what is ready for a relea
 
 ## Contribution terms
 
-Contributions are accepted under the [GearMod Contributor License Agreement](CLA.md). You keep the copyright in your work and give the project a license to use it, including in commercial editions of GearMod. On your first pull request, an automated check (the `CLA` status) asks you to accept it by replying with a comment; you only do this once. If you contribute on behalf of a company, the company must also sign the [Corporate CLA](CLA-CORPORATE.md).
-
-For a large change, open an issue to discuss it before you send the pull request.
+When outside contributions open, they will be accepted under the [GearMod Contributor License Agreement](CLA.md) (and, for contributions on behalf of a company, the [Corporate CLA](CLA-CORPORATE.md)). You will keep the copyright in your work and give the project a license to use it, including in commercial editions of GearMod.
 
 Only send code you wrote yourself or that you have the right to contribute. Name any third-party code and its license in the pull request.
 

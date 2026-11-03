@@ -1,5 +1,7 @@
 # GearMod Individual Contributor License Agreement
 
+> **Not in use yet.** GearMod does not accept outside contributions at the moment (see [CONTRIBUTING.md](CONTRIBUTING.md)). This agreement will apply once contributions open.
+
 Version 1.0
 
 Thank you for contributing to GearMod. This agreement sets out the rights you give when you send a contribution, so the project can keep offering GearMod under the PolyForm Shield License 1.0.0 **and** under other terms, including commercial editions.

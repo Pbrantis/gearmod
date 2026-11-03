@@ -69,7 +69,7 @@ spike               Code index experiments (generates the tree-sitter queries)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Contributions are accepted under the [Contributor License Agreement](CLA.md).
+GearMod does not accept outside pull requests yet: all changes are made by the maintainer. Bug reports and suggestions are welcome as issues, or by e-mail to sena.franciscolucas@gmail.com. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License and trademarks
 

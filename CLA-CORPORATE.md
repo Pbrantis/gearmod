@@ -1,5 +1,7 @@
 # GearMod Corporate Contributor License Agreement
 
+> **Not in use yet.** GearMod does not accept outside contributions at the moment (see [CONTRIBUTING.md](CONTRIBUTING.md)). This agreement will apply once contributions open.
+
 Version 1.0
 
 This agreement is for companies and other organizations whose employees, contractors or agents contribute to GearMod as part of their work for that organization. Each person who contributes must also accept the [Individual Contributor License Agreement](CLA.md).

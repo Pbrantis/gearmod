@@ -1,0 +1,32 @@
+name: Outside pull requests
+
+# Por enquanto o projeto não recebe pull requests de fora (CONTRIBUTING.md): o PR de outra pessoa
+# recebe um comentário explicando o caminho (issue ou e-mail) e é fechado. Nada do código do PR é
+# baixado ou executado aqui (pull_request_target sem checkout).
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  close:
+    if: github.event.pull_request.user.login != 'flucassena' && github.event.pull_request.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const pr = context.payload.pull_request
+            await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body: [
+              `Thanks for the pull request, @${pr.user.login}!`,
+              '',
+              'GearMod does not accept outside pull requests yet: all changes are made by the maintainer for now, so this pull request is being closed.',
+              '',
+              `If you found a bug or have a suggestion, please [open an issue](https://github.com/${owner}/${repo}/issues/new) describing it, or e-mail sena.franciscolucas@gmail.com. See [CONTRIBUTING.md](https://github.com/${owner}/${repo}/blob/${pr.base.ref}/CONTRIBUTING.md) for details.`,
+            ].join('\n') })
+            await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' })
