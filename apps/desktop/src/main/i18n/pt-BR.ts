@@ -504,6 +504,13 @@ export const ptBR = {
     tokensExceeded: (spent: string, limit: string) => `O card já gastou ${spent} tokens, acima do limite do projeto (${limit}). Aumente o limite em Configurar projeto > Workflow para continuar.`,
     costExceeded: (spent: string, withEquivalent: boolean, limit: string) => `O card já gastou US$ ${spent} ${withEquivalent ? 'em custo faturado e equivalente' : 'em custo faturado'}, acima do limite do projeto (US$ ${limit}). Aumente o limite em Configurar projeto > Workflow para continuar.`,
     repeatedFailure: (attempts: number, error: string) => `A retomada automática parou: as últimas ${attempts} execuções deste chat falharam com o mesmo erro ("${error}"). Revise o erro ou reavalie a complexidade antes de tentar de novo.`,
+    repoFailed: 'falhou',
+    repoFolderGone: 'pasta sumiu',
+    reposNotReady: (list: string) => `Repositórios fora desta execução: ${list}. O card não pode ir para Done até eles ficarem prontos; a próxima execução tenta preparar de novo.`,
+    branchChanged: (repo: string, from: string, to: string) => `A branch de ${repo} mudou de ${from} para ${to} durante a execução. Isso não devia acontecer sozinho; confira o que rodou nessa pasta.`,
+    unexpectedCommits: (repo: string, count: number, hashes: string) => `${repo}: ${count} commit${count === 1 ? '' : 's'} na branch durante a execução que não veio${count === 1 ? '' : 'ram'} do pedido de commit do agente. Confira ${hashes}.`,
+    moreFiles: (count: number) => ` e mais ${count}`,
+    outOfScope: (list: string) => `Arquivos alterados fora das áreas citadas no Plano: ${list}. Confira se fazem parte do card; se não, peça ao agente para desfazer ou registre a mudança de escopo.`,
   },
   autoResume: {
     resumingNotice: '▶ O limite de uso voltou · retomando de onde parou',

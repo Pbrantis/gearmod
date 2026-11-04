@@ -66,7 +66,7 @@ export class HarnessService implements RunHarness {
     if (usedPlaywrightCli(this.database, input.runId)) this.database.db.prepare('UPDATE runs SET used_playwright_cli = 1 WHERE id = ?').run(input.runId)
     const repos = this.worktrees.repositories(input.cardId)
     const failed = repos.filter((repo) => repo.status !== 'active')
-    if (failed.length) notices.push(`Repositórios fora desta execução: ${failed.map((repo) => `${basename(repo.repoPath)} (${repo.status === 'failed' ? repo.error ?? 'falhou' : 'pasta sumiu'})`).join('; ')}. O card não pode ir para Done até eles ficarem prontos; a próxima execução tenta preparar de novo.`)
+    if (failed.length) notices.push(tm().harness.reposNotReady(failed.map((repo) => `${basename(repo.repoPath)} (${repo.status === 'failed' ? repo.error ?? tm().harness.repoFailed : tm().harness.repoFolderGone})`).join('; ')))
     // S10: HEAD mudou sem passar por agentCommit (`git_commit_agents`), ou a branch foi trocada — alguém rodou Git direto na worktree.
     const before = this.headSnapshots.get(input.cardId); this.headSnapshots.delete(input.cardId)
     if (before) {
@@ -78,7 +78,7 @@ export class HarnessService implements RunHarness {
         const [previousBranch, previousHash] = previous.split('@'), [currentBranch, currentHash] = current.split('@')
         const name = basename(repo.repoPath)
         if (previousBranch !== currentBranch) {
-          notices.push(`A branch de ${name} mudou de ${previousBranch} para ${currentBranch} durante a execução. Isso não devia acontecer sozinho; confira o que rodou nessa pasta.`)
+          notices.push(tm().harness.branchChanged(name, previousBranch!, currentBranch!))
           try { this.history.recordAlert(input.cardId, { kind: 'tamper', repo: name, reason: 'branch-changed', from: previousBranch, to: currentBranch, runId: input.runId }) } catch { /* aviso continua no chat */ }
           continue
         }
@@ -86,7 +86,7 @@ export class HarnessService implements RunHarness {
         const known = new Set(this.database.db.prepare('SELECT hash FROM git_commit_agents WHERE repo_path = ?').pluck().all(repo.path) as string[])
         const unexpected = commits.filter((hash) => !known.has(hash))
         if (unexpected.length) {
-          notices.push(`${name}: ${unexpected.length} commit${unexpected.length === 1 ? '' : 's'} na branch durante a execução que não veio${unexpected.length === 1 ? '' : 'ram'} do pedido de commit do agente. Confira ${unexpected.map((hash) => hash.slice(0, 7)).join(', ')}.`)
+          notices.push(tm().harness.unexpectedCommits(name, unexpected.length, unexpected.map((hash) => hash.slice(0, 7)).join(', ')))
           try { this.history.recordAlert(input.cardId, { kind: 'tamper', repo: name, reason: 'unexpected-commit', hashes: unexpected, runId: input.runId }) } catch { /* aviso continua no chat */ }
         }
       }
@@ -104,8 +104,8 @@ export class HarnessService implements RunHarness {
       }
       const outside = outOfScope(docs.join('\n'), changed, repos.length > 1 ? repos.map((repo) => basename(repo.repoPath)) : [])
       if (outside.length) {
-        const list = outside.slice(0, 15).join(', ') + (outside.length > 15 ? ` e mais ${outside.length - 15}` : '')
-        notices.push(`Arquivos alterados fora das áreas citadas no Plano: ${list}. Confira se fazem parte do card; se não, peça ao agente para desfazer ou registre a mudança de escopo.`)
+        const list = outside.slice(0, 15).join(', ') + (outside.length > 15 ? tm().harness.moreFiles(outside.length - 15) : '')
+        notices.push(tm().harness.outOfScope(list))
         try { this.history.recordAlert(input.cardId, { kind: 'out-of-scope', files: outside, runId: input.runId }) } catch { /* aviso continua no chat */ }
       }
     }

@@ -505,6 +505,13 @@ export const en: typeof ptBR = {
     tokensExceeded: (spent: string, limit: string) => `The card has already used ${spent} tokens, above the project limit (${limit}). Raise the limit in Configure project > Workflow to continue.`,
     costExceeded: (spent: string, withEquivalent: boolean, limit: string) => `The card has already spent US$ ${spent} ${withEquivalent ? 'in billed and equivalent cost' : 'in billed cost'}, above the project limit (US$ ${limit}). Raise the limit in Configure project > Workflow to continue.`,
     repeatedFailure: (attempts: number, error: string) => `Automatic resume stopped: the last ${attempts} runs of this chat failed with the same error ("${error}"). Review the error or reassess the complexity before trying again.`,
+    repoFailed: 'failed',
+    repoFolderGone: 'folder missing',
+    reposNotReady: (list: string) => `Repositories left out of this run: ${list}. The card can't move to Done until they are ready; the next run tries to prepare them again.`,
+    branchChanged: (repo: string, from: string, to: string) => `The branch of ${repo} changed from ${from} to ${to} during the run. That shouldn't happen on its own; check what ran in that folder.`,
+    unexpectedCommits: (repo: string, count: number, hashes: string) => `${repo}: ${count} commit${count === 1 ? '' : 's'} on the branch during the run did not come from the agent's commit request. Check ${hashes}.`,
+    moreFiles: (count: number) => ` and ${count} more`,
+    outOfScope: (list: string) => `Files changed outside the areas named in the Plan: ${list}. Check whether they belong to the card; if not, ask the agent to undo them or record the scope change.`,
   },
   autoResume: {
     resumingNotice: '▶ The usage limit is back · resuming from where it stopped',
