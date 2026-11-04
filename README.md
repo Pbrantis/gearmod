@@ -8,7 +8,7 @@
 
 [![Download for Windows](https://img.shields.io/badge/Download-Windows%20x64-2563eb?style=for-the-badge&logo=windows)](https://github.com/flucassena/gearmod/releases/latest)
 
-[![CI](https://github.com/flucassena/gearmod/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/flucassena/gearmod/actions/workflows/ci.yml)
+[![CI](https://github.com/flucassena/gearmod/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/flucassena/gearmod/actions/workflows/ci.yml)
 [![License: PolyForm Shield 1.0.0](https://img.shields.io/badge/license-PolyForm%20Shield%201.0.0-555)](LICENSE.md)
 ![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-555)
 
