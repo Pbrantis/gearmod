@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GearMod — Multi-Agent Development Workspace</title>
+<meta name="description" content="GearMod turns your work into kanban cards and hands each one to a coding agent (Claude Code or Codex) in its own Git worktree. Everything runs on your machine.">
+<meta name="theme-color" content="#0b0d12">
+<meta property="og:title" content="GearMod — Shift gears. Build faster.">
+<meta property="og:description" content="A desktop workspace where coding agents work on cards in parallel, each in its own Git worktree. Free, local, Windows.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://gearmod.dev/assets/board.png">
+<meta property="og:url" content="https://gearmod.dev/">
+<link rel="canonical" href="https://gearmod.dev/">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<style>
+:root{
+  --bg:#0b0d12;--bg2:#10131a;--card:#141823;--line:#222939;--text:#e8ebf2;--muted:#98a2b8;
+  --accent:#3b7bff;--accent2:#7aa7ff;--ok:#43d19e;--warn:#f2b84b;
+  --mono:ui-monospace,SFMono-Regular,Consolas,"Cascadia Mono",monospace;
+  --sans:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:-1;background:
+  radial-gradient(900px 500px at 80% -10%,rgba(59,123,255,.18),transparent 60%),
+  radial-gradient(700px 400px at -10% 20%,rgba(122,167,255,.08),transparent 60%)}
+a{color:var(--accent2);text-decoration:none}a:hover{text-decoration:underline}
+img{max-width:100%;display:block}
+.wrap{width:min(1120px,100% - 40px);margin-inline:auto}
+section{padding:88px 0}
+h1,h2,h3{line-height:1.15;margin:0;letter-spacing:-.02em}
+h2{font-size:clamp(28px,4vw,40px);margin-bottom:14px}
+h3{font-size:19px;margin-bottom:8px}
+p{margin:0 0 14px}
+.lead{color:var(--muted);font-size:18px;max-width:680px}
+.eyebrow{font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent2);margin-bottom:12px;display:block}
+code{font:.9em var(--mono);background:var(--card);border:1px solid var(--line);padding:1px 6px;border-radius:6px}
+
+/* language toggle: both versions are in the markup, CSS shows one */
+html[data-lang="en"] [lang="pt"],html[data-lang="pt"] [lang="en"]{display:none!important}
+
+/* nav */
+nav{position:sticky;top:0;z-index:20;background:rgba(11,13,18,.82);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:24px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--text)}
+.brand{font-size:17px;letter-spacing:-.01em}.brand img{width:30px;height:30px}
+.brand:hover{text-decoration:none}
+.links{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:14.5px}
+.links a{display:inline-flex;align-items:center;height:36px;padding:0 12px;border-radius:8px;line-height:1;color:var(--muted)}.links a:hover{color:var(--text);background:rgba(255,255,255,.05);text-decoration:none}
+.lang{display:flex;height:36px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.lang button{background:none;border:0;color:var(--muted);font:600 12px var(--mono);padding:0 11px;cursor:pointer}
+html[data-lang="en"] .lang [data-set="en"],html[data-lang="pt"] .lang [data-set="pt"]{background:var(--accent);color:#fff}
+@media(max-width:860px){.links a:not(.cta){display:none}.links a.cta{margin-left:0}}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:10px;font-weight:600;border-radius:10px;padding:12px 20px;border:1px solid var(--line);color:var(--text);background:var(--card);cursor:pointer;font-size:15px}
+.btn:hover{text-decoration:none;border-color:#33405c}
+.btn.primary{background:linear-gradient(180deg,#4a85ff,#2f6bef);border-color:#4a85ff;color:#fff;box-shadow:0 8px 28px rgba(59,123,255,.35)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:8px 14px;font-size:13.5px}
+.links a.cta{color:#fff;background:var(--accent);padding:0 16px;margin-left:10px;font-weight:600}
+.links a.cta:hover{filter:brightness(1.1);background:var(--accent)}
+
+/* hero */
+.hero{padding:72px 0 40px;text-align:center}
+.hero .pill{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--bg2);border-radius:999px;padding:5px 14px;font-size:13px;color:var(--muted);margin-bottom:26px}
+.hero .pill b{color:var(--ok);font-weight:600}
+.hero h1{font-size:clamp(38px,7vw,72px);margin-bottom:20px}
+.hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--accent2),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lead{margin:0 auto 30px;text-align:center}
+.hero .actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.hero .meta{margin-top:16px;color:var(--muted);font-size:13.5px}
+.shot{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg2);box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.shot img{width:100%;height:auto}
+.hero .shot{margin-top:54px;position:relative}
+.hero .shot::after{content:"";position:absolute;inset:auto 0 0 0;height:90px;background:linear-gradient(transparent,var(--bg))}
+
+.carousel{position:relative;margin-top:54px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--bg2);box-shadow:0 30px 80px rgba(0,0,0,.55);touch-action:pan-y}
+.slides{position:relative;aspect-ratio:8/5}
+.slide{position:absolute;inset:0;margin:0;opacity:0;transition:opacity .5s;pointer-events:none}
+.slide.on{opacity:1;pointer-events:auto}
+.slide img{width:100%;height:100%;object-fit:cover;object-position:top}
+.slide figcaption{position:absolute;left:14px;bottom:14px;background:rgba(11,13,18,.78);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:999px;padding:5px 14px;font-size:13px;font-weight:600}
+.carousel .nav{position:absolute;top:50%;transform:translateY(-50%);width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:rgba(11,13,18,.78);backdrop-filter:blur(8px);color:var(--text);font-size:24px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0 0 3px;opacity:0;transition:opacity .2s}
+.carousel:hover .nav,.carousel:focus-within .nav{opacity:1}
+.carousel .nav:hover{background:var(--accent);border-color:var(--accent)}
+.carousel .prev{left:12px}.carousel .next{right:12px}
+.dots{position:absolute;right:14px;bottom:18px;display:flex;gap:7px}
+.dot{width:9px;height:9px;border-radius:50%;border:0;padding:0;background:rgba(255,255,255,.3);cursor:pointer}
+.dot.on{background:var(--accent2);width:22px;border-radius:5px}
+@media(hover:none){.carousel .nav{opacity:1;width:36px;height:36px}}
+@media(max-width:700px){.slide figcaption{font-size:12px;left:10px;bottom:10px}.dots{right:10px;bottom:14px}.carousel{margin-top:36px}}
+.cap{font-size:13.5px;color:var(--muted);margin-top:10px;text-align:center}
+
+/* trust strip */
+.strip{padding:26px 0;border-block:1px solid var(--line);background:var(--bg2)}
+.strip .wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;text-align:center}
+.strip b{display:block;font-size:15px}.strip span{font-size:13px;color:var(--muted)}
+@media(max-width:760px){.strip .wrap{grid-template-columns:1fr 1fr}}
+
+/* feature grid */
+.grid{display:grid;gap:18px;margin-top:40px}
+.g3{grid-template-columns:repeat(3,1fr)}.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:900px){.g3,.g2{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+.card .ico{width:44px;height:44px;border-radius:12px;background:linear-gradient(180deg,rgba(59,123,255,.22),rgba(59,123,255,.08));border:1px solid rgba(122,167,255,.25);display:grid;place-items:center;margin-bottom:16px}
+.card:has(>.ico){display:grid;grid-template-columns:44px 1fr;column-gap:14px;align-items:center}
+.card:has(>.ico)>.ico{margin-bottom:0}
+.card:has(>.ico)>h3{margin:0}
+.card.pain{align-content:start}
+.card:has(>.ico)>.p{grid-column:1/-1;margin-top:16px}
+.card.pain .fix{grid-column:1/-1;margin-top:18px;padding-top:16px;border-top:1px dashed var(--line);font-size:14.5px;color:var(--text)}
+.card.pain .fix b{display:block;font:600 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ok);margin-bottom:6px}
+.card:has(>.ico)>ul{grid-column:1/-1;margin-top:16px}
+.ico svg{width:22px;height:22px;fill:none;stroke:var(--accent2);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ico circle{fill:var(--card)}
+.card ul{margin:10px 0 0;padding-left:18px;color:var(--muted);font-size:15px}
+.card li{margin-bottom:6px}
+.card p{color:var(--muted);font-size:15px;margin:0}
+
+/* split rows */
+.row{display:grid;grid-template-columns:1fr 1.25fr;gap:48px;align-items:center;margin-top:72px}
+.row.flip{grid-template-columns:1.25fr 1fr}.row.flip .txt{order:2}
+@media(max-width:900px){.row,.row.flip{grid-template-columns:1fr;gap:24px}.row.flip .txt{order:0}}
+.row .txt h3{font-size:26px}
+.row .txt p{color:var(--muted)}
+.ticks{list-style:none;padding:0;margin:14px 0 0}
+.ticks li{padding-left:26px;position:relative;margin-bottom:9px;color:var(--muted);font-size:15.5px}
+.ticks li::before{content:"✓";position:absolute;left:0;color:var(--ok);font-weight:700}
+.ticks b{color:var(--text)}
+
+/* steps */
+.steps{counter-reset:s;display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:40px}
+@media(max-width:1000px){.steps{grid-template-columns:1fr 1fr}}@media(max-width:600px){.steps{grid-template-columns:1fr}}
+.step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;counter-increment:s}
+.step::before{content:counter(s);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--accent);font:700 14px var(--mono);margin-bottom:12px}
+.step h3{font-size:16px}.step p{font-size:14px;color:var(--muted);margin:0}
+
+/* score table */
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font:600 12px var(--mono);text-transform:uppercase;letter-spacing:.08em}
+.tag{display:inline-block;font:600 12px var(--mono);padding:2px 9px;border-radius:999px}
+.t-s{background:rgba(67,209,158,.14);color:var(--ok)}.t-m{background:rgba(242,184,75,.14);color:var(--warn)}.t-c{background:rgba(255,107,107,.14);color:#ff8a8a}
+
+/* flow diagram */
+.diagram{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;margin-top:36px;font-weight:600}
+.diagram span.node{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 18px}
+.diagram span.node.hl{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,123,255,.15)}
+.diagram i{color:var(--accent2);font-style:normal}
+
+/* download */
+.dl-main{display:grid;grid-template-columns:1.1fr 1fr;gap:28px;margin-top:36px}
+@media(max-width:900px){.dl-main{grid-template-columns:1fr}}
+.dl-box{background:linear-gradient(180deg,rgba(59,123,255,.12),transparent 70%),var(--card);border:1px solid #2b3956;border-radius:16px;padding:30px}
+.dl-box .ver{font:600 13px var(--mono);color:var(--accent2)}
+.dl-box h3{font-size:26px;margin:6px 0 4px}
+.dl-box .sub{color:var(--muted);font-size:14.5px;margin-bottom:22px}
+.dl-box .btns{display:flex;gap:10px;flex-wrap:wrap}
+.req{padding:0;margin:0;list-style:none;font-size:14.5px;color:var(--muted)}
+.req li{margin-bottom:10px;padding-left:24px;position:relative}
+.req li::before{content:"›";position:absolute;left:6px;color:var(--accent2);font-weight:700}
+.note{border-left:3px solid var(--warn);background:rgba(242,184,75,.07);padding:12px 16px;border-radius:0 10px 10px 0;font-size:14px;color:var(--muted);margin-top:16px}
+.rel{margin-top:34px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--card)}
+.rel-head{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);font-weight:600}
+.rel-head small{color:var(--muted);font-weight:400}
+.rel-item{display:grid;grid-template-columns:1.1fr 1fr 2fr;gap:14px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--line);font-size:14.5px}
+.rel-item:last-child{border-bottom:0}
+.rel-item .v{font-weight:700}
+.rel-item .d{color:var(--muted)}
+.rel-item .a{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.badge{font:600 11px var(--mono);padding:2px 8px;border-radius:999px;background:rgba(67,209,158,.14);color:var(--ok);margin-left:8px;vertical-align:middle}
+.badge.pre{background:rgba(242,184,75,.14);color:var(--warn)}
+.rel-empty{padding:22px 18px;color:var(--muted);font-size:14.5px}
+@media(max-width:700px){.rel-item{grid-template-columns:1fr}.rel-item .a{justify-content:flex-start}}
+.skeleton{height:14px;border-radius:6px;background:linear-gradient(90deg,var(--line),#2c3447,var(--line));background-size:200% 100%;animation:sk 1.2s infinite}
+@keyframes sk{to{background-position:-200% 0}}
+
+/* faq */
+details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:10px}
+summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::after{content:"+";color:var(--accent2);font-size:20px;line-height:1}
+details[open] summary::after{content:"–"}
+details p{margin:12px 0 0;color:var(--muted);font-size:15px}
+
+/* contact + footer */
+.contact{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+.contact .btn svg{width:18px;height:18px;fill:currentColor}
+footer{border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:13.5px}
+footer .wrap{display:flex;gap:18px 30px;flex-wrap:wrap;justify-content:space-between}
+footer a{color:var(--muted)}footer a:hover{color:var(--text)}
+.alt{background:var(--bg2);border-block:1px solid var(--line)}
+
+.textlink{align-self:center;color:var(--muted);font-size:15px;padding:12px 6px}
+.stickybar{display:none}
+@media(max-width:700px){
+  .stickybar{display:block;position:fixed;left:0;right:0;bottom:0;z-index:30;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:rgba(11,13,18,.92);backdrop-filter:blur(12px);border-top:1px solid var(--line);transform:translateY(110%);transition:transform .25s}
+  .stickybar.on{transform:none}
+  .stickybar .btn{width:100%;justify-content:center;min-height:48px}
+  .hero .actions .btn{width:100%;justify-content:center;min-height:48px}
+  .btn.small{min-height:44px;align-items:center}
+  footer{padding-bottom:90px}
+  section{padding:64px 0}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.skeleton{animation:none}}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="assets/logo.png" alt="">GearMod</a>
+    <div class="links">
+      <a href="#features"><span lang="en">Features</span><span lang="pt">Recursos</span></a>
+      <a href="#flow"><span lang="en">How it works</span><span lang="pt">Como funciona</span></a>
+      <a href="#git">Git</a>
+      <a href="#faq">FAQ</a>
+      <a href="#contact"><span lang="en">Contact</span><span lang="pt">Contato</span></a>
+      <a class="cta" href="#download">Download</a>
+    </div>
+    <div class="lang" role="group" aria-label="Language"><button data-set="en">EN</button><button data-set="pt">PT</button></div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="pill"><b>●</b> <span lang="en">Shift gears. Build faster. · Free · 100% local</span><span lang="pt">Shift gears. Build faster. · Grátis · 100% local</span></div>
+    <h1><span lang="en">Run many coding agents at once.<br><em>Without the chaos.</em></span><span lang="pt">Rode vários agentes de código ao mesmo tempo.<br><em>Sem bagunça.</em></span></h1>
+    <p class="lead"><span lang="en">Turn tasks into kanban cards and hand each one to Claude Code or Codex in its own Git worktree. You plan, review and merge.</span><span lang="pt">Transforme tarefas em cards e entregue cada um ao Claude Code ou Codex, numa worktree Git própria. Você planeja, revisa e mescla.</span></p>
+    <div class="actions">
+      <a class="btn primary js-dl" id="hero-dl" href="https://github.com/flucassena/gearmod/releases/latest">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.5 10.5 4.4v7.1H3V5.5Zm8.6-1.2L21 3v8.5h-9.4V4.3ZM3 12.5h7.5v7.1L3 18.5v-6Zm8.6 0H21V21l-9.4-1.3v-7.2Z"/></svg>
+        <span><span lang="en">Download free for Windows</span><span lang="pt">Baixar grátis para Windows</span> <small data-latest-version></small></span>
+      </a>
+      <a class="textlink" href="#flow"><span lang="en">or see a card go from idea to merge ↓</span><span lang="pt">ou veja um card da ideia ao merge ↓</span></a>
+    </div>
+    <div class="meta"><span lang="en">Windows 10/11 (x64) · source-available · PolyForm Shield 1.0.0</span><span lang="pt">Windows 10/11 (x64) · código disponível · PolyForm Shield 1.0.0</span></div>
+    <div class="carousel" id="carousel" aria-roledescription="carousel" aria-label="GearMod screenshots">
+      <div class="slides">
+        <figure class="slide on"><img src="assets/board.png" alt="The GearMod board with cards in Backlog, To do, Doing, Test and Done" width="1600" height="1000" fetchpriority="high"><figcaption><span lang="en">Board</span><span lang="pt">Quadro</span></figcaption></figure>
+        <figure class="slide"><img src="assets/card.png" alt="A card with its specification, plan and tasks" width="1600" height="1000" loading="lazy"><figcaption><span lang="en">Spec, plan and tasks</span><span lang="pt">Spec, plano e tarefas</span></figcaption></figure>
+        <figure class="slide"><img src="assets/flow-choice.png" alt="The planning chat recommends a workflow and asks you to choose" width="1600" height="1000" loading="lazy"><figcaption><span lang="en">Planning chat</span><span lang="pt">Chat de planejamento</span></figcaption></figure>
+        <figure class="slide"><img src="assets/card-execution.png" alt="The implementation chat with tasks done and the agent asking to commit" width="1600" height="1000" loading="lazy"><figcaption><span lang="en">Implementation</span><span lang="pt">Implementação</span></figcaption></figure>
+        <figure class="slide"><img src="assets/git-graph.png" alt="The Git page: commit graph with branches and worktrees per card" width="1600" height="1000" loading="lazy"><figcaption><span lang="en">Git manager</span><span lang="pt">Gerenciador Git</span></figcaption></figure>
+        <figure class="slide"><img src="assets/database.png" alt="The database view with a SQL tab and a table" width="1600" height="1000" loading="lazy"><figcaption><span lang="en">Database</span><span lang="pt">Banco de dados</span></figcaption></figure>
+      </div>
+      <button class="nav prev" aria-label="Previous">‹</button><button class="nav next" aria-label="Next">›</button>
+      <div class="dots"><button class="dot on" aria-label="Slide 1"></button><button class="dot" aria-label="Slide 2"></button><button class="dot" aria-label="Slide 3"></button><button class="dot" aria-label="Slide 4"></button><button class="dot" aria-label="Slide 5"></button><button class="dot" aria-label="Slide 6"></button></div>
+    </div>
+  </div>
+</header>
+
+<div class="strip">
+  <div class="wrap">
+    <div><b><span lang="en">Local-first</span><span lang="pt">Local primeiro</span></b><span><span lang="en">No server, no account</span><span lang="pt">Sem servidor, sem conta</span></span></div>
+    <div><b><span lang="en">Your agents</span><span lang="pt">Seus agentes</span></b><span><span lang="en">Your sign-in, your plan</span><span lang="pt">Seu login, seu plano</span></span></div>
+    <div><b><span lang="en">Parallel by design</span><span lang="pt">Paralelo por padrão</span></b><span><span lang="en">One worktree per card</span><span lang="pt">Uma worktree por card</span></span></div>
+    <div><b><span lang="en">Free</span><span lang="pt">Grátis</span></b><span><span lang="en">Source-available</span><span lang="pt">Código disponível</span></span></div>
+  </div>
+</div>
+
+<section style="padding:72px 0 0">
+  <div class="wrap">
+    <span class="eyebrow"><span lang="en">The problem</span><span lang="pt">O problema</span></span>
+    <h2><span lang="en">Coding agents are fast. Running them is messy.</span><span lang="pt">Agentes de código são rápidos. Operá-los é bagunçado.</span></h2>
+    <p class="lead"><span lang="en">The agent is rarely the bottleneck. The mess around it is: shared folders, missing plans and reviews nobody can trace.</span><span lang="pt">O gargalo raramente é o agente. É a bagunça em volta dele: pastas compartilhadas, falta de plano e revisões que ninguém consegue rastrear.</span></p>
+    <div class="grid g3">
+      <div class="card pain"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="11" height="14" rx="1.8"/><rect x="10" y="8" width="11" height="14" rx="1.8"/><path d="M13 13h5M13 17h3"/></svg></div>
+        <h3><span lang="en">They step on each other</span><span lang="pt">Eles pisam um no outro</span></h3>
+        <p class="p"><span lang="en">Two agents in the same checkout overwrite each other's files and mix up branches. You end up with a half-working tree to untangle by hand.</span><span lang="pt">Dois agentes no mesmo checkout sobrescrevem os arquivos um do outro e misturam as branches. Você acaba com uma árvore pela metade para desembaraçar na mão.</span></p>
+        <div class="fix"><b><span lang="en">With GearMod</span><span lang="pt">Com o GearMod</span></b><span lang="en">One Git worktree and branch per card. Agents work in parallel and your main checkout is never touched.</span><span lang="pt">Uma worktree e uma branch Git por card. Os agentes trabalham em paralelo e o seu checkout principal nunca é tocado.</span></div>
+      </div>
+      <div class="card pain"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.9"/><path d="M12 17.2v.1"/></svg></div>
+        <h3><span lang="en">They start without a plan</span><span lang="pt">Começam sem plano</span></h3>
+        <p class="p"><span lang="en">A vague prompt turns into a large diff you never asked for. You only learn what the agent understood after it has already written the code.</span><span lang="pt">Um prompt vago vira um diff enorme que você não pediu. Você só descobre o que o agente entendeu depois que ele já escreveu o código.</span></p>
+        <div class="fix"><b><span lang="en">With GearMod</span><span lang="pt">Com o GearMod</span></b><span lang="en">Each card gets a summary, spec, plan and tasks first. While planning, the agent can only read code, and risky choices wait for your approval.</span><span lang="pt">Cada card começa com resumo, spec, plano e tarefas. No planejamento o agente só lê código, e escolhas de risco esperam a sua aprovação.</span></div>
+      </div>
+      <div class="card pain"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="10" height="8" rx="1.6"/><rect x="11" y="12" width="10" height="8" rx="1.6"/><path d="M6 7h4M14 15h4"/></svg></div>
+        <h3><span lang="en">Review is scattered</span><span lang="pt">A revisão fica espalhada</span></h3>
+        <p class="p"><span lang="en">Chats in one window, terminals in another, branches everywhere. Nobody remembers what was tested or which commit belongs to which task.</span><span lang="pt">Chats numa janela, terminais em outra, branches por todo lado. Ninguém lembra o que foi testado nem qual commit pertence a qual tarefa.</span></p>
+        <div class="fix"><b><span lang="en">With GearMod</span><span lang="pt">Com o GearMod</span></b><span lang="en">Every commit is tagged with its card, a separate test step records what passed and what was skipped, and diffs, conflicts and PRs live on one Git page.</span><span lang="pt">Cada commit leva o card a que pertence, uma etapa de teste separada registra o que passou e o que foi pulado, e diffs, conflitos e PRs ficam numa só página Git.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <span class="eyebrow"><span lang="en">Features</span><span lang="pt">Recursos</span></span>
+    <h2><span lang="en">Everything between an idea and a merged PR</span><span lang="pt">Tudo entre a ideia e o PR mesclado</span></h2>
+    <p class="lead"><span lang="en">Plan with the agent, let it implement, test in a separate step, then review and ship from the same window.</span><span lang="pt">Planeje com o agente, deixe-o implementar, teste numa etapa separada e revise e entregue na mesma janela.</span></p>
+
+    <div class="grid g3">
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4"/><path d="M10 12h6M10 16h4"/></svg></div>
+        <h3><span lang="en">Plan before code</span><span lang="pt">Planeje antes do código</span></h3>
+        <ul lang="en"><li>Summary, spec, plan and task list per card</li><li>Planning, implementation and testing as separate steps</li><li>Spec-driven flows, Spec Kit and a project Constitution</li></ul>
+        <ul lang="pt"><li>Resumo, especificação, plano e tarefas por card</li><li>Planejamento, implementação e teste em etapas separadas</li><li>Fluxos spec-driven, Spec Kit e Constitution do projeto</li></ul>
+      </div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div>
+        <h3><span lang="en">Run agents safely</span><span lang="pt">Agentes com segurança</span></h3>
+        <ul lang="en"><li>One Git worktree and branch per card</li><li>Minimal environment; risky actions ask first</li><li>Secret scan blocks agent commits with keys</li></ul>
+        <ul lang="pt"><li>Uma worktree e branch Git por card</li><li>Ambiente mínimo; ações de risco pedem permissão</li><li>Scan de segredos bloqueia commits de agente com chaves</li></ul>
+      </div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2.2"/><circle cx="6" cy="19" r="2.2"/><circle cx="18" cy="12" r="2.2"/><path d="M6 7.2v9.6"/><path d="M6 9c0 3 3 3 9.8 3"/></svg></div>
+        <h3><span lang="en">Review and ship</span><span lang="pt">Revise e entregue</span></h3>
+        <ul lang="en"><li>Full Git client: graph, diffs, conflicts, rebase</li><li>GitHub and GitLab pull requests</li><li>Editor, terminal and file explorer built in</li></ul>
+        <ul lang="pt"><li>Cliente Git completo: grafo, diffs, conflitos, rebase</li><li>Pull requests do GitHub e GitLab</li><li>Editor, terminal e explorador de arquivos integrados</li></ul>
+      </div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/></svg></div>
+        <h3><span lang="en">Tools for the agents</span><span lang="pt">Ferramentas para os agentes</span></h3>
+        <ul lang="en"><li>Local MCP server: agents update their card and ask you questions</li><li>Local code index with symbol search</li><li>Skills picked with <code>/</code> in any chat</li></ul>
+        <ul lang="pt"><li>Servidor MCP local: agentes atualizam o card e fazem perguntas</li><li>Índice de código local com busca de símbolos</li><li>Skills escolhidas com <code>/</code> em qualquer chat</li></ul>
+      </div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M19 7h1M4 12h3M12 12h8M4 17h8M18 17h2"/><circle cx="16" cy="7" r="2.2"/><circle cx="9.5" cy="12" r="2.2"/><circle cx="15" cy="17" r="2.2"/></svg></div>
+        <h3><span lang="en">Smart workflow choice</span><span lang="pt">Escolha de fluxo inteligente</span></h3>
+        <ul lang="en"><li>Each card is scored on six dimensions</li><li>Short flow, light spec or full SDD recommended</li><li>You decide; every assessment is versioned</li></ul>
+        <ul lang="pt"><li>Cada card recebe nota em seis dimensões</li><li>Fluxo curto, spec leve ou SDD completo recomendado</li><li>Você decide; toda avaliação é versionada</li></ul>
+      </div>
+      <div class="card"><div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><path d="M16.5 13v7M13 16.5h7"/></svg></div>
+        <h3><span lang="en">Optional extras</span><span lang="pt">Extras opcionais</span></h3>
+        <ul lang="en"><li>Voice dictation (local whisper.cpp or Groq)</li><li>PostgreSQL manager (experimental)</li><li>Playwright CLI for the tester agent</li></ul>
+        <ul lang="pt"><li>Ditado por voz (whisper.cpp local ou Groq)</li><li>Gerenciador de PostgreSQL (experimental)</li><li>Playwright CLI para o agente de teste</li></ul>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="txt">
+        <h3><span lang="en">Specs, plans and tasks live on the card</span><span lang="pt">Specs, planos e tarefas ficam no card</span></h3>
+        <p><span lang="en">The plan is saved as Markdown documents with version history. Edit anything before you start; the agent ticks tasks off as it goes.</span><span lang="pt">O plano é salvo como documentos Markdown com histórico de versões. Edite o que quiser antes de começar; o agente vai marcando as tarefas.</span></p>
+      </div>
+      <a class="shot" href="assets/card.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/card.png" alt="A card with its specification, plan and tasks"></a>
+    </div>
+  </div>
+</section>
+
+<section id="flow" class="alt">
+  <div class="wrap">
+    <span class="eyebrow"><span lang="en">A card from start to finish</span><span lang="pt">Um card do início ao fim</span></span>
+    <h2><span lang="en">Plan. Implement. Test. Merge.</span><span lang="pt">Planeje. Implemente. Teste. Mescle.</span></h2>
+    <p class="lead"><span lang="en">Screenshots from a real run: three cards on a sample finance app, planned, implemented and tested by Codex inside GearMod.</span><span lang="pt">Capturas de uma execução real: três cards num app de finanças de exemplo, planejados, implementados e testados pelo Codex dentro do GearMod.</span></p>
+
+    <div class="steps">
+      <div class="step"><h3><span lang="en">Plan</span><span lang="pt">Planejar</span></h3><p><span lang="en">The agent reads code only, scores the card and proposes a workflow.</span><span lang="pt">O agente só lê código, dá nota ao card e propõe um fluxo.</span></p></div>
+      <div class="step"><h3><span lang="en">Read the docs</span><span lang="pt">Ler os documentos</span></h3><p><span lang="en">Spec, plan and tasks saved with version history.</span><span lang="pt">Spec, plano e tarefas salvos com histórico de versões.</span></p></div>
+      <div class="step"><h3><span lang="en">Implement</span><span lang="pt">Implementar</span></h3><p><span lang="en">A worktree and branch are created; tasks tick off live.</span><span lang="pt">Worktree e branch são criadas; as tarefas são marcadas ao vivo.</span></p></div>
+      <div class="step"><h3><span lang="en">Test</span><span lang="pt">Testar</span></h3><p><span lang="en">A separate agent runs its own checklist and reports what it couldn't check.</span><span lang="pt">Outro agente roda seu checklist e relata o que não conseguiu checar.</span></p></div>
+      <div class="step"><h3><span lang="en">Review &amp; merge</span><span lang="pt">Revisar e mesclar</span></h3><p><span lang="en">Diffs on the Git page, then merge or open a PR.</span><span lang="pt">Diffs na página Git; depois, merge ou PR.</span></p></div>
+    </div>
+
+    <div class="row">
+      <div class="txt">
+        <h3><span lang="en">Questions show up as choices</span><span lang="pt">Perguntas viram escolhas</span></h3>
+        <p><span lang="en">The agent asks in the chat and changing the workflow waits for your approval. Nothing moves until you answer.</span><span lang="pt">O agente pergunta no chat e trocar o fluxo espera a sua aprovação. Nada anda até você responder.</span></p>
+      </div>
+      <a class="shot" href="assets/flow-choice.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/flow-choice.png" alt="The planning chat recommends the full SDD and asks which workflow to use"></a>
+    </div>
+    <div class="row flip">
+      <div class="txt">
+        <h3><span lang="en">Implementation you can follow</span><span lang="pt">Implementação que você acompanha</span></h3>
+        <p><span lang="en">Tasks are ticked in the side panel and changed files appear below. When it's done, the agent asks to commit: authorize, edit the message or deny.</span><span lang="pt">As tarefas são marcadas no painel lateral e os arquivos alterados aparecem abaixo. Ao terminar, o agente pede para commitar: autorize, edite a mensagem ou negue.</span></p>
+      </div>
+      <a class="shot" href="assets/card-execution.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/card-execution.png" alt="The implementation chat with all tasks done and the agent asking to commit"></a>
+    </div>
+    <div class="row">
+      <div class="txt">
+        <h3><span lang="en">A tester that tells you what it skipped</span><span lang="pt">Um testador que diz o que pulou</span></h3>
+        <p><span lang="en">The test step records what passed and what it could not check, so you know where to look yourself.</span><span lang="pt">A etapa de teste registra o que passou e o que não conseguiu checar, para você saber onde olhar.</span></p>
+      </div>
+      <a class="shot" href="assets/card-test.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/card-test.png" alt="The test chat with its checklist"></a>
+    </div>
+
+    <h2 style="margin-top:84px"><span lang="en">Not every card needs a full spec</span><span lang="pt">Nem todo card precisa de uma spec completa</span></h2>
+    <p class="lead"><span lang="en">The planning agent scores each card from 0 to 3 on six weighted dimensions, with evidence. GearMod recommends a workflow; you make the final call.</span><span lang="pt">O agente de planejamento dá nota de 0 a 3 ao card em seis dimensões com peso, com evidências. O GearMod recomenda um fluxo; a decisão final é sua.</span></p>
+    <div class="grid g2" style="align-items:start">
+      <div class="card" style="padding:8px 8px 4px">
+        <table>
+          <tr><th><span lang="en">Score</span><span lang="pt">Total</span></th><th><span lang="en">Level</span><span lang="pt">Nível</span></th><th><span lang="en">Workflow</span><span lang="pt">Fluxo</span></th></tr>
+          <tr><td>0–7</td><td><span class="tag t-s"><span lang="en">Simple</span><span lang="pt">Simples</span></span></td><td><span lang="en">Short flow</span><span lang="pt">Fluxo curto</span></td></tr>
+          <tr><td>8–16</td><td><span class="tag t-m"><span lang="en">Medium</span><span lang="pt">Médio</span></span></td><td><span lang="en">Light spec</span><span lang="pt">Spec leve</span></td></tr>
+          <tr><td>17+</td><td><span class="tag t-c"><span lang="en">Complex</span><span lang="pt">Complexo</span></span></td><td>Full SDD</td></tr>
+        </table>
+        <p style="padding:12px 14px 8px;font-size:13.5px"><span lang="en">Dimensions: scope, coupling, uncertainty, risk, technical novelty and validation difficulty. A card with risk 3 never gets the short flow. Weights and limits are configurable per project.</span><span lang="pt">Dimensões: escopo, acoplamento, incerteza, risco, novidade técnica e dificuldade de validação. Card com risco 3 nunca recebe o fluxo curto. Pesos e limites são configuráveis por projeto.</span></p>
+      </div>
+      <a class="shot" href="assets/flow-assessment.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/flow-assessment.png" alt="The assessment dialog: 24 points, complex, with a justification for each dimension"></a>
+    </div>
+  </div>
+</section>
+
+<section id="git">
+  <div class="wrap">
+    <span class="eyebrow">Git</span>
+    <h2><span lang="en">A full Git client, built around cards</span><span lang="pt">Um cliente Git completo, feito em torno dos cards</span></h2>
+    <div class="row" style="margin-top:36px">
+      <div class="txt">
+        <ul class="ticks">
+          <li lang="en"><b>Commit graph</b> with branch, tag and worktree labels. Agent commits carry the agent's icon and the card they belong to.</li>
+          <li lang="pt"><b>Grafo de commits</b> com rótulos de branch, tag e worktree. Commits de agentes levam o ícone do agente e o card.</li>
+          <li lang="en"><b>Conflicts</b> resolved block by block: current, incoming or both.</li>
+          <li lang="pt"><b>Conflitos</b> resolvidos bloco a bloco: atual, recebido ou ambos.</li>
+          <li lang="en"><b>Everything you expect:</b> rebase, cherry-pick, revert, reset, stash, amend, and undo/redo for most operations.</li>
+          <li lang="pt"><b>Tudo o que você espera:</b> rebase, cherry-pick, revert, reset, stash, amend e desfazer/refazer na maioria das operações.</li>
+          <li lang="en"><b>Agent commits need permission</b>, with rules per branch. By default agents ask, and never commit to <code>main</code>, <code>develop</code> or <code>release/*</code>.</li>
+          <li lang="pt"><b>Commits de agentes pedem permissão</b>, com regras por branch. Por padrão eles perguntam e nunca commitam em <code>main</code>, <code>develop</code> ou <code>release/*</code>.</li>
+          <li lang="en"><b>Pull requests</b> for GitHub and GitLab: list, read, comment, approve and create.</li>
+          <li lang="pt"><b>Pull requests</b> do GitHub e GitLab: listar, ler, comentar, aprovar e criar.</li>
+        </ul>
+      </div>
+      <a class="shot" href="assets/git-graph.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/git-graph.png" alt="The Git page: commit graph with branches and worktrees per card"></a>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="row" style="margin-top:0">
+      <div class="txt">
+        <span class="eyebrow"><span lang="en">Code index</span><span lang="pt">Índice de código</span></span>
+        <h3><span lang="en">Agents read less to find the right code</span><span lang="pt">Agentes leem menos para achar o código certo</span></h3>
+        <p><span lang="en">GearMod keeps a local map of your code: functions, classes, calls, imports and tests. Agents query it before opening files. Built with tree-sitter in a background process, stored on your machine.</span><span lang="pt">O GearMod mantém um mapa local do seu código: funções, classes, chamadas, imports e testes. Os agentes consultam o mapa antes de abrir arquivos. Feito com tree-sitter em segundo plano, salvo na sua máquina.</span></p>
+        <ul class="ticks">
+          <li lang="en">TypeScript, JavaScript, Python, Go, Java, C#, Rust, PHP, Ruby, C/C++</li>
+          <li lang="pt">TypeScript, JavaScript, Python, Go, Java, C#, Rust, PHP, Ruby, C/C++</li>
+          <li lang="en">“Which tests does this change affect?” answered by the index</li>
+          <li lang="pt">“Quais testes essa mudança afeta?” respondido pelo índice</li>
+          <li lang="en">Editor shortcuts: <code>Ctrl+T</code>, <code>F12</code>, <code>Shift+F12</code></li>
+          <li lang="pt">Atalhos no editor: <code>Ctrl+T</code>, <code>F12</code>, <code>Shift+F12</code></li>
+        </ul>
+      </div>
+      <a class="shot" href="assets/code-index.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/code-index.png" alt="The code index section in the project settings"></a>
+    </div>
+    <div class="row flip">
+      <div class="txt">
+        <span class="eyebrow"><span lang="en">Database · experimental</span><span lang="pt">Banco de dados · experimental</span></span>
+        <h3><span lang="en">Check the data your cards change</span><span lang="pt">Confira os dados que seus cards alteram</span></h3>
+        <p><span lang="en">A PostgreSQL client inside the project. Each connection has a class (dev, test, prod, external); prod and external start read-only, and risky SQL asks for confirmation.</span><span lang="pt">Um cliente PostgreSQL dentro do projeto. Cada conexão tem uma classe (dev, test, prod, external); prod e external começam somente leitura e SQL de risco pede confirmação.</span></p>
+      </div>
+      <a class="shot" href="assets/database.png" target="_blank" rel="noopener"><img loading="lazy" src="assets/database.png" alt="The database view: connection tree, a SQL tab and a table with paging"></a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <span class="eyebrow"><span lang="en">Under the hood</span><span lang="pt">Por dentro</span></span>
+    <h2><span lang="en">Your machine, your agents, your accounts</span><span lang="pt">Sua máquina, seus agentes, suas contas</span></h2>
+    <div class="diagram">
+      <span class="node">Card</span><i>→</i><span class="node">Git worktree + branch</span><i>→</i><span class="node hl">Claude Code / Codex CLI</span><i>→</i><span class="node">MCP server <small style="color:var(--muted)">(card · questions · commits)</small></span><i>↩</i>
+    </div>
+    <div class="grid g3">
+      <div class="card"><h3><span lang="en">Worktrees</span><span lang="pt">Worktrees</span></h3><p><span lang="en">Each card gets its own folder and branch, so several agents work at once without stepping on each other or on your checkout.</span><span lang="pt">Cada card tem sua própria pasta e branch, então vários agentes trabalham ao mesmo tempo sem atrapalhar uns aos outros nem o seu checkout.</span></p></div>
+      <div class="card"><h3><span lang="en">Your agents</span><span lang="pt">Seus agentes</span></h3><p><span lang="en">GearMod starts the CLIs you already have installed, with your sign-in and plan. It does not proxy or resell model access.</span><span lang="pt">O GearMod inicia as CLIs que você já tem instaladas, com seu login e plano. Não faz proxy nem revende acesso a modelos.</span></p></div>
+      <div class="card"><h3><span lang="en">Your data</span><span lang="pt">Seus dados</span></h3><p><span lang="en">Everything lives under <code>%APPDATA%\GearMod</code>. GearMod sends nothing anywhere; optional features reach the network only when you turn them on. It is not a sandbox: see SECURITY.md.</span><span lang="pt">Tudo fica em <code>%APPDATA%\GearMod</code>. O GearMod não envia nada para lugar nenhum; recursos opcionais só usam a rede quando você liga. Não é um sandbox: veja o SECURITY.md.</span></p></div>
+    </div>
+  </div>
+</section>
+
+<section id="download" class="alt">
+  <div class="wrap">
+    <span class="eyebrow">Download</span>
+    <h2><span lang="en">Get GearMod for Windows</span><span lang="pt">Baixe o GearMod para Windows</span></h2>
+    <p class="lead"><span lang="en">Every version published on GitHub appears here automatically.</span><span lang="pt">Toda versão publicada no GitHub aparece aqui automaticamente.</span></p>
+
+    <div class="dl-main">
+      <div class="dl-box" id="dl-latest">
+        <div class="ver" id="dl-ver"><span class="skeleton" style="display:inline-block;width:120px"></span></div>
+        <h3>GearMod for Windows</h3>
+        <div class="sub" id="dl-sub"><span lang="en">Windows 10 or 11, 64-bit · per-user install, no admin rights</span><span lang="pt">Windows 10 ou 11, 64 bits · instalação por usuário, sem admin</span></div>
+        <div class="btns">
+          <a class="btn primary" id="dl-btn" href="https://github.com/flucassena/gearmod/releases/latest"><span lang="en">Download installer</span><span lang="pt">Baixar instalador</span></a>
+          <a class="btn" id="dl-notes" href="https://github.com/flucassena/gearmod/releases"><span lang="en">Release notes</span><span lang="pt">Notas da versão</span></a>
+        </div>
+        <div class="note"><span lang="en"><b>Not code-signed yet.</b> Windows SmartScreen may show “Windows protected your PC”. Click <b>More info</b>, then <b>Run anyway</b>. You can verify the download against <code>SHA256SUMS.txt</code> from the same release.</span><span lang="pt"><b>Ainda sem assinatura de código.</b> O SmartScreen do Windows pode mostrar “O Windows protegeu seu PC”. Clique em <b>Mais informações</b> e depois em <b>Executar assim mesmo</b>. Você pode conferir o download com o <code>SHA256SUMS.txt</code> da mesma release.</span></div>
+      </div>
+      <div class="card">
+        <h3><span lang="en">Before you install</span><span lang="pt">Antes de instalar</span></h3>
+        <ul class="req">
+          <li lang="en">Windows 10 or 11, 64-bit. Other platforms are not supported yet.</li>
+          <li lang="pt">Windows 10 ou 11, 64 bits. Outras plataformas ainda não são suportadas.</li>
+          <li><a href="https://git-scm.com/downloads" rel="noopener">Git</a> <span lang="en">installed.</span><span lang="pt">instalado.</span></li>
+          <li lang="en">At least one agent CLI, installed and signed in: <a href="https://docs.claude.com/en/docs/claude-code" rel="noopener">Claude Code</a> or <a href="https://github.com/openai/codex" rel="noopener">Codex</a>.</li>
+          <li lang="pt">Ao menos uma CLI de agente instalada e logada: <a href="https://docs.claude.com/en/docs/claude-code" rel="noopener">Claude Code</a> ou <a href="https://github.com/openai/codex" rel="noopener">Codex</a>.</li>
+          <li lang="en">To update, install the new version over the old one. Your data is kept.</li>
+          <li lang="pt">Para atualizar, instale a nova versão por cima. Seus dados são mantidos.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel" aria-live="polite">
+      <div class="rel-head"><span><span lang="en">All versions</span><span lang="pt">Todas as versões</span></span><small id="rel-count"></small></div>
+      <div id="rel-list"><div class="rel-empty"><span class="skeleton" style="display:block;width:60%"></span></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap" style="max-width:820px">
+    <span class="eyebrow">FAQ</span>
+    <h2><span lang="en">Questions</span><span lang="pt">Perguntas</span></h2>
+    <div style="margin-top:28px">
+      <details><summary><span lang="en">Is GearMod open source?</span><span lang="pt">O GearMod é open source?</span></summary>
+        <p lang="en">It is <b>source-available</b> under the PolyForm Shield License 1.0.0. You can read, use, modify and redistribute the code, including inside a company, but you cannot use it to offer a product that competes with GearMod. It is not an OSI-approved open source license.</p>
+        <p lang="pt">É <b>source-available</b>, sob a PolyForm Shield License 1.0.0. Você pode ler, usar, modificar e redistribuir o código, inclusive dentro de uma empresa, mas não pode usá-lo para oferecer um produto concorrente do GearMod. Não é uma licença open source aprovada pela OSI.</p></details>
+      <details><summary><span lang="en">Does it cost anything?</span><span lang="pt">Tem custo?</span></summary>
+        <p lang="en">GearMod is free to use. The agents use your own Claude or OpenAI plan.</p>
+        <p lang="pt">O GearMod é gratuito. Os agentes usam o seu próprio plano da Claude ou da OpenAI.</p></details>
+      <details><summary><span lang="en">Does it work on macOS or Linux?</span><span lang="pt">Funciona em macOS ou Linux?</span></summary>
+        <p lang="en">Not yet. Windows is the only supported platform for now.</p>
+        <p lang="pt">Ainda não. Por enquanto, só Windows.</p></details>
+      <details><summary><span lang="en">Which agents are supported?</span><span lang="pt">Quais agentes são suportados?</span></summary>
+        <p lang="en">Claude Code and Codex. Gemini CLI support exists but is disabled for now.</p>
+        <p lang="pt">Claude Code e Codex. O suporte ao Gemini CLI existe, mas está desativado por enquanto.</p></details>
+      <details><summary><span lang="en">Does GearMod send my code anywhere?</span><span lang="pt">O GearMod envia meu código para algum lugar?</span></summary>
+        <p lang="en">GearMod itself sends nothing. The agent CLIs you use talk to their own providers under your account, as they always do. Optional features (like Groq dictation) reach the network only when you enable them.</p>
+        <p lang="pt">O GearMod em si não envia nada. As CLIs de agente que você usa falam com seus próprios provedores, na sua conta, como sempre. Recursos opcionais (como o ditado via Groq) só usam a rede quando você os ativa.</p></details>
+      <details><summary><span lang="en">Can I contribute?</span><span lang="pt">Posso contribuir?</span></summary>
+        <p lang="en">Outside pull requests are not accepted yet; bug reports and suggestions are welcome as GitHub issues.</p>
+        <p lang="pt">Pull requests externos ainda não são aceitos; relatos de bugs e sugestões são bem-vindos como issues no GitHub.</p></details>
+    </div>
+  </div>
+</section>
+
+<section style="text-align:center">
+  <div class="wrap">
+    <h2><span lang="en">Ready to shift gears?</span><span lang="pt">Pronto para trocar de marcha?</span></h2>
+    <p class="lead" style="margin:0 auto 26px"><span lang="en">Free, installs in a minute, no account. Bring the Claude Code or Codex you already use.</span><span lang="pt">Grátis, instala em um minuto, sem conta. Traga o Claude Code ou o Codex que você já usa.</span></p>
+    <a class="btn primary js-dl" href="https://github.com/flucassena/gearmod/releases/latest"><span lang="en">Download free for Windows</span><span lang="pt">Baixar grátis para Windows</span> <small data-latest-version></small></a>
+  </div>
+</section>
+
+<section id="contact" class="alt">
+  <div class="wrap">
+    <span class="eyebrow"><span lang="en">Contact</span><span lang="pt">Contato</span></span>
+    <h2><span lang="en">Built by Francisco Lucas Sena</span><span lang="pt">Criado por Francisco Lucas Sena</span></h2>
+    <p class="lead"><span lang="en">Found a bug, have an idea or want to talk about the project? Reach out.</span><span lang="pt">Achou um bug, tem uma ideia ou quer conversar sobre o projeto? Fale comigo.</span></p>
+    <div class="contact">
+      <a class="btn" href="https://github.com/flucassena" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.22 1.88.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>GitHub · flucassena</a>
+      <a class="btn" href="https://www.linkedin.com/in/flucassena" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28ZM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12ZM7.12 20.45H3.56V9h3.56v11.45ZM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0Z"/></svg>LinkedIn</a>
+      <a class="btn" href="mailto:sena.franciscolucas@gmail.com"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h17A1.5 1.5 0 0 1 22 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-17A1.5 1.5 0 0 1 2 18.5v-13Zm2.2.5L12 11.9 19.8 6H4.2Zm15.8 1.9-7.4 5.6a1 1 0 0 1-1.2 0L4 7.9V18h16V7.9Z"/></svg>E-mail</a>
+      <a class="btn" href="https://github.com/flucassena/gearmod/issues" rel="noopener"><span lang="en">Report an issue</span><span lang="pt">Reportar um problema</span></a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>© <span id="year"></span> Francisco Lucas Sena · GearMod <span lang="en">is source-available under the</span><span lang="pt">é source-available sob a</span> <a href="https://github.com/flucassena/gearmod/blob/main/LICENSE.md">PolyForm Shield 1.0.0</a>.</div>
+    <div><a href="https://github.com/flucassena/gearmod">GitHub</a> · <a href="https://github.com/flucassena/gearmod/blob/main/SECURITY.md">Security</a> · <a href="https://github.com/flucassena/gearmod/blob/main/TRADEMARKS.md">Trademarks</a> · <a href="https://github.com/flucassena/gearmod/blob/main/THIRD-PARTY-NOTICES.md">Third-party notices</a></div>
+    <div style="flex-basis:100%"><span lang="en">Claude Code, Codex and other product names belong to their owners. GearMod is not affiliated with Anthropic or OpenAI.</span><span lang="pt">Claude Code, Codex e outros nomes de produto pertencem aos seus donos. O GearMod não é afiliado à Anthropic nem à OpenAI.</span></div>
+  </div>
+</footer>
+
+<div class="stickybar" id="stickybar"><a class="btn primary js-dl" href="https://github.com/flucassena/gearmod/releases/latest"><span lang="en">Download free for Windows</span><span lang="pt">Baixar grátis para Windows</span> <small data-latest-version></small></a></div>
+
+<script>
+(function () {
+  var REPO = 'flucassena/gearmod';
+  var $ = function (id) { return document.getElementById(id); };
+  var root = document.documentElement;
+
+  /* ---- language: saved choice, else browser language ---- */
+  function setLang(l) {
+    root.dataset.lang = l; root.lang = l;
+    try { localStorage.setItem('gm-lang', l); } catch (e) {}
+    renderReleases();
+  }
+  var saved = null; try { saved = localStorage.getItem('gm-lang'); } catch (e) {}
+  root.dataset.lang = saved || (/^pt/i.test(navigator.language || '') ? 'pt' : 'en');
+  document.querySelectorAll('.lang button').forEach(function (b) { b.addEventListener('click', function () { setLang(b.dataset.set); }); });
+  $('year').textContent = new Date().getFullYear();
+
+  /* ---- releases: read live from the GitHub API, so a new tag shows up with no redeploy ---- */
+  var releases = null;
+  var T = {
+    en: { latest: 'Latest', pre: 'Pre-release', dl: 'Download', notes: 'Notes', sums: 'SHA-256', none: 'No release published yet. Check back soon, or build from source (see the README).', fail: 'Could not load the version list. Open the releases page on GitHub.', all: 'See on GitHub', count: function (n) { return n + (n === 1 ? ' version' : ' versions'); }, installer: 'Windows 10/11 (x64) · ' },
+    pt: { latest: 'Mais recente', pre: 'Pré-release', dl: 'Baixar', notes: 'Notas', sums: 'SHA-256', none: 'Nenhuma release publicada ainda. Volte em breve, ou compile do código-fonte (veja o README).', fail: 'Não deu para carregar a lista de versões. Abra a página de releases no GitHub.', all: 'Ver no GitHub', count: function (n) { return n + (n === 1 ? ' versão' : ' versões'); }, installer: 'Windows 10/11 (x64) · ' }
+  };
+  function lang() { return root.dataset.lang === 'pt' ? 'pt' : 'en'; }
+  function mb(n) { return (n / 1048576).toFixed(0) + ' MB'; }
+  function date(s) { return new Date(s).toLocaleDateString(lang() === 'pt' ? 'pt-BR' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function exeOf(r) { return (r.assets || []).filter(function (a) { return /\.exe$/i.test(a.name); })[0]; }
+  function sumsOf(r) { return (r.assets || []).filter(function (a) { return /SHA256SUMS/i.test(a.name); })[0]; }
+
+  function renderReleases() {
+    var t = T[lang()], list = $('rel-list');
+    if (releases === null) return;
+    if (releases === false) { list.innerHTML = '<div class="rel-empty">' + t.fail + ' <a href="https://github.com/' + REPO + '/releases">' + t.all + '</a></div>'; return; }
+    var rows = releases.filter(function (r) { return !r.draft && exeOf(r); });
+    $('rel-count').textContent = rows.length ? t.count(rows.length) : '';
+    if (!rows.length) { list.innerHTML = '<div class="rel-empty">' + t.none + '</div>'; return; }
+    var firstStable = rows.filter(function (r) { return !r.prerelease; })[0] || rows[0];
+    list.innerHTML = rows.map(function (r) {
+      var exe = exeOf(r), sums = sumsOf(r);
+      var badge = r.id === firstStable.id ? '<span class="badge">' + t.latest + '</span>' : (r.prerelease ? '<span class="badge pre">' + t.pre + '</span>' : '');
+      return '<div class="rel-item"><div class="v">' + esc(r.name || r.tag_name) + badge + '</div>' +
+        '<div class="d">' + date(r.published_at || r.created_at) + ' · ' + mb(exe.size) + '</div>' +
+        '<div class="a"><a class="btn small primary" href="' + esc(exe.browser_download_url) + '">' + t.dl + '</a>' +
+        (sums ? '<a class="btn small" href="' + esc(sums.browser_download_url) + '">' + t.sums + '</a>' : '') +
+        '<a class="btn small" href="' + esc(r.html_url) + '">' + t.notes + '</a></div></div>';
+    }).join('');
+    paintLatest(firstStable);
+  }
+
+  function paintLatest(r) {
+    var exe = exeOf(r); if (!exe) return;
+    $('dl-ver').textContent = r.tag_name + ' · ' + date(r.published_at || r.created_at) + ' · ' + mb(exe.size);
+    $('dl-btn').href = exe.browser_download_url;
+    $('dl-notes').href = r.html_url;
+    document.querySelectorAll('.js-dl').forEach(function (el) { el.href = exe.browser_download_url; });
+    document.querySelectorAll('[data-latest-version]').forEach(function (el) { el.textContent = r.tag_name; });
+  }
+
+  /* cache for 10 min: the unauthenticated API allows 60 requests/hour per IP */
+  function load() {
+    var key = 'gm-releases', now = Date.now();
+    try { var c = JSON.parse(sessionStorage.getItem(key) || 'null'); if (c && now - c.t < 600000) { releases = c.d; return renderReleases(); } } catch (e) {}
+    fetch('https://api.github.com/repos/' + REPO + '/releases?per_page=30', { headers: { Accept: 'application/vnd.github+json' } })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { releases = d; try { sessionStorage.setItem(key, JSON.stringify({ t: now, d: d })); } catch (e) {} renderReleases(); })
+      .catch(function () { releases = false; $('dl-ver').textContent = ''; renderReleases(); });
+  }
+  load();
+
+  /* hero carousel: autoplay, pauses on hover/focus or when off screen, arrows, dots and swipe */
+  (function () {
+    var box = $('carousel'); if (!box) return;
+    var slides = [].slice.call(box.querySelectorAll('.slide')), dots = [].slice.call(box.querySelectorAll('.dot')), i = 0, timer = null, paused = false, visible = true;
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
+    function go(n) { i = (n + slides.length) % slides.length; slides.forEach(function (el, k) { el.classList.toggle('on', k === i); }); dots.forEach(function (el, k) { el.classList.toggle('on', k === i); }); }
+    function stop() { if (timer) { clearInterval(timer); timer = null; } }
+    function play() { stop(); if (!reduce && !paused && visible) timer = setInterval(function () { go(i + 1); }, 5000); }
+    box.querySelector('.prev').onclick = function () { go(i - 1); play(); };
+    box.querySelector('.next').onclick = function () { go(i + 1); play(); };
+    dots.forEach(function (d, k) { d.onclick = function () { go(k); play(); }; });
+    box.addEventListener('mouseenter', function () { paused = true; stop(); });
+    box.addEventListener('mouseleave', function () { paused = false; play(); });
+    box.addEventListener('focusin', function () { paused = true; stop(); });
+    box.addEventListener('focusout', function () { paused = false; play(); });
+    var x0 = null;
+    box.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+    box.addEventListener('touchend', function (e) { if (x0 === null) return; var dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 40) { go(i + (dx < 0 ? 1 : -1)); play(); } x0 = null; });
+    if ('IntersectionObserver' in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; if (visible) play(); else stop(); }).observe(box);
+    play();
+  })();
+
+  /* mobile: the sticky download bar appears once the hero is out of view and hides at the download section */
+  var bar = $('stickybar'), hero = document.querySelector('.hero'), dl = $('download'), seen = { hero: true, dl: false };
+  function upd() { bar.classList.toggle('on', !seen.hero && !seen.dl); }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (e) { seen.hero = e[0].isIntersecting; upd(); }).observe(hero);
+    new IntersectionObserver(function (e) { seen.dl = e[0].isIntersecting; upd(); }).observe(dl);
+  }
+})();
+</script>
+</body>
+</html>
