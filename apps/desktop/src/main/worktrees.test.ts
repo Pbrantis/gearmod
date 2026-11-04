@@ -83,7 +83,7 @@ describe('WorktreeService', () => {
     expect((await service.snapshot(first.id)).exists).toBe(false)
     expect(database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(one.id)).toBe(0)
     database.close()
-  }, 20_000)
+  })
 
   it('creates the worktree from the base branch chosen for the card (falls back to the current one when it does not exist)', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-basebranch-')); roots.push(root)

@@ -408,7 +408,7 @@ describe('conflitos por repositório e worktree', () => {
     await manager.finishConflicts(sourceId, 'continue', cardId)
     expect(await manager.conflictsAll(projectId)).toEqual([])
     expect((await git(wt, 'show', 'HEAD:README.md')).stdout).toBe('# resolvido\n')
-  }, 30_000)
+  })
 
   it('conflito no repositório principal aparece sem cardId', async () => {
     const { repo, manager, projectId, sourceId } = await setup()
@@ -419,7 +419,7 @@ describe('conflitos por repositório e worktree', () => {
     expect(all).toHaveLength(1); expect(all[0]).toMatchObject({ sourceId, cardId: null, cardTitle: null, operation: 'merge' })
     await manager.finishConflicts(sourceId, 'abort')
     expect(await manager.conflictsAll(projectId)).toEqual([])
-  }, 30_000)
+  })
 })
 
 describe('fileVersions', () => {
@@ -439,12 +439,12 @@ describe('fileVersions', () => {
     expect(await manager.fileVersions(sourceId, null, 'novo.txt', 'commit', third)).toMatchObject({ before: 'oi\n', after: null })
     const first = (await git(repo, 'rev-list', '--max-parents=0', 'HEAD')).stdout.trim()
     expect(await manager.fileVersions(sourceId, null, 'README.md', 'commit', first)).toMatchObject({ before: null, after: '# fixture\n' })
-  }, 30_000)
+  })
 
   it('binário e arquivo grande não mandam conteúdo', async () => {
     const { repo, manager, sourceId } = await setup()
     await writeFile(join(repo, 'a.bin'), Buffer.from([1, 0, 2])); await writeFile(join(repo, 'grande.txt'), 'x'.repeat(1_100_000))
     expect(await manager.fileVersions(sourceId, null, 'a.bin', 'unstaged')).toEqual({ before: null, after: null, binary: true, truncated: false })
     expect(await manager.fileVersions(sourceId, null, 'grande.txt', 'unstaged')).toEqual({ before: null, after: null, binary: false, truncated: true })
-  }, 30_000)
+  })
 })

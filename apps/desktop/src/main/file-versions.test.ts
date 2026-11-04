@@ -61,5 +61,5 @@ describe('fileVersions', () => {
     const result = await fileVersions([worktree.path, member.path], join(member.path, 'a.txt'), { git: nativeGit, baseFor: (top) => service.baseFor(card.id, top) })
     expect(result.before).toBe('antes\n'); expect(result.after).toBe('card mudou\n'); expect(result.baseLabel).toContain('ponto de saída do card')
     database.close()
-  }, 20_000)
+  })
 })

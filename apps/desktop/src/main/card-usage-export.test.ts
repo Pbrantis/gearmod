@@ -41,4 +41,4 @@ it('exporta somente quando habilitado e apenas na worktree do repositório SDD s
     expect(existsSync(join(docs, relative))).toBe(false)
     expect(await readFile(join(docs, 'README.md'), 'utf8')).toBe('original')
   } finally { database.close() }
-}, 30_000)
+})

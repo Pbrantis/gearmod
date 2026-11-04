@@ -41,7 +41,7 @@ async function workspace() {
   return { root, ws, data, database, profiles, projects, board, project, card, sources, worktrees: new WorktreeService(database, data) }
 }
 
-describe('Worktrees coordenados', { timeout: 20_000 }, () => {
+describe('Worktrees coordenados', () => {
   it('cria worktree só nos repositórios do card e acrescenta um repositório novo na mesma worktree', async () => {
     const { board, card, sources, worktrees } = await workspace()
     board.setRepos(card.id, [sources.frontend!.id, sources.backend!.id])
@@ -57,6 +57,8 @@ describe('Worktrees coordenados', { timeout: 20_000 }, () => {
 
   it('falha num repositório não derruba os outros, bloqueia Done e é refeita na próxima preparação', async () => {
     const { board, card, sources, worktrees, database } = await workspace()
+    // Card com os três repositórios escolhidos (sem escolha, só o primeiro ganha worktree na hora).
+    board.setRepos(card.id, [sources.frontend!.id, sources.backend!.id, sources.docs!.id])
     database.db.prepare("UPDATE project_sources SET current_branch = 'nao-existe' WHERE id = ?").run(sources.backend!.id)
     const worktree = await worktrees.prepare(card.id)
     const repos = worktrees.repositories(card.id), backend = repos.find((repo) => repo.repoPath.endsWith('backend'))!
@@ -87,7 +89,8 @@ describe('Worktrees coordenados', { timeout: 20_000 }, () => {
     expect(results.find((item) => item.repo === 'frontend')).toEqual({ repo: 'frontend', url: 'https://github.com/acme/frontend/pull/7', error: null })
     expect(results.find((item) => item.repo === 'backend')?.error).toMatch(/sem commits/)
     expect(calls[0]!.command).toBe('gh'); expect(calls[0]!.args).toContain('--draft')
-    expect((await exec('git', ['--git-dir', remote, 'branch', '--list'])).stdout).toContain('gearmod/push-')
+    // A branch nasce com o prefixo do tipo do card; o push leva a branch da worktree para o remoto.
+    expect((await exec('git', ['--git-dir', remote, 'branch', '--list'])).stdout).toContain(worktrees.get(card.id)!.branch)
     const view = await git.card(card.id)
     expect(view.repos.find((repo) => repo.name === 'frontend')?.prUrl).toBe('https://github.com/acme/frontend/pull/7')
     expect(view.delivery.complete).toBe(true)

@@ -81,7 +81,7 @@ describe('histórico de desfazer', () => {
   })
 })
 
-describe('desfazer commit, amend e renomear', { timeout: 30_000 }, () => {
+describe('desfazer commit, amend e renomear', () => {
   it('desfaz o commit (arquivos voltam preparados) e refaz com o mesmo hash', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
@@ -186,7 +186,7 @@ describe('desfazer commit, amend e renomear', { timeout: 30_000 }, () => {
   })
 })
 
-describe('desfazer checkout, branch e tag', { timeout: 30_000 }, () => {
+describe('desfazer checkout, branch e tag', () => {
   it('checkout de branch e de commit: volta e refaz', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
@@ -279,7 +279,7 @@ describe('desfazer checkout, branch e tag', { timeout: 30_000 }, () => {
   })
 })
 
-describe('desfazer reset', { timeout: 30_000 }, () => {
+describe('desfazer reset', () => {
   async function history(repo: string): Promise<{ one: string; two: string }> {
     const one = await head(repo)
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt'); await git(repo, 'commit', '-m', 'dois')
@@ -348,7 +348,7 @@ describe('desfazer reset', { timeout: 30_000 }, () => {
   })
 })
 
-describe('desfazer descartar, stash e ignorar', { timeout: 30_000 }, () => {
+describe('desfazer descartar, stash e ignorar', () => {
   it('descartar: arquivo rastreado, novo e binário voltam; refazer descarta de novo', async () => {
     const { manager, repo, sourceId } = await setup()
     const binary = Buffer.from([0, 255, 1, 2, 0, 128])
@@ -438,7 +438,7 @@ describe('desfazer descartar, stash e ignorar', { timeout: 30_000 }, () => {
   })
 })
 
-describe('limpeza da pilha e proteção contra o gc', { timeout: 30_000 }, () => {
+describe('limpeza da pilha e proteção contra o gc', () => {
   it('push limpa a pilha; fetch não', async () => {
     const { manager, repo, sourceId } = await setup({ remote: true })
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')

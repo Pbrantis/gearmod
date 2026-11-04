@@ -28,7 +28,7 @@ async function withRemote(): Promise<{ manager: GitManager; repo: string; remote
   return { manager: new GitManager(database), repo, remote, sourceId: source.id }
 }
 
-describe('branches remotas', { timeout: 20_000 }, () => {
+describe('branches remotas', () => {
   it('atualiza a branch remota por fast-forward ao abri-la e recusa divergências', async () => {
     const { manager, repo, remote, sourceId } = await withRemote()
     const other = join(repo, '..', 'other'); await exec('git', ['clone', remote, other])
