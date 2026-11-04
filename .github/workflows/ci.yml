@@ -48,7 +48,7 @@ jobs:
           exit "$bad"
 
   check:
-    # O app é Windows-only (node-pty, NSIS) e os testes de Git/shell rodam no mesmo sistema do produto.
+    # The app is Windows-only (node-pty, NSIS), and the Git/shell tests run on the same OS as the product.
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -81,7 +81,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm dist
         env:
-          # Sem certificado de assinatura por enquanto: o instalador sai sem assinar.
+          # No signing certificate yet: the installer is built unsigned.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - uses: actions/upload-artifact@v4
         with:

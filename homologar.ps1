@@ -1,23 +1,23 @@
-# Promove o build atual (win-unpacked) para a versão HOMOLOGADA em C:\GearMod-homologado e abre.
-# Os dados da homologada ficam em %APPDATA%\GearMod e nao sao tocados; so o programa e substituido.
-# Uso: .\homologar.ps1
+# Promotes the current build (win-unpacked) to the STABLE install in C:\GearMod-homologado and opens it.
+# The stable install's data lives in %APPDATA%\GearMod and is not touched; only the program files are replaced.
+# Usage: .\homologar.ps1
 $ErrorActionPreference = 'Stop'
-$origem = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked'
-$destino = 'C:\GearMod-homologado'
-if (-not (Test-Path (Join-Path $origem 'GearMod.exe'))) { throw "Build nao encontrado em $origem (rode build.ps1)" }
+$source = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked'
+$target = 'C:\GearMod-homologado'
+if (-not (Test-Path (Join-Path $source 'GearMod.exe'))) { throw "Build not found in $source (run build.ps1)" }
 
-# Fecha so a homologada (a de teste roda de outra pasta e continua aberta).
-$rodando = Get-Process -Name GearMod -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($destino, [StringComparison]::OrdinalIgnoreCase) }
-if ($rodando) {
-  Write-Host 'Fechando a homologada atual...'
-  # Algum processo do app pode já ter saído entre a listagem e o encerramento: isso não é erro.
-  $rodando | Stop-Process -Force -ErrorAction SilentlyContinue
+# Close only the stable install (the test build runs from another folder and stays open).
+$running = Get-Process -Name GearMod -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($target, [StringComparison]::OrdinalIgnoreCase) }
+if ($running) {
+  Write-Host 'Closing the current stable install...'
+  # Some app process may already have exited between listing and stopping: that is not an error.
+  $running | Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
 }
 
-New-Item -ItemType Directory -Force $destino | Out-Null
-robocopy $origem $destino /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
-if ($LASTEXITCODE -ge 8) { throw "robocopy falhou (codigo $LASTEXITCODE)" }
+New-Item -ItemType Directory -Force $target | Out-Null
+robocopy $source $target /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit code $LASTEXITCODE)" }
 
-Start-Process -FilePath (Join-Path $destino 'GearMod.exe')
-Get-Item (Join-Path $destino 'GearMod.exe') | Select-Object FullName, LastWriteTime
+Start-Process -FilePath (Join-Path $target 'GearMod.exe')
+Get-Item (Join-Path $target 'GearMod.exe') | Select-Object FullName, LastWriteTime

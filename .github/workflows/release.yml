@@ -1,7 +1,7 @@
 name: Release
 
-# Uma tag de versão (ex.: v0.1.0) gera o instalador do Windows e publica uma Release com ele e o SHA-256.
-# A versão da tag precisa ser igual à de apps/desktop/package.json. Instalador ainda sem assinatura.
+# A version tag (e.g. v0.1.0) builds the Windows installer and publishes a Release with it and its SHA-256.
+# The tag version must match apps/desktop/package.json. The installer is not code-signed yet.
 on:
   push:
     tags: ['v*']

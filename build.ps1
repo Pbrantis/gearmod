@@ -1,10 +1,10 @@
-# Gera somente o executável portátil do GearMod.
-# Uso: powershell -File build.ps1   (ou .\build.ps1 no PowerShell)
-# Saída: apps\desktop\dist\win-unpacked\GearMod.exe
+# Builds only the portable GearMod executable.
+# Usage: powershell -File build.ps1   (or .\build.ps1 in PowerShell)
+# Output: apps\desktop\dist\win-unpacked\GearMod.exe
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
-# pnpm nao esta no PATH nesta maquina: cria um atalho via corepack so para esta execucao.
+# If pnpm is not on PATH, create a shim through corepack for this run only.
 if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
   $shim = Join-Path $env:TEMP 'pnpmshim'
   New-Item -ItemType Directory -Force $shim | Out-Null
@@ -12,26 +12,26 @@ if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
   $env:PATH = "$shim;$env:PATH"
 }
 
-# Um GearMod.exe aberto (mesmo em segundo plano) trava a pasta dist\win-unpacked e o build falha.
+# An open GearMod.exe (even in the background) locks dist\win-unpacked and the build fails.
 $unpacked = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked'
 $running = Get-Process -Name GearMod -ErrorAction SilentlyContinue |
   Where-Object { $_.Path -and $_.Path.StartsWith($unpacked, [StringComparison]::OrdinalIgnoreCase) }
 if ($running) {
-  Write-Host "Fechando $($running.Count) processo(s) do GearMod que estavam travando o build..."
+  Write-Host "Closing $($running.Count) GearMod process(es) that were locking the build..."
   $running | Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
 }
 
 pnpm install
-if ($LASTEXITCODE -ne 0) { throw "pnpm install falhou (codigo $LASTEXITCODE)" }
+if ($LASTEXITCODE -ne 0) { throw "pnpm install failed (exit code $LASTEXITCODE)" }
 
 Push-Location (Join-Path $PSScriptRoot 'apps\desktop')
 try {
   pnpm run build
-  if ($LASTEXITCODE -ne 0) { throw "pnpm run build falhou (codigo $LASTEXITCODE)" }
+  if ($LASTEXITCODE -ne 0) { throw "pnpm run build failed (exit code $LASTEXITCODE)" }
 
   pnpm exec electron-builder --win --dir
-  if ($LASTEXITCODE -ne 0) { throw "electron-builder --win --dir falhou (codigo $LASTEXITCODE)" }
+  if ($LASTEXITCODE -ne 0) { throw "electron-builder --win --dir failed (exit code $LASTEXITCODE)" }
 }
 finally {
   Pop-Location

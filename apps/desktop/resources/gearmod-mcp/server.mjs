@@ -84,7 +84,7 @@ const purposeTools = {
   test: [...always, ...codeRead, 'gearmod_code_affected_tests', 'gearmod_card_context', 'gearmod_write_document', 'gearmod_mark_task', 'gearmod_update_card', 'gearmod_move_card', 'gearmod_test_checklist', 'gearmod_set_repositories', 'gearmod_read_constitution', 'gearmod_propose_constitution', 'gearmod_propose_change', 'gearmod_ask_planner', 'gearmod_record_understanding', 'gearmod_record_exploration', 'gearmod_assess_complexity', 'gearmod_choose_workflow', 'gearmod_record_decision']
 }
 const allowedNames = new Set(purposeTools[process.env.GEARMOD_PURPOSE] ?? tools.map((tool) => tool.name))
-// Índice de código desligado no projeto: as ferramentas gearmod_code_* nem aparecem para o agente.
+// Code index turned off for the project: the gearmod_code_* tools are not even shown to the agent.
 if (process.env.GEARMOD_CODE_INDEX === '0') for (const tool of codeTools) allowedNames.delete(tool.name)
 const toolsForPurpose = tools.filter((tool) => allowedNames.has(tool.name))
 

@@ -1,8 +1,8 @@
 name: Outside pull requests
 
-# Por enquanto o projeto não recebe pull requests de fora (CONTRIBUTING.md): o PR de outra pessoa
-# recebe um comentário explicando o caminho (issue ou e-mail) e é fechado. Nada do código do PR é
-# baixado ou executado aqui (pull_request_target sem checkout).
+# For now the project does not accept outside pull requests (CONTRIBUTING.md): a PR from someone else
+# gets a comment pointing to issues or e-mail and is closed. None of the PR's code is downloaded
+# or run here (pull_request_target without checkout).
 on:
   pull_request_target:
     types: [opened, reopened]

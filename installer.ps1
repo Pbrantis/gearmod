@@ -1,10 +1,10 @@
-# Gera o instalador NSIS completo do GearMod.
-# Uso: powershell -File installer.ps1   (ou .\installer.ps1 no PowerShell)
-# Saída: apps\desktop\dist\GearMod-Setup-<versão>-x64.exe
+# Builds the full GearMod NSIS installer.
+# Usage: powershell -File installer.ps1   (or .\installer.ps1 in PowerShell)
+# Output: apps\desktop\dist\GearMod-Setup-<version>-x64.exe
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
-# pnpm não está no PATH nesta máquina: cria um atalho via corepack só para esta execução.
+# If pnpm is not on PATH, create a shim through corepack for this run only.
 if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
   $shim = Join-Path $env:TEMP 'pnpmshim'
   New-Item -ItemType Directory -Force $shim | Out-Null
@@ -12,21 +12,21 @@ if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
   $env:PATH = "$shim;$env:PATH"
 }
 
-# Um GearMod.exe aberto (mesmo em segundo plano) trava a pasta dist\win-unpacked e o build falha.
+# An open GearMod.exe (even in the background) locks dist\win-unpacked and the build fails.
 $unpacked = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked'
 $running = Get-Process -Name GearMod -ErrorAction SilentlyContinue |
   Where-Object { $_.Path -and $_.Path.StartsWith($unpacked, [StringComparison]::OrdinalIgnoreCase) }
 if ($running) {
-  Write-Host "Fechando $($running.Count) processo(s) do GearMod que estavam travando o build..."
+  Write-Host "Closing $($running.Count) GearMod process(es) that were locking the build..."
   $running | Stop-Process -Force -ErrorAction SilentlyContinue
   Start-Sleep -Seconds 2
 }
 
 pnpm install
-if ($LASTEXITCODE -ne 0) { throw "pnpm install falhou (codigo $LASTEXITCODE)" }
+if ($LASTEXITCODE -ne 0) { throw "pnpm install failed (exit code $LASTEXITCODE)" }
 
 pnpm dist
-if ($LASTEXITCODE -ne 0) { throw "pnpm dist falhou (codigo $LASTEXITCODE)" }
+if ($LASTEXITCODE -ne 0) { throw "pnpm dist failed (exit code $LASTEXITCODE)" }
 
 Get-ChildItem apps\desktop\dist -Filter 'GearMod-Setup-*.exe' |
   Sort-Object LastWriteTime -Descending |
