@@ -1,3 +1,4 @@
+import { tintIcon } from './brandIcon'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, utilityProcess, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -234,7 +235,7 @@ async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Re
     // close buttons remain Windows', on top, with a transparent background to follow the theme.
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#00000000', symbolColor: '#d4d9d5', height: titleBarHeight },
-    icon: appIcon,
+    icon: brandIcons?.app ?? appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -384,8 +385,19 @@ function updateTray(): void {
   ]))
 }
 
+const trayIconPath = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'tray' : 'resources/tray', 'tray.png')
+let brandIcons: { color: string; app: Electron.NativeImage; tray: Electron.NativeImage } | null = null
+
+/** Paints the mascot of the window, taskbar and tray icons in the app theme's accent color. */
+function setBrandColor(color: string): void {
+  if (brandIcons?.color === color) return
+  brandIcons = { color, app: tintIcon(nativeImage.createFromPath(appIcon), color), tray: tintIcon(nativeImage.createFromPath(trayIconPath), color) }
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.setIcon(brandIcons.app)
+  if (tray && !tray.isDestroyed()) tray.setImage(brandIcons.tray)
+}
+
 function createTray(): void {
-  const icon = nativeImage.createFromPath(join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'tray' : 'resources/tray', 'tray.png'))
+  const icon = brandIcons?.tray ?? nativeImage.createFromPath(trayIconPath)
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
   tray.on('click', showWindow)
   onMainLocaleChange(() => updateTray())
@@ -401,7 +413,7 @@ app.whenReady().then(async () => {
   await openDatabase()
   setMainLocale(settings.get().idioma)  // only after opening the database: before that the settings cannot be read
   await mcpBridge.listen()
-  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, gitAccounts, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, codeIndexSettings, ...fileActions, openExternal: (url) => shell.openExternal(url), setTitleBarTheme: (light) => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.setTitleBarOverlay({ color: '#00000000', symbolColor: light ? '#26303a' : '#d4d9d5', height: titleBarHeight }) }, openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
+  disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, gitAccounts, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, codeIndexSettings, ...fileActions, openExternal: (url) => shell.openExternal(url), setBrandColor, setTitleBarTheme: (light) => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.setTitleBarOverlay({ color: '#00000000', symbolColor: light ? '#26303a' : '#d4d9d5', height: titleBarHeight }) }, openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
   Menu.setApplicationMenu(null)  // no File/Edit/View/Window/Help: the top strip belongs to the app
   createTray()
   await createWindow()

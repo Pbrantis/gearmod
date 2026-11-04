@@ -3,9 +3,14 @@ import type { AgentPurpose, ChatMessage } from '@gearmod/contracts'
 import thinkingGif from './assets/thinking.gif'
 import { tr, useT } from './i18n'
 
+/** Mascot image painted with the theme's accent color (the image is only used as a mask), so it follows the app or project theme. */
+export function BrandMark({ src, size, className = '' }: { src: string; size: number; className?: string }): React.JSX.Element {
+  return <span className={`brandmark ${className}`} aria-hidden="true" style={{ width: size, height: size, WebkitMaskImage: `url(${src})`, maskImage: `url(${src})` }} />
+}
+
 /** GearMod mascot "thinking" (animated GIF): shows the agent is working. */
 export function ThinkingMascot({ size = 22 }: { size?: number }): React.JSX.Element {
-  return <img className="mascot" src={thinkingGif} width={size} height={size} alt="" draggable={false} />
+  return <BrandMark className="mascot" src={thinkingGif} size={size} />
 }
 
 /** What the agent is doing now, based on the last tool used in this turn (after my last message). */

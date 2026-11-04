@@ -45,6 +45,9 @@ export function applyTheme(theme: AppTheme): void {
 
 export function applySettings(settings: AppSettings): void {
   applyTheme(settings.tema)
+  // The window, taskbar and tray icons follow the app theme (a project theme only changes the inside of the app).
+  const accent = themes.find((theme) => theme.value === settings.tema)?.swatches[0]
+  if (accent) void window.gearmod.invoke('app:set-brand-color', { color: accent }).catch(() => undefined)
   setLocale(settings.idioma)
 }
 

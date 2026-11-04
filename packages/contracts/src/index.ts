@@ -635,6 +635,7 @@ export const ipcContracts = {
   , 'git:conflict-resolve': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), path: z.string().min(1).max(1000), side: z.enum(['ours', 'theirs', 'marked']) }).strict(), output: z.object({ left: z.number().int() }) }
   , 'git:conflict-finish': { input: z.object({ sourceId: uuid, cardId: uuid.nullable().optional(), action: z.enum(['continue', 'abort']) }).strict(), output: z.object({ output: z.string() }) }
   , 'app:set-titlebar-theme': { input: z.object({ light: z.boolean() }).strict(), output: z.object({ ok: z.literal(true) }) }
+  , 'app:set-brand-color': { input: z.object({ color: z.string().regex(/^#[0-9a-fA-F]{6}$/) }).strict(), output: z.object({ ok: z.literal(true) }) }
   , 'app:open-link': { input: z.object({ url: z.string().min(1).max(2048) }).strict(), output: z.object({ opened: z.literal(true) }) }
   , 'git:sync': { input: z.object({ ...gitTarget, action: z.enum(['fetch', 'pull', 'push', 'stash', 'pop']), pull: z.enum(['ff', 'ff-only', 'rebase']).optional(), force: z.boolean().optional() }).strict(), output: z.object({ output: z.string(), conflicts: z.number().int().nonnegative().optional() }) }
   , 'git:card': { input: cardIdInput, output: gitCardSchema }

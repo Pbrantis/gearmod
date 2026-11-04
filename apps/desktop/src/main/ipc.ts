@@ -117,6 +117,8 @@ interface Services {
   openExternal(url: string): Promise<void>
   /** Color of the Windows window buttons (minimize, maximize, close): dark on the light theme, light on the dark one. */
   setTitleBarTheme?(light: boolean): void
+  /** Color of the mascot in the window, taskbar and tray icons: the accent of the app theme. */
+  setBrandColor?(color: string): void
   chooseSkillSource(): Promise<string | null>
   saveTextFile(input: { content: string; defaultName: string }): Promise<{ saved: boolean; path: string | null }>
   appVersion: string
@@ -454,6 +456,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       await services.openExternal(input.url); return { opened: true as const }
     },
     'app:set-titlebar-theme': (input: { light: boolean }) => { services.setTitleBarTheme?.(input.light); return { ok: true as const } },
+    'app:set-brand-color': (input: { color: string }) => { services.setBrandColor?.(input.color); return { ok: true as const } },
     'files:preview': (input: { path: string }) => {
       const mime = imageMime[extname(input.path).toLowerCase()]
       try { return mime && isLocalAbsolutePath(input.path) && statSync(input.path).size < 8_000_000 ? `data:${mime};base64,${readFileSync(input.path).toString('base64')}` : null } catch { return null }
