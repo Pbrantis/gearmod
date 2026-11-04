@@ -1,12 +1,12 @@
 # Opens the TEST build (the current apps\desktop\dist\win-unpacked) with data kept apart from the stable install.
-# Usage: .\teste.ps1              opens the "teste" profile
-#        .\teste.ps1 -CopyData    first copies the stable install's data into the test profile (overwrites the test data)
-param([Alias('CopiarDados')][switch]$CopyData)
+# Usage: .\test.ps1              opens the "test" profile (data in %APPDATA%\GearMod-test)
+#        .\test.ps1 -CopyData    first copies the stable install's data into the test profile (overwrites the test data)
+param([switch]$CopyData)
 $ErrorActionPreference = 'Stop'
 $exe = Join-Path $PSScriptRoot 'apps\desktop\dist\win-unpacked\GearMod.exe'
 if (-not (Test-Path $exe)) { throw "Build not found: $exe (run build.ps1)" }
 
-$testDir = Join-Path $env:APPDATA 'GearMod-teste'
+$testDir = Join-Path $env:APPDATA 'GearMod-test'
 if ($CopyData) {
   $source = Join-Path $env:APPDATA 'GearMod\data'
   if (-not (Test-Path $source)) { throw "Stable install data not found: $source" }
@@ -18,6 +18,10 @@ if ($CopyData) {
   Write-Host 'Stable install data copied to the test profile.'
 }
 
-$env:GEARMOD_PROFILE = 'teste'
+# The test profile used to be called "teste". Its folder is not renamed, because worktree paths are stored inside it.
+$oldTestDir = Join-Path $env:APPDATA 'GearMod-teste'
+if (Test-Path $oldTestDir) { Write-Host "The old test profile in $oldTestDir is no longer used. Delete it when you no longer need it; use -CopyData to start the new one from the stable data." }
+
+$env:GEARMOD_PROFILE = 'test'
 Start-Process -FilePath $exe
 Write-Host "Test build opened (data in $testDir)."
