@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { parseTasks } from './ProgressCard'
 
-describe('painel de progresso', () => {
-  it('lê tasks com critérios e fases, com quebra de linha do Windows', () => {
+describe('progress panel', () => {
+  it('reads tasks with criteria and phases, with Windows line breaks', () => {
     const tasks = parseTasks('## Tasks\r\n\r\n### Fase 1: Base\r\n- [x] T001 Criar `tabela`\r\n  - [x] migração\r\n  - [ ] teste\r\n\r\n**Ponto de verificação:** ok\r\n\r\n### Fase 2\r\n- [ ] T002 Tela\r\n- [X] T003 Fim')
     expect(tasks.map((task) => [task.text, task.done, task.group, task.criteria.length])).toEqual([
       ['T001 Criar `tabela`', true, 'Fase 1: Base', 2],

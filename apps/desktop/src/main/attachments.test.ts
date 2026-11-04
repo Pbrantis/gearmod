@@ -14,8 +14,8 @@ const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
-describe('anexos no chat', () => {
-  it('põe os caminhos no pedido, descarta os que não existem e passa a lista ao agente', async () => {
+describe('chat attachments', () => {
+  it('puts the paths in the request, discards the ones that do not exist and passes the list to the agent', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-attach-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)

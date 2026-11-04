@@ -64,8 +64,8 @@ async function setup(on: { value: boolean } = { value: true }) {
   return { bridge, card, asked }
 }
 
-describe('ferramentas gearmod_code_* pelo servidor MCP', () => {
-  it('aparecem como só leitura para planejamento, execução, teste e chat livre, e não no chat da Constituição', async () => {
+describe('gearmod_code_* tools through the MCP server', () => {
+  it('appear as read-only for planning, execution, testing and free chat, and not in the Constitution chat', async () => {
     const { bridge, card } = await setup()
     const execution = await mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' })).names()
     expect(execution.filter((tool) => tool.name.startsWith('gearmod_code_')).map((tool) => [tool.name, tool.annotations.readOnlyHint])).toEqual([['gearmod_code_explore', true], ['gearmod_code_node', true], ['gearmod_code_search', true], ['gearmod_code_impact', true], ['gearmod_code_affected_tests', true]])
@@ -76,7 +76,7 @@ describe('ferramentas gearmod_code_* pelo servidor MCP', () => {
     expect(constitution.some((tool) => tool.name.startsWith('gearmod_code_'))).toBe(false)
   })
 
-  it('responde no card e no chat livre com as pastas da conversa; a Constituição recusa', async () => {
+  it("answers in the card and in free chat with the conversation's folders; the Constitution refuses", async () => {
     const { bridge, card, asked } = await setup()
     const onCard = mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' }))
     const impact = await onCard.call('gearmod_code_impact', { simbolo: 'allowedPath' })
@@ -93,7 +93,7 @@ describe('ferramentas gearmod_code_* pelo servidor MCP', () => {
     expect(await constitution.call('gearmod_code_search', { consulta: 'x' })).toMatchObject({ isError: true })
   })
 
-  it('com o índice desligado no projeto as ferramentas somem, e quem já rodava recebe recusa', async () => {
+  it('with the index turned off in the project the tools disappear, and anything already running gets a refusal', async () => {
     const on = { value: false }
     const { bridge, card, asked } = await setup(on)
     const off = mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' }))

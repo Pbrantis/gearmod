@@ -14,17 +14,17 @@ async function run(path: string, doc: string, command: Command, cursor = 0): Pro
 }
 
 describe('editorKeymap', () => {
-  it('comenta linha com // em .ts e # em .env', async () => {
+  it('comments a line with // in .ts and # in .env', async () => {
     expect(await run('a.ts', 'const a = 1\nb', toggleComment)).toBe('// const a = 1\nb')
     expect(await run('.env', 'CHAVE=1\nOUTRA=2', toggleComment)).toBe('# CHAVE=1\nOUTRA=2')
   })
-  it('descomenta ao repetir', async () => {
+  it('uncomments when repeated', async () => {
     expect(await run('a.ts', '// const a = 1\nb', toggleComment)).toBe('const a = 1\nb')
   })
-  it('move a linha para baixo', async () => {
+  it('moves the line down', async () => {
     expect(await run('a.ts', 'um\ndois\ntres', moveLineDown)).toBe('dois\num\ntres')
   })
-  it('abre linha acima mantendo o recuo', async () => {
+  it('opens a line above keeping the indent', async () => {
     expect(await run('a.ts', 'x\n  y', insertLineAbove, 4)).toBe('x\n  \n  y')
   })
 })

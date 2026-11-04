@@ -41,14 +41,14 @@ async function workspace() {
 }
 
 describe('SddResolver.locate', () => {
-  it('monorepo: sem sourceId configurado, usa o primeiro repositório Git do projeto; lê por ref sem worktree', async () => {
+  it('monorepo: with no sourceId configured, uses the first Git repository of the project; reads by ref without a worktree', async () => {
     const { resolver, project, database } = await workspace()
     const location = await resolver.locate({ projectId: project.id })
     expect(location.via).toBe('ref'); expect(location.ref).toBe('main')
     database.close()
   })
 
-  it('repo de docs separado, SDD fora da raiz: configura sourceId=docs e root=sdd, lê de lá', async () => {
+  it('separate docs repo, SDD outside the root: configures sourceId=docs and root=sdd, reads from there', async () => {
     const { resolver, history, project, sources, database } = await workspace()
     history.setConfig(project.id, { ...defaultWorkflowConfig, sdd: { ...defaultWorkflowConfig.sdd, sourceId: sources.docs!.id, root: 'sdd' } })
     const view = await resolver.constitution({ projectId: project.id })
@@ -57,7 +57,7 @@ describe('SddResolver.locate', () => {
     database.close()
   })
 
-  it('usa somente a origem de Constitution selecionada no projeto', async () => {
+  it('uses only the Constitution source selected in the project', async () => {
     const { resolver, history, project, app, database } = await workspace()
     await mkdir(join(app, '.specify', 'memory'), { recursive: true })
     await writeFile(join(app, '.specify', 'memory', 'constitution.md'), 'Constitution do Spec Kit')
@@ -70,7 +70,7 @@ describe('SddResolver.locate', () => {
     database.close()
   })
 
-  it('sourceId removido do projeto gera erro acionável (não um crash genérico)', async () => {
+  it('a sourceId removed from the project raises an actionable error (not a generic crash)', async () => {
     const { resolver, history, project, database } = await workspace()
     const fakeId = '00000000-0000-4000-8000-000000000099'
     history.setConfig(project.id, { ...defaultWorkflowConfig, sdd: { ...defaultWorkflowConfig.sdd, sourceId: fakeId } })
@@ -78,7 +78,7 @@ describe('SddResolver.locate', () => {
     database.close()
   })
 
-  it('card sem worktree lê por ref; card com worktree lê o arquivo da worktree (mesmo não commitado)', async () => {
+  it('a card without a worktree reads by ref; a card with a worktree reads the worktree file (even if uncommitted)', async () => {
     const { resolver, board, card, worktrees, sources, project, database } = await workspace()
     board.setRepos(card.id, [sources.app!.id])
     const withoutWorktree = await resolver.locate({ projectId: project.id, cardId: card.id })
@@ -94,7 +94,7 @@ describe('SddResolver.locate', () => {
     database.close()
   })
 
-  it('trocar a base do card troca a fonte da leitura (sem worktree)', async () => {
+  it('changing the card base changes the read source (without a worktree)', async () => {
     const { resolver, board, card, project, app, sources, database } = await workspace()
     board.setRepos(card.id, [sources.app!.id])
     await git(app, 'checkout', '-b', 'outra-branch')

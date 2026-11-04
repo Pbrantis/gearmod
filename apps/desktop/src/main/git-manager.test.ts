@@ -38,7 +38,7 @@ async function setup(): Promise<{ root: string; repo: string; database: AppDatab
 }
 
 describe('assignLanes', () => {
-  it('mantém a história linear numa faixa e abre outra para a branch', () => {
+  it('keeps linear history in one lane and opens another for the branch', () => {
     // top → base: merge(m) joins a (lane 0) and b (lane 1); base is the parent of both.
     const lanes = assignLanes([
       { hash: 'm', parents: ['a', 'b'] }, { hash: 'a', parents: ['base'] }, { hash: 'b', parents: ['base'] }, { hash: 'base', parents: [] }
@@ -46,13 +46,13 @@ describe('assignLanes', () => {
     expect(lanes).toEqual([0, 0, 1, 0])
   })
 
-  it('a história principal fica na faixa da esquerda mesmo depois de uma branch que a alcança', () => {
+  it('the main history stays in the left lane even after a branch that reaches it', () => {
     // main: m2 → base; feature: f → base (f is older than m2 in log order)
     const lanes = assignLanes([{ hash: 'merge', parents: ['m2', 'f'] }, { hash: 'f', parents: ['base'] }, { hash: 'm2', parents: ['base'] }, { hash: 'base', parents: [] }])
     expect(lanes).toEqual([0, 1, 0, 0])
   })
 
-  it('a faixa do pai continua reservada até ele aparecer', () => {
+  it('the parent lane stays reserved until it appears', () => {
     const lanes = assignLanes([
       { hash: 'tip1', parents: ['x'] }, { hash: 'tip2', parents: ['x'] }, { hash: 'x', parents: ['y'] }, { hash: 'z', parents: [] }
     ])
@@ -60,8 +60,8 @@ describe('assignLanes', () => {
   })
 })
 
-describe('regra de commit do agente', () => {
-  it('padrão do projeto: pedir permissão, exceção nunca em main, develop e release/*', () => {
+describe('agent commit rule', () => {
+  it('project default: ask permission, exception never on main, develop and release/*', () => {
     expect(resolveRule(defaultGitPolicy, 'gearmod/tela-1234')).toEqual({ rule: 'ask', why: 'padrão do projeto' })
     expect(resolveRule(defaultGitPolicy, 'main')).toEqual({ rule: 'never', why: 'exceção da branch main' })
     expect(resolveRule(defaultGitPolicy, 'develop').rule).toBe('never')
@@ -69,14 +69,14 @@ describe('regra de commit do agente', () => {
     expect(resolveRule(defaultGitPolicy, 'releases').rule).toBe('ask')
   })
 
-  it('a primeira exceção que bater vence e * cobre qualquer trecho', () => {
+  it('the first matching exception wins and * covers any segment', () => {
     const policy = { def: 'auto' as const, rules: [{ pattern: 'gearmod/*-x', rule: 'never' as const }, { pattern: 'gearmod/*', rule: 'ask' as const }, { pattern: '  ', rule: 'never' as const }] }
     expect(resolveRule(policy, 'gearmod/a-x').rule).toBe('never')
     expect(resolveRule(policy, 'gearmod/a-y').rule).toBe('ask')
     expect(resolveRule(policy, 'feature/z').rule).toBe('auto')
   })
 
-  it('guarda a regra no banco e volta ao padrão sem nada salvo', async () => {
+  it('stores the rule in the database and falls back to the default when nothing is saved', async () => {
     const { manager, projectId } = await setup()
     expect(manager.policy(projectId)).toEqual(defaultGitPolicy)
     const saved = manager.setPolicy(projectId, { def: 'auto', rules: [{ pattern: ' hotfix/* ', rule: 'ask' }, { pattern: '', rule: 'never' }] })
@@ -85,15 +85,15 @@ describe('regra de commit do agente', () => {
     expect(manager.ruleFor(projectId, 'hotfix/1')).toEqual({ rule: 'ask', why: 'exceção da branch hotfix/*' })
   })
 
-  it('traduz erros comuns do Git', () => {
+  it('translates common Git errors', () => {
     expect(errorCodeOf(friendlyError(new Error('! [rejected] main -> main (non-fast-forward)')))).toBe('git-push-rejected')
     expect(friendlyError(new Error('fatal: unable to auto-detect email address'))).toContain('não sabe quem você é')
     expect(friendlyError(Object.assign(new Error('x'), { stderr: '! [rejected] main -> main (non-fast-forward)' }))).toContain('Faça Pull')
   })
 })
 
-describe('GitManager com repositórios reais', () => {
-  it('descarta somente a parte não preparada, inclusive arquivos novos', async () => {
+describe('GitManager with real repositories', () => {
+  it('discards only the unstaged part, including new files', async () => {
     const { manager, sourceId, cardId, wt } = await setup()
     await writeFile(join(wt, 'README.md'), 'preparado\n'); await manager.stage(sourceId, cardId, ['README.md'], true)
     await writeFile(join(wt, 'README.md'), 'não preparado\n'); await writeFile(join(wt, 'novo.txt'), 'novo\n')
@@ -103,7 +103,7 @@ describe('GitManager com repositórios reais', () => {
     expect((await manager.changes(sourceId, cardId)).files).toMatchObject([{ path: 'README.md', staged: true }])
   })
 
-  it('guarda apenas o arquivo escolhido no stash e cria regras de ignore', async () => {
+  it('stashes only the chosen file and creates ignore rules', async () => {
     const { manager, sourceId, cardId, wt, projectId } = await setup()
     await mkdir(join(wt, 'pasta')); await writeFile(join(wt, 'pasta', 'novo.txt'), 'novo\n'); await writeFile(join(wt, 'outro.txt'), 'outro\n')
     await manager.stashFile(sourceId, cardId, 'pasta/novo.txt')
@@ -119,7 +119,7 @@ describe('GitManager com repositórios reais', () => {
     expect(await readFile(join(wt, '.gitignore'), 'utf8')).toBe('/pasta/\n')
     expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toEqual(['.gitignore', 'outro.txt'])
   })
-  it('stash pela barra conta os arquivos novos e pop com conflito entra na tela de conflitos sem perder o stash', async () => {
+  it('stash from the bar counts new files and a pop with a conflict enters the conflicts screen without losing the stash', async () => {
     const { manager, sourceId, cardId, wt, projectId } = await setup()
     await writeFile(join(wt, 'README.md'), '# do stash\n'); await writeFile(join(wt, 'novo.txt'), 'novo\n')
     expect((await manager.sync(sourceId, cardId, 'stash')).output).toMatch(/1 arquivo novo/)
@@ -136,7 +136,7 @@ describe('GitManager com repositórios reais', () => {
     expect((await git(wt, 'stash', 'list')).stdout.trim().split('\n')).toHaveLength(1)
   })
 
-  it('altera só a mensagem do último commit, preservando o corpo e o index', async () => {
+  it('changes only the last commit message, preserving the body and the index', async () => {
     const { manager, sourceId, cardId, wt } = await setup()
     await writeFile(join(wt, 'README.md'), 'preparado\n'); await manager.stage(sourceId, cardId, ['README.md'], true)
     const before = (await git(wt, 'rev-parse', 'HEAD')).stdout.trim()
@@ -147,7 +147,7 @@ describe('GitManager com repositórios reais', () => {
     expect((await git(wt, 'show', ':README.md')).stdout).toBe('preparado\n')
     await expect(manager.renameCommit({ sourceId, cardId, hash: before, message: 'Antigo' })).rejects.toThrow(/último commit/)
   })
-  it('lista repositórios, grafo com commits do card, WIP e worktrees', async () => {
+  it('lists repositories, graph with the card commits, WIP and worktrees', async () => {
     const { manager, projectId, sourceId, cardId, wt, branch, repo } = await setup()
     const repos = await manager.repos(projectId)
     expect(repos).toHaveLength(1); expect(repos[0]).toMatchObject({ sourceId, name: 'repo', head: 'main', hasRemote: false })
@@ -171,7 +171,7 @@ describe('GitManager com repositórios reais', () => {
     expect((await manager.graph(projectId, sourceId, 20)).rows.filter((row) => !row.wip && !row.stash)).toHaveLength(2)
   })
 
-  it('stage, unstage, diff, commit e amend na worktree do card', async () => {
+  it('stage, unstage, diff, commit and amend in the card worktree', async () => {
     const { manager, sourceId, cardId, wt } = await setup()
     await writeFile(join(wt, 'x.txt'), 'x1\nx2\nx3\n'); await writeFile(join(wt, 'y.txt'), 'y\n'); await writeFile(join(wt, 'README.md'), '# fixture\nmais\n')
     let state = await manager.changes(sourceId, cardId)
@@ -197,7 +197,7 @@ describe('GitManager com repositórios reais', () => {
     expect(root.files).toEqual([{ path: 'README.md', status: 'A', additions: 1, deletions: 0 }])
   })
 
-  it('commit só dos caminhos escolhidos deixa o resto sem commit; sync sem remoto avisa', async () => {
+  it('committing only the chosen paths leaves the rest uncommitted; sync without a remote warns', async () => {
     const { manager, sourceId, cardId, wt } = await setup()
     await writeFile(join(wt, 'um.txt'), '1\n'); await writeFile(join(wt, 'dois.txt'), '2\n')
     await manager.commit({ sourceId, cardId, message: 'Só o um', paths: ['um.txt'] })
@@ -206,7 +206,7 @@ describe('GitManager com repositórios reais', () => {
     await expect(manager.stage(sourceId, null, [], true)).resolves.toBeDefined()
   })
 
-  it('commit com mais de 400 caminhos continua levando só eles (D4)', async () => {
+  it('a commit with more than 400 paths still includes only them (D4)', async () => {
     const { manager, sourceId, cardId, wt } = await setup()
     const names = Array.from({ length: 450 }, (_, i) => `arq-${i}.txt`)
     await Promise.all(names.map((name) => writeFile(join(wt, name), 'x\n')))
@@ -217,7 +217,7 @@ describe('GitManager com repositórios reais', () => {
     expect((await manager.changes(sourceId, cardId)).files.map((file) => file.path)).toEqual(['fora.txt'])
   })
 
-  it('reset hard e apagar stash deixam uma cópia recuperável (D3)', async () => {
+  it('hard reset and deleting a stash leave a recoverable copy (D3)', async () => {
     const { manager, sourceId, cardId, wt } = await setup()
     const head = (await git(wt, 'rev-parse', 'HEAD')).stdout.trim()
     await writeFile(join(wt, 'README.md'), 'alterado e nao commitado\n')
@@ -231,7 +231,7 @@ describe('GitManager com repositórios reais', () => {
     expect(dropped.output).toContain('refs/gearmod/backup/stash-')
   })
 
-  it('publica a branch do card, vê o painel e atualiza com fetch e pull', async () => {
+  it('publishes the card branch, shows the panel and updates with fetch and pull', async () => {
     const { manager, projectId, root, sourceId, cardId, wt, branch, repo } = await setup()
     const remote = join(root, 'remote.git'); await mkdir(remote); await exec('git', ['init', '--bare', '-b', 'main', remote])
     await git(repo, 'remote', 'add', 'origin', remote); await git(repo, 'push', '-u', 'origin', 'main')
@@ -248,7 +248,7 @@ describe('GitManager com repositórios reais', () => {
     await manager.sync(sourceId, null, 'pull')
   })
 
-  it('rebase da branch do card sobre outra branch não mistura os commits dela nos do card', async () => {
+  it('rebasing the card branch onto another branch does not mix its commits into the card ones', async () => {
     const { manager, projectId, sourceId, cardId, wt, repo } = await setup()
     await git(repo, 'branch', 'outra'); await git(repo, 'worktree', 'add', join(repo, '..', 'outra'), 'outra')
     await writeFile(join(repo, '..', 'outra', 'o.txt'), 'o\n'); await git(join(repo, '..', 'outra'), 'add', 'o.txt'); await git(join(repo, '..', 'outra'), 'commit', '-m', 'Commit da outra')
@@ -261,10 +261,10 @@ describe('GitManager com repositórios reais', () => {
   })
 })
 
-describe('apagar worktree do card', () => {
+describe('delete card worktree', () => {
   const folderExists = (path: string): Promise<boolean> => access(path).then(() => true, () => false)
 
-  it('informa commits sem push e arquivos sem commit', async () => {
+  it('reports unpushed commits and uncommitted files', async () => {
     const { manager, projectId, sourceId, cardId, wt, branch } = await setup()
     expect((await manager.worktreeInfo(projectId, cardId)).repos[0]).toMatchObject({ unpushed: 0, files: 0, branch })
     await writeFile(join(wt, 'c.txt'), 'c\n'); await manager.commit({ sourceId, cardId, message: 'Commit do card', paths: ['c.txt'] })
@@ -272,7 +272,7 @@ describe('apagar worktree do card', () => {
     expect((await manager.worktreeInfo(projectId, cardId)).repos[0]).toMatchObject({ unpushed: 1, files: 1 })
   })
 
-  it('apaga a pasta, mantém a branch com commits sem push e preserva o card', async () => {
+  it('deletes the folder, keeps the branch with unpushed commits and preserves the card', async () => {
     const { manager, database, projectId, sourceId, cardId, wt, branch, repo } = await setup()
     await writeFile(join(wt, 'c.txt'), 'c\n'); await manager.commit({ sourceId, cardId, message: 'Commit do card', paths: ['c.txt'] })
     const out = await manager.deleteWorktree(projectId, cardId, false)
@@ -285,7 +285,7 @@ describe('apagar worktree do card', () => {
     await expect(manager.deleteWorktree(projectId, cardId, false)).rejects.toThrow()
   })
 
-  it('apaga a branch junto quando pedido', async () => {
+  it('deletes the branch too when requested', async () => {
     const { manager, projectId, cardId, wt, branch, repo } = await setup()
     await writeFile(join(wt, 'solto.txt'), 's\n')
     await manager.deleteWorktree(projectId, cardId, true)
@@ -293,7 +293,7 @@ describe('apagar worktree do card', () => {
     expect((await git(repo, 'branch', '--list', branch)).stdout.trim()).toBe('')
   })
 
-  it('apagar só a pasta de um repositório: sem outras pastas, a worktree inteira sai; com sourceId vindo de card sem projectId', async () => {
+  it('deleting only one repository folder: with no other folders, the whole worktree goes away; with a sourceId coming from a card without projectId', async () => {
     const { manager, database, projectId, sourceId, cardId, wt } = await setup()
     expect(manager.projectOfCard(cardId)).toBe(projectId)
     expect((await manager.worktreeInfo(projectId, cardId, sourceId)).repos).toHaveLength(1)
@@ -303,7 +303,7 @@ describe('apagar worktree do card', () => {
     expect(database.db.prepare('SELECT cleanup_state FROM worktrees WHERE card_id = ?').pluck().get(cardId)).toBe('removed')
   })
 
-  it('recusa enquanto um agente do card está rodando', async () => {
+  it('refuses while a card agent is running', async () => {
     const { manager, database, projectId, cardId, wt, chatId, profileId } = await setup()
     database.db.prepare(`INSERT INTO runs(id, card_id, chat_id, profile_id, status, started_at) VALUES ('11111111-1111-4111-8111-111111111111', ?, ?, ?, 'running', ?)`).run(cardId, chatId, profileId, new Date().toISOString())
     await expect(manager.deleteWorktree(projectId, cardId, true)).rejects.toThrow(/agente/i)
@@ -311,8 +311,8 @@ describe('apagar worktree do card', () => {
   })
 })
 
-describe('trava de agente nas ações da página Git (D1)', () => {
-  it('com um agente rodando no card, ações que mexem em arquivos são recusadas; leitura e fetch continuam', async () => {
+describe('agent lock on Git page actions (D1)', () => {
+  it('with an agent running on the card, actions that touch files are refused; reading and fetch continue', async () => {
     const { manager, database, sourceId, cardId, wt, chatId, profileId, branch } = await setup()
     await writeFile(join(wt, 'novo.txt'), 'x')
     database.db.prepare(`INSERT INTO runs(id, card_id, chat_id, profile_id, status, started_at) VALUES ('11111111-1111-4111-8111-111111111111', ?, ?, ?, 'running', ?)`).run(cardId, chatId, profileId, new Date().toISOString())
@@ -327,8 +327,8 @@ describe('trava de agente nas ações da página Git (D1)', () => {
   })
 })
 
-describe('commit do agente', () => {
-  it('nunca: recusa e explica; fora disso segue a regra da branch', async () => {
+describe('agent commit', () => {
+  it('never: refuses and explains; otherwise follows the branch rule', async () => {
     const { manager, projectId, cardId, chatId, wt, branch } = await setup()
     await writeFile(join(wt, 'n.txt'), 'n\n')
     manager.setPolicy(projectId, { def: 'ask', rules: [{ pattern: branch, rule: 'never' }] })
@@ -337,7 +337,7 @@ describe('commit do agente', () => {
     expect(manager.requests(cardId)).toEqual([])
   })
 
-  it('pedir permissão: registra o pedido, autoriza, commita só os arquivos e marca o agente como autor', async () => {
+  it('ask permission: records the request, authorizes, commits only the files and marks the agent as author', async () => {
     const { manager, projectId, sourceId, cardId, chatId, wt, profileId, database } = await setup()
     await writeFile(join(wt, 'a.txt'), 'a\n'); await writeFile(join(wt, 'b.txt'), 'b\n')
     expect(manager.agentRule(cardId)).toContain('gearmod_request_commit')
@@ -360,7 +360,7 @@ describe('commit do agente', () => {
     expect((await manager.decide(pending.id, 'deny')).status).toBe('done')
   })
 
-  it('recusar não commita; automático commita na hora e sem arquivos novos avisa', async () => {
+  it('refusing does not commit; automatic commits right away and warns when there are no new files', async () => {
     const { manager, projectId, sourceId, cardId, chatId, wt } = await setup()
     await writeFile(join(wt, 'r.txt'), 'r\n')
     await manager.agentCommit({ cardId, chatId, message: 'Quer commitar' })
@@ -376,8 +376,8 @@ describe('commit do agente', () => {
   })
 })
 
-describe('segredo no commit do agente (S13)', () => {
-  it('barra o commit com chave de API real, mas deixa passar .env.example com valor de exemplo', async () => {
+describe('secret in the agent commit (S13)', () => {
+  it('blocks the commit with a real API key, but lets .env.example with a sample value through', async () => {
     const { manager, projectId, cardId, chatId, wt } = await setup()
     manager.setPolicy(projectId, { def: 'auto', rules: [] })
     await writeFile(join(wt, '.env.example'), 'OPENAI_API_KEY=coloque-sua-chave\n')
@@ -389,8 +389,8 @@ describe('segredo no commit do agente (S13)', () => {
   })
 })
 
-describe('conflitos por repositório e worktree', () => {
-  it('lista só quem tem operação em andamento e resolve na pasta certa (repositório ou worktree do card)', async () => {
+describe('conflicts per repository and worktree', () => {
+  it('lists only those with an operation in progress and resolves in the right folder (repository or card worktree)', async () => {
     const { repo, wt, manager, projectId, sourceId, cardId } = await setup()
     await writeFile(join(repo, 'README.md'), '# principal\n'); await git(repo, 'commit', '-am', 'main muda')
     await writeFile(join(wt, 'README.md'), '# do card\n'); await git(wt, 'commit', '-am', 'card muda')
@@ -410,7 +410,7 @@ describe('conflitos por repositório e worktree', () => {
     expect((await git(wt, 'show', 'HEAD:README.md')).stdout).toBe('# resolvido\n')
   })
 
-  it('conflito no repositório principal aparece sem cardId', async () => {
+  it('a conflict in the main repository shows up without cardId', async () => {
     const { repo, manager, projectId, sourceId } = await setup()
     await git(repo, 'checkout', '-b', 'feat'); await writeFile(join(repo, 'README.md'), '# feat\n'); await git(repo, 'commit', '-am', 'feat')
     await git(repo, 'checkout', 'main'); await writeFile(join(repo, 'README.md'), '# main\n'); await git(repo, 'commit', '-am', 'main')
@@ -423,7 +423,7 @@ describe('conflitos por repositório e worktree', () => {
 })
 
 describe('fileVersions', () => {
-  it('não preparado, preparado, commit, arquivo novo, apagado e renomeado', async () => {
+  it('unstaged, staged, commit, new file, deleted and renamed', async () => {
     const { repo, manager, sourceId } = await setup()
     await writeFile(join(repo, 'README.md'), 'novo texto\n')
     expect(await manager.fileVersions(sourceId, null, 'README.md', 'unstaged')).toEqual({ before: '# fixture\n', after: 'novo texto\n', binary: false, truncated: false })
@@ -441,7 +441,7 @@ describe('fileVersions', () => {
     expect(await manager.fileVersions(sourceId, null, 'README.md', 'commit', first)).toMatchObject({ before: null, after: '# fixture\n' })
   })
 
-  it('binário e arquivo grande não mandam conteúdo', async () => {
+  it('binary and large files do not send content', async () => {
     const { repo, manager, sourceId } = await setup()
     await writeFile(join(repo, 'a.bin'), Buffer.from([1, 0, 2])); await writeFile(join(repo, 'grande.txt'), 'x'.repeat(1_100_000))
     expect(await manager.fileVersions(sourceId, null, 'a.bin', 'unstaged')).toEqual({ before: null, after: null, binary: true, truncated: false })

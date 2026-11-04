@@ -41,8 +41,8 @@ async function workspace() {
   return { root, ws, data, database, profiles, projects, board, project, card, sources, worktrees: new WorktreeService(database, data) }
 }
 
-describe('Worktrees coordenados', () => {
-  it('cria worktree só nos repositórios do card e acrescenta um repositório novo na mesma worktree', async () => {
+describe('Coordinated worktrees', () => {
+  it("creates a worktree only in the card's repositories and adds a new repository to the same worktree", async () => {
     const { board, card, sources, worktrees } = await workspace()
     board.setRepos(card.id, [sources.frontend!.id, sources.backend!.id])
     const first = await worktrees.prepare(card.id)
@@ -55,7 +55,7 @@ describe('Worktrees coordenados', () => {
     expect(board.setRepos(card.id, null).repoIds).toBeNull()
   })
 
-  it('falha num repositório não derruba os outros, bloqueia Done e é refeita na próxima preparação', async () => {
+  it('a failure in one repository does not take down the others, blocks Done and is redone on the next preparation', async () => {
     const { board, card, sources, worktrees, database } = await workspace()
     // Card with the three repositories chosen (without a choice, only the first gets a worktree right away).
     board.setRepos(card.id, [sources.frontend!.id, sources.backend!.id, sources.docs!.id])
@@ -74,7 +74,7 @@ describe('Worktrees coordenados', () => {
     expect(board.move(card.id, done.id, null).columnId).toBe(done.id)
   })
 
-  it('abre um PR por repositório com commits e diz o que faltou nos outros', async () => {
+  it('opens one PR per repository with commits and says what was missing in the others', async () => {
     const { root, board, card, sources, worktrees, database } = await workspace()
     board.setRepos(card.id, [sources.frontend!.id, sources.backend!.id])
     await worktrees.prepare(card.id)
@@ -102,14 +102,14 @@ describe('Worktrees coordenados', () => {
 })
 
 describe('Harness', () => {
-  it('aponta arquivos fora das áreas do Plano e ignora lock/build', () => {
+  it("flags files outside the Plan's areas and ignores lock/build", () => {
     const plan = 'Áreas afetadas: `src/push/` e `src/app.ts`. Testes em tests/push.test.ts'
     expect(outOfScope(plan, ['src/push/fcm.ts', 'src/app.ts', 'src/billing/x.ts', 'package-lock.json', 'tests/push.test.ts'])).toEqual(['src/billing/x.ts'])
     expect(outOfScope('Plano sem caminhos', ['qualquer.ts'])).toEqual([])
     expect(outOfScope('Mexe em `api/routes/`', ['backend/api/routes/a.ts', 'frontend/src/b.ts'], ['backend', 'frontend'])).toEqual(['frontend/src/b.ts'])
   })
 
-  it('para por orçamento e por falhas repetidas só nas retomadas automáticas', async () => {
+  it('stops on budget and on repeated failures only in automatic resumes', async () => {
     const { database, board, card, project, data, worktrees, profiles } = await workspace()
     const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
     history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: 30, maxTokens: 5000, maxCostUsd: null, includeEquivalentCost: false, maxAttempts: 2, scopeCheck: true } })
@@ -126,7 +126,7 @@ describe('Harness', () => {
     expect(board.card(card.id).id).toBe(card.id)
   })
 
-  it('S10: detecta commit que não veio de agentCommit, e não aponta nada quando veio', async () => {
+  it('S10: detects a commit that did not come from agentCommit, and flags nothing when it did', async () => {
     const { board, card, sources, worktrees, database, data, profiles } = await workspace()
     board.setRepos(card.id, [sources.frontend!.id])
     const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
@@ -150,7 +150,7 @@ describe('Harness', () => {
     expect(clean.some((notice) => notice.includes('não veio do pedido de commit'))).toBe(false)
   })
 
-  it('S10: também detecta troca de branch na worktree durante a execução', async () => {
+  it('S10: also detects a branch switch in the worktree during execution', async () => {
     const { board, card, sources, worktrees, database, data } = await workspace()
     board.setRepos(card.id, [sources.frontend!.id])
     const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
@@ -162,7 +162,7 @@ describe('Harness', () => {
     expect(result.some((notice) => notice.includes('mudou de'))).toBe(true)
   })
 
-  it('maxCostUsd soma só custo faturado por padrão; includeEquivalentCost também soma o equivalente', async () => {
+  it('maxCostUsd sums only billed cost by default; includeEquivalentCost also sums the equivalent', async () => {
     const { database, data, worktrees, board, card, project, profiles } = await workspace()
     const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
     const chat = new ConversationRepository(database).createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profiles.list()[0]!.id })
@@ -178,7 +178,7 @@ describe('Harness', () => {
     expect(board.card(card.id).id).toBe(card.id)
   })
 
-  it('o orquestrador marca a execução que estourou o tempo como falha, não como parada do usuário', async () => {
+  it('the orchestrator marks a run that timed out as a failure, not as stopped by the user', async () => {
     const { database, card, profiles } = await workspace()
     const conversations = new ConversationRepository(database), chat = conversations.createChat({ projectId: card.projectId, cardId: card.id, purpose: 'planning', profileId: profiles.list()[0]!.id })
     const slow: AgentAdapter = { run: (options) => new Promise((resolve) => options.signal?.addEventListener('abort', () => resolve({ sessionId: 's', turnId: null, text: '', status: 'interrupted', error: 'Interrompido pelo usuário' }))) } as AgentAdapter
@@ -195,7 +195,7 @@ describe('Harness', () => {
 })
 
 describe('Playwright CLI', () => {
-  it('instala numa pasta do app, com várias versões, escolha por projeto e Node portátil conferido', async () => {
+  it('installs in an app folder, with several versions, per-project choice and a verified portable Node', async () => {
     const { database, project, card, data } = await workspace()
     const history = new CardHistoryService(database, data), tools = join(data, 'tools')
     const zip = Buffer.from('zip-do-node'), sha256 = createHash('sha256').update(zip).digest('hex')
@@ -242,7 +242,7 @@ describe('Playwright CLI', () => {
     expect(readFileSync(withSystem.versions[0]!.path, 'utf8')).not.toContain('node-v1.0.0')
   })
 
-  it('recusa o Node baixado quando o SHA-256 não confere', async () => {
+  it('rejects the downloaded Node when the SHA-256 does not match', async () => {
     const { database, project, data } = await workspace()
     const history = new CardHistoryService(database, data), tools = join(data, 'tools-sha')
     const runner: CommandRunner = { run: async (command) => { if (command === 'node') throw new Error('not found'); return 'ok' } }

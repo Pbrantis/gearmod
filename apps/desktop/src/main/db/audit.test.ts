@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { expect, it } from 'vitest'
 import { AppDatabase } from '../database'
 import { DbAudit, historySql, redactSql, retainHistory, type QueryAudit } from './audit'
-it('redige literais, comentários, dollar quotes e SQL malformado', () => {
+it('redacts literals, comments, dollar quotes and malformed SQL', () => {
   const sql = `SELECT 'senha''privada', $$token123$$, 918273, "ident-secreto" /* segredo */ -- credencial\n FROM users WHERE x='incompleto`
   const result = redactSql(sql)
   for (const value of ['senha', 'privada', 'token123', '918273', 'ident-secreto', 'segredo', 'credencial', 'incompleto']) expect(result).not.toContain(value)
@@ -13,7 +13,7 @@ it('redige literais, comentários, dollar quotes e SQL malformado', () => {
   expect(redactSql('ALTER ROLE a PASSWORD sk-unquoted-secret')).not.toContain('sk-unquoted-secret')
   expect(redactSql("SELECT E'abc\\'private-value', $tag$other-secret$tag$ /* nested /* hidden */ still-hidden */")).not.toMatch(/private-value|other-secret|hidden/)
 })
-it('mantém apenas hash e resumo sem valores e não apaga a auditoria ao limpar histórico', async () => {
+it('keeps only the hash and a summary without values and does not erase the audit when clearing history', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-dbaudit-')), id = randomUUID(), db = new AppDatabase(join(root, 'db.sqlite'), '0.1')
   await db.open()
   try {
@@ -29,7 +29,7 @@ it('mantém apenas hash e resumo sem valores e não apaga a auditoria ao limpar 
   } finally { db.close(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) }
 })
 
-it('guarda o SQL completo no histórico, ocultando só o valor de PASSWORD/SECRET/TOKEN', () => {
+it('stores the full SQL in the history, hiding only the PASSWORD/SECRET/TOKEN value', () => {
   expect(historySql("SELECT * FROM users WHERE email = 'a@b.com' AND id = 42 -- nota")).toBe("SELECT * FROM users WHERE email = 'a@b.com' AND id = 42 -- nota")
   const hidden = historySql("ALTER USER x PASSWORD 'my-secret-password'; ALTER ROLE y PASSWORD sk-unquoted")
   expect(hidden).not.toMatch(/my-secret-password|sk-unquoted/)
@@ -37,13 +37,13 @@ it('guarda o SQL completo no histórico, ocultando só o valor de PASSWORD/SECRE
   // Doubled quotes (text inside another text, as in a DO): none of the secret may be left.
   expect(historySql("EXECUTE 'ALTER USER x PASSWORD ''segredo1'''")).not.toContain('segredo1')
 })
-it('comandos de escrita não guardam os valores no histórico (S7)', () => {
+it('write commands do not store values in the history (S7)', () => {
   const insert = historySql("INSERT INTO clientes(nome, email) VALUES ('Maria Silva', 'maria@x.com')")
   expect(insert).not.toMatch(/Maria|maria@x/); expect(insert).toContain('INSERT INTO clientes')
   expect(historySql("UPDATE clientes SET cpf = '123.456.789-00' WHERE id = 7")).not.toMatch(/123\.456/)
   expect(historySql("WITH x AS (DELETE FROM t WHERE a = 'segredo' RETURNING *) SELECT * FROM x")).not.toContain('segredo')
 })
-it('o histórico guarda só SQL, as últimas 200 e as dos últimos 30 dias', () => {
+it('the history stores only SQL, the last 200 and those from the last 30 days', () => {
   const now = Date.parse('2026-10-30T12:00:00Z'), at = (days: number): string => new Date(now - days * 86_400_000).toISOString()
   const entry = (n: number, days: number, kind: QueryAudit['kind'] = 'sql'): QueryAudit => ({ id: String(n), at: at(days), kind, sqlHash: '', durationMs: 1, rows: 0, status: 'ok', summary: 'SELECT', sql: 'SELECT 1' })
   expect(retainHistory([entry(1, 31), entry(2, 29), entry(3, 1, 'table-page'), entry(4, 0)], now).map((item) => item.id)).toEqual(['2', '4'])

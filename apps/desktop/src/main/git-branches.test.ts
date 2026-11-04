@@ -28,8 +28,8 @@ async function withRemote(): Promise<{ manager: GitManager; repo: string; remote
   return { manager: new GitManager(database), repo, remote, sourceId: source.id }
 }
 
-describe('branches remotas', () => {
-  it('atualiza a branch remota por fast-forward ao abri-la e recusa divergências', async () => {
+describe('remote branches', () => {
+  it('fast-forwards the remote branch when opening it and refuses divergences', async () => {
     const { manager, repo, remote, sourceId } = await withRemote()
     const other = join(repo, '..', 'other'); await exec('git', ['clone', remote, other])
     await git(other, 'config', 'user.email', 'test@example.invalid'); await git(other, 'config', 'user.name', 'Test')
@@ -42,7 +42,7 @@ describe('branches remotas', () => {
     await expect(manager.checkoutRemote(sourceId, null, 'origin/main')).rejects.toThrow(/divergiram/)
     expect((await git(repo, 'rev-parse', 'HEAD')).stdout.trim()).toBe(before)
   })
-  it('checkout de uma branch remota cria a local acompanhando a remota e, se a local já existe, só muda para ela', async () => {
+  it('checking out a remote branch creates the local one tracking the remote and, if the local one already exists, just switches to it', async () => {
     const { manager, repo, sourceId } = await withRemote()
     const first = await manager.branchAction(sourceId, { action: 'checkout', name: 'origin/feature/x' })
     expect(first.output).toContain('criada'); expect((await git(repo, 'branch', '--show-current')).stdout.trim()).toBe('feature/x')
@@ -51,7 +51,7 @@ describe('branches remotas', () => {
     const again = await manager.branchAction(sourceId, { action: 'checkout', name: 'origin/feature/x' })
     expect(again.output).toContain('já existia'); expect((await git(repo, 'branch', '--show-current')).stdout.trim()).toBe('feature/x')
   })
-  it('apaga a branch no servidor, mas recusa a padrão do remoto, o HEAD e nomes que não existem', async () => {
+  it('deletes the branch on the server, but refuses the remote default, HEAD and names that do not exist', async () => {
     const { manager, repo, remote, sourceId } = await withRemote()
     await expect(manager.branchAction(sourceId, { action: 'delete-remote', name: 'origin/main' })).rejects.toThrow(/padrão/)
     await expect(manager.branchAction(sourceId, { action: 'delete-remote', name: 'origin/HEAD' })).rejects.toThrow()
@@ -64,8 +64,8 @@ describe('branches remotas', () => {
   })
 })
 
-describe('apagar branch local', () => {
-  it('explica quando a branch está em uso por uma worktree ou ainda não foi mesclada', async () => {
+describe('delete local branch', () => {
+  it('explains when the branch is in use by a worktree or has not been merged yet', async () => {
     const { manager, repo, sourceId } = await withRemote()
     const wt = join(repo, '..', 'wt'); await git(repo, 'worktree', 'add', '-b', 'gearmod/card', wt)
     await expect(manager.branchAction(sourceId, { action: 'delete', name: 'gearmod/card' })).rejects.toThrow(/em uso por uma worktree/)
@@ -76,8 +76,8 @@ describe('apagar branch local', () => {
   })
 })
 
-describe('remoto e branch do pull', () => {
-  it('detecta a branch sem remota ligada, liga a uma branch que existe e explica quando ela não existe', async () => {
+describe('remote and pull branch', () => {
+  it('detects a branch with no linked remote, links it to a branch that exists and explains when it does not exist', async () => {
     const { manager, repo, sourceId } = await withRemote()
     await git(repo, 'checkout', '-b', 'novo'); await git(repo, 'push', 'origin', 'novo')
     expect(await manager.upstream(sourceId, null)).toEqual({ branch: 'novo', upstream: null, remotes: ['origin'] })

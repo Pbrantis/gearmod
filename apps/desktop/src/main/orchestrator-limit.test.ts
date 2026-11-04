@@ -20,8 +20,8 @@ function setup(limit: { value: number }) {
   return { orchestrator, releases, started, events, settle }
 }
 
-describe('limite de execuções simultâneas', () => {
-  it('segura o que passa do limite na fila e avisa só pedidos do usuário', async () => {
+describe('concurrent run limit', () => {
+  it('holds what exceeds the limit in the queue and notifies only for user requests', async () => {
     const { orchestrator, started, events, settle } = setup({ value: 1 })
     orchestrator.start({ chatId: 'chat', prompt: 'a', planning: false })
     orchestrator.start({ chatId: 'chat', prompt: 'b', planning: false })
@@ -32,7 +32,7 @@ describe('limite de execuções simultâneas', () => {
     expect(events.filter((event) => event.eventType === 'gearmod/run-queued').map((event) => event.runId)).toEqual(['run-2'])
   })
 
-  it('runNow ultrapassa o limite e refill aproveita um limite maior', async () => {
+  it('runNow bypasses the limit and refill takes advantage of a higher limit', async () => {
     const limit = { value: 1 }
     const { orchestrator, started, settle } = setup(limit)
     orchestrator.start({ chatId: 'chat', prompt: 'a', planning: false })

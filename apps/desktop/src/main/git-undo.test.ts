@@ -36,8 +36,8 @@ async function setup(options: { remote?: boolean; empty?: boolean } = {}): Promi
 
 const entry = (id: string): UndoEntry => ({ id, kind: 'commit', at: '', before: { head: null, branch: null }, after: { head: id, branch: 'main' }, dir: '/x', pins: [], data: { message: id } })
 
-describe('histórico de desfazer', () => {
-  it('guarda no máximo 20 ações por pasta e devolve a que saiu', () => {
+describe('undo history', () => {
+  it('keeps at most 20 actions per folder and returns the one that dropped out', () => {
     const journal = new UndoJournal()
     const gone: string[] = []
     for (let i = 0; i < undoLimit + 3; i++) gone.push(...journal.push('a', entry(`e${i}`)).map((item) => item.id))
@@ -47,7 +47,7 @@ describe('histórico de desfazer', () => {
     expect(journal.peekUndo('b')).toBeUndefined()
   })
 
-  it('ação nova limpa o refazer; desfazer e refazer movem a entrada de lugar', () => {
+  it('a new action clears redo; undo and redo move the entry around', () => {
     const journal = new UndoJournal()
     journal.push('a', entry('um')); journal.push('a', entry('dois'))
     journal.moveToUndone('a')
@@ -59,7 +59,7 @@ describe('histórico de desfazer', () => {
     expect(journal.peekRedo('a')).toBeUndefined()
   })
 
-  it('drop tira uma entrada e clear esvazia a pasta devolvendo tudo', () => {
+  it('drop removes an entry and clear empties the folder, returning everything', () => {
     const journal = new UndoJournal()
     journal.push('a', entry('um')); journal.push('a', entry('dois')); journal.moveToUndone('a'); journal.push('b', entry('tres'))
     expect(journal.drop('a', 'um').map((item) => item.id)).toEqual(['um'])
@@ -70,7 +70,7 @@ describe('histórico de desfazer', () => {
     expect(journal.all()).toEqual([])
   })
 
-  it('compara estados e escreve o texto da ação', () => {
+  it('compares states and writes the action text', () => {
     expect(sameState({ head: 'a', branch: 'main' }, { head: 'a', branch: 'main' })).toBe(true)
     expect(sameState({ head: 'a', branch: 'main' }, { head: 'a', branch: null })).toBe(false)
     expect(entryLabel('commit', { message: 'Corrige filtro' })).toBe('commit "Corrige filtro"')
@@ -81,8 +81,8 @@ describe('histórico de desfazer', () => {
   })
 })
 
-describe('desfazer commit, amend e renomear', () => {
-  it('desfaz o commit (arquivos voltam preparados) e refaz com o mesmo hash', async () => {
+describe('undo commit, amend and rename', () => {
+  it('undoes the commit (files come back staged) and redoes it with the same hash', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
@@ -97,7 +97,7 @@ describe('desfazer commit, amend e renomear', () => {
     await expect(manager.redoLast(sourceId, null)).rejects.toThrow(/Nada para refazer/)
   })
 
-  it('o refazer recusa se o que está preparado mudou', async () => {
+  it('redo refuses if what is staged changed', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
     await manager.commit({ sourceId, cardId: null, message: 'Adiciona a' })
@@ -106,7 +106,7 @@ describe('desfazer commit, amend e renomear', () => {
     await expect(manager.redoLast(sourceId, null)).rejects.toThrow(/preparadas mudaram/)
   })
 
-  it('amend: desfazer volta a mensagem antiga', async () => {
+  it('amend: undo restores the old message', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
     const one = (await manager.commit({ sourceId, cardId: null, message: 'um' })).hash
@@ -118,7 +118,7 @@ describe('desfazer commit, amend e renomear', () => {
     expect(await head(repo)).toBe(two)
   })
 
-  it('renomear o commit entra na pilha e desfaz', async () => {
+  it('renaming the commit goes on the stack and can be undone', async () => {
     const { manager, repo, sourceId } = await setup()
     const base = await head(repo)
     const renamed = await manager.renameCommit({ sourceId, cardId: null, hash: base, message: 'novo nome' })
@@ -129,7 +129,7 @@ describe('desfazer commit, amend e renomear', () => {
     expect(await head(repo)).toBe(renamed.hash)
   })
 
-  it('primeiro commit do repositório: desfazer deixa o repositório sem HEAD e com o arquivo preparado', async () => {
+  it('first commit of the repository: undo leaves the repository without HEAD and with the file staged', async () => {
     const { manager, repo, sourceId } = await setup({ empty: true })
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
     const { hash } = await manager.commit({ sourceId, cardId: null, message: 'inicial' })
@@ -140,7 +140,7 @@ describe('desfazer commit, amend e renomear', () => {
     expect(await head(repo)).toBe(hash)
   })
 
-  it('commit já publicado não se desfaz', async () => {
+  it('an already published commit cannot be undone', async () => {
     const { manager, repo, sourceId } = await setup({ remote: true })
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
     const { hash } = await manager.commit({ sourceId, cardId: null, message: 'publicado' })
@@ -149,7 +149,7 @@ describe('desfazer commit, amend e renomear', () => {
     expect(await head(repo)).toBe(hash)
   })
 
-  it('commit feito por fora depois recusa o desfazer e tira a entrada da pilha', async () => {
+  it('a commit made externally afterwards refuses the undo and removes the entry from the stack', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
     await manager.commit({ sourceId, cardId: null, message: 'pela tela' })
@@ -160,7 +160,7 @@ describe('desfazer commit, amend e renomear', () => {
     await expect(manager.undoLast(sourceId, null)).rejects.toThrow(/Nada para desfazer/)
   })
 
-  it('o botão não promete o que ficou velho: undoState descarta a entrada', async () => {
+  it('the button does not promise what went stale: undoState discards the entry', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
     await manager.commit({ sourceId, cardId: null, message: 'pela tela' })
@@ -168,7 +168,7 @@ describe('desfazer commit, amend e renomear', () => {
     expect(await manager.undoState(sourceId, null)).toEqual({ undo: null, redo: null })
   })
 
-  it('cada pasta tem a sua pilha: commit na worktree do card não aparece na pasta principal', async () => {
+  it('each folder has its own stack: a commit in the card worktree does not show in the main folder', async () => {
     const { root, repo, database, manager, projectId, sourceId } = await setup()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
     const projects = new ProjectRepository(database, new GitService()), board = new BoardRepository(database, projects), column = board.get(projectId).columns[0]!
@@ -186,8 +186,8 @@ describe('desfazer commit, amend e renomear', () => {
   })
 })
 
-describe('desfazer checkout, branch e tag', () => {
-  it('checkout de branch e de commit: volta e refaz', async () => {
+describe('undo checkout, branch and tag', () => {
+  it('checkout of a branch and of a commit: undo and redo', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
     await git(repo, 'branch', 'dev')
@@ -206,7 +206,7 @@ describe('desfazer checkout, branch e tag', () => {
     expect(await head(repo)).toBe(first); expect(await out(repo, 'branch', '--show-current')).toBe('')
   })
 
-  it('checkout de branch remota que criou a local: desfazer apaga a local, refazer recria', async () => {
+  it('checkout of a remote branch that created the local one: undo deletes the local one, redo recreates it', async () => {
     const { manager, repo, sourceId } = await setup({ remote: true })
     await git(repo, 'checkout', '-b', 'feature/x'); await writeFile(join(repo, 'b.txt'), 'b\n'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', 'feature')
     await git(repo, 'push', 'origin', 'feature/x'); await git(repo, 'checkout', 'main'); await git(repo, 'branch', '-D', 'feature/x')
@@ -220,7 +220,7 @@ describe('desfazer checkout, branch e tag', () => {
     expect(await out(repo, 'rev-parse', '--abbrev-ref', 'feature/x@{upstream}')).toBe('origin/feature/x')
   })
 
-  it('criar branch: desfazer volta e apaga a nova; commitar nela exige desfazer o commit antes', async () => {
+  it('create branch: undo goes back and deletes the new one; committing on it requires undoing the commit first', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
     await manager.branchAction(sourceId, { action: 'create', name: 'main', newName: 'feat' })
@@ -236,7 +236,7 @@ describe('desfazer checkout, branch e tag', () => {
     expect(await out(repo, 'branch', '--show-current')).toBe('main'); expect(await out(repo, 'branch', '--list', 'feat')).toBe('')
   })
 
-  it('criar branch num commit também se desfaz', async () => {
+  it('creating a branch at a commit can also be undone', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
     await manager.commitAction(sourceId, { action: 'branch', hash: first, name: 'daqui' })
@@ -245,7 +245,7 @@ describe('desfazer checkout, branch e tag', () => {
     expect(await out(repo, 'branch', '--show-current')).toBe('main'); expect(await out(repo, 'branch', '--list', 'daqui')).toBe('')
   })
 
-  it('apagar branch com upstream: desfazer devolve o hash e o upstream, refazer apaga de novo', async () => {
+  it('delete branch with upstream: undo restores the hash and the upstream, redo deletes it again', async () => {
     const { manager, repo, sourceId } = await setup({ remote: true })
     await git(repo, 'branch', 'old'); await git(repo, 'push', '-u', 'origin', 'old')
     const hash = await out(repo, 'rev-parse', 'old')
@@ -259,7 +259,7 @@ describe('desfazer checkout, branch e tag', () => {
     expect(await out(repo, 'branch', '--list', 'old')).toBe('')
   })
 
-  it('desfazer apagar branch recusa se já existe outra com o nome', async () => {
+  it('undoing a branch deletion refuses if another one with the name already exists', async () => {
     const { manager, repo, sourceId } = await setup()
     await git(repo, 'branch', 'old')
     await manager.branchAction(sourceId, { action: 'delete', name: 'old' })
@@ -267,7 +267,7 @@ describe('desfazer checkout, branch e tag', () => {
     await expect(manager.undoLast(sourceId, null)).rejects.toThrow(/Já existe uma branch chamada old/)
   })
 
-  it('tag: desfazer apaga e refazer cria de novo', async () => {
+  it('tag: undo deletes and redo creates it again', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
     await manager.commitAction(sourceId, { action: 'tag', hash: first, name: 'v1' })
@@ -279,14 +279,14 @@ describe('desfazer checkout, branch e tag', () => {
   })
 })
 
-describe('desfazer reset', () => {
+describe('undo reset', () => {
   async function history(repo: string): Promise<{ one: string; two: string }> {
     const one = await head(repo)
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt'); await git(repo, 'commit', '-m', 'dois')
     return { one, two: await head(repo) }
   }
 
-  it('soft, mixed e hard (pasta limpa) desfazem e refazem', async () => {
+  it('soft, mixed and hard (clean folder) can be undone and redone', async () => {
     const { manager, repo, sourceId } = await setup()
     const { one, two } = await history(repo)
     await manager.commitAction(sourceId, { action: 'reset-soft', hash: one })
@@ -312,7 +312,7 @@ describe('desfazer reset', () => {
     expect(await head(repo)).toBe(one); expect(await exists(join(repo, 'a.txt'))).toBe(false)
   })
 
-  it('reset hard desfeito com a pasta suja é recusado', async () => {
+  it('undoing a hard reset with a dirty folder is refused', async () => {
     const { manager, repo, sourceId } = await setup()
     const { one } = await history(repo)
     await manager.commitAction(sourceId, { action: 'reset-hard', hash: one })
@@ -321,7 +321,7 @@ describe('desfazer reset', () => {
     expect(await readFile(join(repo, 'README.md'), 'utf8')).toBe('sujo\n')
   })
 
-  it('reset hard com alterações: desfazer devolve as duas (o preparado continua preparado)', async () => {
+  it('hard reset with changes: undo restores both (staged stays staged)', async () => {
     const { manager, repo, sourceId } = await setup()
     const { one, two } = await history(repo)
     await writeFile(join(repo, 'a.txt'), 'alterado\n')
@@ -336,7 +336,7 @@ describe('desfazer reset', () => {
     expect(await head(repo)).toBe(one); expect(await out(repo, 'status', '--porcelain')).toBe('')
   })
 
-  it('reset hard com alterações: o refazer recusa se a pasta mudou depois do desfazer', async () => {
+  it('hard reset with changes: redo refuses if the folder changed after the undo', async () => {
     const { manager, repo, sourceId } = await setup()
     const { one } = await history(repo)
     await writeFile(join(repo, 'a.txt'), 'alterado\n')
@@ -348,8 +348,8 @@ describe('desfazer reset', () => {
   })
 })
 
-describe('desfazer descartar, stash e ignorar', () => {
-  it('descartar: arquivo rastreado, novo e binário voltam; refazer descarta de novo', async () => {
+describe('undo discard, stash and ignore', () => {
+  it('discard: tracked, new and binary files come back; redo discards again', async () => {
     const { manager, repo, sourceId } = await setup()
     const binary = Buffer.from([0, 255, 1, 2, 0, 128])
     await writeFile(join(repo, 'README.md'), 'alterado\n'); await writeFile(join(repo, 'novo.txt'), 'novo\n'); await writeFile(join(repo, 'bin.dat'), binary)
@@ -363,7 +363,7 @@ describe('desfazer descartar, stash e ignorar', () => {
     expect(await readFile(join(repo, 'README.md'), 'utf8')).toBe('# fixture\n'); expect(await exists(join(repo, 'bin.dat'))).toBe(false)
   })
 
-  it('descartar: se um arquivo mudou depois, o desfazer recusa sem mexer em nenhum', async () => {
+  it('discard: if a file changed afterwards, undo refuses without touching any', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'README.md'), 'alterado\n'); await writeFile(join(repo, 'novo.txt'), 'novo\n')
     await manager.discardUnstaged(sourceId, null, ['README.md', 'novo.txt'])
@@ -372,7 +372,7 @@ describe('desfazer descartar, stash e ignorar', () => {
     expect(await readFile(join(repo, 'README.md'), 'utf8')).toBe('editado depois\n'); expect(await exists(join(repo, 'novo.txt'))).toBe(false)
   })
 
-  it('descartar sem pasta de cópias funciona, mas não entra na pilha', async () => {
+  it('discard without a copies folder works, but does not go on the stack', async () => {
     const { database, repo, sourceId } = await setup()
     const manager = new GitManager(database)
     await writeFile(join(repo, 'README.md'), 'alterado\n')
@@ -381,7 +381,7 @@ describe('desfazer descartar, stash e ignorar', () => {
     expect(await manager.undoState(sourceId, null)).toEqual({ undo: null, redo: null })
   })
 
-  it('stash: desfazer devolve as alterações, refazer guarda de novo', async () => {
+  it('stash: undo restores the changes, redo stashes again', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'README.md'), 'alterado\n'); await writeFile(join(repo, 'novo.txt'), 'novo\n')
     await manager.sync(sourceId, null, 'stash')
@@ -393,7 +393,7 @@ describe('desfazer descartar, stash e ignorar', () => {
     expect(await out(repo, 'status', '--porcelain')).toBe(''); expect((await out(repo, 'stash', 'list')).split('\n')).toHaveLength(1)
   })
 
-  it('stash de um arquivo só mexe nele; outro stash depois recusa o desfazer', async () => {
+  it('stashing one file only touches it; another stash afterwards refuses the undo', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'README.md'), 'alterado\n'); await writeFile(join(repo, 'outro.txt'), 'outro\n')
     await manager.stashFile(sourceId, null, 'README.md')
@@ -405,7 +405,7 @@ describe('desfazer descartar, stash e ignorar', () => {
     await manager.undoLast(sourceId, null).then(() => { throw new Error('devia recusar') }, (error: Error) => expect(error.message).toMatch(/Outro stash/))
   })
 
-  it('apagar stash: desfazer põe de volta na lista, refazer apaga', async () => {
+  it('delete stash: undo puts it back in the list, redo deletes it', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'README.md'), 'alterado\n')
     await git(repo, 'stash', 'push', '-m', 'meu stash')
@@ -419,7 +419,7 @@ describe('desfazer descartar, stash e ignorar', () => {
     expect(await out(repo, 'stash', 'list')).toBe('')
   })
 
-  it('ignorar: desfazer apaga o .gitignore que não existia; com um existente, volta o anterior', async () => {
+  it('ignore: undo deletes the .gitignore that did not exist; with an existing one, restores the previous', async () => {
     const { manager, repo, sourceId } = await setup()
     await writeFile(join(repo, 'debug.log'), 'x\n')
     await manager.ignoreFile(sourceId, null, 'debug.log', 'file')
@@ -438,8 +438,8 @@ describe('desfazer descartar, stash e ignorar', () => {
   })
 })
 
-describe('limpeza da pilha e proteção contra o gc', () => {
-  it('push limpa a pilha; fetch não', async () => {
+describe('stack cleanup and gc protection', () => {
+  it('push clears the stack; fetch does not', async () => {
     const { manager, repo, sourceId } = await setup({ remote: true })
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
     await manager.commit({ sourceId, cardId: null, message: 'um' })
@@ -450,7 +450,7 @@ describe('limpeza da pilha e proteção contra o gc', () => {
     expect(await refs(repo)).toEqual([])
   })
 
-  it('merge e cherry-pick também limpam', async () => {
+  it('merge and cherry-pick also clear it', async () => {
     const { manager, repo, sourceId } = await setup()
     for (const [name, file] of [['dev', 'd.txt'], ['dev2', 'e.txt']] as const) { await git(repo, 'checkout', '-b', name, 'main'); await writeFile(join(repo, file), 'x\n'); await git(repo, 'add', '.'); await git(repo, 'commit', '-m', name) }
     await git(repo, 'checkout', 'main')
@@ -465,7 +465,7 @@ describe('limpeza da pilha e proteção contra o gc', () => {
     expect(await refs(repo)).toEqual([])
   })
 
-  it('as refs de proteção existem enquanto a entrada vive e somem quando ela sai', async () => {
+  it('the protection refs exist while the entry lives and disappear when it leaves', async () => {
     const { manager, repo, sourceId } = await setup()
     const first = await head(repo)
     await writeFile(join(repo, 'a.txt'), 'a\n'); await git(repo, 'add', 'a.txt')
@@ -480,7 +480,7 @@ describe('limpeza da pilha e proteção contra o gc', () => {
     expect(now.sort()).toEqual([first, two].sort())
   })
 
-  it('ao abrir, apaga as refs e as cópias que sobraram da sessão anterior', async () => {
+  it('on open, deletes the refs and copies left over from the previous session', async () => {
     const { database, repo, backup, projectId } = await setup()
     await git(repo, 'update-ref', 'refs/gearmod/undo/velha-0', await head(repo))
     await mkdir(join(backup, 'velha'), { recursive: true }); await writeFile(join(backup, 'velha', 'x'), 'x')
@@ -490,7 +490,7 @@ describe('limpeza da pilha e proteção contra o gc', () => {
     expect(await readdir(backup)).toEqual([])
   })
 
-  it('apagar a pasta de cópias junto com a entrada: sair da pilha remove os arquivos copiados', async () => {
+  it('deleting the copies folder along with the entry: leaving the stack removes the copied files', async () => {
     const { manager, repo, backup, sourceId } = await setup()
     await writeFile(join(repo, 'README.md'), 'alterado\n')
     await manager.discardUnstaged(sourceId, null, ['README.md'])

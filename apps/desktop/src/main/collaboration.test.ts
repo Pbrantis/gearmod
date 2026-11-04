@@ -30,7 +30,7 @@ async function setup() {
   return { database, board, collab, card, planning, dev, tester, started, conversations }
 }
 
-describe('dúvidas entre as etapas', () => {
+describe('questions between steps', () => {
   it('sends a developer question to the planner after the dev run ends and resumes the dev with the answer', async () => {
     const { database, board, collab, card, planning, dev, started } = await setup()
     const question = collab.askQuestion({ cardId: card.id, chatId: dev.id, purpose: 'execution', question: 'Qual formato de data usar?' })
@@ -87,7 +87,7 @@ describe('dúvidas entre as etapas', () => {
   })
 })
 
-describe('mudanças que esperam autorização', () => {
+describe('changes awaiting authorization', () => {
   it('accept: the planner updates the documents, then the author resumes', async () => {
     const { database, board, collab, card, planning, dev, started } = await setup()
     const change = collab.proposeChange({ cardId: card.id, chatId: dev.id, purpose: 'execution', title: 'Cache de consultas', details: 'Adicionar cache em memória', reason: 'A tela fica lenta' })

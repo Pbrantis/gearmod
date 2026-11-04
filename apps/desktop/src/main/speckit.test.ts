@@ -35,8 +35,8 @@ function fakes(options: { method?: 'speckit' | 'native'; workflow?: string; conf
   return { runtime: new SpecKitRuntime(deps), repo, worktree, approvals, ready }
 }
 
-describe('disponibilidade do método', () => {
-  it('só habilita com a pasta configurada contendo .specify e explica quando não', () => {
+describe('method availability', () => {
+  it('only enables with the configured folder containing .specify and explains when it does not', () => {
     const message = 'Configure o Spec Kit nas configurações do projeto para habilitar este método.'
     expect(specKitAvailability(null)).toEqual({ enabled: false, reason: message })
     expect(specKitAvailability(root)).toEqual({ enabled: false, reason: message })
@@ -45,8 +45,8 @@ describe('disponibilidade do método', () => {
   })
 })
 
-describe('skills nativas por agente', () => {
-  it('monta /speckit-* para o Claude e $speckit-* para o Codex', () => {
+describe('native skills per agent', () => {
+  it('builds /speckit-* for Claude and $speckit-* for Codex', () => {
     expect(specKitCommand('claude', 'specify', ' login ')).toBe('/speckit-specify login')
     expect(specKitCommand('codex', 'plan', '')).toBe('$speckit-plan')
     expect(specKitStageOf('/speckit-tasks agora')).toBe('tasks')
@@ -54,23 +54,23 @@ describe('skills nativas por agente', () => {
     expect(specKitStageOf('quero continuar')).toBeNull()
   })
 
-  it('mostra a pasta esperada e como corrigir quando falta uma skill', () => {
+  it('shows the expected folder and how to fix it when a skill is missing', () => {
     expect(specKitMissingSkill('claude', 'plan')).toContain('.claude/skills/speckit-plan/SKILL.md')
     expect(specKitMissingSkill('codex', 'plan')).toContain('.agents/skills/speckit-plan/SKILL.md')
     expect(specKitMissingSkill('codex', 'plan')).toContain('specify init --here')
   })
 })
 
-describe('textos e modos de permissão refletem cada agente', () => {
-  it('Claude: manual pergunta a cada ação; livre aceita edições', () => {
+describe('texts and permission modes reflect each agent', () => {
+  it('Claude: manual asks on every action; free accepts edits', () => {
     expect(specKitMode('claude', 'manual')).toBe('manual')
     expect(specKitMode('claude', 'free')).toBe('accept_edits')
   })
-  it('Codex: manual é somente leitura com aprovação; livre é automático no sandbox', () => {
+  it('Codex: manual is read-only with approval; free is automatic in the sandbox', () => {
     expect(specKitMode('codex', 'manual')).toBe('read_only')
     expect(specKitMode('codex', 'free')).toBe('auto')
   })
-  it('não promete aprovação individual no modo livre nem isolamento de pasta', () => {
+  it('does not promise individual approval in free mode nor folder isolation', () => {
     expect(specKitPermissionText('claude', 'free')).toMatch(/sem pedir a cada alteração/)
     expect(specKitPermissionText('claude', 'free')).toMatch(/Não há isolamento/)
     expect(specKitPermissionText('codex', 'free')).toMatch(/sem pedir/)
@@ -78,15 +78,15 @@ describe('textos e modos de permissão refletem cada agente', () => {
   })
 })
 
-describe('feature e artefatos do card', () => {
-  it('amarra a feature por .specify/feature.json, sem depender do nome da branch', () => {
+describe('card feature and artifacts', () => {
+  it('binds the feature through .specify/feature.json, without depending on the branch name', () => {
     bindSpecKitFeature(root, 'specs/12345678-login')
     expect(JSON.parse(readFileSync(join(root, '.specify', 'feature.json'), 'utf8'))).toEqual({ feature_directory: 'specs/12345678-login' })
     expect(() => bindSpecKitFeature(root, '../fora')).toThrow(/fora da worktree/)
     expect(specKitFeatureDir('12345678-aaaa', 'Login com SSO')).toBe('specs/12345678-login-com-sso')
   })
 
-  it('pronto só com spec, plan e tasks da feature do card; ignora outras features', () => {
+  it('ready only with spec, plan and tasks of the card feature; ignores other features', () => {
     const own = 'specs/12345678-login', other = 'specs/99999999-outra'
     for (const name of ['spec.md', 'plan.md', 'tasks.md']) write(join(root, other, name))
     expect(specKitArtifacts(root, own).ready).toBe(false)
@@ -99,8 +99,8 @@ describe('feature e artefatos do card', () => {
   })
 })
 
-describe('pedido visível do specify', () => {
-  it('leva entendimento e decisões do card para a skill nativa de cada agente', () => {
+describe('visible specify request', () => {
+  it('carries the card understanding and decisions to the native skill of each agent', () => {
     const brief = { objetivo: 'Login com SSO', escopo: ['OIDC'], exclusoes: [], criterios: ['entra com Google'], pendencias: [] }
     const text = specKitSpecifyRequest('claude', { title: 'SSO', description: '' }, brief, [{ number: 3, statement: 'Usar OIDC' }])
     expect(text.startsWith('/speckit-specify Card: SSO')).toBe(true)
@@ -108,7 +108,7 @@ describe('pedido visível do specify', () => {
     expect(text).toContain('- D003 Usar OIDC')
     expect(specKitSpecifyRequest('codex', { title: 'SSO', description: 'x' }, null, []).startsWith('$speckit-specify')).toBe(true)
   })
-  it('reconhece as etapas opcionais clarify, checklist e analyze', () => {
+  it('recognizes the optional steps clarify, checklist and analyze', () => {
     expect(specKitStageOf('/speckit-clarify')).toBe('clarify')
     expect(specKitStageOf('$speckit-checklist')).toBe('checklist')
     expect(specKitStageOf('/speckit-analyze')).toBe('analyze')
@@ -116,14 +116,14 @@ describe('pedido visível do specify', () => {
 })
 
 describe('SpecKitRuntime', () => {
-  it('só é ativo no fluxo SDD com o método speckit', () => {
+  it('is only active in the SDD flow with the speckit method', () => {
     expect(fakes().runtime.active('c')).toBe(true)
     expect(fakes({ method: 'native' }).runtime.active('c')).toBe(false)
     expect(fakes({ workflow: 'spec' }).runtime.active('c')).toBe(false)
     expect(fakes({ method: 'native' }).runtime.prepare({ cardId: 'c', provider: 'claude', prompt: 'x' })).toBeNull()
   })
 
-  it('espera a escolha de permissão antes da primeira skill e oferece o cartão de escolha', () => {
+  it('waits for the permission choice before the first skill and offers the choice card', () => {
     const { runtime, repo } = fakes(); installSkills(repo, 'claude')
     expect(runtime.permission('c')).toBeNull()
     expect(() => runtime.assertCanStart('c')).toThrow(/Escolha como as skills do Spec Kit/)
@@ -137,18 +137,18 @@ describe('SpecKitRuntime', () => {
     expect(() => runtime.assertCanStart('c')).not.toThrow()
   })
 
-  it('não inicia sem o método configurado', () => {
+  it('does not start without the configured method', () => {
     const { runtime } = fakes({ configured: false })
     expect(() => runtime.assertCanStart('c')).toThrow(/Configure o Spec Kit/)
   })
 
-  it('troca de modo depois: vale a escolha mais recente', () => {
+  it('switching mode later: the most recent choice wins', () => {
     const { runtime, repo, worktree } = fakes(); installSkills(worktree, 'codex'); void repo
     runtime.choose('c', 'manual'); expect(runtime.prepare({ cardId: 'c', provider: 'codex', prompt: 'x' })?.mode).toBe('read_only')
     runtime.choose('c', 'free'); expect(runtime.prepare({ cardId: 'c', provider: 'codex', prompt: 'x' })?.mode).toBe('auto')
   })
 
-  it('prepara o run na worktree do card com a feature amarrada, sem reescrever o pedido do usuário', () => {
+  it('prepares the run in the card worktree with the feature bound, without rewriting the user request', () => {
     const { runtime, worktree } = fakes(); installSkills(worktree, 'claude'); runtime.choose('c', 'free')
     const prepared = runtime.prepare({ cardId: 'c', provider: 'claude', prompt: '/speckit-specify quero login com SSO' })!
     expect(prepared.cwd).toBe(worktree)
@@ -159,14 +159,14 @@ describe('SpecKitRuntime', () => {
     expect(codex.runtime.prepare({ cardId: 'c', provider: 'codex', prompt: 'conversa livre' })!.prompt).toBe('conversa livre')
   })
 
-  it('skill ausente é erro claro, sem trocar de método nem fingir a execução', () => {
+  it('a missing skill is a clear error, without switching method or faking the execution', () => {
     const { runtime, worktree } = fakes(); installSkills(worktree, 'claude', ['plan']); runtime.choose('c', 'free')
     expect(() => runtime.prepare({ cardId: 'c', provider: 'claude', prompt: '/speckit-specify x' })).toThrow(/speckit-specify.*\.claude\/skills/s)
     expect(() => runtime.prepare({ cardId: 'c', provider: 'codex', prompt: '$speckit-plan' })).toThrow(/\.agents\/skills\/speckit-plan/)
     expect(runtime.active('c')).toBe(true)
   })
 
-  it('não avança sozinho: depois de uma etapa só informa a próxima; o plan só roda quando pedido', () => {
+  it('does not advance on its own: after a step it only reports the next one; plan only runs when requested', () => {
     const { runtime, worktree, ready } = fakes(); installSkills(worktree, 'claude'); runtime.choose('c', 'free')
     const feature = join(worktree, 'specs/12345678-login-com-sso')
     write(join(feature, 'spec.md'))
@@ -179,7 +179,7 @@ describe('SpecKitRuntime', () => {
     expect(runtime.artifacts('c').ready).toBe(true)
   })
 
-  it('não cria cópias paralelas: só a pasta da feature e o feature.json existem', () => {
+  it('does not create parallel copies: only the feature folder and feature.json exist', () => {
     const { runtime, worktree } = fakes(); installSkills(worktree, 'claude'); runtime.choose('c', 'free')
     runtime.prepare({ cardId: 'c', provider: 'claude', prompt: 'x' })
     expect(readdirSync(join(worktree, 'specs'))).toEqual(['12345678-login-com-sso'])
@@ -187,14 +187,14 @@ describe('SpecKitRuntime', () => {
     expect(existsSync(join(worktree, '.gearmod-card'))).toBe(false)
   })
 
-  it('bloqueia speckit-implement no planejamento e nega qualquer permissão dela', () => {
+  it('blocks speckit-implement in planning and denies any permission for it', () => {
     const { runtime, worktree } = fakes(); installSkills(worktree, 'claude'); runtime.choose('c', 'free')
     expect(() => runtime.prepare({ cardId: 'c', provider: 'claude', prompt: '/speckit-implement' })).toThrow(/chat de implementação/)
     expect(runtime.denies({ command: 'run skill speckit-implement' })).toBe(true)
     expect(runtime.denies({ command: 'git status' })).toBe(false)
   })
 
-  it('cartão de movimentação: nada se move até a aprovação; vai para a coluna doing; a confirmação de início fica pendente até o botão de iniciar', () => {
+  it('move card: nothing moves until approval; goes to the doing column; the start confirmation stays pending until the start button', () => {
     const { runtime, approvals } = fakes()
     const move = runtime.requestMove('c')
     expect(move.payload).toMatchObject({ columnId: 'c-doing', columnLabel: 'Doing' })

@@ -8,7 +8,7 @@ import { nativeGit } from '../worktrees'
 import { constitutionState, mergeBaseCommit, type ThreeWayState } from './constitution-state'
 import { GitFileReader } from './git-file-reader'
 
-describe('constitutionState (pura, tabela-verdade)', () => {
+describe('constitutionState (pure, truth table)', () => {
   const table: Array<[string | null, string | null, string | null, ThreeWayState]> = [
     ['m', 'm', null, 'missing'],
     ['m', 'm', 'm', 'in-sync'],
@@ -29,8 +29,8 @@ const exec = promisify(execFile), roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 const git = (dir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> => exec('git', ['-C', dir, ...args])
 
-describe('mergeBaseCommit + constitutionState (integração real)', () => {
-  it('branch do card ahead: mudou a constituição, a base não', async () => {
+describe('mergeBaseCommit + constitutionState (real integration)', () => {
+  it('card branch ahead: the constitution changed, the base did not', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-constate-')); roots.push(root)
     const dir = join(root, 'repo')
     await exec('git', ['init', '-b', 'main', dir])
@@ -45,7 +45,7 @@ describe('mergeBaseCommit + constitutionState (integração real)', () => {
     expect(constitutionState(mergeBase, baseTip, head)).toBe('ahead')
   })
 
-  it('base behind: a base ganhou um commit novo, o card não mudou o arquivo', async () => {
+  it('base behind: the base got a new commit, the card did not change the file', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-constate-')); roots.push(root)
     const dir = join(root, 'repo')
     await exec('git', ['init', '-b', 'main', dir])

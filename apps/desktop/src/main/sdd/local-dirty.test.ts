@@ -12,7 +12,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = (dir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> => exec('git', ['-C', dir, ...args])
 
 describe('localDirty', () => {
-  it('detecta arquivo modificado no checkout aberto e não aponta o que não mudou', async () => {
+  it('detects a modified file in the open checkout and does not flag what did not change', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-dirty-')); roots.push(root)
     const dir = join(root, 'repo')
     await exec('git', ['init', '-b', 'main', dir])
@@ -25,7 +25,7 @@ describe('localDirty', () => {
     expect(await localDirty(nativeGit, dir, 'outro.md')).toBe(false)
   })
 
-  it('nunca lança: pasta sem repositório Git devolve false', async () => {
+  it('never throws: a folder without a Git repository returns false', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-dirty-')); roots.push(root)
     expect(await localDirty(nativeGit, root, 'qualquer.md')).toBe(false)
   })

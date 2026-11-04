@@ -19,7 +19,7 @@ async function repo(): Promise<string> {
 }
 
 describe('GitFileReader', () => {
-  it('lê show/blobSha/exists/list numa ref existente, inclusive caminho com espaço, Unicode e CRLF preservado', async () => {
+  it('reads show/blobSha/exists/list on an existing ref, including a path with spaces, Unicode and preserved CRLF', async () => {
     const dir = await repo()
     await mkdir(join(dir, 'pasta com espaço', 'subpasta-ação'), { recursive: true })
     await writeFile(join(dir, 'pasta com espaço', 'subpasta-ação', 'arquivo.md'), 'linha1\r\nlinha2\r\n')
@@ -35,7 +35,7 @@ describe('GitFileReader', () => {
     expect(listed).toEqual(['arquivo.md'])
   })
 
-  it('devolve null (não lança) para arquivo ausente numa ref válida', async () => {
+  it('returns null (does not throw) for a missing file on a valid ref', async () => {
     const dir = await repo()
     await writeFile(join(dir, 'a.md'), 'x'); await git(dir, 'add', '.'); await git(dir, 'commit', '-m', 'inicial')
     const reader = new GitFileReader(dir)
@@ -45,7 +45,7 @@ describe('GitFileReader', () => {
     expect(await reader.list('main', 'pasta-ausente')).toEqual([])
   })
 
-  it('ref inexistente gera erro tipado (ref-not-found), não some como arquivo ausente', async () => {
+  it('a nonexistent ref raises a typed error (ref-not-found), not swallowed as a missing file', async () => {
     const dir = await repo()
     await writeFile(join(dir, 'a.md'), 'x'); await git(dir, 'add', '.'); await git(dir, 'commit', '-m', 'inicial')
     const reader = new GitFileReader(dir)
@@ -54,7 +54,7 @@ describe('GitFileReader', () => {
     await expect(reader.list('branch-que-nao-existe', '')).rejects.toMatchObject({ code: 'ref-not-found' })
   })
 
-  it('lê de outra ref (não a atual), sem depender do checkout aberto', async () => {
+  it('reads from another ref (not the current one), without depending on the open checkout', async () => {
     const dir = await repo()
     await writeFile(join(dir, 'a.md'), 'versão 1'); await git(dir, 'add', '.'); await git(dir, 'commit', '-m', 'v1')
     await git(dir, 'checkout', '-b', 'feature')

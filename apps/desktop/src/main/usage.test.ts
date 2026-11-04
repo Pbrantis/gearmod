@@ -94,7 +94,7 @@ describe('UsageService', () => {
     database.close()
   })
 
-  it('expõe histórico e exportação pela fachada de uso', async () => {
+  it('exposes history and export through the usage facade', async () => {
     const { database, root } = await setup()
     const profiles = new ProfileRepository(database, root), service = new UsageService(database, profiles, undefined, undefined, undefined, new UsageLedgerService(database))
     expect(service.history({ granularity: 'month', tz: 'UTC', groupBy: 'provider' })).toEqual([])

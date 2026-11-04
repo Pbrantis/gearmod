@@ -36,7 +36,7 @@ describe('UsageLedgerService', () => {
     expect(database.db.prepare('SELECT seq,input_tokens AS input,cached_read_tokens AS cached,output_tokens AS output,partial FROM usage_ledger ORDER BY seq').all()).toEqual([{ seq: 0, input: 2, cached: 3, output: 4, partial: 0 }, { seq: 2147483647, input: 0, cached: 0, output: 0, partial: 1 }])
   })
 
-  it('preserva custo e modelo efetivo após deltas, sem duplicar tokens nem custo ao repetir fechamento', async () => {
+  it('preserves cost and effective model after deltas, without duplicating tokens or cost when the close is repeated', async () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     database.db.prepare("UPDATE agent_profiles SET billing_mode='api' WHERE id='a'").run()
     database.db.prepare("UPDATE runs SET model_effective='gpt-real' WHERE id='r'").run()
@@ -50,7 +50,7 @@ describe('UsageLedgerService', () => {
     expect(database.db.prepare('SELECT cost_kind AS kind,model_effective AS model FROM usage_ledger WHERE run_id=? AND seq=2147483647').get('r')).toEqual({ kind: 'billed', model: 'gpt-real' })
   })
 
-  it('não duplica custo de fechamento legado já existente', async () => {
+  it('does not duplicate the cost of an existing legacy close', async () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     database.db.prepare("INSERT INTO usage_ledger(id,at,run_id,seq,source,provider,profile_id,card_id,input_tokens,cost_kind,cost_usd) VALUES ('old','2026-01-01T00:00:00.000Z','r',0,'run','codex','a','k',10,'billed',0.25)").run()
     ledger.recordRun('r', { input: 10, cached: 0, output: 0, costUsd: 0.25 })
@@ -64,7 +64,7 @@ describe('UsageLedgerService', () => {
     expect(database.db.prepare("SELECT source, partial, input_tokens AS input FROM usage_ledger WHERE run_id='gone-run'").get()).toEqual({ source: 'backfill', partial: 1, input: 9 })
   })
 
-  it('não importa uma run já encerrada no ledger ao reconciliar history.jsonl', async () => {
+  it('does not import a run already closed in the ledger when reconciling history.jsonl', async () => {
     const { database, root } = await setup(), ledger = new UsageLedgerService(database), dir = join(root, 'artifacts')
     ledger.recordRun('r', { input: 9, cached: 2, output: 3, costUsd: 0.1 })
     await mkdir(dir)
@@ -73,7 +73,7 @@ describe('UsageLedgerService', () => {
     expect(database.db.prepare("SELECT COUNT(*) AS count,SUM(input_tokens) AS tokens FROM usage_ledger WHERE run_id='r'").get()).toEqual({ count: 1, tokens: 9 })
   })
 
-  it('aggregates ledger rows by requested group and period, respeitando o fuso do usuário', async () => {
+  it('aggregates ledger rows by requested group and period, respecting the user time zone', async () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     ledger.recordRun('r', { input: 3, cached: 2, output: 1 })
     // 2026-01-01T00:00:00Z: in UTC it is the 1st; in America/Manaus (UTC-4, no daylight saving time) it is still the evening of Dec 31.
@@ -83,7 +83,7 @@ describe('UsageLedgerService', () => {
     expect(ledger.history({ granularity: 'week', tz: 'UTC', groupBy: 'provider' })[0]).toMatchObject({ period: '2026-W01' })
   })
 
-  it('o mesmo instante cai em dias diferentes em dois fusos, e a troca de horário de verão não quebra o agrupamento', async () => {
+  it('the same instant falls on different days in two time zones, and the daylight saving change does not break the grouping', async () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     database.db.prepare("INSERT INTO runs(id,card_id,chat_id,profile_id,status,started_at,purpose,provider,model) VALUES ('r2','k','h','a','completed','2026-07-01T02:00:00.000Z','execution','codex','gpt')").run()
     ledger.recordRun('r', { input: 1, cached: 0, output: 0 }); ledger.recordRun('r2', { input: 1, cached: 0, output: 0 })
@@ -95,7 +95,7 @@ describe('UsageLedgerService', () => {
     expect(manaus.map((row) => row.period).sort()).toEqual(['2025-12-31', '2026-06-30'])
   })
 
-  it('consulta por período usa o índice de at, não varre a tabela toda (plano de consulta em volume)', async () => {
+  it('a query by period uses the at index, not a full table scan (query plan at volume)', async () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     const insert = database.db.prepare(`INSERT INTO usage_ledger(id,at,run_id,seq,source,provider,profile_id,input_tokens,cached_read_tokens,output_tokens,cost_kind,cost_usd,partial) VALUES (?,?,NULL,0,'probe','codex','a',1,0,1,'unknown',NULL,0)`)
     const base = Date.UTC(2026, 0, 1)
@@ -121,21 +121,21 @@ describe('UsageLedgerService', () => {
   })
 })
 
-describe('tipo do custo pelo modo de cobrança do agente', () => {
-  it('chave de API e créditos são cobrados; assinatura é equivalente; sem modo é desconhecido', () => {
+describe('cost type by the agent billing mode', () => {
+  it('API key and credits are billed; subscription is equivalent; no mode is unknown', () => {
     expect(costKindOf('api')).toBe('billed'); expect(costKindOf('credits')).toBe('billed')
     expect(costKindOf('subscription')).toBe('api_equivalent')
     expect(costKindOf('unknown')).toBe('unknown'); expect(costKindOf(null)).toBe('unknown')
   })
-  it('linhas antigas de assinatura gravadas como desconhecidas são lidas como equivalente', () => {
+  it('old subscription rows saved as unknown are read as equivalent', () => {
     expect(effectiveCostKind('unknown', 'subscription')).toBe('api_equivalent')
     expect(effectiveCostKind('unknown', 'unknown')).toBe('unknown')
     expect(effectiveCostKind('billed', 'subscription')).toBe('billed')
   })
 })
 
-describe('custo de linhas antigas sem modo de cobrança', () => {
-  it('usa o modo atual do agente: assinatura vira equivalente API', async () => {
+describe('cost of old rows without a billing mode', () => {
+  it('uses the current agent mode: subscription becomes API-equivalent', async () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     database.db.prepare("UPDATE agent_profiles SET billing_mode='subscription' WHERE id='a'").run()
     database.db.prepare("INSERT INTO usage_ledger(id,at,run_id,seq,source,provider,profile_id,input_tokens,cached_read_tokens,output_tokens,billing_mode,cost_kind,cost_usd,partial) VALUES ('x','2026-02-01T12:00:00.000Z',NULL,0,'probe','codex','a',1,0,1,'unknown','unknown',2.5,0)").run()

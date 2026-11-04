@@ -40,27 +40,27 @@ async function setup(enabled = true, settings?: { enabled(projectId: string): bo
   return { api, web, context, code: editorCodeQueries(service, () => [api, web], settings) }
 }
 
-describe('consultas do índice de código para o editor', () => {
-  it('acha a pasta mais funda que contém o arquivo e devolve o caminho com /', () => {
+describe('code index queries for the editor', () => {
+  it('finds the deepest folder containing the file and returns the path with /', () => {
     expect(rootOf([join('C:', 'w', 'repo'), join('C:', 'w', 'repo', 'pkg')], join('C:', 'w', 'repo', 'pkg', 'src', 'a.ts'))).toEqual({ root: join('C:', 'w', 'repo', 'pkg'), relative: 'src/a.ts' })
     expect(rootOf([join('C:', 'w', 'repo')], join('C:', 'w', 'other', 'a.ts'))).toBeNull()
     expect(rootOf([join('C:', 'w', 'repo')], join('C:', 'w', 'repo'))).toBeNull()
   })
 
-  it('busca símbolos em todas as pastas, com caminho absoluto e relativo', async () => {
+  it('searches symbols in all folders, with absolute and relative paths', async () => {
     const { api, web, context, code } = await setup()
     const hits = await code.symbols({ ...context, query: 'allowedPath' })
     expect(hits.map((hit) => [hit.path, hit.relative, hit.line])).toEqual(expect.arrayContaining([[join(api, 'src', 'paths.ts'), 'src/paths.ts', 6], [join(web, 'src', 'view.ts'), 'src/view.ts', 1]]))
   })
 
-  it('dá a estrutura do arquivo com o aninhamento', async () => {
+  it('gives the file structure with nesting', async () => {
     const { api, context, code } = await setup()
     const outline = await code.outline({ ...context, path: join(api, 'src', 'paths.ts') })
     expect(outline.map((item) => [item.name, item.depth, item.line, item.endLine])).toEqual([['PathGuard', 0, 1, 5], ['allowed', 1, 2, 4], ['allowedPath', 0, 6, 8]])
     expect(await code.outline({ ...context, path: join(tmpdir(), 'fora.ts') })).toEqual([])
   })
 
-  it('põe primeiro a definição da pasta de onde se pergunta e lista quem usa', async () => {
+  it('puts first the definition from the folder being asked from and lists who uses it', async () => {
     const { api, web, context, code } = await setup()
     const fromWeb = await code.definition({ ...context, name: 'allowedPath', path: join(web, 'src', 'view.ts') })
     expect(fromWeb[0]!.path).toBe(join(web, 'src', 'view.ts'))
@@ -70,7 +70,7 @@ describe('consultas do índice de código para o editor', () => {
     expect(uses).toContainEqual({ path: join(api, 'src', 'files.ts'), relative: 'src/files.ts', line: 3, caller: expect.stringContaining('readFile') as unknown as string })
   })
 
-  it('informa o estado de cada pasta; desligado, tudo vem vazio', async () => {
+  it('reports the state of each folder; when off, everything comes back empty', async () => {
     const on = await setup()
     await on.code.symbols({ ...on.context, query: 'readFile' })
     const status = await on.code.status(on.context)
@@ -81,7 +81,7 @@ describe('consultas do índice de código para o editor', () => {
     expect(await off.code.status(off.context)).toEqual({ enabled: false, roots: [] })
   })
 
-  it('desliga e religa por projeto; indexar de novo devolve o estado de cada pasta', async () => {
+  it('turns off and on per project; reindexing returns the state of each folder', async () => {
     const disabled = new Set<string>()
     const settings = { enabled: (projectId: string) => !disabled.has(projectId), setEnabled: (projectId: string, on: boolean) => { if (on) disabled.delete(projectId); else disabled.add(projectId) } }
     const { context, code } = await setup(true, settings)

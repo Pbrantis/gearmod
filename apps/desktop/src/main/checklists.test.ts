@@ -21,8 +21,8 @@ async function setup(): Promise<{ checklists: ChecklistRepository; cardId: strin
   return { checklists: new ChecklistRepository(database), cardId: card.id }
 }
 
-describe('checklist do teste', () => {
-  it('guarda quem marcou cada item: o agente ao gravar, o usuário ao clicar', async () => {
+describe('test checklist', () => {
+  it('records who checked each item: the agent when saving, the user when clicking', async () => {
     const { checklists, cardId } = await setup()
     const first = checklists.write(cardId, '## Teste\n- [x] Lint passou\n- [ ] CA01 botão aparece\n  - [ ] sub item\n')
     expect(first.marks).toMatchObject({ 'lint passou': { by: 'agent' } })
@@ -34,7 +34,7 @@ describe('checklist do teste', () => {
     const sub = checklists.toggle(cardId, 3, 'sub item', true)
     expect(sub.contentMd).toContain('  - [x] sub item'); expect(sub.marks['sub item']).toMatchObject({ by: 'user' })
   })
-  it('reescrever o checklist inteiro não rouba a marca do usuário nem muda o que ficou igual', async () => {
+  it("rewriting the whole checklist does not steal the user's check or change what stayed the same", async () => {
     const { checklists, cardId } = await setup()
     checklists.write(cardId, '- [ ] A\n- [ ] B\n')
     checklists.toggle(cardId, 0, 'A', true)
@@ -43,7 +43,7 @@ describe('checklist do teste', () => {
     const undone = checklists.toggle(cardId, 1, 'B', false)
     expect(undone.marks.b).toMatchObject({ by: 'user' }); expect(undone.contentMd).toContain('- [ ] B')
   })
-  it('o OK do agente continua registrado quando o usuário desmarca e marca de novo, e some só se o próprio agente desmarcar', async () => {
+  it("the agent's OK stays recorded when the user unchecks and rechecks, and disappears only if the agent itself unchecks", async () => {
     const { checklists, cardId } = await setup()
     const first = checklists.write(cardId, '- [x] CA07 parcial\n- [ ] CA08\n')
     const agentAt = first.marks['ca07 parcial']!.at
@@ -60,7 +60,7 @@ describe('checklist do teste', () => {
     expect(checklists.write(cardId, '- [ ] CA07 parcial\n- [x] CA08\n').marks['ca07 parcial']).toEqual(expect.objectContaining({ by: 'agent' }))
     expect(checklists.get(cardId).marks['ca07 parcial']!.agent).toBeUndefined()
   })
-  it('recusa o clique quando o item daquela linha não é mais o mesmo', async () => {
+  it('rejects the click when the item on that line is no longer the same', async () => {
     const { checklists, cardId } = await setup()
     checklists.write(cardId, '- [ ] A\n- [ ] B\n')
     expect(() => checklists.toggle(cardId, 1, 'A', true)).toThrow(/mudou/)

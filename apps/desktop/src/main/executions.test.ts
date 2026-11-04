@@ -45,7 +45,7 @@ describe('ExecutionService', () => {
     database.close()
   })
 
-  it('fluxo curto: um agente só, sem aprovar plano e sem etapa de teste', async () => {
+  it('short flow: a single agent, no plan approval and no test step', async () => {
     const { database, board, conversations, profile, card, started, service } = await setup()
     database.db.prepare("UPDATE cards SET workflow = 'light' WHERE id = ?").run(card.id)
     board.update({ cardId: card.id, type: 'improvement', title: 'Trocar texto', description: 'Trocar "Salvar" por "Gravar" no botão', priority: 'low', acceptanceCriteria: [] })

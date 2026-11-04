@@ -31,8 +31,8 @@ function count(path: string): number {
   return total
 }
 
-describe('texto em português fora dos dicionários', () => {
-  it('não cresce além da linha de base', () => {
+describe('Portuguese text outside the dictionaries', () => {
+  it('does not grow beyond the baseline', () => {
     const root = __dirname, found: Record<string, number> = {}
     for (const path of sources(root)) { const n = count(path); if (n) found[relative(root, path).split('\\').join('/')] = n }
     if (process.env.UPDATE_I18N_BASELINE) {

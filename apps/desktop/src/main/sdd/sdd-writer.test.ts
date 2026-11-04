@@ -27,7 +27,7 @@ async function fakeWorktree(main: string) {
 }
 
 describe('SddWriter', () => {
-  it('grava um arquivo novo (expect.blobSha null) e devolve o blob sha do que gravou', async () => {
+  it('writes a new file (expect.blobSha null) and returns the blob sha of what it wrote', async () => {
     const main = await repo()
     await writeFile(join(main, 'README.md'), 'x'); await git(main, 'add', '.'); await git(main, 'commit', '-m', 'inicial')
     const { worktrees, path } = await fakeWorktree(main)
@@ -37,7 +37,7 @@ describe('SddWriter', () => {
     expect(result.blobSha).toMatch(/^[0-9a-f]{40}$/)
   })
 
-  it('SddConflict quando o blob sha esperado não bate com o atual; a cópia principal não muda', async () => {
+  it('SddConflict when the expected blob sha does not match the current one; the main copy does not change', async () => {
     const main = await repo()
     await writeFile(join(main, 'constitution.md'), 'versão da cópia principal'); await git(main, 'add', '.'); await git(main, 'commit', '-m', 'inicial')
     const { worktrees, path } = await fakeWorktree(main)
@@ -47,7 +47,7 @@ describe('SddWriter', () => {
     expect(await readFile(join(main, 'constitution.md'), 'utf8')).toBe('versão da cópia principal')
   })
 
-  it('escrita bem-sucedida não toca a cópia principal (byte a byte igual)', async () => {
+  it('a successful write does not touch the main copy (byte-for-byte identical)', async () => {
     const main = await repo()
     await writeFile(join(main, 'constitution.md'), 'original'); await git(main, 'add', '.'); await git(main, 'commit', '-m', 'inicial')
     const { worktrees } = await fakeWorktree(main)
@@ -57,7 +57,7 @@ describe('SddWriter', () => {
     expect(await readFile(join(main, 'constitution.md'), 'utf8')).toBe('original')
   })
 
-  it('recusa caminho absoluto, ".." e nome reservado do Windows', async () => {
+  it('refuses an absolute path, ".." and a reserved Windows name', async () => {
     const main = await repo()
     const { worktrees } = await fakeWorktree(main)
     const writer = new SddWriter(worktrees)
@@ -67,7 +67,7 @@ describe('SddWriter', () => {
     await expect(writer.write('c', 's', 'LPT1', 'x', { blobSha: null })).rejects.toThrow(/reservado/)
   })
 
-  it('recusa link simbólico que escapa da raiz do SDD', async () => {
+  it('refuses a symbolic link that escapes the SDD root', async () => {
     const main = await repo()
     const { worktrees, path } = await fakeWorktree(main)
     const outside = join(path, '..', 'fora-da-worktree')

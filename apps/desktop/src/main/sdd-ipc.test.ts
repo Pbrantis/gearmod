@@ -31,8 +31,8 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const git = (dir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> => exec('git', ['-C', dir, ...args])
 const unavailable = {} as never
 
-describe('IPC do SDD file-first (G10)', () => {
-  it('sdd:config-get/set, sdd:locate e constitution:read/write ponta a ponta, com validação do contrato', async () => {
+describe('file-first SDD IPC (G10)', () => {
+  it('sdd:config-get/set, sdd:locate and constitution:read/write end to end, with contract validation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-sddipc-')); roots.push(root)
     const repo = join(root, 'repo'), data = join(root, 'data')
     await exec('git', ['init', '-b', 'main', repo])

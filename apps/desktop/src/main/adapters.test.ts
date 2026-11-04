@@ -58,14 +58,14 @@ describe('real provider protocol adapters', () => {
     expect(result).toMatchObject({ sessionId: 'session-large', text: 'Arquivo lido', status: 'completed' })
   })
 
-  it('captures apiKeySource do evento system/init do Claude, sem gravar modalidade sozinho', async () => {
+  it("captures apiKeySource from Claude's system/init event, without recording the mode on its own", async () => {
     let child: ChildProcessWithoutNullStreams
     const factory: ProcessFactory = { start() { child = fakeProcess(); queueMicrotask(() => { send(child, { type: 'system', subtype: 'init', session_id: 'session-2', apiKeySource: 'ANTHROPIC_API_KEY' }); send(child, { type: 'result', session_id: 'session-2', is_error: false }) }); return child } }
     const result = await new ClaudeCliAdapter(factory).run({ cwd: 'C:\\repo', prompt: 'planeje', sessionId: null, planning: true, profile: profile('claude'), onEvent: () => undefined })
     expect(result).toMatchObject({ sessionId: 'session-2', status: 'completed', apiKeySource: 'ANTHROPIC_API_KEY' })
   })
 
-  it('B4: task_started sem task_notification não prende a run para sempre: vale o resultado do turno depois de um tempo sem atividade', async () => {
+  it('B4: task_started without task_notification does not trap the run forever: the turn result counts after a period of inactivity', async () => {
     let child: ChildProcessWithoutNullStreams
     const factory: ProcessFactory = { start() { child = fakeProcess(); queueMicrotask(() => { send(child, { type: 'system', subtype: 'task_started', task_id: 't1', session_id: 's' }); send(child, { type: 'result', session_id: 's', is_error: false, result: 'pronto' }) }); return child } }
     const result = await new ClaudeCliAdapter(factory, { graceMs: 10, pendingIdleMs: 30 }).run({ cwd: 'C:\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('claude'), onEvent: () => undefined })

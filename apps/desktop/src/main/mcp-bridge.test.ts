@@ -52,7 +52,7 @@ function mcpClient(endpoint: { command: string; args: string[]; env: Record<stri
 }
 
 describe('GearMod MCP server', () => {
-  it('não grava documentos paralelos nem conclui planejamento de Spec Kit pelo MCP ou por marcadores', async () => {
+  it('does not write parallel documents or finish Spec Kit planning through MCP or markers', async () => {
     const { board, card, database, root } = await setup()
     const history = new CardHistoryService(database, root)
     history.selectWorkflow(card.id, 'sdd', { actor: 'user' }, '', 'user', 'speckit')
@@ -66,7 +66,7 @@ describe('GearMod MCP server', () => {
     expect(board.documents.read(card.id, 'especificacao')).toBe('')
     expect(board.card(card.id).hasPlan).toBe(false)
   })
-  it('propõe a Constitution sem gravar antes da aprovação', async () => {
+  it('proposes the Constitution without writing before approval', async () => {
     const { board, card, project, database } = await setup()
     const approvals = new ApprovalService(database)
     const context = new AgentContextService(board, new SettingsRepository(database), null)
@@ -115,7 +115,7 @@ describe('GearMod MCP server', () => {
     expect(bridge.finish('run-1')).toEqual({ written: ['tasks'], pendingMove: columns[3]!.id })
   })
 
-  it('B2: o chat da Constituição lista gearmod_create_card, que a skill manda chamar', async () => {
+  it('B2: the Constitution chat lists gearmod_create_card, which the skill tells it to call', async () => {
     const { bridge } = await setup()
     const client = mcpClient(bridge.register('run-const', null, () => undefined, { id: 'chat-c', purpose: 'constitution' }))
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
@@ -123,7 +123,7 @@ describe('GearMod MCP server', () => {
     expect(names).toContain('gearmod_create_card'); expect(names).toContain('gearmod_write_constitution')
   })
 
-  it('S14: cada papel vê só as ferramentas do papel; o planejador não vê request_commit nem test_checklist', async () => {
+  it('S14: each role sees only its own tools; the planner sees neither request_commit nor test_checklist', async () => {
     const { bridge, card } = await setup()
     const client = mcpClient(bridge.register('run-plan', card.id, () => undefined, { id: 'chat-1', purpose: 'planning' }))
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
@@ -136,7 +136,7 @@ describe('GearMod MCP server', () => {
     expect(refused.isError).toBe(true)
   })
 
-  it('S11: regra deny do PolicyEngine bloqueia mover e escolher fluxo antes de qualquer pedido de aprovação', async () => {
+  it('S11: a PolicyEngine deny rule blocks moving and choosing a flow before any approval request', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
@@ -162,7 +162,7 @@ describe('GearMod MCP server', () => {
     expect(events.map((event) => JSON.parse(event.json))).toContainEqual({ action: 'move', decision: 'deny' })
   })
 
-  it('S9: regra ask explícita não libera sozinha: o movimento vira pedido de aprovação', async () => {
+  it('S9: an explicit ask rule does not allow it alone: the move becomes an approval request', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
@@ -185,7 +185,7 @@ describe('GearMod MCP server', () => {
     expect(events.map((event) => JSON.parse(event.json))).toContainEqual({ action: 'move', decision: 'ask' })
   })
 
-  it('S05 atrás da flag: movimento imediato vira pedido pendente, só aplicado após aprovação', async () => {
+  it('S05 behind the flag: an immediate move becomes a pending request, applied only after approval', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-mcp-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
@@ -295,7 +295,7 @@ describe('collaboration tools', () => {
     expect(started.map((action) => action.chatId)).toEqual([planning.id, dev.id]); expect(started[1]!.prompt).toContain('Use date-fns.')
   })
 
-  it('commit do agente: só a implementação pede, a regra fica com o GitManager e o card é avisado', async () => {
+  it('agent commit: only implementation asks, the rule stays with the GitManager and the card is notified', async () => {
     const { board, card, project, database, projects } = await setup()
     const conversations = new ConversationRepository(database), profiles = new ProfileRepository(database, tmpdir()); seedProfiles(profiles)
     const profile = profiles.list()[0]!.id

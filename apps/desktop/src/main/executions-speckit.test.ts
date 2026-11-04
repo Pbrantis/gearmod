@@ -12,14 +12,14 @@ function service(ready: boolean, provider: 'claude' | 'codex' = 'claude') {
   return { started, moves, run: () => new ExecutionService(board as never, conversations as never, orchestrator as never, { set: () => undefined } as never, undefined, undefined, speckit as never).start('c1', { profileId: 'p' } as AgentConfig) }
 }
 
-describe('implementação com Spec Kit', () => {
-  it('recusa iniciar sem spec, plan e tasks da feature do card', () => {
+describe('Spec Kit implementation', () => {
+  it("refuses to start without the card feature's spec, plan and tasks", () => {
     const { run, started, moves } = service(false)
     expect(run).toThrow(/ainda não tem especificação, plano e tasks/)
     expect(started).toEqual([])
     expect(moves).toEqual([])
   })
-  it('usa a skill nativa speckit-implement do agente escolhido, fora do planejamento', () => {
+  it("uses the chosen agent's native speckit-implement skill, outside planning", () => {
     const claude = service(true, 'claude'); claude.run()
     expect(claude.started).toMatchObject([{ prompt: '/speckit-implement', planning: false, notice: '▶ Usando a skill speckit-implement' }])
     const codex = service(true, 'codex'); codex.run()

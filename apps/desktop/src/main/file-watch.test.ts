@@ -11,7 +11,7 @@ afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { 
 const collect = (events: Array<Record<string, unknown>>, count: number): Promise<void> => new Promise((resolve) => { const started = Date.now(); const timer = setInterval(() => { if (events.length >= count || Date.now() - started > 2000) { clearInterval(timer); resolve() } }, 20) })
 
 describe('FileWatchService', () => {
-  it('avisa quando o arquivo muda, é trocado por rename e é apagado', async () => {
+  it('notifies when the file changes, is replaced by a rename and is deleted', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'gearmod-watch-')); dirs.push(dir)
     const file = join(dir, 'a.txt'); await writeFile(file, 'um')
     const events: Array<Record<string, unknown>> = [], service = new FileWatchService((_type, payload) => events.push(payload), 40)
@@ -28,7 +28,7 @@ describe('FileWatchService', () => {
     expect(events.at(-1)).toEqual({ path: file, deleted: true })
     service.dispose()
   })
-  it('lista vazia para de vigiar', async () => {
+  it('an empty list stops watching', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'gearmod-watch-')); dirs.push(dir)
     const file = join(dir, 'b.txt'); await writeFile(file, 'x')
     const events: Array<Record<string, unknown>> = [], service = new FileWatchService((_type, payload) => events.push(payload), 30)

@@ -13,7 +13,7 @@ const pluginDir = join(__dirname, '..', '..', 'resources', 'gearmod-plugin')
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 
 describe('AgentContextService', () => {
-  it('oferece documentar alterações no chat livre sem repetir escolhas já feitas', async () => {
+  it('offers to document changes in the free chat without repeating choices already made', async () => {
     const service = new AgentContextService({} as never, { get: () => ({ idioma: 'pt-BR' }) } as never, null)
     for (const text of [await service.freePrompt('Ajuste a tela', undefined, true), service.freeInstructions(false, true), service.freeInstructions(true, false)]) {
       expect(text).toContain('Create card')
@@ -49,7 +49,7 @@ describe('AgentContextService', () => {
     database.close()
   })
 
-  it('G06/B1: lê a Constituição pelo resolver (cache por blob sha) e, sem arquivo, diz que não há Constituição (nunca lê o SQLite)', async () => {
+  it('G06/B1: reads the Constitution through the resolver (cached by blob sha) and, without a file, says there is no Constitution (never reads SQLite)', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-ctx-g06-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects), settings = new SettingsRepository(database)
@@ -89,7 +89,7 @@ describe('loadSkillInstructions', () => {
     expect(loadSkillInstructions(join(pluginDir, 'nao-existe'), 'pt-BR', true)).toBeUndefined()
   })
 
-  it('fluxo curto manda só a descrição e cada etapa carrega só a sua skill', async () => {
+  it('short flow sends only the description and each step loads only its own skill', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-ctx-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects), settings = new SettingsRepository(database)
@@ -115,7 +115,7 @@ describe('loadSkillInstructions', () => {
     database.close()
   })
 
-  it('planejador: fluxo curto fica pronto só com a descrição', async () => {
+  it('planner: short flow is ready with the description alone', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-ctx-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const projects = new ProjectRepository(database, git), board = new BoardRepository(database, projects)
@@ -130,8 +130,8 @@ describe('loadSkillInstructions', () => {
   })
 })
 
-describe('skill escolhida com / nos chats sem card', () => {
-  it('chat livre e Constituição pedem a skill e recebem o SKILL.md dela', async () => {
+describe('skill chosen with / in chats without a card', () => {
+  it('free chat and Constitution request the skill and receive its SKILL.md', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-skill-')); roots.push(root)
     await writeFile(join(root, 'SKILL.md'), '---\nname: revisar\n---\n# Revisar\nRevise com cuidado.', 'utf8')
     const service = new AgentContextService({} as never, { get: () => ({ idioma: 'pt-BR' }) } as never, null)

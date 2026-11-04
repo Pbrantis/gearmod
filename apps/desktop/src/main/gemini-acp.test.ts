@@ -38,8 +38,8 @@ const standard = (message: Json, reply: (id: unknown, result: Json) => void, sen
 const adapter = (factory: ProcessFactory) => new GeminiCliAdapter(factory)
 const base = { cwd: 'C:\\repo', prompt: 'faça X', sessionId: null, planning: false, mode: 'manual', profile, onEvent: () => undefined } as const
 
-describe('Gemini em modo ACP (aprovação por ação)', () => {
-  it('conversa em ACP: initialize, session/new com MCP no formato ACP, prompt e texto do agente', async () => {
+describe('Gemini in ACP mode (per-action approval)', () => {
+  it('talks over ACP: initialize, session/new with MCP in ACP format, prompt and agent text', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     const events: string[] = []
     const result = await adapter(fakeAcp((m, r, s) => standard(m, r, s), spawned)).run({ ...base, model: 'flash', requestPermission: async () => true, onEvent: (event: { type: string }) => events.push(event.type), mcp: { command: 'node', args: ['a.mjs'], env: { A: '1' } }, mcpServers: [{ name: 'gh', transport: 'stdio', command: 'npx', args: ['x'], env: { T: 't' } }, { name: 'api', transport: 'http', url: 'https://h/mcp', headers: { Authorization: 'z' } }] } as never)
@@ -54,7 +54,7 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
     expect(events).toContain('item/agentMessage/delta')
   })
 
-  it('aprovar: pergunta ao usuário e responde com a opção "uma vez" (nunca "sempre")', async () => {
+  it('approve: asks the user and answers with the "uma vez" option (never "sempre")', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     const asked: Array<{ kind: string; details: Json }> = []
     const handler = (m: Json, r: (id: unknown, result: Json) => void, s: (message: Json) => void): void => {
@@ -68,7 +68,7 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
     expect(spawned.log.find((m) => m.id === 900)).toMatchObject({ result: { outcome: { outcome: 'selected', optionId: 'proceed_once' } } })
   })
 
-  it('negar: responde "rejeitar" e a recusa chega ao agente', async () => {
+  it('deny: answers "rejeitar" and the refusal reaches the agent', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     const handler = (m: Json, r: (id: unknown, result: Json) => void, s: (message: Json) => void): void => {
       standard(m, r, s, { permission: true })
@@ -78,7 +78,7 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
     expect(spawned.log.find((m) => m.id === 900)).toMatchObject({ result: { outcome: { outcome: 'selected', optionId: 'cancel' } } })
   })
 
-  it('cancelar a execução: manda session/cancel e responde pendências como cancelled', async () => {
+  it('cancel the run: sends session/cancel and answers pending requests as cancelled', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     const controller = new AbortController()
     const handler = (m: Json, r: (id: unknown, result: Json) => void, s: (message: Json) => void): void => {
@@ -92,14 +92,14 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
     expect(spawned.log.find((m) => m.id === 900)).toMatchObject({ result: { outcome: { outcome: 'cancelled' } } })
   })
 
-  it('retoma a sessão com session/load e ignora o histórico reenviado', async () => {
+  it('resumes the session with session/load and ignores the resent history', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     const result = await adapter(fakeAcp((m, r, s) => standard(m, r, s, { loadSession: true }), spawned)).run({ ...base, sessionId: 'acp-1', requestPermission: async () => true } as never)
     expect(spawned.log.map((m) => m.method)).toEqual(['initialize', 'session/load', 'session/prompt'])
     expect(result.text).toBe('Pronto')
   })
 
-  it('se o Gemini pedir login, autentica com o primeiro método anunciado e repete', async () => {
+  it('if Gemini asks for login, authenticates with the first advertised method and retries', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     let authed = false
     const handler = (m: Json, r: (id: unknown, result: Json) => void, s: (message: Json) => void): void => {
@@ -114,7 +114,7 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
     expect(result.status).toBe('completed')
   })
 
-  it('erro do protocolo vira falha com a mensagem', async () => {
+  it('a protocol error becomes a failure with the message', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     const handler = (m: Json, r: (id: unknown, result: Json) => void, s: (message: Json) => void): void => {
       if (m.method === 'initialize') return r(m.id, { protocolVersion: 1, agentCapabilities: {}, authMethods: [] })
@@ -123,7 +123,7 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
     expect(await adapter(fakeAcp(handler, spawned)).run({ ...base, requestPermission: async () => true } as never)).toMatchObject({ status: 'failed', error: 'Falha interna' })
   })
 
-  it('só o modo Padrão usa ACP: automático e plano seguem pelo stream-json', async () => {
+  it('only Padrão mode uses ACP: automatic and plan go through stream-json', async () => {
     const spawned = { args: [] as string[], log: [] as Json[] }
     const factory: ProcessFactory = { start(_c, args) {
       spawned.args = args
@@ -139,14 +139,14 @@ describe('Gemini em modo ACP (aprovação por ação)', () => {
   })
 })
 
-describe('peças do protocolo ACP', () => {
-  it('escolhe a opção certa e cancela quando não há compatível', () => {
+describe('ACP protocol pieces', () => {
+  it('picks the right option and cancels when none is compatible', () => {
     expect(acpPermissionOutcome(permissionOptions, true)).toEqual({ outcome: 'selected', optionId: 'proceed_once' })
     expect(acpPermissionOutcome(permissionOptions, false)).toEqual({ outcome: 'selected', optionId: 'cancel' })
     expect(acpPermissionOutcome([{ optionId: 'a', name: 'Sempre', kind: 'allow_always' }], true)).toEqual({ outcome: 'cancelled' })
     expect(acpPermissionOutcome(undefined, false)).toEqual({ outcome: 'cancelled' })
   })
-  it('servidores MCP sem GearMod e detalhes sem caminho', () => {
+  it('MCP servers without GearMod and details without a path', () => {
     expect(acpMcpServers([])).toEqual([])
     expect(acpPermissionDetails({ toolCall: { title: 'Editar', kind: 'edit', locations: [{ path: 'a.ts' }], rawInput: {} }, options: [] })).toMatchObject({ toolKind: 'edit', path: 'a.ts' })
   })

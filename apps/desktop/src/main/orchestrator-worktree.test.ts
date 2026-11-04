@@ -4,8 +4,8 @@ import type { ConversationRepository } from './conversations'
 import { AgentOrchestrator } from './orchestrator'
 import type { WorktreeService } from './worktrees'
 
-describe('worktree no planejamento', () => {
-  it('prepara a worktree antes do agente e a associa à execução, mantendo modo de planejamento', async () => {
+describe('worktree in planning', () => {
+  it('prepares the worktree before the agent and links it to the run, keeping planning mode', async () => {
     const calls: AgentRunOptions[] = []
     const tree = { id: 'tree', path: 'C:\\worktrees\\card' }
     const conversations = {
@@ -25,8 +25,8 @@ describe('worktree no planejamento', () => {
   })
 })
 
-describe('run que termina em erro (B3, B8)', () => {
-  it('o harness e o encadeamento rodam também quando o adaptador lança, e turno de planejamento não grava versão de plano', async () => {
+describe('run that ends in error (B3, B8)', () => {
+  it('the harness and the chaining also run when the adapter throws, and a planning turn does not record a plan version', async () => {
     const conversations = {
       context: () => ({ cardId: 'card', projectPath: 'C:/project', chat: { id: 'chat', projectId: 'project', purpose: 'execution', skill: null, providerSessionId: null }, profile: { id: 'profile', enabled: true, provider: 'claude', label: 'Claude' } }),
       addMessage: vi.fn(), createRun: () => ({ id: 'run' }), attachWorktree: vi.fn(), updateRun: vi.fn(), updateSession: vi.fn(), recordRunMeta: vi.fn(), recordEffectiveModel: vi.fn(), recordUsage: vi.fn(), savePlan: vi.fn(), appendEvent: (_id: string, type: string, payload: unknown) => ({ eventType: type, payload })

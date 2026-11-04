@@ -27,28 +27,28 @@ async function setup(): Promise<{ root: string; database: AppDatabase; projectId
 }
 
 describe('SpecToolsService', () => {
-  it('sem nenhuma CLI: tudo nulo, sem erro', async () => {
+  it('with no CLI: everything null, no error', async () => {
     const { database, projectId } = await setup(), status = await new SpecToolsService(database, runner({})).status(projectId)
     expect(status).toMatchObject({ node: null, uv: null, python: null, specify: { installed: false, version: null }, openspec: { installed: false, version: null }, error: null })
     expect(status.repos.map((repo) => [repo.name, repo.specKit, repo.openSpec])).toEqual([['iniciado', true, true], ['simples', false, false]])
   })
-  it('com as CLIs: lê as versões e as integrações do Spec Kit', async () => {
+  it('with the CLIs: reads the versions and the Spec Kit integrations', async () => {
     const { database, projectId } = await setup()
     const status = await new SpecToolsService(database, runner({ 'node --version': 'v22.1.0\n', 'uv --version': 'uv 0.8.2 (abc)\n', 'python3 --version': 'Python 3.12.4\n', 'specify version': 'CLI Version 0.7.1\nTemplate 0.7.0\n', 'openspec --version': '1.4.0\n' })).status(projectId)
     expect(status).toMatchObject({ node: '22.1.0', uv: '0.8.2', python: '3.12.4', specify: { installed: true, version: '0.7.1' }, openspec: { installed: true, version: '1.4.0' } })
     expect(status.repos[0]!.specKitIntegrations).toEqual(['claude'])
   })
-  it('usa `specify --version` quando `specify version` não existe', async () => {
+  it('uses `specify --version` when `specify version` does not exist', async () => {
     const { database, projectId } = await setup()
     expect((await new SpecToolsService(database, runner({ 'specify --version': 'specify 0.3.0' })).status(projectId)).specify).toEqual({ installed: true, version: '0.3.0' })
   })
-  it('Node antigo continua sendo reportado (a tela decide o aviso)', async () => {
+  it('an old Node is still reported (the screen decides the warning)', async () => {
     const { database, projectId } = await setup()
     expect((await new SpecToolsService(database, runner({ 'node --version': 'v18.20.0' })).status(projectId)).node).toBe('18.20.0')
   })
 })
 describe('specKitIntegrations', () => {
-  it('lê integration.json e os rastros de comando', async () => {
+  it('reads integration.json and the command traces', async () => {
     const { root } = await setup(), repo = join(root, 'json'); await mkdir(join(repo, '.specify'), { recursive: true }); await mkdir(join(repo, '.agents', 'skills'), { recursive: true })
     await writeFile(join(repo, '.specify', 'integration.json'), JSON.stringify({ integration: 'gemini' })); await writeFile(join(repo, '.agents', 'skills', 'speckit-plan'), '')
     expect(specKitIntegrations(repo).sort()).toEqual(['codex', 'gemini'])
@@ -57,7 +57,7 @@ describe('specKitIntegrations', () => {
 })
 
 describe('specKitSkill', () => {
-  it('exige instalação e skill não vazia para o agente e etapa solicitados', async () => {
+  it('requires an installation and a non-empty skill for the requested agent and step', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-speckit-')); roots.push(root)
     const repo = join(root, 'native')
     const codex = join(repo, '.agents', 'skills', 'speckit-specify')
@@ -76,8 +76,8 @@ describe('specKitSkill', () => {
   })
 })
 
-describe('bloqueio explícito de speckit-implement no planejamento', () => {
-  it('reconhece invocações Codex e Claude e uma skill selecionada', () => {
+describe('explicit blocking of speckit-implement in planning', () => {
+  it('recognizes Codex and Claude invocations and a selected skill', () => {
     expect(isSpecKitImplementRequest('$speckit-implement agora')).toBe(true)
     expect(isSpecKitImplementRequest('/speckit.implement')).toBe(true)
     expect(isSpecKitImplementRequest('continue', { name: 'speckit-implement', path: 'x' })).toBe(true)

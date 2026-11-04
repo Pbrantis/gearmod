@@ -14,7 +14,7 @@ import { SddWriter } from './sdd/sdd-writer'
 import { CardUsageExport } from './card-usage-export'
 const exec = promisify(execFile), roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
-it('exporta somente quando habilitado e apenas na worktree do repositório SDD separado', async () => {
+it('exports only when enabled and only in the worktree of the separate SDD repository', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-usage-export-')); roots.push(root)
   const code = join(root, 'code'), docs = join(root, 'docs'), data = join(root, 'data')
   for (const repo of [code, docs]) {

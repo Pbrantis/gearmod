@@ -15,8 +15,8 @@ const git = { validate: async () => undefined, branches: async () => ['dev'], in
 const now = Date.parse('2026-10-21T12:00:00Z')
 const window = (usedPercent: number, resetsAt: string | null): UsageWindow => ({ id: 'five_hour', label: '5 h', usedPercent, resetsAt })
 
-describe('retomar quando o limite de uso volta', () => {
-  it('reconhece o erro de limite do Codex e do Claude, e não outros erros', () => {
+describe('resuming when the usage limit comes back', () => {
+  it('recognizes the Codex and Claude limit error, and no other errors', () => {
     expect(isUsageLimit('{"codexErrorInfo":"usageLimitExceeded","message":"You\'ve hit your usage limit"}')).toBe(true)
     expect(isUsageLimit('Claude AI usage limit reached|1760000000')).toBe(true)
     expect(isUsageLimit("You've hit your session limit · resets 3pm")).toBe(true)
@@ -24,7 +24,7 @@ describe('retomar quando o limite de uso volta', () => {
     expect(isUsageLimit(null)).toBe(false)
   })
 
-  it('usa o horário do erro, senão o reset da janela cheia, sempre com um minuto de folga', () => {
+  it('uses the error time, otherwise the full window reset, always with a one-minute margin', () => {
     const epoch = Math.floor(now / 1000) + 3600
     expect(resumeTime(`Claude AI usage limit reached|${epoch}`, [], now)).toBe(epoch * 1000 + 60_000)
     expect(resumeTime('{"resets_in_seconds": 120}', [], now)).toBe(now + 120_000 + 60_000)
@@ -34,7 +34,7 @@ describe('retomar quando o limite de uso volta', () => {
     expect(resumeTime('usage limit', [], now)).toBe(now + 15 * 60_000)
   })
 
-  it('agenda, avisa, confere se voltou e retoma; desiste se o usuário já retomou', async () => {
+  it('schedules, notifies, checks whether it is back and resumes; gives up if the user already resumed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-resume-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
@@ -81,8 +81,8 @@ describe('retomar quando o limite de uso volta', () => {
   })
 })
 
-describe('projetos na barra lateral', () => {
-  it('reordena, põe o novo no topo e exclui (recusando com agente trabalhando)', async () => {
+describe('projects in the sidebar', () => {
+  it('reorders, puts the new one on top and deletes (refusing while an agent is working)', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-order-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)

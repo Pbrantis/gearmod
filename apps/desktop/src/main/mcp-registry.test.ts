@@ -21,12 +21,12 @@ async function setup() {
 }
 const stdio = (extra: Partial<McpServerInput> = {}): McpServerInput => ({ scope: 'global', name: 'github', transport: 'stdio', command: 'npx', args: ['-y', 'x'], url: '', env: [{ key: 'TOKEN', value: 'segredo' }], headers: [], providers: ['claude', 'codex'], enabled: true, ...extra })
 
-describe('cadastro de servidores MCP', () => {
-  it('traz uma lista pronta com os mais usados', () => {
+describe('MCP server registry', () => {
+  it('ships a ready-made list of the most used ones', () => {
     expect(mcpPresets.map((item) => item.id)).toEqual(expect.arrayContaining(['filesystem', 'github', 'playwright', 'context7', 'postgres', 'remote']))
   })
 
-  it('guarda segredos fora do SQLite e nunca devolve o valor', async () => {
+  it('keeps secrets outside SQLite and never returns the value', async () => {
     const { registry, database, root } = await setup()
     const saved = await registry.save(stdio())
     expect(saved.env).toEqual([{ key: 'TOKEN', set: true }])
@@ -37,14 +37,14 @@ describe('cadastro de servidores MCP', () => {
     void root
   })
 
-  it('valor vazio na edição mantém o segredo já guardado', async () => {
+  it('an empty value on edit keeps the stored secret', async () => {
     const { registry, one } = await setup()
     const saved = await registry.save(stdio())
     await registry.save(stdio({ id: saved.id, env: [{ key: 'TOKEN', value: '' }], args: ['novo'] }))
     expect((await registry.effective(one, 'claude'))[0]).toMatchObject({ args: ['novo'], env: { TOKEN: 'segredo' } })
   })
 
-  it('liga e desliga por agente, por projeto e globalmente', async () => {
+  it('turns on and off per agent, per project and globally', async () => {
     const { registry, one, two } = await setup()
     const saved = await registry.save(stdio({ providers: ['claude'] }))
     expect(await registry.effective(one, 'claude')).toHaveLength(1)
@@ -58,7 +58,7 @@ describe('cadastro de servidores MCP', () => {
     expect(await registry.effective(two, 'claude')).toHaveLength(0)
   })
 
-  it('servidor do projeto só vale nele e vence o global de mesmo nome', async () => {
+  it('a project server only applies to that project and beats the global one with the same name', async () => {
     const { registry, one, two } = await setup()
     await registry.save(stdio({ env: [] }))
     await registry.save(stdio({ scope: 'project', projectId: one, command: 'local', env: [] }))
@@ -67,7 +67,7 @@ describe('cadastro de servidores MCP', () => {
     expect((await registry.list(two)).every((item) => item.scope === 'global')).toBe(true)
   })
 
-  it('valida nome, comando, URL e o nome reservado do GearMod', async () => {
+  it('validates name, command, URL and the reserved GearMod name', async () => {
     const { registry } = await setup()
     await expect(registry.save(stdio({ name: 'gearmod' }))).rejects.toThrow(/reservado/)
     await expect(registry.save(stdio({ name: 'a b' }))).rejects.toThrow(/Nome inválido/)
@@ -77,7 +77,7 @@ describe('cadastro de servidores MCP', () => {
     await expect(registry.save(stdio())).rejects.toThrow(/Já existe/)
   })
 
-  it('remove o servidor e os desligamentos por projeto', async () => {
+  it('removes the server and its per-project disables', async () => {
     const { registry, one } = await setup()
     const saved = await registry.save(stdio()); registry.setProjectEnabled(one, saved.id, false)
     await registry.remove(saved.id)
@@ -85,9 +85,9 @@ describe('cadastro de servidores MCP', () => {
   })
 })
 
-describe('formato de cada agente', () => {
+describe('format for each agent', () => {
   const servers = [{ name: 'a', transport: 'stdio' as const, command: 'npx', args: ['x'], env: { K: 'v' } }, { name: 'b', transport: 'http' as const, url: 'https://h/mcp', headers: { Authorization: 'Bearer t' } }]
-  it('Claude, Codex e Gemini recebem stdio e http no formato de cada um', () => {
+  it('Claude, Codex and Gemini receive stdio and http in their own formats', () => {
     expect(claudeMcpServers(servers).b).toEqual({ type: 'http', url: 'https://h/mcp', headers: { Authorization: 'Bearer t' } })
     expect(codexMcpServers(servers).a).toEqual({ command: 'npx', args: ['x'], env: { K: 'v' } })
     expect(codexMcpServers(servers).b).toEqual({ url: 'https://h/mcp', http_headers: { Authorization: 'Bearer t' } })

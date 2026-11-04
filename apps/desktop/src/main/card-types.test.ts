@@ -21,8 +21,8 @@ async function setup() {
   return { root, database, projects, board, project, column: board.get(project.id).columns[0]! }
 }
 
-describe('tipos de card', () => {
-  it('projeto novo usa a lista padrão de fábrica (Feature, Bug, Improvement)', async () => {
+describe('card types', () => {
+  it('a new project uses the factory default list (Feature, Bug, Improvement)', async () => {
     const { database, project } = await setup()
     expect(project.customCardTypes).toBe(false)
     expect(project.cardTypes.map((item) => item.id)).toEqual(['feature', 'bug', 'improvement'])
@@ -32,7 +32,7 @@ describe('tipos de card', () => {
     database.close()
   })
 
-  it('a lista padrão gravada vale para projetos sem lista própria; a do projeto vale só para ele', async () => {
+  it("the saved default list applies to projects without their own list; a project's list applies only to it", async () => {
     const { database, projects, project, root } = await setup()
     const other = await projects.create({ name: 'Q', localPath: join(root, 'q'), baseBranch: 'dev' })
     setDefaultCardTypes(database.db, [...builtinCardTypes(), { id: 'docs', name: 'Docs', color: '#aeb9ff' }])
@@ -45,7 +45,7 @@ describe('tipos de card', () => {
     database.close()
   })
 
-  it('recusa lista vazia, id inválido, id ou nome repetido e cor que não é hex', async () => {
+  it('rejects an empty list, an invalid id, a repeated id or name, and a color that is not hex', async () => {
     const { database, projects, project } = await setup()
     expect(() => projects.setCardTypes(project.id, [])).toThrow()
     expect(() => projects.setCardTypes(project.id, [{ id: 'Com Espaco', name: 'X', color: '#ffffff' }])).toThrow()
@@ -56,7 +56,7 @@ describe('tipos de card', () => {
     database.close()
   })
 
-  it('o tipo do card é texto livre de tamanho limitado; tipo que saiu da lista continua no card', async () => {
+  it('the card type is free text of limited length; a type removed from the list stays on the card', async () => {
     const { database, projects, board, project, column } = await setup()
     const base = { projectId: project.id, columnId: column.id, title: 'T', description: '', priority: 'medium' as const, acceptanceCriteria: [] }
     expect(ipcContracts['cards:create'].input.safeParse({ ...base, type: 'qualquer-tipo' }).success).toBe(true)
@@ -70,7 +70,7 @@ describe('tipos de card', () => {
     database.close()
   })
 
-  it('acha o tipo pelo id ou pelo nome, sem diferenciar maiúsculas', () => {
+  it('finds the type by id or by name, case-insensitively', () => {
     const types = builtinCardTypes()
     expect(findCardType(types, 'improvement')?.id).toBe('improvement')
     // The default types have English names in any language (they match the branch prefixes).
@@ -79,7 +79,7 @@ describe('tipos de card', () => {
     expect(findCardType(types, 'minor')).toBeUndefined()
   })
 
-  it('migração: minor vira improvement com fluxo curto, task vira improvement e o fluxo já escolhido é mantido', async () => {
+  it('migration: minor becomes improvement with short flow, task becomes improvement and an already chosen flow is kept', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-cardtypes-mig-')); roots.push(root)
     const path = join(root, 'db.sqlite'), now = '2026-01-01T00:00:00.000Z'
     const old = new AppDatabase(path, '0.1.0', migrations.filter((item) => item.version < 42)); await old.open()

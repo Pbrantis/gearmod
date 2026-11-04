@@ -18,12 +18,12 @@ const tasks = `## Tasks
 - [ ] T008 [P] Verificar permissões e rodar a suíte
 - [ ] T009 Confirmar que o login continua funcionando`
 
-describe('tasks só de verificação', () => {
-  it('aponta só as tasks de primeiro nível que são verificação', () => {
+describe('verification-only tasks', () => {
+  it('flags only the top-level tasks that are verification', () => {
     expect(verificationOnlyTasks(tasks)).toEqual(['T006', 'T008', 'T009'])
   })
 
-  it('o agente não grava Tasks com elas; o usuário pode', async () => {
+  it('the agent does not save Tasks with them; the user can', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-tasks-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }

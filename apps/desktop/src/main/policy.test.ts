@@ -6,19 +6,19 @@ import type { PolicyAction, PolicyRule } from '@gearmod/contracts'
 import { AppDatabase } from './database'
 import { decide, PolicyEngine } from './policy'
 
-describe('decide (pura e determinística)', () => {
+describe('decide (pure and deterministic)', () => {
   const actions: PolicyAction[] = ['commit', 'move', 'choose-workflow']
-  it('tabela-verdade: a primeira regra da ação decide; sem regra, fica ask', () => {
+  it('truth table: the first rule for the action decides; with no rule, it stays ask', () => {
     const rules: PolicyRule[] = [{ action: 'commit', decision: 'allow' }, { action: 'move', decision: 'deny' }]
     const table: Array<[PolicyAction, string]> = [['commit', 'allow'], ['move', 'deny'], ['choose-workflow', 'ask']]
     for (const [action, expected] of table) expect(decide(rules, action)).toBe(expected)
   })
-  it('é pura: mesma entrada, mesma saída, não muda as regras', () => {
+  it('is pure: same input, same output, does not change the rules', () => {
     const rules: PolicyRule[] = [{ action: 'commit', decision: 'deny' }]
     for (const action of actions) { const first = decide(rules, action); expect(decide(rules, action)).toBe(first) }
     expect(rules).toEqual([{ action: 'commit', decision: 'deny' }])
   })
-  it('regras vazias: tudo ask (comportamento de hoje, nada muda sozinho)', () => {
+  it('empty rules: everything is ask (current behavior, nothing changes on its own)', () => {
     for (const action of actions) expect(decide([], action)).toBe('ask')
   })
 })
@@ -34,7 +34,7 @@ describe('PolicyEngine', () => {
     database.db.prepare("INSERT INTO cards(id,project_id,column_id,type,title,priority,order_key,created_at,updated_at) VALUES ('k','p','c','task','K','normal',1,'now','now')").run()
     return database
   }
-  it('registra toda decisão em card_events, mesmo quando libera', () => {
+  it('records every decision in card_events, even when it allows', () => {
     return setup().then((database) => {
       const engine = new PolicyEngine(database)
       expect(engine.decide([{ action: 'commit', decision: 'allow' }], 'commit', { cardId: 'k', projectId: 'p', actor: 'agent' })).toBe('allow')

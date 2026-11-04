@@ -47,7 +47,7 @@ const tsProject = {
 }
 
 describe('CodeIndex', () => {
-  it('liga chamadas pelo tipo do campo, por re-export e pela função de dentro de um hook', async () => {
+  it('links calls by field type, by re-export and by the function inside a hook', async () => {
     const root = await temp(), index = await open()
     await write(root, tsProject)
     const result = await index.index(root)
@@ -58,7 +58,7 @@ describe('CodeIndex', () => {
     expect(index.q(root).node({ symbol: 'versions' })).toContain('CardHistory.record — src/history.ts:3')
   })
 
-  it('impacto lista as linhas de cada chamada, os testes e as menções em texto', async () => {
+  it('impact lists the lines of each call, the tests and the text mentions', async () => {
     const root = await temp(), index = await open()
     await write(root, tsProject)
     await index.index(root)
@@ -69,7 +69,7 @@ describe('CodeIndex', () => {
     expect(record).toMatch(/Other mentions[\s\S]*src\/bridge\.test\.ts:2/)
   })
 
-  it('explora com fluxo e código, e o modo resumo devolve só onde está cada coisa', async () => {
+  it('explores with flow and code, and summary mode returns only where each thing is', async () => {
     const root = await temp(), index = await open()
     await write(root, tsProject)
     await index.index(root)
@@ -83,7 +83,7 @@ describe('CodeIndex', () => {
     expect(index.q(root).search('histórico')).toContain('CardHistory')
   })
 
-  it('Python: from pacote import modulo e self.metodo()', async () => {
+  it('Python: from package import module and self.method()', async () => {
     const root = await temp(), index = await open()
     await write(root, {
       'core/__init__.py': '',
@@ -96,7 +96,7 @@ describe('CodeIndex', () => {
     expect(index.q(root).node({ symbol: 'Job.finish' })).toContain('Job.run — jobs/tasks.py:7')
   })
 
-  it('C#: using por namespace e classe partial em vários arquivos; ignora a Library da Unity', async () => {
+  it("C#: using by namespace and partial class across several files; ignores Unity's Library", async () => {
     const root = await temp(), index = await open()
     await write(root, {
       'Assets/Scripts/Match.cs': 'namespace Game {\n  public partial class Match {\n    public void Start() { Spawn(); }\n  }\n}\n',
@@ -111,7 +111,7 @@ describe('CodeIndex', () => {
     expect(index.q(root).node({ symbol: 'Spawn' })).toContain('Game.Match.Start — Assets/Scripts/Match.cs:3')
   })
 
-  it('atualiza só o que mudou e reaproveita a análise entre pastas com os mesmos arquivos', async () => {
+  it('updates only what changed and reuses the analysis across folders with the same files', async () => {
     const root = await temp(), copy = await temp(), index = await open()
     await write(root, tsProject)
     await write(copy, tsProject)

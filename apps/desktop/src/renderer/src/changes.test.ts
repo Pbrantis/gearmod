@@ -41,13 +41,13 @@ describe('parseChanges', () => {
 describe('groupChanges', () => {
   const root = (path: string, name: string, primary = false) => ({ path, name, branch: 'dev', worktree: true, primary })
   const change = (path: string, rootPath: string | undefined, added: number, removed: number) => ({ path, ...(rootPath ? { root: rootPath } : {}), added, removed, diff: '' })
-  it('separa por repositório com o total de cada um, principal primeiro', () => {
+  it('groups by repository with the total of each, main first', () => {
     const roots = [root('C:/wt/2-web', '2-web'), root('C:/wt/1-api', '1-api', true)]
     const groups = groupChanges([change('a.ts', 'C:/wt/2-web', 3, 1), change('b.py', 'C:\\wt\\1-api\\', 2, 0), change('c.ts', 'C:/wt/2-web', 1, 1)], roots)
     expect(groups.map((group) => [group.name, group.added, group.removed, group.files.length])).toEqual([['api', 2, 0, 1], ['web', 4, 2, 2]])
     expect(groups[0]!.branch).toBe('dev')
   })
-  it('um repositório sem root forma um grupo único e sem nome', () => {
+  it('a repository without a root forms a single unnamed group', () => {
     const groups = groupChanges([change('a.ts', undefined, 1, 0), change('b.ts', undefined, 2, 2)], [])
     expect(groups).toHaveLength(1); expect(groups[0]).toMatchObject({ root: null, name: '', added: 3, removed: 2 })
   })
@@ -55,13 +55,13 @@ describe('groupChanges', () => {
 
 describe('tabLabels', () => {
   const roots = [{ path: 'C:/wt', name: 'wt', branch: null, worktree: true, primary: true }, { path: 'C:/wt/1-app', name: '1-app', branch: null, worktree: true, primary: false }, { path: 'C:/wt/2-api', name: '2-api', branch: null, worktree: true, primary: false }]
-  it('com dois repositórios, nomes iguais ganham o repo', () => {
+  it('with two repositories, equal names get the repo', () => {
     const labels = tabLabels(['C:/wt/1-app/package.json', 'C:/wt/2-api/package.json', 'C:/wt/2-api/main.py'], roots)
     expect(labels['C:/wt/1-app/package.json']).toEqual({ name: 'package.json', repo: 'app' })
     expect(labels['C:/wt/2-api/package.json']).toEqual({ name: 'package.json', repo: 'api' })
     expect(labels['C:/wt/2-api/main.py']).toEqual({ name: 'main.py', repo: 'api' })
   })
-  it('com um repositório só, mostra apenas o nome', () => {
+  it('with a single repository, shows only the name', () => {
     const one = roots.slice(0, 2)
     expect(tabLabels(['C:/wt/1-app/package.json'], one)['C:/wt/1-app/package.json']).toEqual({ name: 'package.json', repo: null })
   })

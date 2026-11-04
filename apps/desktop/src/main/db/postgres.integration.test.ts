@@ -5,7 +5,7 @@ import { PgDriver } from './pg-driver'
 import { ConnectionManager } from './connection-manager'
 import { DbService } from './service'
 import type { DbConnection, DbConnections } from './connections'
-it.skipIf(!process.env.GEARMOD_PG_TEST_URL || process.env.GEARMOD_PG_TEST_DISPOSABLE !== '1')('navega e filtra por OID, isola leitura e cancela consulta em PostgreSQL descartável', async () => {
+it.skipIf(!process.env.GEARMOD_PG_TEST_URL || process.env.GEARMOD_PG_TEST_DISPOSABLE !== '1')('browses and filters by OID, isolates reads and cancels a query on a disposable PostgreSQL', async () => {
   const url = new URL(process.env.GEARMOD_PG_TEST_URL!)
   const config: DbConnection = { id: 'test', projectId: 'p', name: 'test', klass: 'test', host: url.hostname, port: Number(url.port || 5432), database: decodeURIComponent(url.pathname.slice(1)), user: decodeURIComponent(url.username), sslMode: 'disable', hasSecret: true, allowWrite: true, agentAccess: 'none', origin: 'manual', envId: null }
   const password = decodeURIComponent(url.password), driver = new PgDriver(), admin = await driver.open(config, password, { type: 'user' })
@@ -50,7 +50,7 @@ it.skipIf(!process.env.GEARMOD_PG_TEST_URL || process.env.GEARMOD_PG_TEST_DISPOS
   } finally { await admin.write('cleanup', `DROP SCHEMA IF EXISTS "${schema}" CASCADE; DROP SCHEMA IF EXISTS "${schema2}" CASCADE`); await admin.close() }
 }, 40_000)
 
-it.skipIf(!process.env.GEARMOD_PG_TEST_URL || process.env.GEARMOD_PG_TEST_DISPOSABLE !== '1')('reconecta após perda real da sessão sem repetir consultas', async () => {
+it.skipIf(!process.env.GEARMOD_PG_TEST_URL || process.env.GEARMOD_PG_TEST_DISPOSABLE !== '1')('reconnects after a real session loss without repeating queries', async () => {
   const url = new URL(process.env.GEARMOD_PG_TEST_URL!)
   const config: DbConnection = { id: 'reconnect', projectId: 'p', name: 'test', klass: 'test', host: url.hostname, port: Number(url.port || 5432), database: decodeURIComponent(url.pathname.slice(1)), user: decodeURIComponent(url.username), sslMode: 'disable', hasSecret: true, allowWrite: false, agentAccess: 'none', origin: 'manual', envId: null }
   const password = decodeURIComponent(url.password), driver = new PgDriver(), open = vi.spyOn(driver, 'open')

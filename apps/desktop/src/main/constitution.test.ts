@@ -45,8 +45,8 @@ async function setup() {
   return { root, database, project, card, constitution, checklists, context, call, open, writes, approvals }
 }
 
-describe('Constituição do projeto', () => {
-  it('G09: escrever exige card (não propósito); o chat da Constituição sem card cria um antes de gravar', async () => {
+describe('project Constitution', () => {
+  it('G09: writing requires a card (not a purpose); the Constitution chat without a card creates one before saving', async () => {
     const { project, card, constitution, context, call, open, database, writes, approvals } = await setup()
     expect(await context.block(card.id)).toContain('has no Constitution yet')
 
@@ -67,7 +67,7 @@ describe('Constituição do projeto', () => {
     database.close()
   })
 
-  it('versiona só quando o texto muda, importa do Spec Kit e manda só o índice quando é longa', async () => {
+  it('versions only when the text changes, imports from Spec Kit and sends only the index when it is long', async () => {
     const { root, project, card, constitution, context, database } = await setup()
     expect(constitution.state(project.id).importable).toBeNull()
     constitution.write(project.id, 'A', 'user'); constitution.write(project.id, 'A', 'user')
@@ -89,7 +89,7 @@ describe('Constituição do projeto', () => {
     database.close()
   })
 
-  it('o testador grava o checklist dele; os outros não', async () => {
+  it('the tester saves its checklist; the others do not', async () => {
     const { card, checklists, call, open, database } = await setup()
     const tester = open('test'), dev = open('execution')
     expect(await call(dev.token, 'gearmod_test_checklist', { markdown: '- [ ] a' })).toMatchObject({ ok: false })

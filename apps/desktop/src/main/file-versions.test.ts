@@ -23,30 +23,30 @@ async function repository(): Promise<{ root: string; repo: string }> {
 }
 
 describe('fileVersions', () => {
-  it('devolve antes (HEAD) e depois (disco) de um arquivo alterado', async () => {
+  it('returns before (HEAD) and after (disk) of a changed file', async () => {
     const { repo } = await repository()
     await writeFile(join(repo, 'a.txt'), 'depois\n')
     const result = await fileVersions([repo], join(repo, 'a.txt'), none)
     expect(result).toMatchObject({ relative: 'a.txt', before: 'antes\n', after: 'depois\n', baseLabel: 'HEAD', binary: false, truncated: false })
   })
-  it('arquivo novo tem before nulo e arquivo apagado tem after nulo', async () => {
+  it('a new file has a null before and a deleted file has a null after', async () => {
     const { repo } = await repository()
     await writeFile(join(repo, 'novo.txt'), 'novo\n'); await rm(join(repo, 'gone.txt'))
     expect(await fileVersions([repo], join(repo, 'novo.txt'), none)).toMatchObject({ before: null, after: 'novo\n' })
     expect(await fileVersions([repo], join(repo, 'gone.txt'), none)).toMatchObject({ before: 'vai sumir\n', after: null })
   })
-  it('não manda conteúdo de binário nem de arquivo grande', async () => {
+  it('does not send content of binary or large files', async () => {
     const { repo } = await repository()
     await writeFile(join(repo, 'img.bin'), Buffer.from([1, 0, 2])); await writeFile(join(repo, 'grande.txt'), 'x'.repeat(1_100_000))
     expect(await fileVersions([repo], join(repo, 'img.bin'), none)).toMatchObject({ binary: true, before: null, after: null })
     expect(await fileVersions([repo], join(repo, 'grande.txt'), none)).toMatchObject({ truncated: true, before: null, after: null })
   })
-  it('recusa caminho fora das raízes', async () => {
+  it('refuses a path outside the roots', async () => {
     const { repo, root } = await repository()
     await writeFile(join(root, 'fora.txt'), 'x')
     await expect(fileVersions([repo], join(root, 'fora.txt'), none)).rejects.toThrow('fora das pastas')
   })
-  it('num card com worktree usa o ponto de saída do card como base', async () => {
+  it("in a card with a worktree, uses the card's starting point as the base", async () => {
     const { root, repo } = await repository(), data = join(root, 'data')
     await mkdir(data)
     const database = new AppDatabase(join(data, 'db.sqlite'), '0.1.0'); await database.open()

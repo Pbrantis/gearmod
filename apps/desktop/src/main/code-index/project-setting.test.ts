@@ -9,8 +9,8 @@ import { CodeIndexSettings } from './project-setting'
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 
-describe('índice de código por projeto', () => {
-  it('começa ligado, desliga e religa sem mexer nas configurações do app', async () => {
+describe('code index per project', () => {
+  it('starts on, turns off and on without touching the app settings', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'gearmod-code-setting-')); dirs.push(dir)
     const database = new AppDatabase(join(dir, 'db.sqlite'), '0.1.0'); await database.open()
     try {

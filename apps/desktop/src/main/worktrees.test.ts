@@ -106,7 +106,7 @@ describe('WorktreeService', () => {
     database.close()
   })
 
-  it('G07 ensureMember: adiciona um repositório fora de cards.repo_ids, é idempotente e resiste a duas chamadas concorrentes', async () => {
+  it('G07 ensureMember: adds a repository outside cards.repo_ids, is idempotent and survives two concurrent calls', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-ensure-')); roots.push(root)
     const workspace = join(root, 'ws'), app = join(workspace, 'app'), docs = join(workspace, 'docs'), data = join(root, 'data')
     await mkdir(workspace, { recursive: true })

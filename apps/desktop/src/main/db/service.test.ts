@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { DbService } from './service'
 import type { DbConnections } from './connections'
 import type { ConnectionManager } from './connection-manager'
-it('resolve tabela e colunas pelo catálogo antes de gerar consulta parametrizada', async () => {
+it('resolves the table and columns from the catalog before generating a parameterized query', async () => {
   const read = vi.fn(async (_id: string, sql: string, _values: unknown[]) => sql.includes('pg_catalog.pg_attribute')
     ? { rows: [['public', 'select', 'r', '1', 'id', 'integer', 'N', 'int4', 'b', 'true'], ['public', 'select', 'r', '2', 'name', 'text', 'S', 'text', 'b', 'false']], columns: [], truncated: false, durationMs: 0 }
     : { rows: [['1', 'valor']], columns: ['id', 'name'], truncated: false, durationMs: 1 })
@@ -17,7 +17,7 @@ it('resolve tabela e colunas pelo catálogo antes de gerar consulta parametrizad
   await expect(service.page('c', { oid: 55, requestId: 'q2', conditions: [{ column: 999, operator: 'eq', value: 'x' }], order: [], limit: 20, offset: 0 })).rejects.toThrow('Coluna')
 })
 
-it('seleciona modo da conexão e não expõe mensagens SQL com dados sensíveis', async () => {
+it('selects the connection mode and does not expose SQL messages with sensitive data', async () => {
   const read = vi.fn(async () => ({ columns: ['x'], rows: [['ok']], truncated: false, durationMs: 1 }))
   const write = vi.fn(async () => ({ columns: [], rows: [], truncated: false, durationMs: 1, commands: [{ command: 'UPDATE', rowCount: 1 }] }))
   let writable = false
@@ -33,7 +33,7 @@ it('seleciona modo da conexão e não expõe mensagens SQL com dados sensíveis'
   await expect(service.query('c', { requestId: 'c', sql: 'x', limit: 10 })).rejects.toThrow('SQLSTATE 42601')
 })
 
-it('com escrita liberada, comando destrutivo só roda com o nome do banco como confirmação, em qualquer ambiente (D9)', async () => {
+it('with writes enabled, a destructive command runs only with the database name as confirmation, in any environment (D9)', async () => {
   const write = vi.fn(async () => ({ columns: [], rows: [], truncated: false, durationMs: 1, commands: [{ command: 'DROP TABLE', rowCount: null }] }))
   let config = { allowWrite: true, klass: 'dev', database: 'app' }
   const connections = { get: () => config } as unknown as DbConnections

@@ -30,7 +30,7 @@ function fakeHost(): HostProcess & { killed: boolean } {
 }
 
 describe('CodeIndexService', () => {
-  it('abre o processo no primeiro uso, indexa a pasta e responde às ferramentas', async () => {
+  it('starts the process on first use, indexes the folder and answers the tools', async () => {
     const data = await temp(), root = await temp()
     await mkdir(join(root, 'src'))
     await writeFile(join(root, 'src', 'paths.ts'), 'export function allowedPath(roots: string[], requested: string): string { return requested }\n')
@@ -50,7 +50,7 @@ describe('CodeIndexService', () => {
     service.dispose()
   })
 
-  it('com várias pastas, responde uma seção por pasta; desligado, recusa', async () => {
+  it('with several folders, answers one section per folder; when off, refuses', async () => {
     const data = await temp(), a = await temp(), b = await temp()
     await writeFile(join(a, 'a.ts'), 'export function alpha(): void {}\n')
     await writeFile(join(b, 'b.py'), 'def beta():\n    pass\n')

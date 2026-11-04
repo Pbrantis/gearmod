@@ -81,7 +81,7 @@ describe('BackupService', () => {
     restored.close()
   })
 
-  it('se a cópia dos anexos falhar, o banco e os anexos atuais ficam como estavam (D2)', async () => {
+  it('if copying the attachments fails, the current database and attachments stay as they were (D2)', async () => {
     const root = await tempRoot(); const path = join(root, 'gearmod.sqlite')
     const database = new AppDatabase(path, '0.1.0'); await database.open()
     const notes = new NoteRepository(database), backups = new BackupService(root, '0.1.0')

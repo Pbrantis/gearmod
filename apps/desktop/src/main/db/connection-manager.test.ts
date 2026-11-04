@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { ConnectionManager } from './connection-manager'
 import type { DbConnection } from './connections'
 import type { PgSession } from './pg-driver'
-it('abre uma única sessão por conexão e recusa agente sem reutilizá-la', async () => {
+it('opens a single session per connection and refuses the agent without reusing it', async () => {
   const session = { close: vi.fn(async () => undefined) } as unknown as PgSession
   const config = { id: 'x' } as DbConnection
   const driver = { open: vi.fn(async () => session) }
@@ -12,7 +12,7 @@ it('abre uma única sessão por conexão e recusa agente sem reutilizá-la', asy
   await expect(manager.open('x', { type: 'agent', cardId: 'card' })).rejects.toThrow('agente')
   await manager.closeAll(); expect(session.close).toHaveBeenCalledTimes(1)
 })
-it('informa perda e abre nova sessão na reconexão', async () => {
+it('reports the loss and opens a new session on reconnection', async () => {
   let lost: (() => void) | undefined
   const session = { close: vi.fn(async () => undefined), onLost: (callback: () => void) => { lost = callback } } as unknown as PgSession
   const driver = { open: vi.fn(async () => session) }, config = { id: 'x' } as DbConnection
@@ -22,7 +22,7 @@ it('informa perda e abre nova sessão na reconexão', async () => {
   await manager.open('x'); expect(manager.state('x')).toBe('ready'); expect(driver.open).toHaveBeenCalledTimes(2)
   await manager.closeAll()
 })
-it('reconecta uma vez após espera, sem executar consultas novamente', async () => {
+it('reconnects once after waiting, without running queries again', async () => {
   vi.useFakeTimers()
   try {
     let lost: (() => void) | undefined
@@ -38,7 +38,7 @@ it('reconecta uma vez após espera, sem executar consultas novamente', async () 
     await manager.closeAll()
   } finally { vi.useRealTimers() }
 })
-it('deixa a conexão perdida após tentativa automática falhar e respeita fechamento explícito', async () => {
+it('leaves the connection lost after the automatic attempt fails and respects an explicit close', async () => {
   vi.useFakeTimers()
   try {
     let lost: (() => void) | undefined

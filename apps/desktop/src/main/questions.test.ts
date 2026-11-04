@@ -18,7 +18,7 @@ describe('question blocks', () => {
     expect(answersMessage(block, [['Admin']])).toBe('Quem recebe o botão?\n→ Admin')
     expect(answersMessage(block, [[]])).toContain('(sem resposta)')
   })
-  it('o exemplo ensinado aos agentes é um bloco válido', () => {
+  it('the example taught to agents is a valid block', () => {
     const sample = /```gearmod-perguntas block containing this JSON: (\{.*\})\. Write the question/.exec(questionRule)![1]!
     const parts = splitQuestionBlocks(`Antes:
 

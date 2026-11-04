@@ -43,7 +43,7 @@ const assess = (history: CardHistoryService, cardId: string, scores: DimensionSc
   history.assess({ cardId, scores, justifications: { escopo: 'Só o app' }, confidence: 'medium', preliminary: false, criticalRisks: [], evidence: [{ kind: 'file', ref: 'src/push.ts', detail: '', line: 3, commit: null }], trigger: 'initial', reason: 'Discovery', source: { actor: 'agent' }, ...extra })
 
 describe('Complexity Engine', () => {
-  it('soma notas × pesos, classifica pelos limites e nunca deixa risco máximo no fluxo curto', () => {
+  it('sums scores × weights, classifies by the thresholds and never leaves maximum risk in the short flow', () => {
     expect(weightedTotal({ escopo: 3, acoplamento: 3, incerteza: 3, risco: 3, novidade: 3, validacao: 3 }, defaultComplexityWeights)).toBe(33)
     expect(complexityLevel(7, defaultComplexityLimits)).toBe('simple')
     expect(complexityLevel(8, defaultComplexityLimits)).toBe('medium')
@@ -54,7 +54,7 @@ describe('Complexity Engine', () => {
     expect(recommendedWorkflow('complex', high)).toBe('sdd')
   })
 
-  it('versiona avaliações sem sobrescrever, recusa repetição e guarda correção do usuário como versão nova', async () => {
+  it('versions evaluations without overwriting, refuses repetition and stores a user correction as a new version', async () => {
     const { history, card, board } = await setup()
     const first = assess(history, card.id, low, { preliminary: true, confidence: 'low' }).assessment
     expect(first).toMatchObject({ version: 1, total: 5, level: 'simple', workflow: 'light', preliminary: true, trigger: 'initial' })
@@ -72,14 +72,14 @@ describe('Complexity Engine', () => {
     expect(history.events(card.id).map((event) => event.type)).toEqual(['assessment.created', 'assessment.revised', 'assessment.contested'])
   })
 
-  it('preserva o texto completo de cada risco crítico', async () => {
+  it('preserves the full text of each critical risk', async () => {
     const { history, card } = await setup()
     const risks = ['Primeiro risco', 'Segundo risco', 'Terceiro risco']
     assess(history, card.id, low, { criticalRisks: risks })
     expect(history.latest(card.id)?.criticalRisks).toEqual(risks)
   })
 
-  it('registra o fluxo escolhido mesmo diferente do recomendado e substitui a escolha anterior', async () => {
+  it('records the chosen flow even when different from the recommended one and replaces the previous choice', async () => {
     const { history, card } = await setup()
     assess(history, card.id, high)
     history.selectWorkflow(card.id, 'spec', { actor: 'user' }, 'Prefiro spec leve')
@@ -95,7 +95,7 @@ describe('Complexity Engine', () => {
     expect(history.decisions(card.id).find((item) => item.id === proposal.id)?.status).toBe('approved')
   })
 
-  it('só substitui a decisão anterior quando a nova proposta é aprovada', async () => {
+  it('only replaces the previous decision when the new proposal is approved', async () => {
     const { history, card } = await setup()
     const old = history.decide(card.id, { kind: 'scope', statement: 'Apenas Android', actor: 'user' })
     const rejected = history.decide(card.id, { kind: 'scope', statement: 'Apenas iOS', actor: 'agent', supersedes: old.number })
@@ -108,7 +108,7 @@ describe('Complexity Engine', () => {
     expect(readArtifactHistory(history.artifactsDir(card.id)).decisions.map((item) => item.status)).toEqual(['superseded', 'superseded', 'approved'])
   })
 
-  it('guarda recomendação e escolha de método por card e recupera pelo histórico', async () => {
+  it('stores the method recommendation and choice per card and recovers them from the history', async () => {
     const { history, card, project, database, board } = await setup()
     assess(history, card.id, high)
     history.setConfig(project.id, { ...defaultWorkflowConfig, complexMethod: 'speckit' })
@@ -124,8 +124,8 @@ describe('Complexity Engine', () => {
   })
 })
 
-describe('Artefatos versionáveis', () => {
-  it('inclui auditorias no histórico e recupera registros antigos já sincronizados', async () => {
+describe('Versionable artifacts', () => {
+  it('includes audits in the history and recovers old records that were already synced', async () => {
     const { history, card, project, database } = await setup()
     new PolicyEngine(database).decide([], 'commit', { cardId: card.id, projectId: project.id, actor: 'agent' })
     const approvals = new ApprovalService(database)
@@ -144,7 +144,7 @@ describe('Artefatos versionáveis', () => {
     expect(history.rebuild(card.id).events).toBe(3)
     expect(history.events(card.id).map((event) => event.type)).toEqual(events.map((event) => event.type))
   })
-  it('espelha eventos em history.jsonl sem duplicar e reconstrói o histórico só pelos arquivos', async () => {
+  it('mirrors events to history.jsonl without duplicating and rebuilds the history from the files alone', async () => {
     const { history, card, database } = await setup()
     assess(history, card.id, low)
     history.decide(card.id, { kind: 'scope', statement: 'Só Android', actor: 'user' })
@@ -169,7 +169,7 @@ describe('Artefatos versionáveis', () => {
     expect(history.discovery(card.id)?.exclusoes).toEqual(['iOS'])
   })
 
-  it('regrava na pasta nova quando a pasta de artefatos muda e não aceita caminho relativo', async () => {
+  it('rewrites to the new folder when the artifacts folder changes and does not accept a relative path', async () => {
     const { history, card, project, root } = await setup()
     assess(history, card.id, low)
     expect(() => history.setConfig(project.id, { ...defaultWorkflowConfig, artifactsDir: 'docs/cards' })).toThrow(/caminho absoluto/)
@@ -179,7 +179,7 @@ describe('Artefatos versionáveis', () => {
     expect(readFileSync(join(history.artifactsDir(card.id), 'history.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1)
   })
 
-  it('G01: normaliza configs antigas (sddPath, customManifest, complexMethod legado) na leitura, sem erro; escreve só o formato novo', async () => {
+  it('G01: normalizes old configs (sddPath, customManifest, legacy complexMethod) on read, without error; writes only the new format', async () => {
     const { history, project, database } = await setup()
     const setRaw = (raw: Record<string, unknown>): void => { database.db.prepare('UPDATE projects SET workflow_config = ? WHERE id = ?').run(JSON.stringify(raw), project.id) }
     const fixtures: Array<{ name: string; raw: Record<string, unknown>; expectMethod: 'native' | 'speckit'; expectLegacy: string | null }> = [
@@ -203,7 +203,7 @@ describe('Artefatos versionáveis', () => {
     expect(storedRaw.sdd.method).toBe('speckit'); expect(storedRaw.legacyMethod).toBeNull()
   })
 
-  it('marca a exploração como desatualizada quando o HEAD de um repositório muda', async () => {
+  it('marks the exploration as outdated when a repository HEAD changes', async () => {
     const { history, card, root } = await setup(['frontend', 'backend'])
     history.recordExploration(card.id, { summary: 'Push fica em src/push', modules: ['push'], repositories: ['frontend'], evidence: [] }, { actor: 'agent' })
     expect(history.exploration(card.id)).toMatchObject({ stale: false, codeVersions: { frontend: '1'.repeat(40), backend: '2'.repeat(40) } })
@@ -212,7 +212,7 @@ describe('Artefatos versionáveis', () => {
     expect(readHead(join(root, 'nada'))).toBeNull()
   })
 
-  it('tira segredos do que vai para os arquivos', async () => {
+  it('strips secrets from what goes into the files', async () => {
     expect(redact('chave sk-abcdefghijklmnop e ghp_abcdefghijklmnopqrstuvwxyz')).toBe('chave [redacted] e [redacted]')
     const { history, card } = await setup()
     history.decide(card.id, { kind: 'other', statement: 'Usar o token sk-1234567890abcdef', actor: 'user' })
@@ -220,8 +220,8 @@ describe('Artefatos versionáveis', () => {
   })
 })
 
-describe('SDD central (cenários E, F e G)', () => {
-  it('detecta o Spec Kit sem gerar cópias paralelas dos documentos do card', async () => {
+describe('central SDD (scenarios E, F and G)', () => {
+  it('detects Spec Kit without generating parallel copies of the card documents', async () => {
     const { history, board, card, project, root } = await setup(['docs', 'frontend', 'backend'])
     mkdirSync(join(root, 'docs', '.specify', 'templates'), { recursive: true }); mkdirSync(join(root, 'docs', '.claude', 'commands'), { recursive: true })
     writeFileSync(join(root, 'docs', '.claude', 'commands', 'speckit.specify.md'), '# specify')
@@ -239,7 +239,7 @@ describe('SDD central (cenários E, F e G)', () => {
     expect(existsSync(join(history.artifactsDir(card.id), 'plan.md'))).toBe(false)
   })
 
-  it('sem SDD, o fluxo curto produz só os artefatos mínimos na pasta gerenciada', async () => {
+  it('without SDD, the short flow produces only the minimal artifacts in the managed folder', async () => {
     const { history, board, card } = await setup()
     assess(history, card.id, low)
     history.selectWorkflow(card.id, 'light', { actor: 'user' })
@@ -249,8 +249,8 @@ describe('SDD central (cenários E, F e G)', () => {
   })
 })
 
-describe('Ferramentas MCP e contexto', () => {
-  it('o agente avalia, escolhe o fluxo confirmado e o contexto do próximo turno traz o resumo', async () => {
+describe('MCP tools and context', () => {
+  it('the agent evaluates, picks the confirmed flow and the next turn context carries the summary', async () => {
     const { history, board, card, database } = await setup()
     const context = new AgentContextService(board, new SettingsRepository(database), null, undefined, undefined, history)
     const approvals = new ApprovalService(database)

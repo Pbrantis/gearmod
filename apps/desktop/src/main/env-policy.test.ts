@@ -9,15 +9,15 @@ const base: NodeJS.ProcessEnv = {
   RANDOM_VAR: 'not sensitive but not declared either'
 }
 
-describe('buildEnv (função pura)', () => {
-  it('observe: nunca remove nada de verdade, mas lista o que removeria', () => {
+describe('buildEnv (pure function)', () => {
+  it('observe: never actually removes anything, but lists what it would remove', () => {
     const { env, removed } = buildEnv({ envPassthrough: [] }, base, 'observe')
     expect(env).toEqual(base)
     expect(removed).toContain('ANTHROPIC_API_KEY'); expect(removed).toContain('DOCKER_HOST'); expect(removed).toContain('RANDOM_VAR')
     expect(removed).not.toContain('PATH')
   })
 
-  it('enforce: lista fixa passa, segredo não declarado não passa, Docker nunca passa', () => {
+  it('enforce: fixed list passes, undeclared secret does not pass, Docker never passes', () => {
     const { env, removed } = buildEnv({ envPassthrough: [] }, base, 'enforce')
     expect(env.PATH).toBe(base.PATH); expect(env.SystemRoot).toBe(base.SystemRoot); expect(env.HTTP_PROXY).toBe(base.HTTP_PROXY); expect(env.NODE_OPTIONS).toBe(base.NODE_OPTIONS)
     expect(env.ANTHROPIC_API_KEY).toBeUndefined(); expect(env.OPENAI_API_KEY).toBeUndefined(); expect(env.SOME_RANDOM_TOKEN).toBeUndefined(); expect(env.MY_APP_SECRET).toBeUndefined()
@@ -26,38 +26,38 @@ describe('buildEnv (função pura)', () => {
     expect(removed.sort()).toEqual(['ANTHROPIC_API_KEY', 'DOCKER_HOST', 'DOCKER_TLS_VERIFY', 'MY_APP_SECRET', 'OPENAI_API_KEY', 'RANDOM_VAR', 'SOME_RANDOM_TOKEN'].sort())
   })
 
-  it('enforce: variável declarada no perfil passa, mesmo parecendo chave', () => {
+  it('enforce: variable declared in the profile passes, even if it looks like a key', () => {
     const { env } = buildEnv({ envPassthrough: ['ANTHROPIC_API_KEY'] }, base, 'enforce')
     expect(env.ANTHROPIC_API_KEY).toBe('sk-ant-secret')
     expect(env.OPENAI_API_KEY).toBeUndefined()
   })
 
-  it('enforce: variável do Docker nunca passa, mesmo declarada explicitamente', () => {
+  it('enforce: Docker variable never passes, even if explicitly declared', () => {
     const { env } = buildEnv({ envPassthrough: ['DOCKER_HOST'] }, base, 'enforce')
     expect(env.DOCKER_HOST).toBeUndefined()
   })
 
-  it('Windows: Path em qualquer caixa (case-insensitive) é tratado como a mesma variável da lista fixa', () => {
+  it('Windows: Path in any case (case-insensitive) is treated as the same variable from the fixed list', () => {
     const mixedCase: NodeJS.ProcessEnv = { Path: 'C:\\Windows', SYSTEMROOT: 'C:\\Windows', comspec: 'C:\\Windows\\cmd.exe' }
     const { env } = buildEnv({ envPassthrough: [] }, mixedCase, 'enforce')
     expect(env).toEqual(mixedCase)
   })
 
-  it('é pura: não muda a base nem o array declarado', () => {
+  it('is pure: does not change the base nor the declared array', () => {
     const passthrough = ['ANTHROPIC_API_KEY'], copy = { ...base }
     buildEnv({ envPassthrough: passthrough }, base, 'enforce')
     expect(base).toEqual(copy); expect(passthrough).toEqual(['ANTHROPIC_API_KEY'])
   })
 })
 
-describe('applyEnvPolicy (enforce por padrão)', () => {
+describe('applyEnvPolicy (enforce by default)', () => {
   afterEach(() => { delete process.env.GEARMOD_ENV_POLICY_MODE; vi.restoreAllMocks() })
-  it('sem a variável de ambiente, fica em enforce: remove o que a política manda', () => {
+  it('without the environment variable, stays in enforce: removes what the policy dictates', () => {
     expect(envPolicyMode()).toBe('enforce')
     const env = applyEnvPolicy({ envPassthrough: [] }, base)
     expect(env.ANTHROPIC_API_KEY).toBeUndefined(); expect(env.PATH).toBe(base.PATH)
   })
-  it('com GEARMOD_ENV_POLICY_MODE=observe, devolve o ambiente completo e loga o que removeria', () => {
+  it('with GEARMOD_ENV_POLICY_MODE=observe, returns the full environment and logs what it would remove', () => {
     process.env.GEARMOD_ENV_POLICY_MODE = 'observe'
     expect(envPolicyMode()).toBe('observe')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -67,8 +67,8 @@ describe('applyEnvPolicy (enforce por padrão)', () => {
   })
 })
 
-describe('smoke com adaptadores simulados', () => {
-  it('perfis existentes com a chave de API no ambiente continuam funcionando em enforce só se declarados', () => {
+describe('smoke test with simulated adapters', () => {
+  it('existing profiles with the API key in the environment keep working in enforce only if declared', () => {
     const legacyProfile = { envPassthrough: [] as string[] } // profile from before S07, with nothing declared
     const migratedProfile = { envPassthrough: ['ANTHROPIC_API_KEY'] } // after the migration (v37), which detects and declares
     expect(buildEnv(legacyProfile, base, 'enforce').env.ANTHROPIC_API_KEY).toBeUndefined()

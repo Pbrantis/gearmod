@@ -7,7 +7,7 @@ import { DbConnections, type DbConnectionInput } from './connections'
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 const secure = { isEncryptionAvailable: () => true, encryptString: (value: string) => Buffer.from(value.split('').reverse().join('')), decryptString: (value: Buffer) => value.toString().split('').reverse().join('') }
-it('mantém senha fora do SQLite e exige confirmação para escrita externa', async () => {
+it('keeps the password out of SQLite and requires confirmation for external writes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-db-connections-')); roots.push(root)
   const db = new AppDatabase(join(root, 'db.sqlite'), '0.1'); await db.open()
   try {
@@ -26,7 +26,7 @@ it('mantém senha fora do SQLite e exige confirmação para escrita externa', as
     await service.delete(saved.id); expect(service.list('p')).toEqual([])
   } finally { db.close() }
 })
-it('permite senha só em memória quando não existe cofre seguro', async () => {
+it('allows an in-memory-only password when there is no secure vault', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-db-session-')); roots.push(root)
   const db = new AppDatabase(join(root, 'db.sqlite'), '0.1'); await db.open()
   try {
@@ -39,7 +39,7 @@ it('permite senha só em memória quando não existe cofre seguro', async () => 
     expect(new DbConnections(db, join(root, 'secrets'), secure).get(saved.id).hasSecret).toBe(false)
   } finally { db.close() }
 })
-it('banco herda host, usuário e senha do servidor e some junto com ele', async () => {
+it('a database inherits host, user and password from the server and disappears along with it', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-db-parent-')); roots.push(root)
   const db = new AppDatabase(join(root, 'db.sqlite'), '0.1'); await db.open()
   try {

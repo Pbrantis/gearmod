@@ -20,8 +20,8 @@ async function folderWithoutGit(): Promise<{ folder: string; manager: GitManager
   return { folder, manager: new GitManager(database), projectId: project.id, sourceId: source.id, database }
 }
 
-describe('Git do projeto sem repositório', () => {
-  it('mostra a pasta como destino e inicia o Git do zero sem mexer nos arquivos', async () => {
+describe('project Git without a repository', () => {
+  it('shows the folder as the target and starts Git from scratch without touching the files', async () => {
     const { folder, manager, projectId, sourceId } = await folderWithoutGit()
     expect((await manager.detect(projectId)).repos).toEqual([])
     expect(manager.setupTargets(projectId).map((item) => item.sourceId)).toEqual([sourceId])
@@ -30,7 +30,7 @@ describe('Git do projeto sem repositório', () => {
     expect(await readFile(join(folder, 'notas.txt'), 'utf8')).toBe('não apague\n')
     expect(manager.setupTargets(projectId)).toEqual([])
   })
-  it('vincula a origin por SSH ou HTTPS, cria o repositório se faltar e recusa endereços inválidos', async () => {
+  it('links origin over SSH or HTTPS, creates the repository if missing and refuses invalid addresses', async () => {
     const { folder, manager, projectId, sourceId } = await folderWithoutGit()
     await expect(manager.setup({ projectId, sourceId, mode: 'origin', url: 'isso não é endereço' })).rejects.toThrow(/SSH/)
     await expect(manager.setup({ projectId, sourceId, mode: 'origin', url: '--upload-pack=x' })).rejects.toThrow(/SSH/)
@@ -40,7 +40,7 @@ describe('Git do projeto sem repositório', () => {
     await manager.setup({ projectId, sourceId, mode: 'origin', url: 'https://github.com/acme/app.git' })
     expect((await exec('git', ['-C', folder, 'remote', 'get-url', 'origin'])).stdout.trim()).toBe('https://github.com/acme/app.git')
   })
-  it('descobre sozinho um repositório criado por fora depois do cadastro', async () => {
+  it('detects on its own a repository created externally after registration', async () => {
     const { folder, manager, projectId } = await folderWithoutGit()
     expect((await manager.detect(projectId)).changed).toBe(false)
     await exec('git', ['init', '-b', 'main', folder])

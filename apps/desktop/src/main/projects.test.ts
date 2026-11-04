@@ -146,11 +146,11 @@ describe('project board', () => {
   })
 })
 
-describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () => {
+describe('ProfileRepository (S16 — new login required per profile)', () => {
   const roots: string[] = [], databases: AppDatabase[] = []
   afterEach(async () => { while (databases.length) databases.pop()!.close(); while (roots.length) await rm(roots.pop()!, { recursive: true, force: true }) })
 
-  it('nunca lê a pasta padrão do CLI, mesmo com uma sessão já logada lá na máquina de teste', async () => {
+  it('never reads the CLI default folder, even with a session already logged in on the test machine', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-s16-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
     const defaultCodexHome = join(root, '.codex'), defaultClaudeHome = join(root, '.claude')
@@ -167,7 +167,7 @@ describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () =>
     expect(existsSync(join(claude.configDir, 'credentials.json'))).toBe(false)
   })
 
-  it('cada perfil novo ganha uma pasta isolada só dele, mesmo dois do mesmo provedor', async () => {
+  it('each new profile gets its own isolated folder, even two from the same provider', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-s16-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open(); databases.push(database)
     const profiles = new ProfileRepository(database, root)
@@ -175,7 +175,7 @@ describe('ProfileRepository (S16 — login novo obrigatório por perfil)', () =>
     const second = profiles.create({ provider: 'claude', label: 'Claude 2', scope: 'x' })
     expect(first.configDir).not.toBe(second.configDir)
   })
-  it('Gemini desativado: não cria perfil e some da lista', async () => {
+  it('Gemini disabled: does not create a profile and disappears from the list', async () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-gemini-off-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root)

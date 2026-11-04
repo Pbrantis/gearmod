@@ -28,13 +28,13 @@ describe('readAccountEmail', () => {
 })
 
 describe('accountKey', () => {
-  it('produz uma chave opaca estável sem preservar a identidade', () => {
+  it('produces a stable opaque key without preserving the identity', () => {
     const key = accountKey('claude', 'Pessoa@Exemplo.com')!
     expect(key).toMatch(/^acct_[a-f0-9]{32}$/)
     expect(key).not.toContain('Pessoa')
     expect(key).toBe(accountKey('claude', ' pessoa@exemplo.com '))
   })
-  it('aceita apenas campos explícitos do provedor', () => {
+  it('accepts only explicit provider fields', () => {
     expect(accountKeyFromProvider('codex', { account: { userId: 'u-1' } })).toBe(accountKey('codex', 'u-1'))
     expect(accountKeyFromProvider('codex', { sessionPath: 'C:/secret' })).toBeNull()
   })

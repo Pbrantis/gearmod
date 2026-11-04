@@ -34,15 +34,15 @@ const happy = (send: (value: Record<string, unknown>) => void): void => {
   send({ type: 'result', status: 'success', stats: { total_tokens: 150, input_tokens: 100, output_tokens: 50, cached: 30, input: 70, duration_ms: 10, tool_calls: 0, models: { 'gemini-2.5-pro': {} } } })
 }
 
-describe('adaptador do Gemini CLI', () => {
-  it('lê o stream-json: sessão, texto em partes, modelo e consumo (cache separado)', async () => {
+describe('Gemini CLI adapter', () => {
+  it('reads the stream-json: session, text in chunks, model and usage (separate cache)', async () => {
     const events: string[] = []
     const result = await run(fakeGemini(happy), { onEvent: (event: { type: string }) => events.push(event.type) })
     expect(result).toMatchObject({ sessionId: 'sess-1', text: 'Olá mundo', status: 'completed', modelEffective: 'gemini-2.5-pro', usage: { input: 70, cached: 30, output: 50 } })
     expect(events).toEqual(expect.arrayContaining(['item/agentMessage/delta', 'gemini/init', 'gemini/result']))
   })
 
-  it('manda o prompt pela entrada padrão e usa login isolado por perfil, retomando a sessão', async () => {
+  it('sends the prompt through stdin and uses a per-profile isolated login, resuming the session', async () => {
     const seen = { args: [] as string[], env: {} as NodeJS.ProcessEnv, stdin: '' }
     await run(fakeGemini(happy, seen), { sessionId: 'sess-0', developerInstructions: 'Regras do app', model: 'flash', prompt: 'faça X' })
     expect(seen.stdin).toBe('Regras do app\n\nfaça X')
@@ -51,7 +51,7 @@ describe('adaptador do Gemini CLI', () => {
     expect(seen.env.GEMINI_CLI_HOME).toBe('C:\\profiles\\gemini')
   })
 
-  it('traduz os modos: planejamento é plan; execução segue o modo escolhido', async () => {
+  it('translates the modes: planning is plan; execution follows the chosen mode', async () => {
     const modes: string[] = []
     const capture = (mode: string, planning: boolean, extra: Record<string, unknown> = {}) => { const seen = { args: [] as string[], env: {}, stdin: '' }; return run(fakeGemini(happy, seen), { planning, mode, ...extra }).then(() => modes.push(seen.args[seen.args.indexOf('--approval-mode') + 1]!)) }
     await capture('plan', true); await capture('accept_edits', false); await capture('auto', false); await capture('manual', false)
@@ -60,7 +60,7 @@ describe('adaptador do Gemini CLI', () => {
     await expect(run(fakeGemini(happy), { planning: false, mode: 'read_only' })).rejects.toThrow(/Modo não suportado pelo Gemini/)
   })
 
-  it('injeta servidores MCP (GearMod e cadastrados) num settings temporário e o apaga depois', async () => {
+  it('injects MCP servers (GearMod and registered ones) into a temporary settings file and deletes it afterwards', async () => {
     const seen = { args: [] as string[], env: {} as NodeJS.ProcessEnv, stdin: '', settings: undefined as string | undefined }
     await run(fakeGemini(happy, seen), { planning: true, mcp: { command: 'node', args: ['server.mjs'], env: { A: '1' } }, mcpServers: [{ name: 'gh', transport: 'stdio', command: 'npx', args: ['-y', 'x'], env: { TOKEN: 't' } }, { name: 'api', transport: 'http', url: 'https://h/mcp', headers: { Authorization: 'Bearer z' } }] })
     const settings = JSON.parse(seen.settings!) as { mcpServers: Record<string, Record<string, unknown>> }
@@ -71,18 +71,18 @@ describe('adaptador do Gemini CLI', () => {
     expect(existsSync(seen.env.GEMINI_CLI_SYSTEM_SETTINGS_PATH!)).toBe(false)
   })
 
-  it('sem MCP não cria settings de sistema', async () => {
+  it('without MCP it does not create system settings', async () => {
     const seen = { args: [] as string[], env: {} as NodeJS.ProcessEnv, stdin: '' }
     await run(fakeGemini(happy, seen))
     expect(seen.env.GEMINI_CLI_SYSTEM_SETTINGS_PATH).toBeUndefined()
   })
 
-  it('erro no result vira falha com a mensagem do Gemini', async () => {
+  it('an error in the result becomes a failure with the Gemini message', async () => {
     const failed = await run(fakeGemini((send) => { send({ type: 'init', session_id: 's', model: 'm' }); send({ type: 'result', status: 'error', error: { type: 'Auth', message: 'Faça login' } }) }))
     expect(failed).toMatchObject({ status: 'failed', error: 'Faça login' })
   })
 
-  it('interrompido pelo usuário vira "interrupted"', async () => {
+  it('interrupted by the user becomes "interrupted"', async () => {
     const controller = new AbortController()
     const factory: ProcessFactory = { start() {
       const emitter = new EventEmitter() as EventEmitter & Partial<ChildProcessWithoutNullStreams>
@@ -93,12 +93,12 @@ describe('adaptador do Gemini CLI', () => {
     expect(await pending).toMatchObject({ status: 'interrupted' })
   })
 
-  it('consumo: aceita estatística parcial e ignora lixo', () => {
+  it('usage: accepts partial statistics and ignores garbage', () => {
     expect(geminiUsage({ input_tokens: 10, output_tokens: 4, cached: 3 })).toEqual({ input: 7, cached: 3, output: 4 })
     expect(geminiUsage(undefined)).toBeUndefined()
   })
 
-  it('copia as skills do plugin do GearMod para a pasta de skills do perfil', () => {
+  it('copies the GearMod plugin skills into the profile skills folder', () => {
     const root = mkdtempSync(join(tmpdir(), 'gearmod-gskills-')); dirs.push(root)
     mkdirSync(join(root, 'plugin', 'skills', 'gearmod-planning'), { recursive: true }); writeFileSync(join(root, 'plugin', 'skills', 'gearmod-planning', 'SKILL.md'), '# x')
     syncGeminiSkills(join(root, 'plugin'), join(root, 'home'))
@@ -107,8 +107,8 @@ describe('adaptador do Gemini CLI', () => {
   })
 })
 
-describe('atividade de ferramentas do Gemini no chat', () => {
-  it('mostra a ferramenta usada e os arquivos editados', () => {
+describe('Gemini tool activity in the chat', () => {
+  it('shows the tool used and the edited files', () => {
     expect(toolActivities('gemini/tool_use', { tool_name: 'read_file', parameters: { file_path: 'a.ts' } })[0]!.title).toBe('read_file a.ts')
     expect(toolEditedFiles('gemini/tool_use', { tool_name: 'write_file', parameters: { file_path: 'a.ts' } })).toEqual(['a.ts'])
     expect(toolEditedFiles('gemini/tool_use', { tool_name: 'read_file', parameters: { file_path: 'a.ts' } })).toEqual([])
