@@ -75,7 +75,7 @@ export function friendlyError(error: unknown): string {
   const used = /cannot delete branch '([^']+)' (?:used by|checked out at) (?:worktree at )?'([^']+)'/i.exec(text)
   if (used) return tm().git.branchUsedByWorktree(used[1]!, used[2]!)
   const unmerged = /The branch '([^']+)' is not fully merged/i.exec(text)
-  if (unmerged) return tm().git.branchNotMerged(unmerged[1]!)
+  if (unmerged) return withErrorCode('branch-not-merged', tm().git.branchNotMerged(unmerged[1]!))
   const detail = text.split(/\r?\n/).map((line) => line.trim()).find((line) => /^(fatal|error):/i.test(line))
   return detail ? detail.replace(/^(fatal|error):\s*/i, '') : text.trim().split(/\r?\n/)[0] || tm().git.gitOperationFailed
 }
@@ -846,7 +846,7 @@ ${diff}`
   }
 
   /** Branch menu actions on the repository's main folder. Merge and rebase with conflicts are undone, so the folder is not left halfway. */
-  async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }): Promise<{ output: string }> {
+  async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string; force?: boolean }): Promise<{ output: string }> {
     const dir = (await (input.action === 'push' || input.action === 'delete-remote' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))).dir, { action, name } = input
     const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(tm().git.invalidBranchName(ref)) }
     await valid(name)
@@ -903,7 +903,8 @@ ${diff}`
     }
     if (isHead) throw new Error(tm().git.cannotDeleteCurrentBranch)
     const hash = (await this.tryRun(dir, ['rev-parse', '-q', '--verify', `refs/heads/${name}`]))?.trim() ?? '', remote = (await this.tryRun(dir, ['config', `branch.${name}.remote`]))?.trim() ?? '', merge = (await this.tryRun(dir, ['config', `branch.${name}.merge`]))?.trim() ?? ''
-    await this.run(dir, ['branch', '-d', name])
+    // `-D` only after the user confirmed deleting a branch with commits that are in no other branch.
+    await this.run(dir, ['branch', input.force ? '-D' : '-d', name])
     if (hash) await this.record(key, dir, 'delete-branch', before, { name, hash, remote, merge }, [hash]); else await this.forget(key)
     return { output: tm().git.branchDeleted(name) }
   }

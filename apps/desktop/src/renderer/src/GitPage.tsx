@@ -415,18 +415,33 @@ export function GitPage({ board, prs, profiles, openCardGit, focusRequest }: { b
   const leaveConflicts = async (): Promise<boolean> => !conflictDirty.current || confirmAsk({ eyebrow: t.resolveConflicts, title: t.discardEditTitle, text: t.discardEditText, ok: t.discard, danger: true })
   const resolve = async (entry: ConflictTarget): Promise<void> => { if (resolveTarget && !(await leaveConflicts())) return; setRepoId(entry.sourceId); setViewer(undefined); setResolveTarget(entry) }
   /** Returns the error (or `null` on success) for the name dialog to show in place and stay open. */
-  const branchAction = async (action: Exclude<BranchAction, 'copy'>, name: string, extra?: { newName?: string }): Promise<string | null> => {
+  const branchAction = async (action: Exclude<BranchAction, 'copy'>, name: string, extra?: { newName?: string; force?: boolean }): Promise<string | null> => {
     if (!graph) return null
     setBusy(action); setNotice('')
-    try { const out = await window.gearmod.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, name, ...extra }); report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? t.done); await load(); return null } catch (reason) { const message = plainError(reason); report(action, false, message); return message } finally { setBusy('') }
+    let retryForce = false
+    try { const out = await window.gearmod.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action, name, ...extra }); report(action, true, out.output.split(/\r?\n/).filter(Boolean).slice(-1)[0] ?? t.done); await load(); return null } catch (reason) {
+      const message = plainError(reason)
+      // Branch with commits that are in no other branch: instead of just failing, asks whether to delete anyway.
+      if (action === 'delete' && !extra?.force && errorCodeOf(message) === 'branch-not-merged') retryForce = true
+      else { report(action, false, withoutErrorCode(message)); return withoutErrorCode(message) }
+    } finally { setBusy('') }
+    if (retryForce && await confirmAsk({ eyebrow: t.deleteBranchEyebrow, title: t.deleteUnmergedTitle(name), text: t.deleteUnmergedText, ok: t.deleteUnmergedOk, danger: true })) return branchAction(action, name, { ...extra, force: true })
+    return null
   }
   const deleteFolderBranches = async (names: string[]): Promise<void> => {
     if (!graph || !names.length) return
     setBusy('delete'); setNotice('')
-    const failed: string[] = []
+    let failed: string[] = []
+    const unmerged: string[] = []
     for (const name of names) {
-      try { await window.gearmod.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action: 'delete', name }) } catch { failed.push(name) }
+      try { await window.gearmod.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action: 'delete', name }) } catch (reason) { if (errorCodeOf(plainError(reason)) === 'branch-not-merged') unmerged.push(name); else failed.push(name) }
     }
+    // Branches with commits that are in no other branch: asks once whether to delete them anyway.
+    if (unmerged.length && await confirmAsk({ eyebrow: t.deleteBranchEyebrow, title: t.deleteUnmergedTitle(unmerged.join(', ')), text: t.deleteUnmergedText, ok: t.deleteUnmergedOk, danger: true })) {
+      for (const name of unmerged) {
+        try { await window.gearmod.invoke('git:branch-action', { sourceId: graph.repo.sourceId, cardId: worktree, action: 'delete', name, force: true }) } catch { failed.push(name) }
+      }
+    } else failed = [...failed, ...unmerged]
     const deleted = names.length - failed.length
     const text = failed.length ? t.foldersPartial(deleted, failed.length) : t.branchesDeleted(deleted)
     report('delete', !failed.length ? true : deleted ? 'warn' : false, text, t.someBranchesNotDeleted); await load(); setBusy('')
