@@ -41,7 +41,7 @@ Tudo roda na sua máquina. O GearMod usa as CLIs de agente que você já tem e n
 
 **Ferramentas para os agentes**
 - Um servidor MCP local deixa os agentes ler e atualizar o card, fazer perguntas e pedir commits.
-- Um índice de código opcional oferece busca de símbolos e "quais testes esta mudança afeta".
+- Um índice de código local oferece busca de símbolos e "quais testes esta mudança afeta" (veja [Índice de código](#índice-de-código)).
 - Skills globais ou por projeto, escolhidas com `/` em qualquer chat.
 
 **Extras opcionais**
@@ -77,6 +77,123 @@ Para atualizar, instale a versão nova por cima da antiga; seus dados continuam.
 3. **Crie um card.** Descreva o que você quer. O chat de planejamento ajuda a escrever a especificação, o plano e as tarefas.
 4. **Inicie o card.** O GearMod cria a worktree e a branch, e o agente implementa as tarefas. Responda às perguntas e aprove as ações arriscadas quando aparecerem.
 5. **Teste e revise.** Rode a etapa de teste, leia o diff na página Git, depois commite e abra um pull request.
+
+## Um card do começo ao fim
+
+As capturas desta seção vêm de uma execução real: três cards num app de exemplo de finanças pessoais ("Ledgerly", Angular + Supabase), planejados, implementados e testados pelo Codex dentro do GearMod. A interface aparece em inglês.
+
+| Card | Nota | Fluxo |
+| --- | --- | --- |
+| Saldos negativos em vermelho no painel | 3, simples | Fluxo curto |
+| Exportar compras para CSV | 15, médio | Spec leve |
+| Orçamento mensal por categoria (tabela nova, segurança por linha, página nova) | 24, complexo | SDD completo |
+
+**1. Planeje.** Abra o chat de planejamento do card e peça ao agente para planejá-lo. Nessa etapa o agente só lê o código, nunca altera. Ele explora o código primeiro, dá a nota de complexidade do card e propõe um fluxo. As perguntas dele aparecem como opções no chat, e a troca de fluxo espera a sua aprovação. No card SDD, o agente ainda fez três perguntas de produto antes de escrever o plano: o que conta como gasto, o que acontece com limites que já existem ao copiar, e quais categorias podem ter orçamento.
+
+![O chat de planejamento recomenda o SDD completo e pergunta qual fluxo usar](.github/assets/flow-choice.png)
+
+**2. Leia os documentos.** O plano fica salvo no card como documentos Markdown, com histórico de versões: resumo, especificação, plano (com plano de teste) e tarefas. O fluxo curto guarda só uma nota curta de "o que fazer". Você pode editar qualquer documento antes de iniciar.
+
+![O plano do card SDD, com contexto técnico, checagem de princípios e decisões](.github/assets/card-plan.png)
+
+**3. Implemente.** Ao iniciar o card, o GearMod cria a worktree e a branch dele (`feature/monthly-budgets-per-category-…`). O agente de implementação segue as tarefas e marca cada uma no painel lateral; os arquivos alterados aparecem abaixo delas. No fim, o agente pede para commitar, e você autoriza, edita a mensagem ou nega.
+
+![O chat de implementação com as seis tarefas concluídas e o agente pedindo para commitar](.github/assets/card-execution.png)
+
+**4. Teste.** A etapa de teste usa um agente separado, com checklist próprio. Ele registra o que passou e o que não conseguiu conferir. Aqui ele rodou 5 testes, com 90 combinações de filtro, e um build de produção. Também avisou que o download num navegador de verdade ficou sem conferir, porque o Playwright não estava configurado.
+
+![O chat de teste com o checklist](.github/assets/card-test.png)
+
+**5. Revise e faça o merge.** Os commits de cada card aparecem na página Git, marcados com o card. De lá você lê os diffs, faz o merge ou abre um pull request.
+
+## Como o GearMod escolhe o fluxo
+
+Nem todo card precisa de uma especificação completa. O GearMod dá uma nota a cada card e recomenda um fluxo, e a escolha final é sua.
+
+**A nota.** O agente de planejamento avalia o card de 0 a 3 em seis dimensões:
+
+| Dimensão | Peso padrão |
+| --- | --- |
+| Escopo | 2 |
+| Acoplamento | 2 |
+| Incerteza | 2 |
+| Risco | 3 |
+| Novidade técnica | 1 |
+| Dificuldade de validação | 1 |
+
+O total é a soma de nota × peso; com os pesos padrão, o máximo é 33. Cada nota vem com justificativa e evidências: arquivos com número de linha, o commit analisado ou a sua própria mensagem.
+
+![O diálogo de avaliação: 24 pontos, complexo, com justificativa por dimensão](.github/assets/flow-assessment.png)
+
+**A recomendação.**
+
+| Total (limites padrão) | Nível | Fluxo recomendado |
+| --- | --- | --- |
+| 0–7 | Simples | **Fluxo curto**: um agente implementa e valida a partir de uma descrição curta. Não há documento de especificação, plano ou tarefas, nem etapa de teste separada. |
+| 8–16 | Médio | **Spec leve**: uma especificação curta com critérios de aceite, um plano e tarefas. |
+| 17 ou mais | Complexo | **SDD completo**: especificar, esclarecer, planejar (com plano de teste), tarefas, verificar, resumo. |
+
+Um card com risco 3 nunca recebe o fluxo curto como recomendação; sobe pelo menos para spec leve. Pesos (0–5) e limites podem ser mudados por projeto em **Project settings › Workflow**.
+
+![Pesos das dimensões e limites dos níveis nas configurações do projeto](.github/assets/flow-weights.png)
+
+**A sua decisão.**
+- O agente registra a nota com `gearmod_assess_complexity` e propõe o fluxo com `gearmod_choose_workflow`. A proposta é um pedido de aprovação. Nada muda até você responder.
+- Você pode escolher outro fluxo; o card mostra quando a sua escolha difere da recomendação.
+- Você pode contestar as notas. Isso cria uma nova versão da avaliação, marcada como correção sua.
+- As avaliações têm versões e nunca são sobrescritas. Uma avaliação *preliminar* é feita antes de o agente explorar o código. Cada versão nova mostra o *delta* em relação à anterior.
+- O SDD completo usa o método do próprio GearMod ou o [Spec Kit](https://github.com/github/spec-kit). O Spec Kit exige que o projeto esteja configurado para ele e, nesse caso, usa as próprias skills.
+- Todo agente segue a Constituição do projeto (`.gearmod/constitution.md`, ou `.specify/memory/constitution.md` no Spec Kit).
+- Cada card guarda um registro de decisões e evidências (`history.jsonl`) e um `discovery.md` com a tabela de notas.
+
+## Gerenciador de Git
+
+A visão **Git** é um cliente Git completo, organizado em torno dos cards.
+
+![A página Git: grafo de commits com branches e worktrees por card](.github/assets/git-graph.png)
+
+- **Grafo:** grafo de commits com rótulos de branch local, remota, tag e worktree. Commits feitos por agentes levam o ícone do agente e o card a que pertencem.
+- **Uma branch e uma worktree por card:** cada card trabalha na própria pasta e branch, e o seu checkout principal nunca é tocado. A barra lateral lista branches (agrupadas por prefixo), worktrees, pull requests e stashes.
+- **Painel do card:** mostra a branch base e a branch do card em cada repositório, commits à frente e atrás, e arquivos não commitados. Dali você commita (com mensagem sugerida), faz push, abre um PR em rascunho ou apaga a worktree.
+- **Mudanças e diffs:** stage e unstage por arquivo, descartar, stash de um só arquivo, adicionar ao `.gitignore` e amend. Os diffs abrem para arquivos em edição e para qualquer commit, e dá para editar o arquivo no próprio diff.
+- **Branches e commits:** checkout, merge, rebase, cherry-pick, revert, reset, renomear commit, criar branch ou tag. Pull e push com fetch, fast-forward e rebase. Um push recusado oferece pull, pull com rebase ou push forçado. A maioria das operações pode ser desfeita e refeita.
+- **Conflitos:** resolva conflitos de merge, rebase, cherry-pick, revert e stash bloco a bloco. Em cada bloco, aceite o atual, o que chega ou os dois; ou pegue o arquivo inteiro de um lado. Depois continue ou aborte.
+- **Commits de agente pedem permissão:** a regra de commit do projeto decide se os agentes commitam livremente, se pedem antes ou se nunca commitam. As regras podem ser definidas por branch. Por padrão os agentes pedem, e nunca commitam em `main`, `develop` ou `release/*`. Uma verificação de segredos bloqueia commits de agente com chaves ou senhas inconfundíveis.
+- **Pull requests:** no GitHub e no GitLab você lista, lê (descrição, revisões, comentários, diff), comenta, aprova ou pede mudanças (GitHub) e cria PRs.
+- **Contas e tokens:** em **Project settings › Git**, defina um token por host para o projeto, com substituição opcional por repositório. O token nunca é mostrado de novo depois de salvo.
+
+## Gerenciador de banco de dados (experimental)
+
+Um cliente PostgreSQL dentro do projeto, para conferir os dados que os cards alteram. Vem ligado; defina `GEARMOD_DATABASE_EXPERIMENTAL=0` para escondê-lo.
+
+![A visão de banco: árvore de conexões, uma aba SQL e uma tabela com paginação](.github/assets/database.png)
+
+- **Conexões:** um servidor pode ter vários bancos. Cada conexão tem uma classe (`dev`, `test`, `prod`, `external`). Qualquer host que não seja local conta como `external`.
+- **Escrita é uma chave por conexão:** `dev` e `test` começam com escrita, `prod` e `external` começam só leitura. Ligar a escrita em `prod` ou `external` pede que você digite o nome do banco.
+- **No editor SQL**, `DROP`, `TRUNCATE`, e `DELETE`/`UPDATE` sem `WHERE` pedem confirmação.
+- **Senhas:** guardadas criptografadas, ou mantidas só durante a sessão.
+- **Árvore e abas:** servidor › banco › schema › tabelas, views e sequências, com busca. As abas de SQL e de tabela podem ser divididas e reorganizadas.
+- **SQL:** rode com Ctrl+Enter e cancele com Esc. O resultado mostra até 1.000 linhas, com tempo e contagem de linhas. Toda consulta fica num histórico.
+- **Tabelas:** filtre com `WHERE` e `ORDER BY` (com autocompletar), ordene por coluna, pagine de 10 a 1.000 linhas por vez e peça a contagem exata quando quiser. Em conexões com escrita, dá para editar células, adicionar ou excluir linhas, ver o SQL gerado e então aplicar.
+- Os agentes ainda não usam essas conexões.
+
+## Índice de código
+
+O GearMod mantém um mapa local do código do projeto: funções, classes, chamadas, imports e testes. Os agentes consultam o mapa antes de abrir arquivos, então leem menos para achar o código certo. O editor também usa o mapa.
+
+![A seção do índice de código nas configurações do projeto](.github/assets/code-index.png)
+
+- **Ligado por padrão, por projeto:** desligue em **Project settings › General**; aí os agentes voltam à busca de texto e à leitura de arquivos.
+- **Local:** fica em `code-index/index.sqlite`, na pasta de dados do GearMod. Indexa cada pasta do projeto e a worktree de cada card.
+- **Como é montado:** o código é lido com tree-sitter, num processo em segundo plano. Arquivos sem mudança são reaproveitados, e arquivos alterados são reindexados quando você salva. Pastas como `node_modules`, `dist`, `build` e `.venv`, e arquivos acima de 1 MB, ficam de fora.
+- **Linguagens:** TypeScript, JavaScript, Python, Go, Java, C#, Rust, PHP, Ruby e C/C++.
+- **Ferramentas dos agentes:**
+  - `gearmod_code_explore` responde a uma pergunta ou lista de nomes com o código relevante, caminhos de chamada, dependentes e testes.
+  - `gearmod_code_node` mostra um símbolo com quem o chama e o que ele usa.
+  - `gearmod_code_search` acha símbolos pelo nome.
+  - `gearmod_code_impact` lista tudo que usa um símbolo e os testes a rodar.
+  - `gearmod_code_affected_tests` lista os testes que dependem dos arquivos que você mudou.
+- **Atalhos no editor:** Ctrl+T (ir para símbolo), Ctrl+Shift+O (estrutura do arquivo), F12 (definição) e Shift+F12 (referências).
 
 ## Como funciona
 
