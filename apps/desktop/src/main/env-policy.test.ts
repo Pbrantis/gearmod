@@ -69,8 +69,8 @@ describe('applyEnvPolicy (enforce por padrão)', () => {
 
 describe('smoke com adaptadores simulados', () => {
   it('perfis existentes com a chave de API no ambiente continuam funcionando em enforce só se declarados', () => {
-    const legacyProfile = { envPassthrough: [] as string[] } // perfil de antes do S07, sem nada declarado
-    const migratedProfile = { envPassthrough: ['ANTHROPIC_API_KEY'] } // depois da migração (v37), que detecta e declara
+    const legacyProfile = { envPassthrough: [] as string[] } // profile from before S07, with nothing declared
+    const migratedProfile = { envPassthrough: ['ANTHROPIC_API_KEY'] } // after the migration (v37), which detects and declares
     expect(buildEnv(legacyProfile, base, 'enforce').env.ANTHROPIC_API_KEY).toBeUndefined()
     expect(buildEnv(migratedProfile, base, 'enforce').env.ANTHROPIC_API_KEY).toBe('sk-ant-secret')
   })

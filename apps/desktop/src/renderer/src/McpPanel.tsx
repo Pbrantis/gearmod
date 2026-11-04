@@ -16,30 +16,30 @@ const fromServer = (server: McpServer): Draft => ({ id: server.id, name: server.
 const fromPreset = (preset: McpPreset, providers: Provider[]): Draft => ({ name: preset.id.replace(/[^a-z0-9_-]/gi, '-'), presetId: preset.id, transport: preset.transport, command: preset.command, argsText: preset.args.join('\n'), url: '', env: preset.env.map((key) => ({ key, value: '', set: false })), headers: preset.headers.map((key) => ({ key, value: '', set: false })), providers, enabled: true })
 const argsOf = (text: string): string[] => text.split('\n').map((line) => line.trim()).filter(Boolean)
 const summary = (draft: Draft): string => draft.transport === 'stdio' ? `${draft.command} ${argsOf(draft.argsText).join(' ')}`.trim() : draft.url
-// Argumento de exemplo como "<pasta permitida>": precisa ser trocado antes de salvar.
+// Example argument like "<allowed folder>": must be replaced before saving.
 const hasPlaceholder = (text: string): boolean => /<[^>]+>/.test(text)
 
-/** Catálogos públicos onde procurar mais servidores; abrem no navegador padrão. */
+/** Public catalogs where to look for more servers; they open in the default browser. */
 const catalogs = [{ key: 'official', url: 'https://github.com/modelcontextprotocol/servers' }, { key: 'mcpso', url: 'https://mcp.so' }, { key: 'smithery', url: 'https://smithery.ai' }, { key: 'glama', url: 'https://glama.ai/mcp/servers' }] as const
 
-/** Linha "Procurar mais: [a] [b]". Os links abrem no navegador padrão pelo canal `app:open-link` (o main só aceita http(s) e mailto). */
+/** "Find more: [a] [b]" line. The links open in the default browser through the `app:open-link` channel (main only accepts http(s) and mailto). */
 export function CatalogLinks({ label, links }: { label: string; links: ReadonlyArray<{ label: string; url: string }> }): React.JSX.Element {
   const t = useT()
   const open = (url: string): void => { void window.gearmod.invoke('app:open-link', { url }).catch((reason: unknown) => toast.error(t.shell.markdown.couldNotOpenLink, plainError(reason))) }
   return <p className="catlinks"><span>{label}</span>{links.map((link) => <button type="button" key={link.url} className="catlink tip" data-tip={link.url} onClick={() => open(link.url)}>{link.label}<span aria-hidden="true">↗</span></button>)}</p>
 }
 
-/** Servidores MCP: recomendados (presets ainda não instalados), instalados e cadastro em diálogo. `scope="global"` nas Configurações; `scope="project"` na tela do projeto. */
+/** MCP servers: recommended (presets not yet installed), installed, and registration in a dialog. `scope="global"` in Settings; `scope="project"` on the project screen. */
 export function McpPanel({ scope, projectId, available }: { scope: 'global' | 'project'; projectId?: string; available: Provider[] }): React.JSX.Element {
   const t = useT(), tm = t.settings.mcp
   const [items, setItems] = useState<McpServer[]>([]), [presets, setPresets] = useState<McpPreset[]>([]), [dialog, setDialog] = useState<{ draft: Draft; preset?: McpPreset }>(), [removing, setRemoving] = useState<McpServer>(), [error, setError] = useState(''), [busy, setBusy] = useState(false)
   const reload = useCallback(async (): Promise<void> => { try { setItems(await window.gearmod.invoke('mcp:list', projectId ? { projectId } : {})); setError('') } catch (reason) { setError(plainError(reason)) } }, [projectId])
   useEffect(() => { void reload(); void window.gearmod.invoke('mcp:presets', undefined).then(setPresets).catch(() => undefined) }, [reload])
   const visible = scope === 'global' ? items.filter((item) => item.scope === 'global') : items
-  // O preset genérico "remote" não é um servidor de verdade: o cadastro manual (tipo Remoto) já cobre esse caso.
+  // The generic "remote" preset is not a real server: manual registration (Remote type) already covers that case.
   const recommended = presets.filter((item) => item.id !== 'remote' && !visible.some((server) => server.presetId === item.id))
   const run = async (task: () => Promise<unknown>): Promise<void> => { setBusy(true); setError(''); try { await task(); await reload() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) } }
-  // Devolve o erro para o diálogo mostrar (o diálogo fica aberto); null quando salvou.
+  // Returns the error for the dialog to show (the dialog stays open); null when saved.
   const save = async (draft: Draft): Promise<string | null> => {
     const input: McpServerInput = { ...(draft.id ? { id: draft.id } : {}), scope, ...(scope === 'project' ? { projectId } : {}), name: draft.name, presetId: draft.presetId, transport: draft.transport, command: draft.command, args: argsOf(draft.argsText), url: draft.url, env: draft.env.map(({ key, value }) => ({ key, value })), headers: draft.headers.map(({ key, value }) => ({ key, value })), providers: draft.providers, enabled: draft.enabled }
     setBusy(true)
@@ -72,14 +72,14 @@ export function McpPanel({ scope, projectId, available }: { scope: 'global' | 'p
 }
 
 /**
- * Diálogo de cadastro, em três usos: manual (formulário completo); recomendado (confirmação com o que será adicionado e só os campos
- * que faltam preencher; "Editar todos os campos" abre o formulário completo); edição de um servidor instalado (formulário completo).
+ * Registration dialog, in three uses: manual (full form); recommended (confirmation with what will be added and only the fields
+ * still to fill in; "Edit all fields" opens the full form); editing an installed server (full form).
  */
 function McpDialog({ initial, preset, available, busy, cancel, save }: { initial: Draft; preset?: McpPreset; available: Provider[]; busy: boolean; cancel(): void; save(draft: Draft): Promise<string | null> }): React.JSX.Element {
   const t = useT(), tm = t.settings.mcp
   const [draft, setDraft] = useState(initial), [full, setFull] = useState(Boolean(initial.id) || !preset), [error, setError] = useState('')
   useEscape(cancel)
-  // Um servidor antigo pode usar um agente que não é mais oferecido (Gemini): continua aparecendo para poder ser desligado.
+  // An old server may use an agent that is no longer offered (Gemini): it keeps showing so it can be turned off.
   const [options] = useState<Provider[]>(() => [...available, ...initial.providers.filter((item) => !available.includes(item))])
   const title = draft.id ? tm.editServer : preset ? tm.addPreset(preset.label) : tm.addServer
   const missing = !draft.name.trim() ? tm.needName : !draft.providers.length ? tm.needAgent
@@ -119,7 +119,7 @@ function McpDialog({ initial, preset, available, busy, cancel, save }: { initial
   </div></div>
 }
 
-/** Pares nome/valor (variáveis de ambiente ou headers). `fixed`: os nomes vêm do preset, só o valor é editável. */
+/** Name/value pairs (environment variables or headers). `fixed`: the names come from the preset, only the value is editable. */
 function KeyValues({ title, rows, change, fixed = false }: { title: string; rows: Draft['env']; change(rows: Draft['env']): void; fixed?: boolean }): React.JSX.Element {
   const t = useT(), tm = t.settings.mcp
   const [shown, setShown] = useState<Set<number>>(new Set())

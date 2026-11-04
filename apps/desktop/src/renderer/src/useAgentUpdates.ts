@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AgentProfile } from '@gearmod/contracts'
 import { isOutdated, useLatestVersions } from './toolUpdates'
 
-/** Há versão nova de algum CLI (Claude ou Codex) dos agentes cadastrados: acende a bolinha na engrenagem de Configurações. */
+/** There is a new version of some CLI (Claude or Codex) of the registered agents: lights up the dot on the Settings gear. */
 export function useAgentUpdatesPending(profiles: AgentProfile[]): boolean {
   const latest = useLatestVersions(), [versions, setVersions] = useState<Record<string, { installed: boolean; version: string | null }>>({})
   useEffect(() => {

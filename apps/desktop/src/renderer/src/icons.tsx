@@ -1,6 +1,6 @@
 import React from 'react'
 
-/** Ícones do protótipo: `ln` = traço (sem preenchimento); os demais são preenchidos. O CSS decide a cor e o tamanho. */
+/** Prototype icons: `ln` = stroke (no fill); the rest are filled. CSS decides the color and size. */
 const make = (children: React.ReactNode, line = true) => function Icon(): React.JSX.Element { return <svg viewBox="0 0 24 24" aria-hidden="true" className={line ? 'ln' : undefined}>{children}</svg> }
 
 export const BranchIcon = make(<><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="8" r="2" /><path d="M6 7v10" /><path d="M18 10c0 4-6 3-12 7" /></>)

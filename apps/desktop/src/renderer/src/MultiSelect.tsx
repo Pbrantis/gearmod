@@ -6,8 +6,8 @@ import { useFloatingMenu } from './useFloatingMenu'
 import { useEscape } from './useEscape'
 
 /**
- * Seleção múltipla com o mesmo visual do `Select`: cada opção tem uma caixinha e a lista fica aberta enquanto se marca.
- * `empty` é o texto mostrado quando nada está marcado.
+ * Multiple selection with the same look as `Select`: each option has a small box and the list stays open while checking.
+ * `empty` is the text shown when nothing is checked.
  */
 export function MultiSelect({ options, value, onChange, label, empty, up = false, disabled = false }: { options: SelectOption[]; value: string[]; onChange(value: string[]): void; label: string; empty: string; up?: boolean; disabled?: boolean }): React.JSX.Element {
   const [open, setOpen] = useState(false)

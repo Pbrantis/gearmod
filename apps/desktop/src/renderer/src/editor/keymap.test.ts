@@ -5,7 +5,7 @@ import { moveLineDown, toggleComment } from '@codemirror/commands'
 import { languageFor } from './languages'
 import { insertLineAbove } from './keymap'
 
-/** Roda um comando sem DOM: o comando só precisa de `state` e `dispatch`. */
+/** Runs a command without a DOM: the command only needs `state` and `dispatch`. */
 async function run(path: string, doc: string, command: Command, cursor = 0): Promise<string> {
   const language = await languageFor(path)
   let state = EditorState.create({ doc, selection: EditorSelection.cursor(cursor), extensions: language ? [language] : [] })

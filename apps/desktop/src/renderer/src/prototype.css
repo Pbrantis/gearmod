@@ -186,7 +186,7 @@ p{color:var(--muted);margin:0}
 .ptile.off:hover{filter:none;border-color:var(--accent);color:color-mix(in srgb, var(--accent) 8%, var(--gb3))}
 .ptile.busy{background:var(--accent-deep);border-color:var(--accent-line)}
 .provs{display:flex;gap:6px}
-/* Tooltips: desenhados pelo TooltipLayer (Tooltip.tsx) a partir de data-tip; os ::after antigos ficam desligados. */
+/* Tooltips: drawn by TooltipLayer (Tooltip.tsx) from data-tip; the old ::after ones are turned off. */
 .tip::after{content:none!important}
 .tooltip{position:fixed;z-index:200;max-width:min(420px,calc(100vw - 16px));background:color-mix(in srgb, var(--accent) 6%, var(--g05));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g37));color:color-mix(in srgb, var(--accent) 8%, var(--gef));font-size:11px;font-weight:600;line-height:1.4;padding:4px 8px;border-radius:6px;pointer-events:none;overflow-wrap:anywhere;box-shadow:0 6px 18px var(--cs-00000088);animation:tipin .12s ease-out}
 @keyframes tipin{from{opacity:0}to{opacity:1}}
@@ -264,7 +264,7 @@ h1{font:500 40px/1.05 Georgia,serif;margin:6px 0 4px}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 .badge.fin{background:var(--accent-deep);color:var(--accent-strong)}
 .card.fin{border-color:var(--accent-line);box-shadow:0 0 0 1px color-mix(in srgb, var(--accent-line) 40%, transparent),0 0 18px color-mix(in srgb, var(--accent-line) 25%, transparent);animation:glow 2s infinite}
-/* Plano pronto: borda e brilho na cor do tema, para chamar a atenção no quadro. */
+/* Plan ready: border and glow in the theme color, to draw attention on the board. */
 .card.ready{border-color:var(--accent-muted);box-shadow:0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),0 0 20px color-mix(in srgb, var(--accent) 18%, transparent)}
 .card.ready:hover{border-color:var(--accent)}
 .card.ready .badge.ready{background:var(--accent-bg);border:1px solid var(--accent-line);color:var(--accent-strong)}
@@ -318,7 +318,7 @@ h1{font:500 40px/1.05 Georgia,serif;margin:6px 0 4px}
 .modal.wide>header{flex:none}
 .modal.wide .editor{flex:1;min-height:0}
 .modal.wide>form>.actions{flex:none;margin-top:0;padding-top:14px;border-top:1px solid var(--border)}
-/* Coluna esquerda do card: só o selo (complexidade e fluxo) fica fixo; o resto rola. */
+/* Left column of the card: only the badge (complexity and flow) stays fixed; the rest scrolls. */
 .pane-left{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:hidden}
 .pane-left-top{flex:none;align-content:start;padding-right:4px}.pane-left-top:empty{display:none}
 .pane-left-scroll{flex:1 1 auto;min-height:0;overflow:auto;align-content:start;padding-right:4px}
@@ -533,7 +533,7 @@ textarea.in{resize:vertical;line-height:1.5}
 .skill{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--cf-b9b9f0);background:var(--cb-25253a);border-radius:14px;padding:3px 9px;justify-self:start}
 /* assumptions */
 
-/* ---- extras do app (não existem no protótipo) ---- */
+/* ---- app extras (not in the prototype) ---- */
 .error{color:var(--cf-ffc1b9);background:var(--cb-492520);padding:9px 11px;border-radius:8px;font-size:12px;overflow-wrap:anywhere}
 .hint{font-size:12px;color:var(--muted)}
 select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%,color-mix(in srgb, var(--accent) 8%, var(--g92)) 50%),linear-gradient(135deg,color-mix(in srgb, var(--accent) 8%, var(--g92)) 50%,transparent 50%);background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:30px}
@@ -603,7 +603,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .dockgrip:hover::before,.dock.dragging .dockgrip::before{background:var(--accent);opacity:1}
 .dockgrip:hover::after,.dock.dragging .dockgrip::after{background:var(--accent)}
 
-/* ---- lista de chats (botão ao lado da configuração) ---- */
+/* ---- chat list (button next to the settings) ---- */
 .chatsbtn{position:relative}.chatsbtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .chatsbtn .cdot{position:absolute;top:5px;right:5px;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 6%, var(--g0c))}
 .chatspop{position:fixed;left:auto;bottom:auto;right:16px;top:64px;z-index:60;width:min(340px,calc(100vw - 24px));max-height:60vh;display:flex;flex-direction:column;background:color-mix(in srgb, var(--accent) 6%, var(--g14));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g30));border-radius:12px;box-shadow:0 14px 40px var(--cs-00000099)}
@@ -616,7 +616,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .cpchip.free{color:color-mix(in srgb, var(--accent) 8%, var(--g9b));background:color-mix(in srgb, var(--accent) 6%, var(--g20))}
 .footbtns{display:flex;gap:6px}
 
-/* ---- chat: Markdown nas respostas e rolagem só na área das mensagens ---- */
+/* ---- chat: Markdown in replies and scrolling only in the messages area ---- */
 .msg{overflow-wrap:anywhere}
 .chatmd{font-size:inherit}
 .urings{display:inline-flex;align-items:center;gap:6px;margin-right:4px}
@@ -640,7 +640,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .dock.full .activity{min-height:0;overflow-y:auto}
 .msg .chatmd{background:none;border:0;padding:0;margin:0;min-height:0;height:auto;box-shadow:none;border-radius:0}
 
-/* ---- branch e worktree do card ---- */
+/* ---- card branch and worktree ---- */
 .wsline{display:grid;gap:2px;margin-top:8px;padding:4px 8px;border-radius:8px;background:color-mix(in srgb, var(--accent) 6%, var(--g10));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27));font-size:11px;color:color-mix(in srgb, var(--accent) 8%, var(--g9b));min-width:0}
 .wsline svg{width:13px;height:13px;flex:none;fill:none;stroke:var(--accent);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .wsline b{color:color-mix(in srgb, var(--accent) 8%, var(--gcb));font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -649,13 +649,13 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .wsbox{display:grid;gap:4px;padding:8px 10px;border-radius:9px;background:color-mix(in srgb, var(--accent) 6%, var(--g10));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27));font-size:12.5px}
 .wsbox>div{display:flex;align-items:center;gap:6px}.wsbox svg{width:14px;height:14px;fill:none;stroke:var(--accent);stroke-width:1.8}
 .wsbox small{color:color-mix(in srgb, var(--accent) 8%, var(--g90));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* ---- mensagens: a minha no balão; a do agente direto no fundo, sem caixa ---- */
+/* ---- messages: mine in a bubble; the agent's directly on the background, no box ---- */
 .msg.agent{background:none;border:0;border-radius:0;padding:2px 0;max-width:100%;font-size:14px;line-height:1.65;white-space:normal;color:color-mix(in srgb, var(--accent) 8%, var(--gec))}
 .msg.user{max-width:85%}
 .msg.sys{justify-self:start;font-size:12.5px;color:color-mix(in srgb, var(--accent) 8%, var(--g79));max-width:100%;white-space:normal}
 .dock.full .msg.agent{font-size:14.5px}
 
-/* ---- visual do Claude Code: código em coral, links azuis, ferramentas como linhas cinzas que expandem ---- */
+/* ---- Claude Code look: code in coral, blue links, tools as gray lines that expand ---- */
 .chatmd code{color:var(--cf-ff8f86);background:var(--cb-241c1c);border:1px solid var(--cl-3a2a29)}
 .chatmd pre code{color:color-mix(in srgb, var(--accent) 8%, var(--gdb));background:none;border:0}
 .chatmd .mdLink{color:var(--cf-6fb1ff);text-decoration:underline;text-underline-offset:2px}
@@ -669,14 +669,14 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .msg.toolrow pre{margin:6px 0 2px;padding:8px 10px;border-radius:8px;background:color-mix(in srgb, var(--accent) 6%, var(--g08));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27));color:color-mix(in srgb, var(--accent) 8%, var(--g9b));font:12px/1.5 var(--mono);overflow:auto;max-height:200px;white-space:pre-wrap}
 .msg.toolplain{color:color-mix(in srgb, var(--accent) 8%, var(--g79))}
 
-/* ---- + do projeto na barra lateral ---- */
+/* ---- project + in the sidebar ---- */
 .projrow{position:relative}
 .projnew{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:24px;height:24px;padding:0;border-radius:7px;background:color-mix(in srgb, var(--accent) 6%, var(--g18));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g2b));color:color-mix(in srgb, var(--accent) 8%, var(--gaf));font-size:15px;line-height:1;display:grid;place-items:center;opacity:0;transition:opacity .12s}
 .projrow:hover .projnew,.projnew:focus-visible{opacity:1}
 .projnew:hover{border-color:var(--accent);color:var(--accent-strong);filter:none}
 .projnew.tip::after{left:auto;right:calc(100% + 6px);bottom:50%;transform:translateY(50%)}
 
-/* ---- agente trabalhando: átomo animado, verbo, tempo e digitação ---- */
+/* ---- agent working: animated atom, verb, time and typing ---- */
 .thinking{display:flex;align-items:center;gap:9px;padding:4px 0;color:color-mix(in srgb, var(--accent) 8%, var(--g9b));font-size:13.5px}
 .mascot{flex:none;display:block;object-fit:contain}
 .thinking .tverb{background:linear-gradient(90deg,color-mix(in srgb, var(--accent) 8%, var(--g79)) 0%,color-mix(in srgb, var(--accent) 8%, var(--gec)) 50%,color-mix(in srgb, var(--accent) 8%, var(--g79)) 100%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shimmer 2.2s linear infinite}
@@ -688,7 +688,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 
 .ck-line .t small.acct{display:block;color:var(--accent-strong);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* ---- barra de rolagem fininha e suave (metade da padrão) ---- */
+/* ---- thin, smooth scrollbar (half the default) ---- */
 *{scrollbar-width:auto;scrollbar-color:auto}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -696,7 +696,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 ::-webkit-scrollbar-thumb:hover{background:rgba(152,160,153,.5)}
 ::-webkit-scrollbar-corner{background:transparent}
 
-/* ---- menu do botão direito no card ---- */
+/* ---- right-click menu on the card ---- */
 .ctxmenu{position:fixed;z-index:120;min-width:230px;padding:6px;border-radius:12px;background:color-mix(in srgb, var(--accent) 6%, var(--g14));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g30));box-shadow:0 18px 48px var(--cs-000000aa),0 0 0 1px var(--cs-00000044);animation:ctxin .12s ease-out}
 @keyframes ctxin{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}
 .ctxtitle{padding:7px 10px 8px;font-size:11.5px;font-weight:600;color:color-mix(in srgb, var(--accent) 8%, var(--g79));max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27));margin-bottom:5px}
@@ -709,7 +709,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .ctxitem:disabled{opacity:.48;cursor:not-allowed}.chat-menu-note{max-width:245px;margin:3px 10px 6px;color:var(--muted);font-size:11px;line-height:1.4}
 .ctxsep{height:1px;background:color-mix(in srgb, var(--accent) 6%, var(--g27));margin:5px 4px}
 
-/* ---- página de chats (no lugar do quadro) ---- */
+/* ---- chats page (in place of the board) ---- */
 .chatspage{padding:22px 2px 90px;display:grid;gap:14px;width:100%;box-sizing:border-box}
 .cptools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .cpsearch{position:relative;flex:1;min-width:300px;max-width:630px}.cpsearch input{padding-right:38px;min-height:50px;font-size:15px}.cpsearch input::-webkit-search-cancel-button{margin-right:20px}.cpsearch>svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;fill:none;stroke:var(--muted);stroke-width:1.7;stroke-linecap:round;pointer-events:none}
@@ -723,7 +723,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .cpmeta{display:flex;align-items:center;gap:10px;font-size:12px;color:color-mix(in srgb, var(--accent) 8%, var(--g79))}
 .cpempty{padding:28px;text-align:center}
 
-/* ---- skills: lista resumida (nome + origem + agentes), expande para a descrição ---- */
+/* ---- skills: summary list (name + origin + agents), expands to the description ---- */
 .skill-row.compact .skill-top{display:flex;align-items:center;gap:10px;cursor:pointer;padding:2px 0}
 .skill-row.compact .chev{color:color-mix(in srgb, var(--accent) 8%, var(--g79));font-size:16px;transition:transform .15s;flex:none;width:12px}.skill-row.compact.open .chev{transform:rotate(90deg)}
 .skill-row.compact .skname{display:grid;gap:2px;min-width:0;flex:1}.skill-row.compact .skname b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -736,7 +736,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .impmenu .impdrop{left:auto;right:0;bottom:auto;top:calc(100% + 6px);width:300px;background:color-mix(in srgb, var(--accent) 6%, var(--g14));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g30));border-radius:12px;padding:6px;box-shadow:0 18px 48px var(--cs-000000aa)}
 .impdrop .modeopt{display:flex;width:100%;text-align:left}
 
-/* ---- seletor de visão: Quadro | Chats ---- */
+/* ---- view switcher: Board | Chats ---- */
 .viewtoggle{display:inline-flex;padding:3px;border-radius:11px;background:color-mix(in srgb, var(--accent) 6%, var(--g10));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27));gap:2px}
 .viewtoggle button:not(.viewdock-handle){display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:8px;background:transparent;border:0;color:color-mix(in srgb, var(--accent) 8%, var(--g9b));font-size:13px;font-weight:600;cursor:pointer}
 .viewtoggle button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -744,7 +744,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .viewtoggle button.on{background:var(--accent-bg);color:var(--accent-strong);box-shadow:inset 0 0 0 1px var(--accent-line)}
 .head .tools{align-items:center;gap:8px}
 
-/* Ações do agente agrupadas: só a última visível; expande para o histórico com rolagem interna. */
+/* Grouped agent actions: only the last one visible; expands to the history with internal scrolling. */
 .toolgroup{justify-self:stretch;display:grid;gap:4px;border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27));border-radius:9px;padding:6px 10px;background:color-mix(in srgb, var(--accent) 6%, var(--g0d));max-width:100%;min-width:0}
 .toolgroup-head{display:flex;align-items:center;justify-content:space-between;gap:8px;background:none;border:0;padding:0;color:color-mix(in srgb, var(--accent) 8%, var(--g90));font:600 11.5px/1.4 var(--sans,inherit);cursor:pointer;text-align:left}
 .toolgroup-head:hover{color:color-mix(in srgb, var(--accent) 8%, var(--gd3));filter:none}
@@ -754,20 +754,20 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .toolgroup-list{display:grid;gap:4px;max-height:260px;overflow:auto;padding-right:4px;scrollbar-width:thin}
 .toolgroup-more{font-size:11px;color:color-mix(in srgb, var(--accent) 8%, var(--g6f));text-align:center;padding:2px 0}
 
-/* ---- pausado: borda amarela e bolinha pulsando de leve ---- */
+/* ---- paused: yellow border and a gently pulsing dot ---- */
 .card.paused{border-color:var(--cl-7d6a2c);box-shadow:0 0 0 1px #7d6a2c66,0 0 16px #c9a22722}
 .dot.softpulse,.agchip.paused .agdot{animation:softpulse 1.8s ease-in-out infinite}
 @keyframes softpulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 0 #e8c36a55}50%{opacity:.55;transform:scale(1.22);box-shadow:0 0 0 4px #e8c36a00}}
 @media (prefers-reduced-motion:reduce){.dot.softpulse,.agchip.paused .agdot{animation:none}}
 
-/* ---- plano pronto: bolinha também pulsa de leve (verde) ---- */
+/* ---- plan ready: dot also pulses gently (green) ---- */
 .badge.ready .dot.softpulse,.tstatus .dot.softpulse{animation:softpulseG 1.8s ease-in-out infinite}
 @keyframes softpulseG{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 0 color-mix(in srgb, var(--accent-strong) 33%, transparent)}50%{opacity:.55;transform:scale(1.22);box-shadow:0 0 0 4px transparent}}
 .dot.softpulse{animation:softpulse 1.8s ease-in-out infinite}
 .badge.ready .dot.softpulse{animation-name:softpulseG}
 @media (prefers-reduced-motion:reduce){.badge.ready .dot.softpulse{animation:none}}
 
-/* ---- card "Alterações" flutuando à esquerda do chat do card ---- */
+/* ---- "Changes" card floating to the left of the card chat ---- */
 .dock.open{overflow:visible}
 .dockside{position:absolute;right:calc(100% + 14px);top:16px;bottom:16px;width:340px;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;z-index:25;pointer-events:none}
 .dockside>*{pointer-events:auto}
@@ -780,7 +780,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .pg-body h1,.pg-body h2,.pg-body h3{font-size:12px;margin:8px 0 2px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .pg-body p{margin:4px 0}
 @keyframes chin{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:none}}
-/* Tela cheia: Tasks e Alterações viram uma coluna própria à esquerda do chat, em vez de flutuar por cima dele. */
+/* Fullscreen: Tasks and Changes become their own column to the left of the chat, instead of floating over it. */
 .dock.full:has(>.dockside){grid-template-columns:clamp(260px,24vw,400px) minmax(0,1fr) 230px}
 .dock.full>.dockside{position:static;grid-column:1;grid-row:1;width:auto;min-width:0;min-height:0;overflow:hidden;padding:16px 16px 16px 16px;justify-content:space-between;z-index:auto;pointer-events:auto;box-sizing:border-box}
 .dock.full>.dockside>.progress{overflow:hidden}
@@ -824,7 +824,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .ch-cmd{display:grid;gap:5px;font-size:11.5px;font-weight:600;color:color-mix(in srgb, var(--accent) 8%, var(--g9b))}
 .ch-error{margin:0;font-size:12px;line-height:1.45;color:var(--cf-ff8f86)}
 
-/* ---- visualizador de arquivo ao lado do chat ---- */
+/* ---- file viewer beside the chat ---- */
 .dock.withviewer{flex-direction:row}
 .dock.withviewer>.dock-in{flex:none}
 .fview{flex:none;min-width:0;height:100%;display:flex;flex-direction:column;background:color-mix(in srgb, var(--accent) 6%, var(--g0a));border-right:1px solid var(--border)}
@@ -854,14 +854,14 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .mdFile.code{font-family:var(--mono);font-size:.92em;background:var(--surface-3);padding:1px 5px;border-radius:4px;text-decoration:none}
 .mdFile.code:hover{background:color-mix(in srgb, var(--accent) 6%, var(--g30))}
 
-/* ---- mensagem na fila (escrita enquanto o agente trabalha) ---- */
+/* ---- queued message (written while the agent works) ---- */
 .queued{position:relative;display:flex;align-items:center;gap:8px;background:color-mix(in srgb, var(--accent) 6%, var(--g15));border:1px solid var(--accent-line);border-radius:12px;padding:8px 8px 8px 12px}
 .q-content{flex:1;min-width:0}.q-content .attachments{margin:0 0 8px}
 .q-text{flex:1;min-width:0;margin:0;color:color-mix(in srgb, var(--accent) 8%, var(--gdb));font-size:13px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .q-send{align-self:center}
 .q-tools{position:relative;display:flex;align-items:center;gap:2px;flex:none}.q-more svg{fill:currentColor;stroke:none}.q-menu{position:absolute;right:0;bottom:calc(100% + 6px);z-index:20;display:grid;min-width:160px;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.35)}.q-menu button{padding:7px 9px;text-align:left;background:transparent;border-radius:7px;color:var(--text);font-size:12px}.q-menu button:hover{background:var(--surface-3);filter:none}.q-menu button.danger{color:var(--cf-ff9d91)}
 
-/* ---- perguntas do agente com opções ---- */
+/* ---- agent questions with options ---- */
 .qcard{display:grid;gap:10px;margin:8px 0;padding:12px 14px;background:color-mix(in srgb, var(--accent) 6%, var(--g15));border:1px solid var(--accent-line);border-radius:12px;white-space:normal}
 .q-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .q-count{font-size:11.5px;color:var(--muted);font-weight:600}
@@ -885,7 +885,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .q-nav button{padding:5px 12px;font-size:12.5px}
 .qcard.answered{background:transparent;border-color:color-mix(in srgb, var(--accent) 6%, var(--g2b));opacity:.85}.qcard.answered ul{margin:0;padding-left:18px;color:var(--muted);font-size:12.5px}.qcard.answered li+li{margin-top:8px}.qcard.answered .q-reply{display:block;margin-top:2px;color:var(--text);font-weight:600;font-size:13px}.qcard.answered .q-reply::before{content:"→ ";color:var(--accent)}
 
-/* ---- tarefa pequena, tokens do card e aviso de skill ---- */
+/* ---- small task, card tokens and skill notice ---- */
 .pill.minor{background:var(--cb-3a3520);color:var(--cf-d9c27a)}
 .editor.docs.smallcard{grid-template-columns:270px minmax(0,1fr)}
 .smallnote{margin:0;padding:9px 11px;border:1px solid var(--cl-51472d);background:var(--cb-2b2a1e);border-radius:9px;color:var(--cf-d9c27a);font-size:12px}.smallnote b{color:var(--cf-e8d9a0)}
@@ -896,7 +896,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .msg.skillnote{display:flex;align-items:center;gap:8px;background:transparent;padding:4px 2px;color:var(--muted);font-size:12px}
 .skillbadge{background:var(--accent-bg);color:var(--accent-strong);border:1px solid var(--accent-line);border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .skillnote b{color:var(--text);font-weight:600}
-/* Constituição do projeto (aba nas configurações do projeto) */
+/* Project Constitution (tab in the project settings) */
 .cons{gap:12px}
 .cons-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cons-view{max-height:min(46vh,420px);overflow:auto;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
@@ -907,7 +907,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .cons-prop{display:grid;gap:6px;padding:10px 12px;border:1px solid var(--accent-line);border-radius:10px;background:var(--accent-deep)}
 .cons-prop-t{display:flex;justify-content:space-between;gap:8px;font-size:13px}
 .cons-prop p{margin:0;font-size:12.5px;line-height:1.5;white-space:pre-wrap}
-/* Ícone do projeto: imagem no lugar da inicial */
+/* Project icon: image in place of the initial */
 .proj i.img,.iconprev i.img{background:transparent;overflow:hidden}
 .proj i img,.iconprev i img{width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block}
 .iconpick{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -915,7 +915,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .cons-view h1{font-size:17px;margin:4px 0 8px}.cons-view h2{font-size:15px;margin:18px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--border)}.cons-view h3{font-size:13.5px;margin:14px 0 4px;color:var(--accent-strong)}
 .cons-view table{display:block;max-width:100%;overflow-x:auto;font-size:12px}
 .cons-view blockquote{margin:10px 0}
-/* Barra lateral: arrastar projetos e menu do botão direito */
+/* Sidebar: dragging projects and right-click menu */
 .projrow[draggable]{cursor:grab}.projrow.dragging{opacity:.45}
 .projnew svg{width:13px;height:13px;display:block;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round}
 .projmenu{position:fixed;z-index:120;min-width:190px;display:grid;padding:5px;border-radius:10px;background:var(--surface);border:1px solid var(--border);box-shadow:0 14px 40px var(--cs-00000099)}
@@ -923,16 +923,16 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .projmenu button{background:transparent;border:0;text-align:left;padding:7px 10px;border-radius:7px;color:var(--text);font-weight:500;font-size:13px}
 .projmenu button:hover{background:var(--surface-2);filter:none}.projmenu button.danger{color:var(--danger)}.projmenu button.danger:hover{background:color-mix(in srgb, var(--danger) 12%, transparent)}
 .projmenu button{display:flex;align-items:center;gap:9px}.projmenu button>span{flex:1}.projmenu button svg,.ctxitem-icon svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.projmenu button kbd{color:var(--muted);font:11px var(--mono);margin-left:12px}.ctxitem .ctxitem-icon{display:inline-flex;align-items:center;flex:none}
-/* Barra de título própria: arrasta a janela; os botões do Windows ficam por cima, à direita (titleBarOverlay transparente). */
+/* Own title bar: drags the window; the Windows buttons sit on top, on the right (transparent titleBarOverlay). */
 :root{--titlebar:44px}
 .titlebar{flex:none;height:var(--titlebar);display:flex;align-items:center;position:relative;-webkit-app-region:drag;user-select:none}
 .titlebar .tb-side{position:absolute;left:0;top:0;bottom:0;width:230px;background:color-mix(in srgb, var(--accent) 6%, var(--g0a));border-right:1px solid color-mix(in srgb, var(--accent) 6%, var(--g20));transition:width .2s}
 .titlebar.collapsed .tb-side{width:0;border-right:0}
 .shell{flex:1;min-height:0;height:auto}
 .overlay{padding-top:calc(var(--titlebar) + 16px)}
-/* Todos os agentes que trabalharam no card, sobrepostos */
+/* All the agents that worked on the card, overlapping */
 .agentstack{display:inline-flex;align-items:center}.agentstack>*+*{margin-left:-6px}.agentstack>*{box-shadow:0 0 0 2px var(--surface-2);border-radius:7px}
-/* Agentes do projeto por estado (cabeçalho do quadro) */
+/* Project agents by state (board header) */
 .agentareas{display:flex;align-items:stretch;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;max-width:min(760px,62vw);flex-wrap:wrap}
 .agarea{display:flex;align-items:center;gap:6px;padding:5px 10px;min-height:32px;box-sizing:border-box}
 .agarea+.agarea{border-left:1px solid var(--border)}
@@ -962,9 +962,9 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .wf-preview{flex:1;min-height:0;overflow:auto;border:0;border-radius:0;padding:24px 30px;font-size:14px;background:var(--bg)}.wf-html{flex:1;min-height:0;width:100%;border:0;background:white}.wf-code{position:relative;display:flex;flex:1;min-height:0;overflow:hidden;background:color-mix(in srgb,var(--accent) 3%,var(--g10))}.cm-host{flex:1;min-width:0;min-height:0}.cm-host .cm-editor{height:100%}.cm-host.guides .cm-content{background-image:repeating-linear-gradient(to right,transparent,transparent calc(var(--wf-tab) * 1ch - 1px),color-mix(in srgb,var(--muted) 10%,transparent) calc(var(--wf-tab) * 1ch - 1px),color-mix(in srgb,var(--muted) 10%,transparent) calc(var(--wf-tab) * 1ch));background-position:8px 0}.cm-panels:has(.wf-hidden-search){display:none}.wf-picked{background:color-mix(in srgb,var(--accent) 16%,transparent)}.cm-gutterElement.wf-picked-gutter{background:var(--accent-bg);color:var(--accent-strong)}.wf-whitespace-note{position:absolute;inset:auto 10px 10px;max-height:160px;overflow:auto;padding:6px 9px;background:var(--surface-2);border:1px solid var(--border);border-radius:7px;font-size:10px;color:var(--muted)}.wf-whitespace-note pre{margin:4px 0 0;white-space:pre;font:11px/1.4 var(--mono)}.wf-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 10px;border-top:1px solid var(--border);color:var(--muted);font-size:10px;flex:none}.wf-status{position:relative}.wf-status>span{margin-left:auto}.wf-statusmenubox{position:relative;display:inline-block;margin:0}.wf-statusbtn{padding:0 3px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:4px}.wf-statusbtn:hover{background:var(--surface-2);color:var(--text)}.wf-statusmenu{position:absolute;top:auto;right:0;bottom:calc(100% + 8px);display:flex;flex-direction:column;gap:2px;min-width:110px;padding:4px;z-index:5}.wf-statusmenu button{padding:5px 8px;border:0;border-radius:5px;background:none;color:var(--text);font-size:11px;text-align:left;cursor:pointer}.wf-statusmenu button:hover,.wf-statusmenu button.on{background:var(--accent-bg)}.wf-shortcuts{display:flex;flex-direction:column;gap:2px;max-height:190px;overflow:auto;margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:11px}.wf-shortcuts>b{font-size:11px;margin-bottom:2px}.wf-shortcuts p{display:flex;justify-content:space-between;gap:10px;margin:0}.wf-shortcuts kbd{font:10.5px var(--mono);color:var(--accent-strong,var(--accent));white-space:nowrap}.wf-shortcuts span{color:var(--muted);text-align:right}.wf-findtext{height:28px;padding:0 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);color:var(--text);font-size:11px;cursor:pointer}.wf-findtext:disabled{opacity:.45;cursor:default}.wf-replace{padding-top:0}
 @media(max-width:700px){.workspacefiles.left,.workspacefiles.right{width:100%}.wf-tree{width:180px}.wf-context{display:none}.wf-preview{padding:18px}.wf-status>span{display:none}}
 .wf-code:focus-within{box-shadow:inset 0 0 0 1px var(--accent-line)}
-/* Altura padrão dos botões de texto: a do "Salvar" (32px), igual com ou sem borda. Botões de ícone, abas e itens de menu ficam de fora. */
+/* Default height of text buttons: the "Save" one (32px), the same with or without a border. Icon buttons, tabs and menu items are left out. */
 :where(button:not([class]), button.secondary, button.danger, button.mini, button.ch-btn):not([role="menuitem"]):not([role="tab"]){min-height:32px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:6px}
-/* Painel de progresso: cada task é um mini card; expandir mostra os critérios dela. */
+/* Progress panel: each task is a mini card; expanding shows its criteria. */
 .pg-body{display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-height:0;overflow-y:auto;padding-right:4px}
 .pg-body>*{flex:none}
 .pg-group{margin:6px 2px 0;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
@@ -989,7 +989,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .pg-criteria li{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.45;color:color-mix(in srgb, var(--accent) 8%, var(--gc9));padding:6px 8px;border:1px solid var(--border);border-radius:7px;background:var(--surface)}
 .pg-criteria li.done{color:var(--muted)}.pg-criteria li.done .pg-text{text-decoration:line-through;text-decoration-color:color-mix(in srgb, var(--muted) 55%, transparent)}
 .pg-criteria li.done .pg-mark{background:var(--accent-bg);border-color:var(--accent-muted)}
-/* Anexos do chat: "+" no campo de mensagem, chips dos arquivos e arrastar arquivos para o campo */
+/* Chat attachments: "+" in the message field, file chips and dragging files into the field */
 .attachbtn{width:32px;height:32px;padding:0;flex:none;display:grid;place-items:center;border-radius:9px;background:transparent;color:color-mix(in srgb, var(--accent) 8%, var(--g9b))}
 .attachbtn:hover{background:var(--surface-3);color:var(--text);filter:none}
 .attachbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
@@ -1000,7 +1000,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .attchip button{width:18px;height:18px;padding:0;border-radius:50%;background:transparent;color:inherit;font-size:14px;line-height:1;display:grid;place-items:center}
 .attchip button:hover{background:color-mix(in srgb, var(--accent) 25%, transparent);filter:none}
 .dockside>*{min-width:0}
-/* O painel de progresso cresce até o espaço disponível e rola por dentro */
+/* The progress panel grows to the available space and scrolls inside */
 .progress{min-height:0;overflow:hidden}
 .dock.full>.dockside>.progress{flex:0 1 auto}
 
@@ -1012,7 +1012,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .attcard-ext{align-self:flex-start;font:600 9px var(--sans);padding:1px 6px;border-radius:5px;background:var(--surface-3);color:var(--muted, #9b9b9b)}
 .attcard-x{position:absolute;top:4px;right:4px;width:18px;height:18px;padding:0;border-radius:50%;display:grid;place-items:center;font-size:13px;line-height:1;background:rgba(0,0,0,.65);color:#fff}
 .attcard-x:hover{background:rgba(0,0,0,.85);filter:none}
-/* Responder a um trecho do chat e guardar a resposta como contexto da próxima mensagem. */
+/* Reply to a chat excerpt and keep the reply as context for the next message. */
 .chat-reply-trigger,.chat-reply-popover{position:fixed;z-index:1200;border:1px solid var(--border);background:var(--surface-3);color:var(--text);box-shadow:0 8px 28px var(--cs-00000055)}
 .chat-reply-trigger{padding:6px 12px;border-radius:8px;font-size:12px}
 .chat-reply-popover{width:min(340px,calc(100vw - 16px));max-height:calc(100vh - 32px);overflow:auto;border-radius:14px;padding:14px;display:grid;gap:12px}
@@ -1036,12 +1036,12 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .q-content .chat-reply-cards{margin-bottom:8px}
 .cbox-top:has(>.chat-reply-cards){display:flex;flex-direction:row;flex-wrap:wrap;gap:8px}
 .cbox-top:has(>.chat-reply-cards)>.testbar{flex-basis:100%}
-/* Tela cheia em telas menores (notebook): as colunas laterais encolhem; depois a Visão rápida sai e, por último, Tasks/Alterações. */
+/* Fullscreen on smaller screens (laptop): the side columns shrink; then the Quick view goes away and, lastly, Tasks/Changes. */
 @media(max-width:1600px){.dock.full:has(>.dockside){grid-template-columns:clamp(230px,20vw,320px) minmax(0,1fr) 200px}.dock.full{grid-template-columns:minmax(0,1fr) 200px}}
 @media(max-width:1350px){.dock.full>.activity{display:none}.dock.full,.dock.full:has(>.dockside){grid-template-columns:minmax(0,1fr)}.dock.full:has(>.dockside){grid-template-columns:clamp(230px,24vw,300px) minmax(0,1fr)}}
 @media(max-width:1000px){.dock.full>.dockside{display:none}.dock.full:has(>.dockside){grid-template-columns:minmax(0,1fr)}.dock.full:has(>.dockside)>.dock-in{grid-column:1}}
 
-/* ---- Git: visão do projeto (grafo por repositório) e painel do card ---- */
+/* ---- Git: project view (graph per repository) and card panel ---- */
 .gitpage{position:relative;display:grid;grid-template-columns:var(--gside,230px) minmax(0,1fr) var(--gdetail,330px);gap:0;border:1px solid color-mix(in srgb, var(--accent) 7%, var(--g27));border-radius:14px;overflow:hidden;background:color-mix(in srgb, var(--accent) 7%, var(--g14));height:calc(100vh - 150px);min-height:420px}
 .gside{border-right:1px solid color-mix(in srgb, var(--accent) 7%, var(--g27));display:flex;flex-direction:column;min-height:0;background:color-mix(in srgb, var(--accent) 7%, var(--g12))}
 .grepo{padding:12px;border-bottom:1px solid color-mix(in srgb, var(--accent) 7%, var(--g27));display:grid;gap:6px}
@@ -1210,7 +1210,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .ghead span{position:relative}.gcolgrip{position:absolute;right:-4px;top:4px;bottom:4px;width:8px;cursor:col-resize;z-index:3}.gcolgrip::after{content:"";position:absolute;left:3px;top:2px;bottom:2px;width:2px;border-radius:2px;background:color-mix(in srgb, var(--accent) 7%, var(--g30))}.gcolgrip:hover::after,.gresizing .gcolgrip::after{background:var(--accent)}.gresizing{cursor:col-resize;user-select:none}.gdetail .gcardbox,.gdetail .gfiles{min-width:0}.gdetail .cgrow{flex-wrap:wrap}.gtools .gcur{white-space:nowrap}
 @container (max-width:1050px){.gitpage{grid-template-columns:200px minmax(0,1fr)}.gdetail{display:none}}
 @container (max-width:760px){.gitpage{grid-template-columns:minmax(0,1fr)}.gside{display:none}.ghead,.grow{grid-template-columns:var(--gw) minmax(0,1fr) 64px}.ghead span:nth-child(3),.grow .gwho{display:none}}
-/* painel Git dentro do card */
+/* Git panel inside the card */
 .viewtoggle.sm{padding:2px}.viewtoggle.sm button{padding:4px 9px;font-size:12px}
 .cgit{flex:1;overflow:auto;padding:14px 16px 18px;display:grid;gap:14px;align-content:start}
 .cgsum{display:grid;gap:6px;background:color-mix(in srgb, var(--accent) 7%, var(--g17));border:1px solid color-mix(in srgb, var(--accent) 7%, var(--g2c));border-radius:12px;padding:12px 14px}
@@ -1241,7 +1241,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .cgck input{accent-color:var(--accent)}
 .cgnote{font-size:12px;color:color-mix(in srgb, var(--accent) 7%, var(--g8e));line-height:1.5}
 .cgnote b{color:color-mix(in srgb, var(--accent) 7%, var(--gcc))}
-/* ---- Git: regra de commit do agente, pedido de commit e atalhos ---- */
+/* ---- Git: agent commit rule, commit request and shortcuts ---- */
 .cgpol{display:flex;align-items:center;gap:9px;margin-top:4px;padding:8px 10px;border-radius:9px;background:color-mix(in srgb, var(--accent) 7%, var(--g15));border:1px solid color-mix(in srgb, var(--accent) 7%, var(--g2c));font-size:12.5px;color:color-mix(in srgb, var(--accent) 7%, var(--gc4))}
 .cgpol>span:nth-child(2){flex:1;display:grid;gap:2px}.cgpol small{font-size:11px;color:color-mix(in srgb, var(--accent) 7%, var(--g7a));font-family:var(--sans)}
 .cgpol .pd{width:8px;height:8px;border-radius:50%;flex:none;background:var(--cb-e8c27a)}.cgpol.pol-auto .pd{background:var(--accent)}.cgpol.pol-never .pd{background:var(--cb-ff8f86)}
@@ -1271,7 +1271,7 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .grepo-row>span:nth-child(2){flex:1;min-width:0;display:grid;gap:1px}.grepo-row small{font-size:11px;color:color-mix(in srgb, var(--accent) 7%, var(--g7a));font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .grepo-row svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;color:color-mix(in srgb, var(--accent) 7%, var(--g98));flex:none}
 
-/* ---- Git: peças que o app tem a mais que o protótipo ---- */
+/* ---- Git: pieces the app has beyond the prototype ---- */
 button.gwp{background:transparent;padding:0;border-radius:0;text-align:left;font-weight:400;color:inherit;font-size:inherit}
 button.gwp:hover{filter:none;text-decoration:underline}
 .gdiff{margin:2px 0 6px 22px;padding:8px 10px;background:color-mix(in srgb, var(--accent) 7%, var(--g10));border:1px solid color-mix(in srgb, var(--accent) 7%, var(--g27));border-radius:8px;font:11.5px/1.45 var(--mono);color:color-mix(in srgb, var(--accent) 7%, var(--gc4));max-height:260px;overflow:auto;white-space:pre}
@@ -1304,19 +1304,19 @@ button.gwp:hover{filter:none;text-decoration:underline}
 .cgwrap{min-width:0;max-width:100%}.cgit{min-width:0;overflow-x:hidden!important}.cgit .cgnote,.cgit .cgc span,.cgfoot{overflow-wrap:anywhere;min-width:0}
 .cgrepo,.cgbody,.cgsum,.cgform,.cgprop{min-width:0;max-width:100%}
 .wsbox>.wsmeta{flex-wrap:wrap}.wsbase{flex:none;padding:1px 8px;border-radius:999px;border:1px solid var(--accent-line, #333);background:var(--accent-deep, transparent);color:var(--accent-strong, inherit)!important;font-weight:600}
-/* Painel de uso: lista fina, um agente embaixo do outro */
+/* Usage panel: thin list, one agent under the other */
 .ugrid{grid-template-columns:minmax(0,1fr)}
 .modal:has(>.ugrid){max-width:460px}
 .urings{background:none;border:0;padding:2px 4px;border-radius:8px;cursor:pointer}.urings:hover{background:var(--surface-3)}
 .wshead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .wsfold{display:flex;align-items:center;gap:6px;width:100%;background:none;border:0;padding:0;text-align:left;color:inherit;cursor:pointer}
 .wsfold b{flex:1;min-width:0;overflow-wrap:anywhere}.wsfold .chev{transition:transform .15s}.wsfold[aria-expanded="true"] .chev{transform:rotate(90deg)}
-/* Seções do card mais compactas */
+/* More compact card sections */
 .pane-left .sep{gap:4px;padding-top:10px}
 .pane-left .sechead{min-height:24px}
 .pane-left .foldprev{margin-top:0}.pane-left .startsec{margin-top:2px}
 .pane-left .wsmeta{display:flex;margin-top:2px}
-/* Pull dividido: botão + opções (fetch all / ff / ff-only / rebase) */
+/* Split Pull: button + options (fetch all / ff / ff-only / rebase) */
 .gsplit{position:relative;display:inline-flex;align-items:center}
 .gsplit .gtool:first-child{padding-right:6px}.gcaret{padding:6px 5px!important;font-size:11px}
 .gpullmenu{position:absolute;top:calc(100% + 6px);left:0;z-index:40;min-width:270px;display:grid;gap:2px;padding:8px;border-radius:10px;background:color-mix(in srgb, var(--accent) 7%, var(--g1d));border:1px solid color-mix(in srgb, var(--accent) 7%, var(--g30));box-shadow:0 14px 40px var(--cs-000000aa)}
@@ -1326,7 +1326,7 @@ button.gwp:hover{filter:none;text-decoration:underline}
 .gpullmenu button i{width:13px;height:13px;border-radius:50%;border:1.5px solid color-mix(in srgb, var(--accent) 16%, var(--g6c));flex:none}.gpullmenu button.on i{border-color:var(--accent-strong);box-shadow:inset 0 0 0 3px color-mix(in srgb, var(--accent) 7%, var(--g1d));background:var(--accent-strong)}
 .gdiffview>header .x{margin-left:auto}
 main{padding-top:6px}
-/* Constituição: card resumido + diálogo grande para ler e editar */
+/* Constitution: summary card + large dialog to read and edit */
 .cons-card{display:grid;gap:8px;padding:14px;border-radius:12px;background:color-mix(in srgb,var(--accent) 6%,var(--g14));border:1px solid color-mix(in srgb,var(--accent) 6%,var(--g2a))}
 .cons-card-t{display:flex;align-items:center;justify-content:space-between;gap:10px}.cons-card-t b{font-size:14.5px;min-width:0;overflow-wrap:anywhere}
 .cons-card p{margin:0;font-size:12.5px;line-height:1.5;color:var(--muted)}
@@ -1334,7 +1334,7 @@ main{padding-top:6px}
 .modal.cons-dialog{width:min(1100px,96vw);height:min(88vh,980px);display:flex;flex-direction:column;gap:12px}
 .cons-dialog-view{flex:1;min-height:0;overflow:auto;max-height:none}
 .cons-dialog-edit{flex:1;min-height:0;resize:none;font-family:var(--mono);font-size:13px}
-/* Painel de uso compacto: uma linha por janela, barra fina */
+/* Compact usage panel: one row per window, thin bar */
 .modal.usage{padding:16px 18px;gap:10px}.modal.usage h2{font-size:18px}
 .modal.usage .ugrid{gap:8px}.modal.usage .ucard{padding:10px 12px;gap:6px}
 .modal.usage .uhead{gap:8px}.modal.usage .uhead svg,.modal.usage .uhead .av{width:24px;height:24px}
@@ -1342,15 +1342,15 @@ main{padding-top:6px}
 .modal.usage .ublk .uh{display:flex;align-items:baseline;gap:8px;font-size:13px}.modal.usage .ublk .uh span{flex:1;min-width:0}
 .modal.usage .ublk .uh b{font-size:13px}.modal.usage .ublk .uh small{font-size:11.5px;white-space:nowrap}
 .modal.usage .ubar{height:3px}.modal.usage .actions{display:none}
-/* Os botões de exportar e apagar o histórico ficam visíveis. */
+/* The export and clear-history buttons stay visible. */
 .modal.usage .usage-area .actions{display:flex;justify-content:flex-start}
-/* Painel de uso: cabeçalho e abas fixos; só a lista (corpo) rola. */
+/* Usage panel: fixed header and tabs; only the list (body) scrolls. */
 .modal.usage-history{max-height:min(86vh,780px);overflow:hidden;display:flex;flex-direction:column}.modal.usage-history>header,.modal.usage-history>.tabs{flex:none}
 .usage-body{flex:1 1 auto;min-height:0;overflow:auto;display:grid;gap:12px;align-content:start;padding-right:4px}.usage-history{display:grid;gap:12px}.usage-area{display:grid;gap:8px;padding-top:10px;border-top:1px solid color-mix(in srgb,var(--accent) 7%,var(--g2b))}.usage-area:first-of-type{padding-top:0;border-top:0}.usage-area-title{display:grid;gap:2px}.usage-area-title b{font-size:13px}.usage-area-title small{font-size:11.5px;color:var(--muted)}.history-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-/* Consumo por agente: uma linha por agente, números alinhados à direita. */
+/* Usage per agent: one row per agent, numbers right-aligned. */
 .usage-agents{width:100%;border-collapse:collapse;font-size:12.5px}.usage-agents th{text-align:left;font-size:11px;font-weight:700;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--border)}.usage-agents th:not(:first-child),.usage-agents td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .usage-agents td:first-child{width:34%}.usage-agents td{padding:7px 6px;border-bottom:1px solid color-mix(in srgb,var(--accent) 5%,var(--g24))}.usage-agents tr:last-child td{border-bottom:0}.usage-agent{display:inline-flex;align-items:center;gap:7px;font-weight:600}.history-grid>div{display:grid;gap:3px;padding:9px 10px;border:1px solid color-mix(in srgb,var(--accent) 7%,var(--g30));border-radius:9px;background:color-mix(in srgb,var(--accent) 5%,var(--g16))}.history-grid small{font-size:11px;color:var(--muted)}.history-grid b{font:600 13px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.history-grid.costs b{font-family:var(--sans)}
-/* Menu de uso do agente ao clicar nos anéis do composer */
+/* Agent usage menu when clicking the rings in the composer */
 .uwrap{position:relative;display:inline-flex}
 .upop2{position:absolute;right:0;bottom:calc(100% + 10px);z-index:60;width:320px;display:grid;gap:10px;padding:12px 14px;border-radius:12px;background:var(--cb-17191b);border:1px solid var(--cl-2c3033);box-shadow:0 14px 40px var(--cs-000000aa)}
 .up2t{font-size:12.5px;color:var(--cf-8d9296)}
@@ -1358,7 +1358,7 @@ main{padding-top:6px}
 .upop2 .ubar{height:4px}
 .gphoto{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
 .me:has(>.gphoto){overflow:hidden;padding:0}
-/* Lateral do Git: seções redimensionáveis, pastas de branches e ícones nos títulos */
+/* Git sidebar: resizable sections, branch folders and icons in the titles */
 .gtree.gcol{display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;padding:4px 6px 8px}
 .gcol .gsec{display:flex;flex-direction:column;min-height:0;margin-top:0}.gcol .gsec.open{min-height:64px}
 .gcol .gsec>b{flex:none;align-items:center}.gsico{display:inline-flex}.gsico svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
@@ -1371,7 +1371,7 @@ main{padding-top:6px}
 .gfold:hover{background:color-mix(in srgb, var(--accent) 7%, var(--g20));filter:none}.gfold svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;opacity:.8}
 .gfold .gn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12px}.gfold small{color:color-mix(in srgb, var(--accent) 7%, var(--g7a));font-size:11px}
 .gfin{margin-left:15px;padding-left:6px;border-left:1px solid color-mix(in srgb, var(--accent) 7%, var(--g27))}
-/* Diff de arquivo: números antes/depois, vermelho (saiu), verde (entrou) e destaque no trecho que mudou */
+/* File diff: before/after numbers, red (removed), green (added) and highlight on the changed part */
 .gdl{font:12px/1.55 var(--mono);min-width:max-content}
 .gdl-row{display:grid;grid-template-columns:46px 46px 18px minmax(0,1fr);color:color-mix(in srgb, var(--accent) 7%, var(--gc4))}
 .gdl-row .no{text-align:right;padding-right:8px;color:color-mix(in srgb, var(--accent) 7%, var(--g60));user-select:none}.gdl-row .sign{text-align:center;color:color-mix(in srgb, var(--accent) 7%, var(--g7a));user-select:none}
@@ -1384,16 +1384,16 @@ main{padding-top:6px}
 .gdiffbody{padding:0}
 .gdstat{font-size:12px;font-family:var(--mono)}.gdstat .p{color:var(--cf-8fd19e)}.gdstat .m{color:var(--cf-ff8f86)}
 .gfile.click{cursor:pointer;border-radius:7px}.gfile.click:hover{background:color-mix(in srgb, var(--accent) 7%, var(--g20))}
-/* Alças para mudar a largura da lateral e do detalhe do Git */
+/* Handles to change the width of the Git sidebar and detail */
 .gpanegrip{position:absolute;top:0;bottom:0;width:9px;z-index:30;cursor:col-resize;touch-action:none}
 .gpanegrip.side{left:calc(var(--gside,230px) - 4px)}.gpanegrip.detail{right:calc(var(--gdetail,330px) - 9px)}
 .gpanegrip::after{content:"";position:absolute;left:4px;top:0;bottom:0;width:1px;background:transparent;transition:background .12s}
 .gpanegrip:hover::after,.gresizing .gpanegrip::after{background:var(--accent);width:2px;left:3px}
-/* Alças de coluna que correm por todas as linhas do grafo */
+/* Column handles that run through all the graph rows */
 .gcolfull{position:absolute;top:0;width:9px;z-index:26;cursor:col-resize;touch-action:none}
 .gcolfull::after{content:"";position:absolute;left:4px;top:0;bottom:0;width:1px;background:transparent;transition:background .12s}
 .gcolfull:hover::after,.gresizing .gcolfull::after{background:var(--accent);width:2px;left:3px;opacity:.8}
-/* Esqueleto de carregamento do Git (grafo e lateral) */
+/* Git loading skeleton (graph and sidebar) */
 @keyframes gshimmer{0%{background-position:-240px 0}100%{background-position:240px 0}}
 .gskel-chip,.gskel-dot,.gskel-bar,.gskel-tag{display:block;border-radius:7px;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 6%,var(--g1d)) 0,color-mix(in srgb,var(--accent) 12%,var(--g2a)) 50%,color-mix(in srgb,var(--accent) 6%,var(--g1d)) 100%) 0 0/480px 100%;animation:gshimmer 1.3s linear infinite}
 @media (prefers-reduced-motion:reduce){.gskel-chip,.gskel-dot,.gskel-bar,.gskel-tag{animation:none}}
@@ -1403,7 +1403,7 @@ main{padding-top:6px}
 .gskel-bar{height:12px;width:var(--w,60%)}.gskel-tag{height:16px;width:50%;margin-left:10px}
 .gskel-side{padding-top:10px;gap:14px;display:grid;align-content:start}.gskel-sec{display:grid;gap:9px;padding:0 6px}
 .gskel-side .gskel-bar{height:12px}.gskel-side .gskel-bar.head{width:40%;height:10px;margin-bottom:4px}
-/* Card do commit no topo do detalhe: clicar filtra o grafo por ele */
+/* Commit card at the top of the detail: clicking filters the graph by it */
 .gcardbox.top{cursor:pointer;gap:10px;padding:12px 14px;border-radius:12px;transition:border-color .12s,background .12s}
 .gcardbox.top>b{font-size:14px;line-height:1.35}
 .gcardbox.top:hover{border-color:var(--accent-line)}.gcardbox.top.on{border-color:var(--accent);background:var(--accent-deep)}
@@ -1419,14 +1419,14 @@ main{padding-top:6px}
 .gbranchchip{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:2px 9px 2px 7px;border-radius:999px;border:1px solid var(--accent-line);background:var(--accent-deep);color:var(--accent-strong);font:600 11.5px var(--mono)}
 .gbranchchip svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .gbranchchip span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Documento com pendência (Mudanças/Dúvidas): chama a atenção e abre a autorização */
+/* Document with a pending item (Changes/Questions): draws attention and opens the authorization */
 .docbtn.ask{border-color:var(--accent);background:var(--accent-deep)}
 .docbtn.ask .ds{display:inline-flex;align-items:center;gap:6px;color:var(--accent-strong);font-weight:700}
-/* Atalhos do modo teste acima da caixa de conversa */
+/* Test mode shortcuts above the chat box */
 .testbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 2px 8px}
 .testbar .autosave{margin-left:auto}
 
-/* Complexity Engine: indicador no card e histórico de avaliações (docs/09) */
+/* Complexity Engine: indicator on the card and evaluation history (docs/09) */
 .cx-badge{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--surface-2);color:var(--muted);cursor:pointer}
 .cx-badge b{font-size:11px;color:var(--text)}.cx-badge .cx-wf{font-weight:600;text-transform:none;opacity:.8}
 .cx-badge.simple{border-color:var(--accent-line)}.cx-badge.simple b{color:var(--accent-strong)}
@@ -1494,7 +1494,7 @@ main{padding-top:6px}
 .editor.docs.wide{grid-template-columns:minmax(0,1fr)}.editor.wide .pane-left,.editor.wide .pane-docs{display:none}
 .modal.wide>header>div:first-child{flex:1;min-width:0}
 
-/* Workflow do projeto: seções em cartões, campos no padrão do app */
+/* Project workflow: sections in cards, fields in the app's standard style */
 .cx-wfpanel{gap:10px}
 .cx-wfpanel h4{margin:14px 0 0;padding-top:16px;border-top:1px solid color-mix(in srgb, var(--accent) 6%, var(--g25));font-size:13.5px;font-weight:700;letter-spacing:.01em}
 .cx-wfpanel>h4:first-of-type{margin-top:6px}
@@ -1512,7 +1512,7 @@ main{padding-top:6px}
 
 .modal.wide>header{align-items:center}.modal.wide>header h2{margin:0}
 
-/* Repositórios do card como etiquetas */
+/* Card repositories as labels */
 .repochips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .repochip{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;background:color-mix(in srgb, var(--accent) 6%, var(--g1a));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g31));color:color-mix(in srgb, var(--accent) 8%, var(--gd3))}
 .repochip.all{color:var(--muted);font-weight:500}
@@ -1525,7 +1525,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 
 .gdetail .gbody.short{max-height:4.4em;overflow:hidden;-webkit-mask-image:linear-gradient(#000 60%,transparent);mask-image:linear-gradient(#000 60%,transparent)}
 .gmore{align-self:flex-start;background:none;border:0;padding:0;margin-top:-4px;color:var(--accent);font-size:11.5px;font-weight:600}.gmore:hover{text-decoration:underline;filter:none}
-/* Tokens do card no editor: botão com o total em destaque e o cache embaixo; o clique abre a divisão por etapa com os agentes em chips */
+/* Card tokens in the editor: button with the total highlighted and the cache below; the click opens the breakdown by step with the agents in chips */
 .tokbtn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;color:var(--text);cursor:pointer;text-align:left}
 .tokbtn:hover,.tokbtn.on{border-color:var(--accent-line);background:var(--accent-deep);filter:none}
 .tokbtn-label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
@@ -1539,11 +1539,11 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 
 .wsrepos{list-style:none;margin:2px 0 0;padding:0;display:grid;gap:8px}.wsrepos li{display:grid;gap:3px;justify-items:start}.wsrepos small{white-space:normal;overflow-wrap:anywhere;overflow:visible;font-size:11px}
 
-/* Rodapé do card: tudo na mesma linha, centralizado */
+/* Card footer: everything on the same line, centered */
 .cfoot{min-height:26px;align-items:center}.cfoot .btns,.cfoot .ownr{display:flex;align-items:center;gap:6px;min-height:26px}.cfoot .cnt{line-height:1}.cfoot .agentstack{display:inline-flex;align-items:center}
 .ib.ws svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
-/* Pouco espaço (ex.: chat aberto ao lado): a descrição do commit abre embaixo do grafo, em vez de sumir ou ficar espremida na lateral. */
+/* Little space (e.g. chat open beside): the commit description opens below the graph, instead of disappearing or being squeezed into the sidebar. */
 @container (max-width:1050px){
   .gitpage:not(.nodetail){grid-template-columns:200px minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(180px,42%)}
   .gitpage:not(.nodetail)>.gside{grid-column:1;grid-row:1 / span 2}
@@ -1558,7 +1558,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
   .gitpage:not(.nodetail)>.gcenter{grid-row:1}
 }
 
-/* Cabeçalho do editor: título, "Abrir chat" e × centralizados na mesma linha */
+/* Editor header: title, "Open chat" and × centered on the same line */
 .modal.wide>header{align-items:center;min-height:44px}
 .modal.wide>header>div:first-child{display:flex;align-items:center}
 .modal.wide>header h2{flex:1;min-width:0;display:flex;align-items:center;line-height:1}
@@ -1568,7 +1568,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .modal.wide>header .x{width:32px;height:32px;padding:0;display:grid;place-items:center;line-height:1;font-size:20px}
 
 .pane-docs .cx-badge{align-self:stretch;justify-content:center;gap:8px;padding:6px 10px;font-size:10.5px}.pane-docs .cx-badge b{font-size:14px}
-/* ---- Complexidade: cartão ao passar o mouse no selo ---- */
+/* ---- Complexity: card on hover over the badge ---- */
 .cx-badge{position:relative}
 .cx-pop{position:fixed;z-index:95;width:272px;display:grid;gap:10px;padding:12px;text-align:left;text-transform:none;font-weight:500;letter-spacing:0;background:color-mix(in srgb, var(--accent) 6%, var(--g17));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g37));border-radius:12px;box-shadow:0 16px 44px var(--cs-000000cc);pointer-events:none;animation:tokdrop .15s ease-out}
 .cx-pop-head{display:flex;align-items:center;gap:10px}
@@ -1580,7 +1580,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .cx-pop-rows small{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}.cx-pop-rows b{font-size:12.5px;color:var(--text);font-weight:600;text-transform:capitalize}
 .cx-pop-foot{font-size:11px;color:var(--accent);text-align:center}
 
-/* ---- Diálogo de complexidade e decisões ---- */
+/* ---- Complexity and decisions dialog ---- */
 .modal.cx-dialog{width:min(1280px,96vw)}
 .cx-tabrow{display:flex;align-items:center;gap:12px;margin-bottom:2px}.cx-tabrow .tabs{flex:1;margin:0}.cx-open{flex:none}
 .cx-spacer{flex:1}
@@ -1595,7 +1595,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .cx-card ul{margin:0;padding-left:18px;display:grid;gap:5px;line-height:1.5}
 .cx-card.ok{border-color:var(--accent-line)}.cx-card.warn{border-color:color-mix(in srgb, var(--warn) 35%, transparent)}.cx-card.muted{opacity:.85}
 
-/* decisões */
+/* decisions */
 .cx-decisions{display:grid;gap:14px;align-content:start}.cx-decisions ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .cx-decisions li{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:12px;background:color-mix(in srgb, var(--accent) 6%, var(--g13));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27))}
 .cx-decisions li.approved{border-left:3px solid var(--accent)}.cx-decisions li.proposed{border-left:3px solid var(--warn)}.cx-decisions li.superseded{opacity:.55}.cx-decisions li.superseded .cx-statement{text-decoration:line-through}
@@ -1604,7 +1604,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .cx-decisions .cx-add{margin-top:0;padding:10px;border-radius:12px;background:color-mix(in srgb, var(--accent) 6%, var(--g13));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27))}
 .cx-body.cx-body-decisions{overflow:hidden;scrollbar-gutter:auto}.cx-body-decisions .cx-decisions{height:100%;min-height:0;grid-template-rows:auto minmax(0,1fr) auto;align-content:stretch}.cx-body-decisions .cx-decisions ul{min-height:0;overflow-y:auto;align-content:start;scrollbar-width:thin}.cx-body-decisions .cx-decisions .cx-empty{align-self:start}
 
-/* entendimento */
+/* understanding */
 .cx-brief{display:grid;gap:14px;align-content:start}
 .cx-exploration{gap:12px}
 .md.cx-exploration-summary{min-height:0;max-width:none;column-width:64ch;column-gap:40px;padding:14px 16px;border-radius:10px;background:var(--surface);font-size:13.5px;line-height:1.75;overflow-wrap:anywhere}
@@ -1616,7 +1616,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .cx-hero{display:grid;gap:8px;padding:18px 20px;border-radius:14px;background:linear-gradient(135deg,var(--accent-deep),color-mix(in srgb, var(--accent) 6%, var(--g13)));border:1px solid var(--accent-line)}.cx-hero p{margin:0;font-size:15px;line-height:1.55}.cx-hero .cx-muted{font-size:12.5px}
 .cx-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;align-items:start}
 
-/* métricas */
+/* metrics */
 .cx-metrics{display:grid;gap:14px;align-content:start}
 .cx-seg{display:inline-flex;padding:3px;gap:2px;border-radius:10px;background:color-mix(in srgb, var(--accent) 6%, var(--g0f));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g27))}
 .cx-seg button{background:transparent;color:var(--muted);padding:4px 12px;border-radius:7px;font-size:12px;font-weight:600}.cx-seg button.on{background:var(--accent-bg);color:var(--accent-strong)}.cx-seg button:hover{filter:none;color:var(--text)}
@@ -1637,7 +1637,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .cx-mtable td{padding:9px 12px}.cx-mtable tbody tr:nth-child(even) td{background:color-mix(in srgb, var(--accent) 6%, var(--g10))}.cx-mtable th.num,.cx-mtable td.num{text-align:right;font-variant-numeric:tabular-nums}
 .cx-mtable tr.cx-total td{background:color-mix(in srgb, var(--accent) 6%, var(--g1a));font-weight:700;border-top:1px solid var(--accent-line)}
 
-/* eventos */
+/* events */
 .cx-events{display:grid;gap:14px;align-content:start}
 .cx-body.cx-body-events{overflow:hidden;scrollbar-gutter:auto}
 .delete-card-artifacts{display:flex;align-items:flex-start;gap:10px;margin:14px 0;color:var(--text);font-size:13px;cursor:pointer}.delete-card-artifacts .ckwrap{margin-top:1px}.delete-card-artifacts span{display:grid;gap:4px}.delete-card-artifacts small{color:var(--muted);line-height:1.4}
@@ -1653,7 +1653,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .cx-tdot{position:absolute;left:-16px;top:14px;width:10px;height:10px;border-radius:50%;background:var(--muted);border:2px solid var(--bg)}
 .cx-timeline li.ok .cx-tdot{background:var(--accent)}.cx-timeline li.warn .cx-tdot{background:var(--warn)}.cx-timeline li.bad .cx-tdot{background:var(--danger)}
 
-/* Composer: atalhos e anexos ficam dentro do quadro do chat, numa faixa de cima que não é digitável */
+/* Composer: shortcuts and attachments stay inside the chat frame, in a top strip that is not typeable */
 .cbox{flex-wrap:wrap}
 .cbox-top{flex:0 0 100%;display:flex;flex-direction:column;gap:8px;margin:-2px 0 4px;padding:2px 4px 8px 6px;border-bottom:1px solid color-mix(in srgb, var(--accent) 6%, var(--g2b));cursor:default}
 .cbox-top .testbar{margin:0;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.cbox-top .testbar .autosave{margin-left:auto}
@@ -1661,11 +1661,11 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 .cbox>.attachbtn,.cbox>.plus{align-self:flex-end}
 .cbox-top .testbar{padding:0}
 
-/* Mensagem do usuário com anexos: miniaturas em cima, texto embaixo */
+/* User message with attachments: thumbnails on top, text below */
 .msg.user .attachments{margin:0 0 8px;justify-content:flex-end}.msg.user .usertext{white-space:pre-wrap}
 .msg.user .attcard{width:120px;height:90px}
 
-/* Comentário enviado a partir de uma seleção do diff: contexto em chips e trecho dentro de uma janela de código. */
+/* Comment sent from a diff selection: context in chips and the excerpt inside a code window. */
 .msg.user:has(.reviewctx){width:min(640px,92%);max-width:92%;padding:12px;background:color-mix(in srgb,var(--accent) 11%,var(--g16191d));border:1px solid color-mix(in srgb,var(--accent) 18%,var(--g30353b))}
 .reviewctx{display:grid;gap:10px;min-width:0;white-space:normal}
 .reviewctx-meta{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
@@ -1691,7 +1691,7 @@ button.repochip.edit{cursor:pointer;min-height:0;padding:2px 8px;line-height:1.3
 
 .pane-left .cxtop{display:flex}.pane-left .cx-badge{align-self:flex-start;justify-content:flex-start;gap:8px;padding:6px 10px;font-size:10.5px}.pane-left .cx-badge b{font-size:14px}
 
-/* Worktrees do card: uma árvore por repositório, recolhida; ao expandir mostra onde ficou a pasta */
+/* Card worktrees: one tree per repository, collapsed; expanding shows where the folder ended up */
 .wsrepos{gap:4px}.wsrepos li.wstree{display:block}
 .wstree-head{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;text-align:left;border-radius:8px;background:transparent;color:inherit;border:1px solid transparent}
 .wstree-head:hover{background:color-mix(in srgb, var(--accent) 6%, var(--g1a));filter:none}
@@ -1802,7 +1802,7 @@ textarea.autogrow{resize:none!important;field-sizing:content;min-height:38px;max
 .themepick{position:relative}.themetrigger{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border-radius:12px;background:color-mix(in srgb, var(--accent) 6%, var(--g0b));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g34));color:var(--text);font-weight:600;text-align:left;cursor:pointer}.themetrigger:hover,.themetrigger[aria-expanded=true]{border-color:var(--accent-line);filter:none}.themetrigger .tn{flex:1}.themetrigger .chev{color:var(--muted);font-size:11px}
 .themelist{position:absolute;left:0;right:0;top:calc(100% - 22px);z-index:30;display:grid;gap:2px;padding:6px;border-radius:12px;background:color-mix(in srgb, var(--accent) 6%, var(--g17));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g37));box-shadow:0 16px 44px var(--cs-000000cc)}.themelist button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:9px;background:transparent;border:0;color:var(--text);font-weight:600;text-align:left;cursor:pointer}.themelist button:hover{background:color-mix(in srgb, var(--accent) 8%, var(--g22));filter:none}.themelist button.on{background:var(--accent-bg);color:var(--accent-strong)}
 .themelist{max-height:min(48vh,480px);overflow-y:auto;align-content:start}
-/* Mesma largura de Configurar projeto (.modal.pcfg, 920px). */
+/* Same width as Configure project (.modal.pcfg, 920px). */
 .modal.settings-dialog{width:min(920px,100%);height:min(760px,calc(100vh - var(--titlebar) - 32px));display:flex;flex-direction:column;overflow:hidden}.settings-dialog>header,.settings-dialog>.tabs,.settings-dialog>.actions{flex:none}.settings-dialog-body{flex:1;min-height:0;overflow-y:auto;scrollbar-gutter:stable;padding-right:4px}
 .themepick .sw3{display:flex;gap:4px}.themepick .sw3 i{width:18px;height:18px;border-radius:5px;background:var(--surface-3);border:1px solid var(--cl-ffffff75);box-sizing:border-box}.themepick .sw3 i.auto{width:40px;background:linear-gradient(90deg,var(--cb-8db99a) 33%,var(--cb-a99bd9) 33% 66%,var(--cb-8fb3d9) 66%)}
 .floating-select-list{z-index:500;overflow-y:auto;align-content:start}.themelist .sw3{display:flex;gap:4px}.themelist .sw3 i{width:18px;height:18px;border-radius:5px;background:var(--surface-3);border:1px solid var(--cl-ffffff75);box-sizing:border-box}.themelist .sw3 i.auto{width:40px;background:linear-gradient(90deg,var(--cb-8db99a) 33%,var(--cb-a99bd9) 33% 66%,var(--cb-8fb3d9) 66%)}
@@ -1814,7 +1814,7 @@ textarea.autogrow{resize:none!important;field-sizing:content;min-height:38px;max
 .cx-lbar{margin:2px 0 30px}.cx-lbar .knob i{top:auto;bottom:-26px}
 a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;text-underline-offset:2px}a.mdLink.ext:hover{filter:brightness(1.2)}
 
-/* ---- janelas extras (abrir chat/Git/quadro em outra janela) ---- */
+/* ---- extra windows (open chat/Git/board in another window) ---- */
 .popwrap{position:relative;display:inline-flex}
 .popwrap .ibtn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .popmenu{position:absolute;top:calc(100% + 6px);right:0;z-index:70;min-width:216px;padding:10px;border-radius:12px;background:color-mix(in srgb, var(--accent) 6%, var(--g1a));border:1px solid color-mix(in srgb, var(--accent) 6%, var(--g30));box-shadow:0 14px 40px var(--cs-00000099);display:grid;gap:8px}
@@ -1831,7 +1831,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .fview .fv-toggle.on{background:var(--accent);color:var(--cf-04120a);border-color:var(--accent)}
 .fv-editor{display:block;width:100%;height:100%;min-height:320px;resize:none;border:0;outline:0;padding:12px 14px;background:color-mix(in srgb, var(--accent) 6%, var(--g07));color:var(--text);font:12.5px/1.55 var(--mono);tab-size:2;white-space:pre;overflow:auto}
 
-/* ---- lista de alterações do card ---- */
+/* ---- card changes list ---- */
 .ch-rowbtn{width:100%;background:transparent;border:0;padding:4px 2px;border-radius:8px;color:inherit;text-align:left;cursor:pointer}
 .ch-rowbtn:hover:not(:disabled){background:color-mix(in srgb, var(--accent) 10%, var(--g1c));filter:none}
 .ch-rowbtn:disabled{cursor:default;opacity:1}
@@ -1851,7 +1851,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .chl-row .ch-new{margin-left:auto}
 .chl-diff{max-height:none;margin:2px 6px 8px}
 
-/* ---- bloco de código com ▶ e copiar ---- */
+/* ---- code block with ▶ and copy ---- */
 .codeblock{position:relative}
 .codeblock>pre{margin:8px 0}
 .cb-tools{position:absolute;top:14px;right:8px;display:flex;gap:4px;opacity:0;transition:opacity .12s}
@@ -1861,7 +1861,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .cb-btn:first-child svg path[d^="M6 4"]{fill:currentColor}
 .cb-btn:hover{background:color-mix(in srgb, var(--accent) 18%, var(--g26));filter:none}
 
-/* ---- terminal embutido ---- */
+/* ---- embedded terminal ---- */
 .term{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;flex-direction:column;background:var(--cb-0a0a0a);border-top:1px solid var(--border);box-shadow:0 -10px 30px var(--cs-00000088)}
 .term.dragging{user-select:none}
 .term-grip{position:absolute;left:0;right:0;top:-4px;height:8px;cursor:row-resize;z-index:2}
@@ -1880,7 +1880,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .term-error{margin:6px 12px;color:var(--cf-ff8f86);font-size:12px}
 .term-empty{flex:1;display:grid;place-items:center;color:var(--muted)}
 
-/* ---- espaço entre mensagens (Configurações > Geral) e pesquisa no chat ---- */
+/* ---- spacing between messages (Settings > General) and chat search ---- */
 .chatlog{gap:var(--msg-gap,22px)}
 .msg.agent+.msg.user,.msg.user+.msg.agent{margin-top:calc(var(--msg-gap,22px) * .5)}
 .msg.searchhit{animation:searchhit 1.8s ease-out}
@@ -1935,7 +1935,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .term.left{right:auto;border-top:0;border-right:1px solid var(--border);box-shadow:10px 0 30px var(--cs-00000088)}
 .term.right{left:auto;border-top:0;border-left:1px solid var(--border);box-shadow:-10px 0 30px var(--cs-00000088)}
 .term.expanded{top:var(--titlebar,38px);bottom:0;border-top:0;box-shadow:none}
-/* O limite vale só para o lado que se arrasta: em cima/embaixo o terminal ocupa a largura toda; à esquerda/direita, a altura toda. */
+/* The limit applies only to the side being dragged: top/bottom the terminal takes the full width; left/right, the full height. */
 .term:not(.expanded):not(.standalone){max-height:75vh;max-width:75vw}.term.top:not(.expanded):not(.standalone),.term.bottom:not(.expanded):not(.standalone){max-width:none}.term.left:not(.expanded):not(.standalone),.term.right:not(.expanded):not(.standalone){max-height:none}
 .term-grip.left,.term-grip.right{top:0;bottom:0;left:auto;right:-4px;width:8px;height:auto;cursor:col-resize;touch-action:none}.term-grip.right{left:-4px;right:auto}.term-grip.top,.term-grip.bottom{touch-action:none}
 .term-tabs{cursor:grab;touch-action:none}.term-tabs:active{cursor:grabbing}.term-tabs button,.term-tabs .windowlayout{cursor:pointer}.term-header-drag{flex:1;min-width:24px;align-self:stretch}
@@ -2065,18 +2065,18 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .tc-item.done .pg-mark{background:var(--accent-bg);border-color:var(--accent-muted)}
 .tc-item.done .tc-text{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 55%,transparent)}
 .tc-text{flex:1;min-width:0;overflow-wrap:anywhere}
-/* Lista de branches do commit: abre ao passar o mouse, dá para clicar nas opções e ela continua aberta enquanto o mouse está sobre uma delas. */
+/* Commit branch list: opens on hover, the options can be clicked and it stays open while the mouse is over one of them. */
 .grefs .gstack{transition:opacity .16s .14s,transform .16s .14s}
 .grefs:hover .gstack{pointer-events:auto;transition-delay:0s}
 .gstack .rchip.pick{cursor:pointer}
 .gstack .rchip.pick:hover,.gstack .rchip.pick:focus-visible{outline:1px solid var(--accent-line);filter:brightness(1.18)}
-/* Lateral do Git: a lateral inteira não rola; cada seção aberta rola por dentro e as fechadas ficam juntas no fim. */
+/* Git sidebar: the whole sidebar does not scroll; each open section scrolls inside and the closed ones stay together at the end. */
 .gside{overflow:hidden}
 .gtree.gcol{flex:1 1 auto;min-height:0;overflow-x:hidden;overflow-y:auto}
 .gcol .gsec.open{min-height:64px;overflow:hidden}
 .gcol .gsec.open>.gsecbody{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden}
 .gcol .gsec:not(.open){flex:none}
-/* Menu do Pull: o texto executa a opção na hora; o círculo define o padrão do botão de fora. */
+/* Pull menu: the text runs the option right away; the circle sets the default of the outer button. */
 .gpullmenu .gpullrow{display:flex;align-items:stretch;border-radius:7px}
 .gpullmenu .gpullrow.on{background:color-mix(in srgb,var(--accent) 22%,color-mix(in srgb, var(--accent) 7%, var(--g1d)))}
 .gpullmenu .gpullrow button.on{background:transparent}
@@ -2085,7 +2085,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .gpullmenu .gpullrun small{margin-left:auto;color:var(--muted);font-size:11px}
 .gpullmenu .gpulldef:hover i{border-color:var(--accent-strong)}
 .gpullmenu .gpullrow .gpulldef[aria-checked="true"] i{border-color:var(--accent-strong);box-shadow:inset 0 0 0 3px color-mix(in srgb, var(--accent) 7%, var(--g1d));background:var(--accent-strong)}
-/* Aviso padrão do app (ToastCard): success, error, info, warning e notify */
+/* Standard app toast (ToastCard): success, error, info, warning and notify */
 .toasthost{position:fixed;left:16px;bottom:44px;z-index:400;display:grid;gap:10px;width:min(390px,calc(100vw - 32px));pointer-events:none}
 .ntoast{--tone:#5b9bd5;pointer-events:auto;position:relative;display:flex;align-items:flex-start;gap:12px;padding:13px 12px 14px 13px;overflow:hidden;border-radius:12px;border:1px solid color-mix(in srgb,var(--tone) 38%,var(--border));background:linear-gradient(115deg,color-mix(in srgb,var(--tone) 14%,transparent),transparent 62%),color-mix(in srgb,var(--surface) 96%,var(--cb-000000));box-shadow:0 14px 38px var(--cs-000000cc),0 0 0 1px var(--cs-00000044);animation:ntoastin .22s cubic-bezier(.2,.8,.2,1)}
 .ntoast.success{--tone:#3fbf7a}
@@ -2111,7 +2111,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .pg-badges .pg-by{margin-top:0}
 .pg-by.faded{opacity:.55;border-style:dashed}
 .ctxitem span.ctxarrow{flex:none;margin-left:auto;padding-left:12px;font-size:16px;line-height:1;color:var(--muted)}
-/* Linha das abas: o botão da árvore fica sempre no canto esquerdo, com ou sem arquivos abertos. */
+/* Tabs row: the tree button always stays in the left corner, with or without open files. */
 .wf-tabbar{display:flex;align-items:center;gap:6px;flex:none;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--surface);min-height:40px;box-sizing:border-box}
 .wf-tabbar .wf-tabs{flex:1;min-width:0;padding:0;border-bottom:0;background:transparent}
 .wf-treebtn{flex:none;width:30px;height:30px;display:grid;place-items:center;padding:0}
@@ -2121,9 +2121,9 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .wf-chevron svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;transition:transform .12s}
 .wf-chevron.open svg{transform:rotate(90deg)}
 .wf-treeitem:hover .wf-chevron{color:var(--text)}
-/* Painel de arquivos encostado à esquerda/direita: o conteúdo principal abre espaço e fica lado a lado, sem ser coberto. */
+/* Files panel docked left/right: the main content makes room and sits side by side, without being covered. */
 .shell{padding-left:calc(var(--files-dock-left,0px) + var(--terminal-dock-left,0px));padding-right:calc(var(--files-dock-right,0px) + var(--terminal-dock-right,0px));padding-top:calc(var(--files-dock-top,0px) + var(--terminal-dock-top,0px));padding-bottom:calc(var(--files-dock-bottom,0px) + var(--terminal-dock-bottom,0px));box-sizing:border-box;transition:grid-template-columns .2s}
-/* Com painel encostado do lado, sobra o mesmo respiro que há entre as colunas do quadro (11px). */
+/* With a docked panel on a side, the same breathing room as between the board columns (11px) remains. */
 .shell .content>main{padding-left:max(11px, calc(28px - min(28px, var(--files-dock-left, 0px) + var(--terminal-dock-left, 0px))));padding-right:max(11px, calc(28px - min(28px, var(--files-dock-right, 0px) + var(--terminal-dock-right, 0px))))}
 .wf-host{inset:calc(var(--titlebar) + var(--terminal-dock-top,0px)) var(--terminal-dock-right,0px) var(--terminal-dock-bottom,0px) var(--terminal-dock-left,0px)}
 .modal.wf-shortcuts-dialog{display:flex;flex-direction:column;width:min(780px,100%);max-height:min(760px,calc(100vh - var(--titlebar) - 32px));overflow:hidden}
@@ -2143,7 +2143,7 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .wf-dockgrip:hover::after,.workspacefiles.dock-resizing .wf-dockgrip::after{background:var(--accent);width:2px}
 .wf-dockgrip.top,.wf-dockgrip.bottom{left:0;right:0;width:auto;height:9px;cursor:row-resize}.wf-dockgrip.top{top:auto;bottom:0}.wf-dockgrip.bottom{top:0;bottom:auto}.wf-dockgrip.top::after,.wf-dockgrip.bottom::after{left:0;right:0;top:auto;bottom:0;width:auto;height:1px}.wf-dockgrip.bottom::after{top:0;bottom:auto}.wf-dockgrip.top:hover::after,.wf-dockgrip.bottom:hover::after,.workspacefiles.dock-resizing .wf-dockgrip.top::after,.workspacefiles.dock-resizing .wf-dockgrip.bottom::after{width:auto;height:2px}
 .workspacefiles.dock-resizing{user-select:none}
-/* Espaços da barra de título que o quadro preenche: engrenagem à esquerda, Quadro/Chats/Git e botão de janela à direita. */
+/* Title bar spaces that the board fills: gear on the left, Board/Chats/Git and window button on the right. */
 .tb-slot{display:inline-flex;align-items:center;gap:6px;-webkit-app-region:no-drag;flex:none}
 .tb-slot:empty{display:none}
 .tb-slot .viewtoggle{margin:0;height:28px}
@@ -2152,23 +2152,23 @@ a.mdLink.ext{cursor:pointer;color:var(--cf-6fb1ff);text-decoration:underline;tex
 .tb-gearbtn{width:28px;height:28px;display:grid;place-items:center;padding:0}
 .tb-gearbtn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .tb-actions .tb-slot-view{margin-right:6px}
-/* Nome do projeto na barra de título e chip do caminho clicável (abre a pasta no Explorer). */
+/* Project name in the title bar and clickable path chip (opens the folder in Explorer). */
 .tb-title{flex:0 1 auto;min-width:0;max-width:240px;margin:0 10px 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13.5px;font-weight:650;color:var(--text);-webkit-app-region:no-drag;user-select:none}
 button.pathchip.tb-path{cursor:pointer;font:inherit;-webkit-app-region:no-drag}
 button.pathchip.tb-path:hover{border-color:var(--accent-line);color:var(--text);filter:none}
 button.pathchip.tb-path:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-/* A largura da árvore é ajustada por toda a linha divisória, não só pelo puxador nativo no rodapé. */
+/* The tree width is adjusted by the whole divider line, not only by the native handle at the bottom. */
 .wf-tree{width:var(--wf-tree-width,240px);resize:none;border-right:0}.tree-right>.wf-tree{border-left:0}.wf-treesplit{position:relative;width:9px;margin:0 -4px;align-self:stretch;flex:none;cursor:col-resize;z-index:5;touch-action:none}.wf-treesplit::after{content:'';position:absolute;top:0;bottom:0;left:4px;width:1px;background:var(--border);transition:width .12s,left .12s,background .12s}.wf-treesplit:hover::after,.workspacefiles.tree-resizing .wf-treesplit::after{left:3px;width:3px;background:var(--accent)}.workspacefiles.tree-resizing{user-select:none}
-/* Busca da árvore: progresso compacto dentro do campo, sem deslocar a lista. */
+/* Tree search: compact progress inside the field, without shifting the list. */
 .wf-tree{position:relative}.wf-tree>.in{padding-right:34px}.wf-tree>.wf-note{position:absolute;top:19px;right:17px;z-index:2;width:12px;height:12px;padding:0;overflow:hidden;border:2px solid var(--accent-line);border-top-color:var(--accent);border-radius:50%;font-size:0;animation:spin .8s linear infinite;pointer-events:none}
-/* Git ocupa toda a altura útil abaixo das abas de repositório. */
+/* Git takes the whole useful height below the repository tabs. */
 .content>main:has(> .gwrap){overflow:hidden}.gwrap{height:100%;display:flex;flex-direction:column}.gwrap>.gtabs,.gwrap>.cfl-banner{flex:none}.gwrap>.gitpage{height:auto;flex:1 1 auto;min-height:0}
-/* Quadro ocupa a altura útil; cada coluna mantém sua própria rolagem. */
+/* Board takes the useful height; each column keeps its own scrolling. */
 .content>main:has(> .kanban){display:flex;flex-direction:column;overflow:hidden}.kanban{flex:1 1 auto;min-height:0;padding-bottom:14px;overflow-x:auto;overflow-y:hidden;align-items:stretch}.kanban>.col{height:100%;min-height:0;overflow-y:auto;scrollbar-width:thin}.content>main:has(> .kanban)>.archivedbox{flex:none;max-height:30%;margin-bottom:14px;overflow:auto}
 .board-filterbar{display:flex;align-items:center;gap:10px;flex:none;padding:4px 2px 0}.board-filter-toggle,.board-filter-clear{display:inline-flex;align-items:center;gap:7px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:7px;padding:6px 9px;font-size:12px}.board-filter-toggle.on{color:var(--accent-strong);border-color:var(--accent-line)}.board-filter-toggle svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7}.board-filter-clear{border:0}.board-filters{display:flex;flex-wrap:wrap;gap:8px;padding:8px 2px 0;flex:none}.board-filters .in{width:auto;min-width:150px;font-size:12px}.board-filters .sel{min-width:170px}.board-filters input{flex:1;min-width:180px}.board-filter-empty{font-size:12px;color:var(--muted);padding:4px 8px}
-/* Contexto Git das raízes e do arquivo aberto. */
+/* Git context of the roots and of the open file. */
 .wf-tree-label{display:grid;gap:2px;min-width:0}.wf-tree-label>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wf-branchchip{display:inline-flex;align-items:center;gap:4px;justify-self:start;max-width:100%;padding:1px 6px;border:1px solid color-mix(in srgb,var(--accent) 26%,var(--border));border-radius:5px;background:color-mix(in srgb,var(--accent) 10%,var(--surface-2));color:var(--accent-strong);font:600 9px/1.35 var(--sans);white-space:nowrap}.wf-branchchip>svg{flex:none;width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.wf-branchchip>span{min-width:0;overflow:hidden;text-overflow:ellipsis}.wf-branchchip.worktree{border-color:var(--cl-8fb8d666);background:var(--cb-8fb8d61a);color:var(--cf-a9cdef)}.wf-filebar>.wf-branchchip{flex:none;max-width:42%;margin-right:4px;font-size:10px}
-/* Barra de título: engrenagem alinhada ao conteúdo, chip do caminho mais baixo e Quadro/Chats/Git na mesma altura dos ícones. */
+/* Title bar: gear aligned with the content, lower path chip and Board/Chats/Git at the same height as the icons. */
 .titlebar.collapsed .tb-slot-gear{margin-left:18px}
 .tb-slot-gear{margin-right:2px}
 .tb-title{margin:0 8px 0 6px}
@@ -2180,11 +2180,11 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .tb-slot .viewtoggle button svg{width:14px;height:14px}
 .tb-slot .ibtn{height:32px}
 
-/* Botão de janela na barra de título com o mesmo desenho dos demais ícones (16px, traço 1.9), sem o redimensionamento que o deixava borrado. */
+/* Window button in the title bar with the same design as the other icons (16px, stroke 1.9), without the resizing that made it blurry. */
 .tb-actions .popwrap .ibtn svg{width:16px;height:16px;stroke-width:1.9}
 .tb-actions .popwrap{display:inline-grid;place-items:center}
 
-/* O seletor principal de visão é um dock móvel; o menu inteiro funciona como alça. */
+/* The main view selector is a movable dock; the whole menu works as a handle. */
 .viewdock{display:inline-flex;align-items:center;gap:4px;-webkit-app-region:no-drag;user-select:none}
 .viewdock.floating{
   position:fixed;
@@ -2204,7 +2204,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .viewdock.floating .viewtoggle button{height:30px;padding:0 12px;border-radius:8px}
 .viewdock.pinned .viewtoggle{margin:0;cursor:grab}.viewdock.pinned .viewtoggle:active{cursor:grabbing}
 .viewdock-menu{position:fixed;z-index:260;width:205px}
-/* Prévia do encaixe: conserva rigorosamente o tamanho do dock flutuante, inclusive dentro da barra de título. */
+/* Docking preview: strictly keeps the size of the floating dock, including inside the title bar. */
 @keyframes viewdock-dropghost-pulse{0%,100%{opacity:.55}50%{opacity:1}}
 .viewdock-dropghost{display:inline-flex;box-sizing:border-box;padding:4px;border:1px dashed var(--accent);border-radius:15px;background:color-mix(in srgb,var(--accent) 10%,var(--cb-101010c0));animation:viewdock-dropghost-pulse 1s ease-in-out infinite;pointer-events:none}
 .viewdock-dropghost .viewtoggle{height:auto!important;margin:0!important;padding:0!important;border:0!important;background:transparent!important;gap:2px!important}
@@ -2212,7 +2212,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .viewdock-dropghost .viewtoggle button.on{background:color-mix(in srgb,var(--accent) 24%,transparent);color:var(--text)}
 @media(max-width:520px){.viewdock.floating.default{bottom:12px}.viewdock.floating .viewtoggle button:not(.viewdock-handle){padding:0 9px}}
 
-/* Temas claros: superfícies completas, não apenas a troca da cor de destaque. A barra de cima segue o tema; os botões de janela do Windows trocam de cor por `app:set-titlebar-theme`. */
+/* Light themes: complete surfaces, not just a change of accent color. The top bar follows the theme; the Windows window buttons change color through `app:set-titlebar-theme`. */
 :root[data-theme="light"] body{background:radial-gradient(circle at 92% 0,var(--accent-glow),transparent 36%) no-repeat,var(--bg)}
 :root[data-theme="light"] .shell>aside{background:#eef2f5;border-color:var(--border)}
 :root[data-theme="light"] :is(.modal,.popmenu,.ctxmenu,.upop,.mmpop,.modemenu,.sel-list,.chatspop,.impmenu .impdrop,.themelist,.projmenu,.workspacefiles,.dock,.dock.full .dock-in,.fview,.gitpage,.gside,.gdetail,.changes,.progress){background:var(--surface);border-color:var(--border);color:var(--text);box-shadow:0 14px 38px #30405024}
@@ -2248,9 +2248,9 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 :root[data-theme="light"] :is(.themeopt,.themepick,.themelist) .sw3 i{border-color:#00000075}
 :root[data-theme="light"] .themeopt:hover{border-color:var(--accent-muted)}
 :root[data-theme="light"] .tooltip{background:#202a35;border-color:#394758;color:#f5f7fa}
-/* Barra de título estreita: o chip do caminho some (como o contexto no explorador) para não sobrepor o nome do projeto. */
+/* Narrow title bar: the path chip disappears (like the context in the explorer) so it does not overlap the project name. */
 @media(max-width:980px){button.pathchip.tb-path{display:none}}
-/* Visão rápida ocultável: o cabeçalho ganha um botão e, oculta, a coluna some e sobra uma aba para trazê-la de volta. */
+/* Hideable Quick view: the header gets a button and, when hidden, the column goes away and a tab is left to bring it back. */
 .qv-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .dock.full.noactivity{grid-template-columns:minmax(0,1fr)}
 .dock.full.noactivity:has(>.dockside){grid-template-columns:clamp(230px,20vw,320px) minmax(0,1fr)}
@@ -2258,23 +2258,23 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .qv-show:hover{color:var(--text)}
 .qv-show svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;margin-bottom:6px;transform:rotate(180deg)}
 @media(max-width:1350px){.qv-show{display:none}}
-/* Sincronização da branch: mesmo tamanho e peso do contador das seções, com seta própria no lugar do caractere solto. */
+/* Branch sync: same size and weight as the section counter, with its own arrow in place of the loose character. */
 .gref .gsync{gap:8px;font-size:11px;font-weight:600;color:color-mix(in srgb, var(--accent) 7%, var(--g7a))}
 .gref .gsync b{display:inline-flex;align-items:center;gap:3px;font-weight:600}
 .gref .gsync svg{width:11px;height:11px;fill:none;stroke:var(--accent-strong);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .gsec>b.gsech.locked{cursor:default}
-/* Barra de título estreita: Janelas, Arquivos, Terminal e Tarefas saem da barra e ficam atrás do botão de três pontinhos. */
+/* Narrow title bar: Windows, Files, Terminal and Tasks leave the bar and sit behind the three-dot button. */
 .tb-actions{z-index:60}
 .tb-tray{display:contents}
 .tb-more svg{width:16px;height:16px;fill:currentColor;stroke:none}
 .tb-actions.narrow{margin-right:140px}
 .tb-actions.narrow .tb-tray{display:none;position:absolute;top:calc(100% + 6px);right:0;flex-direction:row;align-items:center;gap:6px;padding:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 30px var(--cs-00000088)}
 .tb-actions.narrow.open .tb-tray{display:flex}
-/* Menu de três pontinhos do chat: ícone antes de cada ação, no mesmo traço dos botões do cabeçalho. */
+/* Chat three-dot menu: icon before each action, in the same stroke as the header buttons. */
 .pm-item.pm-ico{display:flex;align-items:center;gap:9px}
 .pm-item.pm-ico svg{flex:none;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;color:var(--muted)}
 
-/* Diff sobre o @codemirror/merge: mesmas cores do DiffLines (verde entrou, vermelho saiu) nos dois temas. */
+/* Diff on top of @codemirror/merge: same colors as DiffLines (green added, red removed) in both themes. */
 :root{--cm-add-bg:#17261b;--cm-add-strong:#2f6b3d;--cm-add-line:#9fdca9;--cm-del-bg:#2a1a1a;--cm-del-strong:#7a2f2f;--cm-del-line:#f0a3a3}
 :root[data-theme="light"]{--cm-add-bg:#e6f6ea;--cm-add-strong:#aee3bb;--cm-add-line:#2a9a47;--cm-del-bg:#fdecec;--cm-del-strong:#f5b9b9;--cm-del-line:#d34a4a}
 .diffed{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}.diffed-bar{display:flex;align-items:center;gap:4px;padding:4px 9px;border-bottom:1px solid var(--border);background:var(--surface);flex:none}.diffed-bar>span{margin-left:6px;font-size:11px;color:var(--muted)}.diffed-note{margin:0;border-bottom:1px solid var(--border)}
@@ -2324,7 +2324,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .fv-editorbox{display:flex;height:100%;min-height:320px;background:color-mix(in srgb,var(--accent) 3%,var(--g10))}:root[data-theme="light"] .fv-editorbox{background:#fbfcfe}.fv-editorbox .cm-host{flex:1;min-width:0}.gdiffbody .wf-diffview,.gdiffpane .fv-body .wf-diffview{height:100%}.gdiffpane .fv-body{display:flex;flex-direction:column}.gdiffpane .fv-body>.wf-diffview{flex:1;min-height:0}
 .gdiffbody{display:flex;flex-direction:column;min-height:0}.gdiffbody>.wf-diffview,.gdiffbody>.fv-note{flex:1}
 
-/* Texto corrido no CodeMirror (documentos do card e Constituição): sem calha, fonte de 13px e altura própria do contêiner. */
+/* Running text in CodeMirror (card documents and Constitution): no gutter, 13px font and the container's own height. */
 .cm-host.prose .cm-editor{font:13px/1.55 var(--mono)}.cm-host.prose .cm-scroller{font:inherit;line-height:inherit}.cm-host.prose .cm-content{padding:10px 12px;min-height:100%}.cm-host.prose .cm-line{padding:0}.cm-host.in{padding:0;overflow:hidden;display:block}.cm-host.in .cm-editor{height:100%}.cm-host.in .cm-scroller{overflow:auto}.descwrap>.cm-host.descarea{height:100%}.cm-host.cons-edit{min-height:min(46vh,420px);height:min(46vh,420px);resize:none}
 
 .cb-add{color:var(--cf-9fdca9)}.cb-del{color:var(--cf-f0a3a3)}.cb-hunk{color:var(--cf-8fb8d6)}:root[data-theme="light"] .cb-add{color:#1a7f37}:root[data-theme="light"] .cb-del{color:#c62828}:root[data-theme="light"] .cb-hunk{color:#0b6aa8}
@@ -2332,12 +2332,12 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .agupdate{display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:1px 8px;border-radius:9px;background:color-mix(in srgb,var(--cb-e0a030) 14%,transparent);color:var(--muted);font-size:10.5px;white-space:nowrap}
 
 .term-screen{position:relative;display:flex;flex-direction:column;flex:1;min-height:0}.term-find{position:absolute;top:6px;right:18px;z-index:6;border:1px solid var(--border);border-radius:9px;box-shadow:0 6px 20px var(--cs-00000077);background:var(--surface);overflow:hidden}.term-find .wf-find{border-bottom:0;padding:4px 6px}.term-find .wf-findbox{flex:0 1 260px;min-width:150px}
-/* Chat em tela cheia ocupa a tela toda: o explorador encostado (esquerda ou direita) não reserva espaço, fica por cima. */
+/* Fullscreen chat takes the whole screen: the docked explorer (left or right) does not reserve space, it sits on top. */
 .shell:has(.dock.full){padding-left:0;padding-right:0}
-/* Explorador encostado (não maximizado) ocupa no máximo metade da tela, mesmo com largura salva maior. */
+/* Docked explorer (not maximized) takes at most half the screen, even with a larger saved width. */
 .workspacefiles.left,.workspacefiles.right{max-width:50vw}
 
-/* Push recusado: três caminhos em cartões (Pull, Pull com rebase, Forçar push). */
+/* Push rejected: three paths in cards (Pull, Pull with rebase, Force push). */
 .modal.pushrej{width:min(520px,100%)}
 .pushrej h2 code{font:600 15px var(--mono);color:var(--accent-strong)}
 .pr-text{margin:0 0 14px;font-size:13px;line-height:1.55;color:var(--muted)}
@@ -2351,22 +2351,22 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .pr-opt.danger:hover{border-color:var(--cl-ff6b6b);background:var(--cb-2a1414)}
 .pr-opt.danger .pr-ico{background:var(--cb-3a1c1c);color:var(--cf-ff8a8a)}
 
-/* Branch com check out na pasta principal: ícone e nome em verde (no lugar do texto "pasta principal"). */
+/* Branch checked out in the main folder: icon and name in green (in place of the "main folder" text). */
 .gref.head,.gref.head .gn{color:var(--cf-5fd38a)}
 .gref.head.on{background:color-mix(in srgb,var(--cb-5fd38a) 14%,var(--cb-212121))}
 
-/* Ferramentas: botões de atualizar lado a lado, com o "Próximo passo" numa linha só embaixo. */
+/* Tools: refresh buttons side by side, with the "Next step" on a single line below. */
 .tl-steps{flex-direction:column;align-items:flex-start;gap:6px}
 .tl-btns{display:flex;flex-wrap:wrap;gap:10px}
 .tl-btns>.mini{height:34px;padding:0 16px;border-radius:999px}
 
-/* Chat no tamanho mínimo: o campo e a linha de botões/modelo nunca passam da largura do painel; a linha de baixo quebra em vez de cortar. */
+/* Chat at minimum size: the field and the buttons/model row never exceed the panel width; the bottom row wraps instead of being cut off. */
 .composer{grid-template-columns:minmax(0,1fr);min-width:0;box-sizing:border-box}
 .composer .cbox,.composer .cmeta{min-width:0;max-width:100%;box-sizing:border-box}
 .composer .cmeta{flex-wrap:wrap;row-gap:6px}
 .composer .cbox textarea{min-width:0}
 
-/* "@" no campo de mensagem: lista de arquivos acima do campo. */
+/* "@" in the message field: list of files above the field. */
 .cbox{position:relative}
 .atmenu{position:absolute;left:0;right:0;bottom:calc(100% + 8px);z-index:40;display:grid;gap:2px;padding:6px;max-height:300px;overflow:auto;border-radius:14px;background:color-mix(in srgb,var(--accent) 6%,var(--g14));border:1px solid var(--border);box-shadow:0 14px 40px var(--cs-000000aa)}
 .atitem{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border-radius:8px;background:transparent;border:0;color:var(--text);text-align:left;font-size:13px;cursor:pointer;min-width:0}
@@ -2376,7 +2376,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .atpath{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font:11.5px var(--mono);direction:rtl;text-align:left}
 .skillslash-name{flex:none;font:600 12px var(--mono);color:var(--accent-strong)}
 
-/* Menu "···" da coluna e lista de arquivados. */
+/* Column "···" menu and archived list. */
 .colmenu{position:relative;display:inline-flex}
 .colmenu>.colAdd{letter-spacing:1px;font-size:15px}
 .colmenu-pop{position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:230px;display:grid;gap:2px;padding:6px}
@@ -2387,11 +2387,11 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .archlist{display:grid;gap:6px;max-height:min(60vh,460px);overflow:auto;margin-top:10px}
 .archlist .archrow{margin-top:0}.archlist .archrow>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* Bolinha de "há atualização" na engrenagem (Configurações do app e do projeto). */
+/* "Update available" dot on the gear (app and project settings). */
 .gearwrap,.tb-gearbtn,.iconbtn:has(.gear-dot){position:relative}
 .gear-dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:var(--warn,#e0a93b);box-shadow:0 0 0 2px var(--bg,#0d0d0d);pointer-events:none}
 
-/* Database Manager: layout em estilo de IDE (árvore à esquerda, abas, editor e grade) */
+/* Database Manager: IDE-style layout (tree on the left, tabs, editor and grid) */
 .db-page{display:grid;grid-template-columns:minmax(220px,280px) minmax(0,1fr);gap:0;height:calc(100vh - 85px);margin:16px;border:1px solid color-mix(in srgb,var(--accent) 7%,var(--g27));border-radius:14px;overflow:hidden;background:color-mix(in srgb,var(--accent) 7%,var(--g14))}
 .db-page aside,.db-page section{min-width:0;min-height:0;overflow:auto}
 .db-page aside{display:flex;flex-direction:column;gap:8px;padding:14px 10px;background:color-mix(in srgb,var(--accent) 7%,var(--g12));border-right:1px solid color-mix(in srgb,var(--accent) 7%,var(--g27))}
@@ -2475,18 +2475,18 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .db-pager{justify-content:flex-start;flex:none}
 
 .dbform .dbrow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-/* Diálogo de servidor MCP: nome flexível e tipo com largura fixa, sem rolagem lateral. */
+/* MCP server dialog: flexible name and fixed-width type, no horizontal scrolling. */
 .mcp-dialog .dbrow{display:grid;grid-template-columns:minmax(0,1fr) 200px;gap:12px;align-items:start}.mcp-dialog .dbrow>.f{min-width:0}.mcp-dialog .dbrow>.f>*{min-width:0;max-width:100%}.mcp-dialog .dbrow .sel,.mcp-dialog .dbrow .sel-btn{width:100%;min-width:0;box-sizing:border-box}.dbform .dbrow>.f{min-width:0}.dbform .dbrow:first-of-type{grid-template-columns:1fr 110px}
 .autosave.dbsw{margin-right:0;font-size:13px;line-height:1.35}.autosave.dbsw .sw{flex:none}
-/* Barra de título: a prévia do encaixe do dock é mais alta que os botões; sem centralizar, Arquivos e Terminal saíam tortos. */
+/* Title bar: the dock docking preview is taller than the buttons; without centering, Files and Terminal came out crooked. */
 .tb-actions{align-items:center}.tb-actions .tb-slot-view{display:inline-flex;align-items:center}
 
-/* Recolher a visão rápida usa o mesmo botão do menu principal; o menu recolhido ganha o nome "Menu". */
+/* Collapsing the quick view uses the same button as the main menu; the collapsed menu gets the name "Menu". */
 .side-toggle.qv-toggle{position:absolute;top:50%;left:-11px;transform:translateY(-50%);width:22px;height:46px;border-radius:11px}
 .shell.collapsed .side-toggle{height:auto;padding:12px 0;width:26px;grid-auto-flow:row;gap:8px;align-content:center;border-radius:0 11px 11px 0;left:0}
 .side-toggle span{writing-mode:vertical-rl;font:600 11px var(--sans);line-height:1}
 
-/* Cartão de artefatos do Spec Kit: três linhas com o estado de cada arquivo. */
+/* Spec Kit artifacts card: three rows with the state of each file. */
 .skart{list-style:none;margin:8px 0 4px;padding:0;display:grid;gap:6px}
 .skart li{display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;background:var(--cb-0000002b);opacity:.72}
 .skart li.ok{opacity:1;border-color:color-mix(in srgb,var(--accent) 55%,var(--border));background:color-mix(in srgb,var(--accent) 10%,transparent)}
@@ -2495,7 +2495,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .skart-name{display:grid;gap:1px;min-width:0}.skart-name b{font-size:13px}.skart-name small{font-size:11px;color:var(--muted);font-family:var(--mono,monospace)}
 .skart li em{font-style:normal;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.skart li.ok em{color:var(--accent)}
 .skart-note{margin-top:2px}
-/* Pedidos de permissão: cabeçalho, risco, passos numerados e fatos em lista. */
+/* Permission requests: header, risk, numbered steps and facts in a list. */
 .msg.perm{display:grid;gap:10px;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--accent) 5%,var(--g10));padding:12px 14px;max-width:760px}
 .perm-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.perm-who{font-size:12px;font-weight:700;color:var(--muted)}
 .perm-risk{font-size:11px;font-weight:700;padding:2px 9px;border-radius:99px;border:1px solid currentColor}
@@ -2510,21 +2510,21 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .perm-facts{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0;font-size:12.5px}.perm-facts dt{color:var(--muted)}.perm-facts dd{margin:0;min-width:0}.perm-facts code{overflow-wrap:anywhere}
 .msg.perm details summary{cursor:pointer;color:var(--muted);font-size:12.5px}
 
-/* Gerenciador de MCP */
+/* MCP manager */
 .mcp{display:grid;gap:12px;align-content:start}.mcp-intro{margin:0;font-size:12.5px;color:var(--muted)}.mcp-empty{margin:0;color:var(--muted);font-size:13px}
 .mcp-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .mcp-list li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--cb-0000002b)}.mcp-list li.off{opacity:.6}
 .mcp-main{display:grid;gap:3px;min-width:0}.mcp-main small{color:var(--muted);font-family:var(--mono,monospace);font-size:11.5px;overflow-wrap:anywhere}
 .mcp-tags{display:flex;gap:5px;flex-wrap:wrap}.mcp-tags em{font-style:normal;font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--border);color:var(--muted)}.mcp-tags em.warn{color:var(--cf-f0b46a);border-color:var(--cl-f0b46a)}
 .mcp-actions{display:flex;align-items:center;gap:8px;flex:none}
-/* Cabeçalho "Servidores MCP" com o botão Adicionar na mesma linha; seções Recomendados (rolável) e Instalados. */
+/* "MCP Servers" header with the Add button on the same line; Recommended (scrollable) and Installed sections. */
 .mcp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.mcp-head h4{margin:0 0 4px;font-size:14px}.mcp-head>.mini{flex:none;white-space:nowrap}
 .mcp-sec{display:grid;gap:8px}.mcp-sec h5{margin:4px 0 0;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}.mcp-sec h5 small{font-size:10.5px;font-weight:700;letter-spacing:0;padding:0 6px;border-radius:99px;border:1px solid var(--border)}
 .mcp-list li .mcp-main b{font-size:13px}
 .mcp-rec{max-height:228px;overflow-y:auto;gap:0;border:1px solid var(--border);border-radius:10px}.mcp-rec li{border:0;border-radius:0;border-bottom:1px solid var(--border);padding:8px 12px;background:transparent}.mcp-rec li:last-child{border-bottom:0}.mcp-rec li:hover{background:var(--hover,#ffffff08)}.mcp-rec .mcp-main small.desc{font-family:inherit;font-size:11.5px;line-height:1.35}
 .mcp-preview{display:grid;gap:4px;padding:10px 12px;border:1px solid var(--accent-line,var(--border));border-radius:10px;background:var(--accent-bg,transparent)}.mcp-preview small{color:var(--muted);font-size:12px}.mcp-preview code{font-family:var(--mono,monospace);font-size:11.5px;overflow-wrap:anywhere;color:var(--text)}
 .mcp-kv.fixed{grid-template-columns:1fr 1.4fr}.mcp-kv.fixed input[readonly]{color:var(--muted)}
-/* Links para catálogos externos (MCP e skills), abrem no navegador. */
+/* Links to external catalogs (MCP and skills), open in the browser. */
 .catlinks{display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;margin:0;font-size:12px;color:var(--muted)}.catlinks>span{margin-right:2px}
 .catlink{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:99px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:11.5px;cursor:pointer}.catlink:hover{border-color:var(--accent)}.catlink span{font-size:10px;opacity:.8}
 .skhead+.catlinks{margin:-4px 0 12px}.skwrap>.catlinks{flex:none}
@@ -2532,7 +2532,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .mcp-kv{display:grid;grid-template-columns:1fr 1.4fr auto;gap:6px;margin-top:6px}
 .mcp-agents{border:0;padding:0;margin:0;display:flex;gap:16px;flex-wrap:wrap}.mcp-agents legend{font-size:12px;font-weight:700;margin-bottom:6px;padding:0}
 
-/* Campo de senha com botão de mostrar/ocultar */
+/* Password field with show/hide button */
 .pwfield{position:relative;display:block}.pwfield .in{padding-right:42px}
 .pwtoggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:32px;height:32px;display:grid;place-items:center;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
 .pwtoggle:hover,.pwtoggle[aria-pressed="true"]{color:var(--text)}
@@ -2540,7 +2540,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .db-server{display:grid;gap:1px}.db-dbs{display:grid;gap:1px;margin-left:14px;padding-left:6px;border-left:1px solid var(--border)}
 .db-conn.server .db-conn-name{font-weight:700}.db-conn-name small{margin-left:auto;font:400 10.5px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis}
 .db-conn.child .db-conn-name{font-weight:500;font-size:12.5px}
-/* Artefatos do Spec Kit: aba que sai de cima do campo de texto; minimizada fica só o título. Some enquanto o agente executa. */
+/* Spec Kit artifacts: tab that comes out from above the text field; minimized, only the title is left. Disappears while the agent runs. */
 .skdock-host:empty{display:none}.skdock-host{margin-bottom:-9px;padding:0 14px;position:relative;z-index:1}
 .cask.skdock{max-width:none;margin:0;gap:0;padding:0;border-bottom:0;border-radius:14px 14px 0 0;background:color-mix(in srgb,var(--cb-221f15) 88%,var(--bg));box-shadow:0 -8px 20px var(--cs-00000077)}
 .cask button.skdock-toggle{display:flex;align-items:center;gap:10px;width:100%;background:transparent;color:var(--text);padding:8px 12px;border-radius:14px 14px 0 0;font-size:12.5px;text-align:left}
@@ -2555,7 +2555,7 @@ button.pathchip.tb-path svg{width:13px;height:13px}
 .db-conn-actions{display:none!important}
 .db-page button.db-conn-more{flex:none;background:transparent;color:var(--muted);padding:2px 8px;margin-right:4px;border-radius:6px;font-size:16px;line-height:1;opacity:0}
 .db-conn:hover .db-conn-more,.db-conn.on .db-conn-more,.db-conn-more:focus-visible{opacity:1}.db-conn-more:hover{background:var(--surface-3);color:var(--text);filter:none}
-/* Banco de dados: árvore de objetos, console com resultado embaixo e tabela ocupando a área principal. */
+/* Database: object tree, console with the result below and table taking the main area. */
 .db-page section{overflow:hidden}
 .db-split,.db-table-view{display:flex;flex-direction:column;flex:1;min-height:0;gap:0}.db-table-view{gap:10px}
 .db-sql-panel{flex:0 0 220px;display:flex;flex-direction:column;min-height:90px}
@@ -2588,7 +2588,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .db-node{gap:4px}.db-node .wf-chevron{width:12px;height:12px}.db-node .wf-chevron svg{width:10px;height:10px}
 .db-conn-wrap{display:grid;gap:1px}.db-conn-wrap>.db-tree{margin-left:6px;overflow:visible;flex:none}
 .db-conn-name .wf-chevron{margin-right:-2px}
-/* Grade: seleção por número/cabeçalho, redimensionar na linha divisória, campos WHERE/ORDER BY e botões quadrados. */
+/* Grid: selection by number/header, resizing on the divider line, WHERE/ORDER BY fields and square buttons. */
 .db-grid{table-layout:fixed}
 .db-grid th{resize:none;position:sticky;padding:0}
 .db-grid th .db-th{display:flex;align-items:center;min-width:0}
@@ -2623,7 +2623,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .db-pg-range{padding:0 8px;font:12px var(--mono);color:var(--text);white-space:nowrap}
 .db-pager.float .db-warn{padding:0 8px;font-size:11px;white-space:nowrap}
 .db-table-view .db-grid-scroll{padding-bottom:56px}
-/* Formulário de servidor: abas sublinhadas, campos leves e todos com a mesma altura. */
+/* Server form: underlined tabs, light fields and all with the same height. */
 .modal.dbmodal{padding:22px 24px 18px;gap:0}
 .dbmodal>header{margin-bottom:14px}.dbmodal>header h2{font-size:17px}
 .dbmodal .f{gap:6px;font-size:12px;font-weight:600;color:var(--muted)}
@@ -2640,20 +2640,20 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .dbmodal .dbpane .db-hint{margin:-4px 0 0;padding:0;font-size:12px;line-height:1.5;color:var(--muted)}
 .dbmodal .dbfoot{margin-top:16px;padding-top:14px}
 .dbmodal .dbfoot button:not(.dblink){min-width:84px;height:34px}
-/* Cabeçalho da grade: nome seleciona a coluna inteira; no canto direito fica o ícone de ordenar. */
+/* Grid header: name selects the whole column; the sort icon sits in the right corner. */
 .db-page .db-grid th button.srt{width:auto;flex:none;align-self:stretch;margin:0;padding:0 9px;border-radius:0;border-left:1px solid color-mix(in srgb,var(--border) 70%,transparent);display:grid;place-items:center}
 .db-grid th button.srt svg{width:9px;height:13px}.db-grid th button.srt path{fill:currentColor;opacity:.4}
 .db-grid th button.srt.on{color:var(--accent-strong)}.db-grid th button.srt.asc path.up,.db-grid th button.srt.desc path.dn{opacity:1}
 .db-grid th.sel{background:color-mix(in srgb,var(--accent) 28%,var(--surface-2));box-shadow:inset 0 -2px var(--accent)}
 .db-grid td.colsel{background:color-mix(in srgb,var(--accent) 22%,transparent)!important;color:var(--text)}
 .db-pg svg{width:14px;height:14px;fill:currentColor;stroke:currentColor;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
-/* Árvore: cada nível recua 16px (seta + espaço), então a seta fica sempre embaixo do ícone do nível acima. */
+/* Tree: each level indents 16px (arrow + space), so the arrow always sits under the icon of the level above. */
 .db-page .db-conn-name{gap:4px}
 .db-dbs{margin-left:16px;padding-left:0;border-left:0}
 .db-conn-wrap>.db-tree{margin-left:18px}
 .db-tree [role=group]{margin-left:0;padding-left:0;border-left:0}
 
-/* Banco de dados em janelas: lateral encaixável e redimensionável, painéis divisíveis por arraste de abas */
+/* Database in windows: dockable and resizable sidebar, panels splittable by dragging tabs */
 .db-page{display:flex;position:relative}
 .db-page.dock-right{flex-direction:row-reverse}
 .db-page aside{flex:none;min-width:200px;border-right:0;border-left:0}
@@ -2662,7 +2662,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .db-vgutter{flex:none;width:7px;margin:0 -4px;cursor:col-resize;position:relative;z-index:4;touch-action:none}
 .db-vgutter::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:1px;background:transparent;transition:background .12s,width .12s,left .12s}
 .db-vgutter:hover::after{background:var(--accent);width:2px;left:2px}
-/* O cabeçalho inteiro arrasta o painel; o botão Novo servidor continua clicável. */
+/* The whole header drags the panel; the New server button stays clickable. */
 .db-page .db-side-grip{cursor:grab;user-select:none;touch-action:none}.db-page .db-side-grip button{cursor:pointer}
 .db-dock-preview{position:absolute;top:0;bottom:0;z-index:20;pointer-events:none;background:var(--accent-bg);border:2px dashed var(--accent);border-radius:12px;box-sizing:border-box}
 .db-dock-preview.left{left:0}.db-dock-preview.right{right:0}
@@ -2691,7 +2691,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .ws-hint{position:absolute;pointer-events:none;background:color-mix(in srgb,var(--accent) 22%,transparent);border:2px solid var(--accent);border-radius:8px;box-sizing:border-box}
 .ws-hint.center{inset:0}.ws-hint.left{left:0;top:0;bottom:0;width:50%}.ws-hint.right{right:0;top:0;bottom:0;width:50%}.ws-hint.top{left:0;right:0;top:0;height:50%}.ws-hint.bottom{left:0;right:0;bottom:0;height:50%}
 
-/* Ícones de conexão e filtro "N de M" (servidor: bancos; banco: esquemas) */
+/* Connection icons and "N of M" filter (server: databases; database: schemas) */
 .db-cico{flex:none;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;color:var(--cf-7d7d7d)}
 .db-cico .dot{fill:currentColor;stroke:none}
 .db-cico.ready{color:var(--cf-5fd38a)}.db-cico.connecting{color:var(--warn)}.db-cico.error,.db-cico.lost{color:var(--danger)}
@@ -2705,13 +2705,13 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .db-scope-row.all{border-bottom:1px solid var(--border);border-radius:7px 7px 0 0;margin-bottom:4px;color:var(--muted)}.db-scope-row.system span{color:var(--muted)}
 .db-scope-foot{padding:8px 12px;border-top:1px solid var(--border);color:var(--muted);font-size:11px}
 
-/* Cabeçalho da grade: ícone do tipo + nome; o tipo aparece num tooltip ao passar o mouse */
+/* Grid header: type icon + name; the type appears in a tooltip on hover */
 .db-grid th .db-tico{flex:none;width:14px;height:14px;align-self:center;fill:none;stroke:var(--muted);stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
 .db-page .db-grid th button.hd{align-items:center}.db-grid th button.hd:hover .db-tico,.db-grid th.sel .db-tico{stroke:var(--accent-strong)}
 .db-coltip{position:fixed;z-index:70;pointer-events:none;background:var(--surface-3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;box-shadow:0 8px 24px var(--cs-00000099);white-space:nowrap}
 .db-coltip strong{font-weight:600}
 
-/* Barra da grade de tabela (recarregar, atualização automática, cancelar, editar linhas) */
+/* Table grid bar (reload, auto refresh, cancel, edit rows) */
 .db-grid-actions.tb{gap:2px}
 .db-page button.db-tb{width:28px;height:28px;padding:0;display:grid;place-items:center;background:transparent;color:var(--muted);border:1px solid transparent;border-radius:7px}
 .db-page button.db-tb:hover:not(:disabled){background:var(--surface-3);color:var(--text);filter:none}.db-page button.db-tb:disabled{opacity:.35;cursor:default}
@@ -2728,7 +2728,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 
 .db-cico.logo{fill:currentColor;stroke:none}
 
-/* Histórico de consultas: linha resumida que expande para o SQL inteiro; "Limpar histórico" fica fixo no rodapé */
+/* Query history: summary row that expands to the full SQL; "Clear history" stays fixed in the footer */
 .dbdlg>.dbfoot{flex:none;margin-top:10px}.dbdlg>.dbfoot .db-hint{margin:0}
 .db-hist{padding:0;border-top:1px solid var(--border)}
 .db-page .db-hist-line{display:flex;align-items:center;gap:8px;width:100%;min-width:0;background:transparent;color:var(--text);padding:7px 4px;text-align:left;border-radius:6px}.db-page .db-hist-line:hover{background:var(--surface-3);filter:none}
@@ -2738,11 +2738,11 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .db-hist-full{display:grid;gap:8px;padding:2px 4px 10px 26px}.db-hist-full pre{margin:0;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px var(--mono);padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px}
 .db-hist-full button{justify-self:start}
 
-/* Abas ligadas a bancos: nome do banco na aba e seletor de banco na barra do SQL */
+/* Tabs tied to databases: database name in the tab and database selector in the SQL bar */
 .ws-note{margin-left:6px;padding:0 6px;border-radius:999px;background:var(--surface-3);color:var(--muted);font:500 10.5px var(--sans)}
 .db-sql-bar .sel.db-sql-db{flex:none;max-width:260px}
 
-/* Abas: bolinha de conexão, indicador de onde a aba vai ser solta e aviso das abas ainda não carregadas */
+/* Tabs: connection dot, indicator of where the tab will be dropped and notice for tabs not yet loaded */
 .ws-tab{position:relative}
 .ws-tab.drop-before::before,.ws-tab.drop-after::after{content:"";position:absolute;top:4px;bottom:0;width:2px;border-radius:2px;background:var(--accent);z-index:2}
 .ws-tab.drop-before::before{left:-2px}.ws-tab.drop-after::after{right:-2px}
@@ -2751,7 +2751,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 
 .cx-exploration-summary :is(pre,ul,ol,table,blockquote){break-inside:avoid}
 
-/* Campo de mensagem: camada atrás do textarea pinta @arquivo e /skill; o texto do textarea fica transparente e só o cursor aparece. */
+/* Message field: layer behind the textarea paints @file and /skill; the textarea text is transparent and only the caret shows. */
 .hlwrap{flex:1;min-width:0;display:grid;position:relative}
 .hlwrap>*{grid-area:1/1}
 .hlwrap>textarea{position:relative;color:transparent;caret-color:var(--text);background:transparent}
@@ -2764,7 +2764,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .mmbtn.field .chev{margin-left:auto;font-size:10px;color:color-mix(in srgb, var(--accent) 8%, var(--g92))}
 .agentfield .delchat{width:100%;margin-top:4px;padding:8px 11px;border-radius:9px}
 
-/* Pull requests no Git: bolinha amarela de novidade e painel da direita */
+/* Pull requests in Git: yellow dot for news and right panel */
 .ydot{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;background:var(--cb-f2c94c);box-shadow:0 0 0 2px color-mix(in srgb, #f2c94c 25%, transparent);margin-left:6px;vertical-align:middle}
 .prtitle .ydot{margin:0 6px 0 0}
 .gtool.on{background:var(--accent-bg);color:var(--accent-strong)}
@@ -2781,7 +2781,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .prthread{display:grid;gap:8px}.prmsg{border-left:2px solid var(--accent-line);padding:2px 0 2px 10px;font-size:12.5px}.prmsg small{margin-left:8px;color:var(--muted)}.prmsg p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .prcheck{display:flex;align-items:center;gap:6px;font-size:12.5px}
 
-/* Segundo plano do chat */
+/* Chat background */
 .bgtasks .modechip{display:inline-flex;align-items:center;gap:6px}
 .bgdot{width:7px;height:7px;border-radius:50%;background:var(--accent-strong);animation:bgpulse 1.4s ease-in-out infinite}
 @keyframes bgpulse{50%{opacity:.35}}
@@ -2792,7 +2792,7 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .bgtask.failed .bgstate,.bgtask.stopped .bgstate{color:var(--warn)}
 .bgtitle{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bgact{color:var(--muted);font:11px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Tipos de card cadastráveis, título do card limitado e fluxo escolhido no editor do card. */
+/* Registrable card types, limited card title and flow chosen in the card editor. */
 .card h3.ctitle{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;overflow-wrap:anywhere;word-break:break-word}
 .pill.cardtype-pill{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .flowchip{display:inline-flex;align-items:center;width:max-content;max-width:100%;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700;color:var(--accent-strong);background:color-mix(in srgb, var(--accent) 12%, var(--surface-2))}
@@ -2800,12 +2800,12 @@ svg.db-ico.key{stroke:var(--warn)}svg.db-ico.column{stroke:var(--muted)}svg.db-i
 .cardtypes{display:grid;gap:8px}
 @keyframes focusflash{0%,60%{box-shadow:0 0 0 2px var(--accent);border-radius:12px}100%{box-shadow:0 0 0 2px transparent;border-radius:12px}}
 .focus-flash{animation:focusflash 1.6s ease-out}
-/* Botão com ícone à esquerda (ex.: chave nos botões de token). */
+/* Button with an icon on the left (e.g. key in the token buttons). */
 button.withicon{display:inline-flex;align-items:center;gap:6px}button.withicon svg{width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .cidx-title{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px}
 .cardtypes-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
 .cardtypes-row{display:grid;grid-template-columns:44px minmax(0,1fr) 170px 30px;align-items:center;gap:8px}
-/* Cabeçalho das colunas (cor, tipo, prefixo da branch) e os dois campos com a mesma altura e fonte. */
+/* Column header (color, type, branch prefix) and the two fields with the same height and font. */
 .cardtypes-head{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.cardtypes-head>span{padding-left:2px}
 .cardtypes-row>.in{box-sizing:border-box;height:34px;padding:6px 10px;font-size:13px;border-radius:8px}
 .cardtypes-swatch{width:22px;height:22px;padding:0;border-radius:6px;border:1px solid color-mix(in srgb, var(--text, #fff) 18%, transparent);cursor:pointer}
@@ -2820,19 +2820,19 @@ span.cardtypes-swatch{background:var(--surface-2);border-style:dashed}
 .cardtypes-custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;padding:0;border:0}
 .cardtypes-add{margin-top:2px}
 
-/* A barra flutuante Quadro/Chats/Git/Banco fica no topo (z 60) e cobria diálogos abertos, como Configurações: some enquanto há um diálogo. */
+/* The floating Board/Chats/Git/Database bar sits at the top (z 60) and covered open dialogs, such as Settings: it disappears while a dialog is open. */
 body:has(.overlay) .viewdock.floating{display:none}
-/* O botão de chat do card é absoluto no canto: os selos quebram linha antes de passar por baixo dele. */
+/* The card chat button is absolute in the corner: badges wrap to a new line before passing under it. */
 .card > .pills{padding-right:34px}
-/* Nome longo de projeto na sidebar: uma linha com reticências (o nome inteiro aparece no título da janela). */
+/* Long project name in the sidebar: one line with ellipsis (the full name appears in the window title). */
 .proj > span:first-of-type{flex:1;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.proj > span:first-of-type small{overflow:hidden;text-overflow:ellipsis}
 
-/* Campo de busca/ir para linha inválido continua vermelho com foco. */
+/* Invalid search/go-to-line field stays red when focused. */
 .wf-findbox.invalid:focus-within{border-color:var(--cl-d8665d);box-shadow:0 0 0 1px color-mix(in srgb,#d8665d 38%,transparent)}
-/* Tema claro: seções das configurações do projeto, seletor de tema e aba ativa usavam fundos escuros fixos. */
+/* Light theme: project settings sections, theme selector and active tab used fixed dark backgrounds. */
 :root[data-theme="light"] :is(.cx-wfcard,.themetrigger){background:var(--surface-2);border-color:var(--border);color:var(--text)}
 :root[data-theme="light"] .tab.on{background:var(--accent-bg);color:var(--accent-strong)}
-/* Mensagens de erro com várias linhas (ex.: campos inválidos) quebram onde o texto quebra. */
+/* Multi-line error messages (e.g. invalid fields) wrap where the text wraps. */
 .error,.ntoast p{white-space:pre-line}
 :root[data-theme="light"] .teamcard{background:#fff;border-color:var(--border);color:var(--text)}:root[data-theme="light"] .teamdot{border-color:#fff}
 
@@ -2840,7 +2840,7 @@ body:has(.overlay) .viewdock.floating{display:none}
 .cgchev{display:inline-block;width:10px;font-size:11px;transition:transform .12s;flex:none}.cgrepo.open .cgchev{transform:rotate(90deg)}.cgrepo.shut>header{border-bottom:0}
 .cgform{grid-template-columns:minmax(0,1fr)}.cgck{min-width:0}.cgck .nums{flex:none;margin-left:auto;white-space:nowrap;font-size:11px}.cgck .nums .p{color:var(--cf-8fd19e)}.cgck .nums .m{color:var(--cf-ff8f86)}
 .cgck .st{flex:none;width:14px;text-align:center;font-weight:800;font-family:var(--sans)}.cgck .st.M{color:var(--cf-e8c27a)}.cgck .st.A{color:var(--cf-8fd19e)}.cgck .st.D{color:var(--cf-ff8f86)}.cgck .st.R{color:var(--cf-8ab4f8)}
-/* Índice de código no editor: marca do tipo de símbolo (ƒ, C, I...), título das listas do F12 / Shift+F12 e estrutura do arquivo */
+/* Code index in the editor: symbol kind mark (ƒ, C, I...), title of the F12 / Shift+F12 lists and file structure */
 .cnav-kind{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;background:var(--accent-bg);color:var(--accent-strong,var(--accent));font:600 10px var(--mono)}
 .cnav-kind[data-kind=class],.cnav-kind[data-kind=struct],.cnav-kind[data-kind=interface],.cnav-kind[data-kind=type],.cnav-kind[data-kind=enum]{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
 .cnav-detail{flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font:11px var(--mono)}
@@ -2860,7 +2860,7 @@ body:has(.overlay) .viewdock.floating{display:none}
 .cidx-chip{padding:1px 8px;border-radius:99px;background:rgba(128,128,128,.14);color:var(--muted);font-size:11px;white-space:nowrap}
 .cidx-none{color:var(--muted)}
 @keyframes cidx-slide{0%{left:-40%}100%{left:100%}}
-/* Cor escolhida pelo usuario (agente, tipo de card): pastel no tema escuro; no claro o texto escurece para ler sobre o fundo claro. */
+/* Color chosen by the user (agent, card type): pastel in the dark theme; in the light one the text darkens to read on the light background. */
 .av.tc{color:var(--tc);background:color-mix(in srgb, var(--tc) 22%, var(--surface-2))}
 .cardtype-pill.tc{color:var(--tc);background:color-mix(in srgb, var(--tc) 16%, var(--surface-2))}
 :root[data-theme="light"] .av.tc{color:color-mix(in srgb, var(--tc) 62%, #000)}
@@ -2872,7 +2872,7 @@ body:has(.overlay) .viewdock.floating{display:none}
 .pw-versions code{font:12px/1.4 var(--mono);color:var(--text)}
 .pw-install-row{display:flex;align-items:center;gap:10px}
 .pw-subtitle-row{display:flex;align-items:center;justify-content:space-between;gap:10px}.pw-subtitle-row .linklike{font-size:11.5px;text-transform:none;letter-spacing:0;font-weight:600}
-/* Playwright: o destaque do checkbox vai só até o fim da frase e o botão de instalar fica na mesma linha, à direita. */
+/* Playwright: the checkbox highlight goes only to the end of the sentence and the install button stays on the same line, on the right. */
 .pw-install-row.cx-offerrow{flex-wrap:wrap}.pw-install-row.cx-offerrow .ck-line{flex:0 1 auto;width:auto}.pw-install-row.cx-offerrow>.mini{margin-left:auto}
 .pw-pick-list{list-style:none;margin:0;padding:0;display:grid;gap:4px;max-height:300px;overflow-y:auto}
 .pw-pick-row{width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);text-align:left;cursor:pointer}
@@ -2891,7 +2891,7 @@ body:has(.overlay) .viewdock.floating{display:none}
 .bgstate{display:inline-flex;align-items:center;gap:6px}.bgico{display:inline-grid;place-items:center;width:14px;height:14px;flex:none}.bgico svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.bgico.completed{color:var(--ok,#5fbf7f)}.bgico.failed{color:var(--danger,#e5534b)}.bgico.stopped{color:var(--warn,#e5b94a)}.bgspin{width:12px;height:12px;border-radius:50%;border:2px solid color-mix(in srgb,var(--accent-strong) 30%,transparent);border-top-color:var(--accent-strong);animation:bgspin .8s linear infinite}@keyframes bgspin{to{transform:rotate(360deg)}}
 .dv-current{font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;color:var(--accent-strong);border:1px solid var(--accent-line);background:var(--accent-deep);white-space:nowrap}.dochist-row.current{border-color:var(--accent-line)}.dochist-modes{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0}.dochist-modes button{padding:3px 10px;border-radius:8px;font-size:12px;background:transparent;border:1px solid var(--line,#3a3a42);color:var(--muted);cursor:pointer}.dochist-modes button.on{color:var(--text,#eee);border-color:var(--accent-line);background:var(--accent-deep)}.dochist-diff{overflow:auto;display:grid;gap:8px;align-content:start}
 .tokmore{color:var(--muted);font-size:11.5px;padding-top:6px;border-top:1px solid color-mix(in srgb,var(--accent) 6%,var(--g27));text-align:center}
-/* Popup aberto para cima: o aviso vai para o topo e não precisa da linha de separação. */
+/* Popup opened upward: the notice goes to the top and does not need the separator line. */
 .tokpop.up .tokmore{border-top:0;padding-top:0}
 .cx-stepgroup{display:grid;gap:6px}.cx-stepbtn{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:6px;cursor:pointer}.cx-stepbtn:disabled{cursor:default}.cx-stepbtn .cx-chev{width:12px;color:var(--muted);flex:none}.cx-stepbtn small{display:block}.cx-stepgroup .cx-runs{margin:2px 0 6px 18px}
 .cx-riskpane{display:grid;gap:10px;align-content:start}.cx-risklist{margin:0;padding:10px 12px 10px 30px;display:flex;flex-direction:column;gap:6px;font-size:13px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}.cx-risklist li::marker{color:var(--danger)}
@@ -2910,7 +2910,7 @@ body:has(.overlay) .viewdock.floating{display:none}
 .cx-mix .cx-facts2{margin-top:auto}.cx-mix .cx-facts2 dd{text-align:right;font-variant-numeric:tabular-nums}
 .cx-grouphead{display:grid!important;grid-template-columns:minmax(0,1fr) 90px 90px 90px;gap:12px!important;align-items:center;padding:9px 12px!important}.cx-grouphead .cx-gname{display:flex;align-items:center;gap:8px;min-width:0}.cx-grouphead .cx-run-n{color:inherit}.cx-grouphead .cx-run-n small{color:var(--muted)}.cx-stepgroup .cx-runs,.cx-stepgroup.open .cx-runs{margin:6px 0 4px 0!important}
 .cxtop{display:flex;align-items:center;gap:8px}.cx-artifacts{display:inline-grid;place-items:center;width:32px;height:32px;padding:0}.cx-artifacts svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-/* Rodapé do card: excluir e tokens à esquerda, salvar automático, cancelar e salvar à direita, todos na altura natural. */
+/* Card footer: delete and tokens on the left, autosave, cancel and save on the right, all at natural height. */
 .cefoot{align-items:center}.modal.wide>form>.actions.cefoot{padding-top:10px}.modal.wide:has(.cefoot){padding-bottom:12px}.cefoot .grow1{flex:1}
 .cefoot-tokens{display:flex;align-items:center;min-width:0}.cefoot-tokens .tokuse{margin:0;width:auto}.cefoot-tokens .tokbtn{width:auto;margin:0;gap:12px;padding:5px 12px;border-radius:8px;line-height:1.3}.cefoot-tokens .tokbtn-value{flex-direction:row;align-items:baseline;gap:6px;line-height:1.3}.cefoot-tokens .tokbtn-value b{font-size:13px}.cefoot-tokens .tokbtn-value small{font-size:11.5px}
 .activity.qv-wrap,.dock.full .activity.qv-wrap{position:relative;overflow:visible;padding:0}.qv-inner{height:100%;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:18px 14px;display:flex;flex-direction:column;gap:10px;box-sizing:border-box}.qv-wrap .side-toggle.qv-toggle.tip::after{display:none}

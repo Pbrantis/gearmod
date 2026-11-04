@@ -1,5 +1,5 @@
-// Termos de programação em português -> palavras que costumam aparecer nos nomes do código (em inglês).
-// Só expande a busca textual; nomes de símbolos citados na pergunta continuam valendo como estão.
+// Programming terms in Portuguese -> words that usually appear in code names (in English).
+// It only expands the text search; symbol names cited in the question still count as they are.
 const PT_EN: Record<string, string> = {
   caminho: 'path', caminhos: 'path', arquivo: 'file', arquivos: 'file', pasta: 'folder dir directory', pastas: 'folder dir',
   ler: 'read', le: 'read', lê: 'read', leitura: 'read', escrever: 'write', escreve: 'write', grava: 'write save', gravar: 'write save', salvar: 'save', salva: 'save',

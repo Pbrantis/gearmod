@@ -1,4 +1,4 @@
-/** Diff unificado (formato do git) entre dois textos, linha a linha: alimenta o mesmo `DiffLines` do Git. */
+/** Unified diff (git format) between two texts, line by line: feeds the same `DiffLines` as Git. */
 const lines = (text: string): string[] => { const out = text.replace(/\r/g, '').split('\n'); if (out[out.length - 1] === '') out.pop(); return out }
 
 type Op = { kind: ' ' | '+' | '-'; text: string }
@@ -6,7 +6,7 @@ type Op = { kind: ' ' | '+' | '-'; text: string }
 function middleOps(a: string[], b: string[]): Op[] {
   if (!a.length) return b.map((text): Op => ({ kind: '+', text }))
   if (!b.length) return a.map((text): Op => ({ kind: '-', text }))
-  // Texto enorme e todo diferente: não vale a tabela inteira; mostra tudo como trocado.
+  // Huge, entirely different text: the full table is not worth it; shows everything as replaced.
   if (a.length * b.length > 4_000_000) return [...a.map((text): Op => ({ kind: '-', text })), ...b.map((text): Op => ({ kind: '+', text }))]
   const w = b.length + 1, table = new Uint32Array((a.length + 1) * w)
   for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) table[i * w + j] = a[i] === b[j] ? table[(i + 1) * w + j + 1]! + 1 : Math.max(table[(i + 1) * w + j]!, table[i * w + j + 1]!)
@@ -22,7 +22,7 @@ function middleOps(a: string[], b: string[]): Op[] {
   return ops
 }
 
-/** Diff unificado de `before` para `after`, com 3 linhas de contexto; vazio quando os textos são iguais. */
+/** Unified diff from `before` to `after`, with 3 lines of context; empty when the texts are equal. */
 export function unifiedDiff(before: string, after: string, context = 3): string {
   const a = lines(before), b = lines(after)
   let start = 0

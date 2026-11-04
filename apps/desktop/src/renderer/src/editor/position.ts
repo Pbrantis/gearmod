@@ -1,4 +1,4 @@
-/** Separa `arquivo.ts:42`, `arquivo.ts:42:7` e `arquivo.ts#L42` (também `#L42C7` e `#L42-L50`); o `C:\` do Windows não conta como linha. */
+/** Splits `file.ts:42`, `file.ts:42:7` and `file.ts#L42` (also `#L42C7` and `#L42-L50`); the Windows `C:\` does not count as a line. */
 export function splitLineSuffix(path: string): { path: string; line?: number; column?: number } {
   const match = /^(.+?)(?::(\d+)(?::(\d+))?|#L(\d+)(?:C(\d+))?(?:-L?\d+(?:C\d+)?)?)$/.exec(path)
   if (!match) return { path }
@@ -6,14 +6,14 @@ export function splitLineSuffix(path: string): { path: string; line?: number; co
   return line > 0 ? { path: match[1]!, line, ...(column ? { column: Number(column) } : {}) } : { path }
 }
 
-/** Texto do "Ir para linha": `42` ou `42:7`; vazio ou inválido devolve `null`. */
+/** "Go to line" text: `42` or `42:7`; empty or invalid returns `null`. */
 export function parseGoto(text: string): { line: number; column: number } | null {
   const match = /^\s*(\d+)(?:\s*[:,]\s*(\d+))?\s*$/.exec(text)
   return match ? { line: Math.max(1, Number(match[1])), column: Math.max(1, Number(match[2] ?? 1)) } : null
 }
 
 export type Eol = 'lf' | 'crlf'
-/** O CodeMirror normaliza tudo para `\n`; guardamos o fim de linha do disco (o que predomina) para devolvê-lo ao salvar. */
+/** CodeMirror normalizes everything to `\n`; we keep the disk's line ending (the predominant one) to restore it on save. */
 export function detectEol(text: string): Eol {
   const crlf = text.match(/\r\n/g)?.length ?? 0, lf = (text.match(/\n/g)?.length ?? 0) - crlf
   return crlf > lf ? 'crlf' : 'lf'
@@ -22,7 +22,7 @@ export const normalizeEol = (text: string): string => text.replace(/\r\n?/g, '\n
 export const withEol = (text: string, eol: Eol): string => eol === 'crlf' ? text.replace(/\n/g, '\r\n') : text
 
 export type Indent = { kind: 'tab' } | { kind: 'spaces'; size: number | null }
-/** Recuo predominante do arquivo: Tab se a maioria das linhas recuadas começa com tabulação; senão o degrau de espaços mais comum (2, 4 ou 8). */
+/** Predominant indentation of the file: Tab if most indented lines start with a tab; otherwise the most common space step (2, 4 or 8). */
 export function detectIndent(text: string): Indent {
   let tabs = 0, spaces = 0, previous = 0
   const steps = new Map<number, number>()
@@ -40,7 +40,7 @@ export function detectIndent(text: string): Indent {
   return { kind: 'spaces', size: best && best[1] > 0 ? best[0] : null }
 }
 
-/** Troca mínima entre dois textos: o miolo que difere (prefixo e sufixo comuns ficam de fora). Mantém cursor, rolagem e desfazer ao recarregar. */
+/** Minimal change between two texts: the middle part that differs (common prefix and suffix are left out). Keeps cursor, scroll and undo on reload. */
 export function minimalChange(before: string, after: string): { from: number; to: number; insert: string } {
   const limit = Math.min(before.length, after.length)
   let start = 0

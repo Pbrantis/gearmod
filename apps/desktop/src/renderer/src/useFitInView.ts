@@ -1,6 +1,6 @@
 import { useLayoutEffect, type RefObject } from 'react'
 
-/** Mantém um menu flutuante dentro da janela: se passar de uma borda, desloca só o que sobra (a posição original é refeita a cada renderização). */
+/** Keeps a floating menu inside the window: if it passes an edge, shifts only the overflow (the original position is recomputed on every render). */
 export function useFitInView(ref: RefObject<HTMLElement | null>, active: boolean): void {
   useLayoutEffect(() => {
     const element = ref.current

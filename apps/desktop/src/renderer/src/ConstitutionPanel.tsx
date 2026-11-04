@@ -12,15 +12,15 @@ const code = (proposal: ConstitutionProposal): string => `C${String(proposal.num
 const when = (iso: string | null): string => iso ? new Date(iso).toLocaleDateString(dateLocale(), { day: '2-digit', month: 'short', year: 'numeric' }) : ''
 
 /**
- * Aba Constituição do projeto: os princípios que todo card respeita (opcional). Mostra o texto, edita à mão,
- * abre o chat da Constituição e lista as mudanças que os agentes sugeriram nos outros chats.
+ * Project Constitution tab: the principles every card respects (optional). Shows the text, edits by hand,
+ * opens the Constitution chat and lists the changes the agents suggested in the other chats.
  */
 export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { projectId: string; openChat(prompt?: string): void; onOpenReference?(): void }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.constitution
   const [state, setState] = useState<ConstitutionState>(), [editing, setEditing] = useState<string | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [viewing, setViewing] = useState(false)
   const load = useCallback(async () => { try { setState(await window.gearmod.invoke('constitution:get', { projectId })) } catch (reason) { setError(plainError(reason)) } }, [projectId])
   useEffect(() => { void load() }, [load])
-  // O agente grava ou sugere mudanças enquanto a aba está aberta: recarrega quando avisa.
+  // The agent writes or suggests changes while the tab is open: reloads when it signals.
   useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/card-updated' && event.payload.type === 'constitution') void load() }), [load])
   const act = async (call: () => Promise<ConstitutionState>): Promise<void> => {
     setWorking(true); setError('')

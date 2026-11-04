@@ -8,7 +8,7 @@ import { tm } from './i18n'
 interface Stored { token: string; provider: HostProvider; host: string; login: string; name: string; email: string | null; invalid: boolean; savedAt: string }
 type Vault = Record<string, Stored>
 
-/** Resultado da busca de acesso de um repositório: sem token, token que o provedor recusou, ou token pronto para usar. */
+/** Result of looking up access for a repository: no token, a token the provider rejected, or a token ready to use. */
 export type AccessLookup =
   | { status: 'none'; remote: RemoteRef | null }
   | { status: 'invalid'; remote: RemoteRef; key: string }
@@ -19,8 +19,8 @@ const repoKey = (sourceId: string, host: string): string => `repo:${sourceId}|${
 const hintOf = (token: string): string => `••••${token.slice(-4)}`
 
 /**
- * Tokens de GitHub/GitLab por projeto (valem para todos os repositórios do mesmo servidor) e por repositório (sobrescreve o do projeto).
- * Ficam num único arquivo cifrado pelo cofre do sistema; o token nunca volta para a tela, só quem é a conta e as 4 últimas letras.
+ * GitHub/GitLab tokens per project (valid for all repositories on the same server) and per repository (overrides the project's).
+ * They live in a single file encrypted by the system vault; the token never goes back to the screen, only who the account is and the last 4 characters.
  */
 export class GitAccounts {
   private cache: Vault | null = null
@@ -50,7 +50,7 @@ export class GitAccounts {
     return { scope, host: entry.host, provider: entry.provider, login: entry.login, name: entry.name, email: entry.email, hint: hintOf(entry.token), invalid: entry.invalid, savedAt: entry.savedAt }
   }
 
-  /** Servidores usados pelos repositórios do projeto, com o token do projeto, o de cada repositório e qual vale para quem. */
+  /** Servers used by the project's repositories, with the project token, each repository's token and which one applies to whom. */
   async state(projectId: string): Promise<GitAccountsState> {
     const vault = await this.vault()
     const sources = this.database.db.prepare('SELECT id, name, local_path AS path FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order').all(projectId) as Array<{ id: string; name: string; path: string }>
@@ -88,7 +88,7 @@ export class GitAccounts {
     return this.state(input.projectId)
   }
 
-  /** Token que vale para este repositório: o próprio, senão o do projeto no mesmo servidor. */
+  /** Token that applies to this repository: its own, otherwise the project's on the same server. */
   async lookup(sourceId: string): Promise<AccessLookup> {
     const source = this.source(sourceId), remote = await this.remoteOf(source.path)
     if (!remote) return { status: 'none', remote: null }
@@ -102,7 +102,7 @@ export class GitAccounts {
     return { status: 'none', remote }
   }
 
-  /** O provedor recusou o token (revogado ou vencido): fica marcado até a pessoa colocar outro. */
+  /** The provider rejected the token (revoked or expired): it stays flagged until the person provides another. */
   async markInvalid(key: string): Promise<void> {
     const vault = await this.vault()
     if (!vault[key] || vault[key]!.invalid) return

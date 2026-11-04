@@ -7,7 +7,7 @@ import { dateLocale, useT } from './i18n'
 
 const folderName = (path: string): string => path.split(/[\\/]/).filter(Boolean).at(-1) ?? path
 
-/** Seção da tela do projeto: liga ou desliga o índice de código e mostra o estado de cada pasta indexada. */
+/** Project screen section: turns the code index on or off and shows the state of each indexed folder. */
 export function ProjectCodeIndex({ project }: { project: Project }): React.JSX.Element {
   const t = useT().settings.codeIndex
   const [status, setStatus] = useState<CodeIndexStatus | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -22,7 +22,7 @@ export function ProjectCodeIndex({ project }: { project: Project }): React.JSX.E
     try { setStatus(await action()) } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) }
   }
   const toggle = (enabled: boolean): void => { setStatus((current) => current ? { ...current, enabled } : current); void run(() => window.gearmod.invoke('code-index:set-enabled', { projectId: project.id, enabled })) }
-  /** Indexa as pastas uma por vez para a tela mostrar quem está indexando, quem espera e quantas já terminaram. */
+  /** Indexes folders one at a time so the screen shows which is indexing, which is waiting and how many have finished. */
   const reindex = async (): Promise<void> => {
     if (!status) return
     const roots = status.roots.map((root) => root.root)
@@ -34,7 +34,7 @@ export function ProjectCodeIndex({ project }: { project: Project }): React.JSX.E
       }
     } catch (reason) { setError(plainError(reason)) } finally { setBusy(false); setQueue(null) }
   }
-  /** Estado de cada pasta durante a indexação em fila: terminada, indexando agora ou esperando. */
+  /** State of each folder during queued indexing: finished, indexing now or waiting. */
   const phase = (root: string): 'done' | 'running' | 'queued' | 'idle' => {
     if (queue) { const at = queue.roots.indexOf(root); return at < queue.done ? 'done' : at === queue.done ? 'running' : 'queued' }
     return busy ? 'running' : 'idle'

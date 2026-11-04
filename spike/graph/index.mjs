@@ -1,4 +1,4 @@
-// API do índice de código. Um banco serve várias pastas (checkout principal + worktrees dos cards).
+// Code index API. One database serves several folders (main checkout + card worktrees).
 import { watch } from 'node:fs'
 import { relative, sep } from 'node:path'
 import { openStore, gc } from './store.mjs'
@@ -14,7 +14,7 @@ export class CodeIndex {
     this.busy = Promise.resolve()
   }
 
-  // serializa escritas (índice completo e atualizações do watcher)
+  // serializes writes (full index and watcher updates)
   serial(fn) { const p = this.busy.then(fn, fn); this.busy = p.catch(() => {}); return p }
 
   index(root, opts = {}) { return this.serial(async () => { const r = await indexRoot(this.db, root, opts); this.queries.delete(root); return r }) }
@@ -25,7 +25,7 @@ export class CodeIndex {
     return this.queries.get(root)
   }
 
-  // Observa a pasta e atualiza o índice sozinho. onUpdate recebe o resultado de cada lote.
+  // Watches the folder and updates the index by itself. onUpdate receives the result of each batch.
   watch(root, { exclude = [], debounceMs = 300, onUpdate = () => {} } = {}) {
     if (this.watchers.has(root)) return
     let pending = new Set()

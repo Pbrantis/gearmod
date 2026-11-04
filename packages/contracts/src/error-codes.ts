@@ -1,6 +1,6 @@
 /**
- * Códigos estáveis para erros que a tela precisa reconhecer. O texto continua traduzido; o código vai como prefixo `[[codigo]] `,
- * que a tela lê com `errorCodeOf` e tira com `withoutErrorCode`. Assim traduzir o texto no main não quebra a tela.
+ * Stable codes for errors the screen needs to recognize. The text stays translated; the code goes as a `[[code]] ` prefix,
+ * which the screen reads with `errorCodeOf` and strips with `withoutErrorCode`. This way translating the text in main does not break the screen.
  */
 export const errorCodes = ['git-push-rejected', 'no-worktree'] as const
 export type ErrorCode = (typeof errorCodes)[number]

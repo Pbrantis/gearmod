@@ -34,7 +34,7 @@ it('guarda o SQL completo no histórico, ocultando só o valor de PASSWORD/SECRE
   const hidden = historySql("ALTER USER x PASSWORD 'my-secret-password'; ALTER ROLE y PASSWORD sk-unquoted")
   expect(hidden).not.toMatch(/my-secret-password|sk-unquoted/)
   expect(hidden).toContain('ALTER USER x PASSWORD')
-  // Aspas dobradas (texto dentro de outro texto, como num DO): nada do segredo pode sobrar.
+  // Doubled quotes (text inside another text, as in a DO): none of the secret may be left.
   expect(historySql("EXECUTE 'ALTER USER x PASSWORD ''segredo1'''")).not.toContain('segredo1')
 })
 it('comandos de escrita não guardam os valores no histórico (S7)', () => {

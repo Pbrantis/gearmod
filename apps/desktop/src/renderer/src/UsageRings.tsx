@@ -3,7 +3,7 @@ import type { AgentUsage, UsageWindow } from '@gearmod/contracts'
 import { useEscape } from './useEscape'
 import { dateLocale, tr, useT } from './i18n'
 
-/** A semana só ganha um anel próprio quando o limite está perto de acabar. */
+/** The week only gets its own ring when the limit is close to running out. */
 const weekFrom = 75
 const level = (percent: number): string => (percent >= 90 ? 'hi' : percent >= 70 ? 'mid' : 'ok')
 const at = (iso: string | null): string => (iso ? new Date(iso).toLocaleString(dateLocale(), { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '')
@@ -23,13 +23,13 @@ function Ring({ window, name }: { window: UsageWindow; name: string }): React.JS
   </span>
 }
 
-/** Anéis ao lado do agente no chat: limite da sessão (5 h) sempre; o da semana só quando está perto de acabar. */
+/** Rings next to the agent in chat: session limit (5 h) always; the weekly one only when it is close to running out. */
 export function UsageRings({ profileId }: { profileId?: string }): React.JSX.Element | null {
   const t = useT().chat.usageRings
   const [usage, setUsage] = useState<AgentUsage[]>([]), [open, setOpen] = useState(false)
-  const load = useCallback(async () => { try { setUsage(await window.gearmod.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
+  const load = useCallback(async () => { try { setUsage(await window.gearmod.invoke('usage:list', undefined)) } catch { /* usage is informational */ } }, [])
   useEffect(() => { void load() }, [load, profileId])
-  // O Claude só informa o limite quando roda: recarrega quando uma execução termina.
+  // Claude only reports the limit when it runs: reload when a run finishes.
   useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/run-completed') void load() }), [load])
   const entry = usage.find((item) => item.profileId === profileId), windows = entry?.windows ?? []
   const box = useRef<HTMLSpanElement>(null)

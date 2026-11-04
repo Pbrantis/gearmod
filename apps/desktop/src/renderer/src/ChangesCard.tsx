@@ -11,8 +11,8 @@ const commandKey = (projectId: string): string => `gearmod.testCommand.${project
 const readCommand = (projectId: string): string => { try { return localStorage.getItem(commandKey(projectId)) ?? '' } catch { return '' } }
 
 /**
- * Alterações do card (worktree): +/− do que o agente mudou, arquivos e os dois passos que liberam Done (teste e revisão).
- * Fica flutuando à esquerda do chat; os dois chips (Testes automatizados e Revisar) são os botões e pedem confirmação.
+ * Card changes (worktree): +/− of what the agent changed, files and the two steps that unlock Done (test and review).
+ * Floats to the left of the chat; the two chips (Automated tests and Review) are the buttons and ask for confirmation.
  */
 export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: string; projectId: string; busy: boolean; shared?: string | null }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.changesCard
@@ -21,7 +21,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
   const [command, setCommand] = useState(() => readCommand(projectId)), [draftCommand, setDraftCommand] = useState(() => readCommand(projectId))
   const [ask, setAsk] = useState<'' | 'test' | 'review'>(''), [configuring, setConfiguring] = useState<'' | 'save' | 'run'>(''), [working, setWorking] = useState<'' | 'refresh' | 'test' | 'review'>(''), [error, setError] = useState('')
   const loading = useRef(false)
-  // `silent`: atualização automática; não mostra o carregando nem sobrepõe uma leitura que ainda está em andamento.
+  // `silent`: automatic refresh; does not show the loading state nor override a read that is still in progress.
   const refresh = useCallback(async (silent = false) => {
     if (loading.current) return
     loading.current = true
@@ -30,14 +30,14 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
       const [snapshot, quality] = await Promise.all([window.gearmod.invoke('worktrees:snapshot', { cardId }), window.gearmod.invoke('quality:status', { cardId })])
       setFiles(snapshot.exists ? parseChanges(snapshot) : []); setTest(quality.test); setReview(quality.review); setError(''); setNoWorktree(false)
     } catch (reason) {
-      // Card sem worktree (ainda não executou, ou o trabalho foi feito na de outro card): não é erro, só oferece vincular.
+      // Card without a worktree (has not executed yet, or the work was done in another card's): not an error, just offers to link.
       if (errorCodeOf(plainError(reason)) === 'no-worktree') { setFiles([]); setNoWorktree(true); setError('') } else setError(withoutErrorCode(plainError(reason)))
     } finally { loading.current = false; if (!silent) setWorking('') }
   }, [cardId])
-  // Recarrega ao abrir e quando o agente termina um turno (é aí que os arquivos mudam).
+  // Reloads on open and when the agent finishes a turn (that is when the files change).
   useEffect(() => { if (!busy) void refresh() }, [busy, refresh])
-  // Os arquivos também mudam por fora (outro chat, você no editor, o testador): atualiza sozinho, em silêncio, a cada poucos segundos,
-  // ao voltar para a janela e quando o card ou uma ferramenta avisa que algo mudou.
+  // Files also change from outside (another chat, you in the editor, the tester): refreshes on its own, silently, every few seconds,
+  // when returning to the window and when the card or a tool signals that something changed.
   useEffect(() => {
     const again = (): void => { if (!document.hidden) void refresh(true) }
     const timer = window.setInterval(again, 6000)
@@ -50,7 +50,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
     const nextCommand = value.trim(), parts = nextCommand.split(/\s+/).filter(Boolean)
     if (!parts.length) { setDraftCommand(''); setConfiguring('run'); return }
     setCommand(nextCommand); setDraftCommand(nextCommand)
-    try { localStorage.setItem(commandKey(projectId), nextCommand) } catch { /* só conveniência */ }
+    try { localStorage.setItem(commandKey(projectId), nextCommand) } catch { /* convenience only */ }
     setWorking('test'); setError('')
     try { setTest(await window.gearmod.invoke('tests:run', { cardId, executable: parts[0]!, args: parts.slice(1) })) } catch (reason) { setError(plainError(reason)) } finally { setWorking('') }
   }
@@ -62,14 +62,14 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
     } catch (reason) { setError(plainError(reason)) } finally { setWorking('') }
   }
 
-  /** Abre a visualização ampliada na área principal, só com os arquivos alterados (no lugar do chat). */
+  /** Opens the enlarged view in the main area, with only the changed files (in place of the chat). */
   const showAll = (): void => { if (files?.length) window.dispatchEvent(new CustomEvent('gearmod:open-changes', { detail: { projectId, cardId, files } })) }
   const added = files?.reduce((sum, item) => sum + item.added, 0) ?? 0, removed = files?.reduce((sum, item) => sum + item.removed, 0) ?? 0
   const passed = test?.status === 'passed', approved = review?.state === 'approved' || review?.state === 'merged'
   const configure = (action: 'save' | 'run'): void => { setDraftCommand(command); setConfiguring(action) }
   const saveConfiguredCommand = (): void => {
     const next = draftCommand.trim(); if (!next) return
-    setCommand(next); try { localStorage.setItem(commandKey(projectId), next) } catch { /* só conveniência */ }
+    setCommand(next); try { localStorage.setItem(commandKey(projectId), next) } catch { /* convenience only */ }
     const action = configuring; setConfiguring(''); if (action === 'run') void runTest(next)
   }
   return <aside className="changes" aria-label={t.cardChanges}>

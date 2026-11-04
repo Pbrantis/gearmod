@@ -13,11 +13,11 @@ import { tm } from './i18n'
 import { projectCardTypes, setProjectCardTypes } from './card-types'
 
 const execFileAsync = promisify(execFile)
-/** `env_passthrough` vem do SQLite como JSON; nunca quebra a listagem por um valor corrompido. */
+/** `env_passthrough` comes from SQLite as JSON; never breaks the listing because of a corrupted value. */
 function parseEnvPassthrough(row: Record<string, unknown>): Record<string, unknown> {
   const { envPassthroughRaw, ...rest } = row
   let envPassthrough: string[] = []
-  try { const parsed = JSON.parse(String(envPassthroughRaw ?? '[]')); if (Array.isArray(parsed)) envPassthrough = parsed.filter((item): item is string => typeof item === 'string') } catch { /* lista vazia */ }
+  try { const parsed = JSON.parse(String(envPassthroughRaw ?? '[]')); if (Array.isArray(parsed)) envPassthrough = parsed.filter((item): item is string => typeof item === 'string') } catch { /* empty list */ }
   return { ...rest, envPassthrough }
 }
 const defaultColumns = [
@@ -25,7 +25,7 @@ const defaultColumns = [
 ] as const
 
 export class GitService {
-  /** Branch atualmente aberta exatamente nesta pasta; não confunde uma pasta contêiner com repositórios filhos. */
+  /** Branch currently open exactly in this folder; does not confuse a container folder with child repositories. */
   async currentBranch(localPath: string): Promise<string | null> {
     const path = resolve(localPath)
     try {
@@ -94,15 +94,15 @@ export class ProfileRepository {
     this.database.db.prepare('UPDATE agent_profiles SET account_key = ?, updated_at = ? WHERE id = ? AND account_key IS NULL').run(key, new Date().toISOString(), id)
   }
 
-  /** Indício de modalidade visto na própria execução (ex.: `apiKeySource` do Claude). Só registra para sugerir na UI; nunca grava `billing_mode` sozinho. */
+  /** Billing-mode hint seen in the run itself (e.g. Claude's `apiKeySource`). Only recorded to suggest in the UI; never writes `billing_mode` on its own. */
   recordBillingHint(id: string, hint: string): void {
     this.database.db.prepare('UPDATE agent_profiles SET api_key_source_hint = ? WHERE id = ?').run(hint, id)
   }
 
   /**
-   * S16 (decisão do usuário, Q-07): todo perfil novo exige login próprio; o app nunca reaproveita uma sessão já logada do
-   * CLI no diretório padrão (`~/.codex`, `~/.claude`). A pasta de configuração é sempre isolada por perfil; sem concluir o
-   * login (`profiles:login` + `profiles:probe` autenticado), o perfil fica inutilizável ("login pendente").
+   * S16 (user decision, Q-07): every new profile requires its own login; the app never reuses an already logged-in session of the
+   * CLI in the default directory (`~/.codex`, `~/.claude`). The config folder is always isolated per profile; without completing the
+   * login (`profiles:login` + authenticated `profiles:probe`), the profile is unusable ("login pending").
    */
   create(input: { provider: 'codex' | 'claude' | 'gemini'; label: string; scope: string; color?: string }): AgentProfile {
     if (input.provider === 'gemini' && !geminiEnabled) throw new Error(tm().projects.geminiDisabled)
@@ -123,8 +123,8 @@ export class ProfileRepository {
   }
 
   /**
-   * Remove o agente. Sem histórico, apaga de vez; com conversas, planos ou execuções, só desativa (`archived`): ele sai das listas e dos
-   * projetos e não executa mais, mas continua aparecendo como "desativado" nos cards onde trabalhou. Com execução em andamento, recusa.
+   * Removes the agent. With no history, deletes it for good; with conversations, plans or runs, only deactivates it (`archived`): it leaves the lists and
+   * the projects and no longer runs, but keeps appearing as "deactivated" on the cards where it worked. With a run in progress, refuses.
    */
   delete(id: string): { deleted: boolean; archived: boolean } {
     this.get(id)
@@ -145,7 +145,7 @@ export class ProfileRepository {
     })()
   }
 
-  /** Agentes removidos (desativados) que ainda têm histórico; só para mostrar quem executou. */
+  /** Removed (deactivated) agents that still have history; only to show who ran. */
   removed(): AgentProfile[] {
     return this.database.db.prepare(`SELECT id, provider, label, scope, color, config_dir AS configDir,
       executable_path AS executablePath, billing_mode AS billingMode, api_key_source_hint AS apiKeySourceHint, env_passthrough AS envPassthroughRaw FROM agent_profiles WHERE removed_at IS NOT NULL ORDER BY created_at`).all()
@@ -167,8 +167,8 @@ export class ProfileRepository {
 }
 
 /**
- * Estado de execução do card, derivado da última run: em andamento, pausado (parado pelo usuário ou interrompido),
- * terminado (execução concluída e ainda não vista) ou planejando.
+ * Run state of the card, derived from the last run: in progress, paused (stopped by the user or interrupted),
+ * finished (run completed and not yet seen) or planning.
  */
 export function cardRunState(db: Database.Database, cardId: string): CardRunState {
   const row = db.prepare(`SELECT r.id, r.status, r.ended_at AS endedAt, r.profile_id AS profileId, ch.purpose, k.viewed_at AS viewedAt
@@ -194,8 +194,8 @@ export class ProjectRepository {
     const allowed = this.database.db.prepare('SELECT profile_id AS profileId FROM project_agent_profiles WHERE project_id = ? AND allowed = 1')
     const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS localPath,
       is_git_repository AS isGitRepository, current_branch AS currentBranch, sort_order AS sortOrder FROM project_sources WHERE project_id = ? ORDER BY sort_order`)
-    // Barra lateral: chats com agente trabalhando (qualquer etapa, inclusive chat livre e Constituição) e cards cuja última execução
-    // (planejamento, implementação ou teste) terminou depois da última vez que o usuário abriu o card.
+    // Sidebar: chats with an agent working (any step, including free chat and Constitution) and cards whose last run
+    // (planning, implementation or test) finished after the last time the user opened the card.
     const running = this.database.db.prepare(`SELECT COUNT(DISTINCT r.chat_id) AS n FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ? AND r.status IN ('queued', 'running')`)
     const finished = this.database.db.prepare(`SELECT COUNT(*) AS n FROM cards k WHERE k.project_id = ? AND k.archived_at IS NULL AND EXISTS (
       SELECT 1 FROM runs r WHERE r.id = (SELECT id FROM runs WHERE card_id = k.id ORDER BY started_at DESC, rowid DESC LIMIT 1)
@@ -208,7 +208,7 @@ export class ProjectRepository {
     } })
   }
 
-  /** Lista própria de tipos de card do projeto; `null` volta a seguir a lista padrão. */
+  /** The project's own list of card types; `null` goes back to following the default list. */
   setCardTypes(projectId: string, types: Project['cardTypes'] | null): Project {
     this.get(projectId)
     setProjectCardTypes(this.database.db, projectId, types)
@@ -237,7 +237,7 @@ export class ProjectRepository {
       this.database.db.prepare(`INSERT INTO projects(id, name, local_path, base_branch, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?)`).run(id, name, first.localPath, baseBranch, now, now)
       if (input.icon) this.database.db.prepare('UPDATE projects SET icon = ? WHERE id = ?').run(input.icon, id)
-      // Projeto novo entra no topo da barra lateral.
+      // A new project goes to the top of the sidebar.
       this.database.db.prepare('UPDATE projects SET sort_order = (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM projects WHERE id <> ?) WHERE id = ?').run(id, id)
       const insertSource = this.database.db.prepare(`INSERT INTO project_sources(id, project_id, name, local_path, is_git_repository, current_branch, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?)`)
@@ -252,7 +252,7 @@ export class ProjectRepository {
     return this.get(id)
   }
 
-  /** `icon`: `undefined` mantém o atual; `null` remove. */
+  /** `icon`: `undefined` keeps the current one; `null` removes it. */
   async update(input: { projectId: string; name: string; icon?: string | null }): Promise<Project> {
     const result = input.icon === undefined
       ? this.database.db.prepare('UPDATE projects SET name = ?, updated_at = ? WHERE id = ?').run(input.name, new Date().toISOString(), input.projectId)
@@ -269,7 +269,7 @@ export class ProjectRepository {
     return this.get(projectId)
   }
 
-  /** Nova ordem da barra lateral (os ids na ordem em que aparecem). Ids que não vierem ficam depois, na ordem que já tinham. */
+  /** New sidebar order (the ids in the order they appear). Ids that are not sent stay after, in the order they already had. */
   reorder(projectIds: string[]): Project[] {
     const set = this.database.db.prepare('UPDATE projects SET sort_order = ? WHERE id = ?')
     this.database.db.transaction(() => {
@@ -279,12 +279,12 @@ export class ProjectRepository {
     return this.list()
   }
 
-  /** Remove o projeto do GearMod (cards, chats, documentos e histórico). As pastas e os repositórios no disco não são tocados. */
+  /** Removes the project from GearMod (cards, chats, documents and history). The folders and repositories on disk are not touched. */
   delete(projectId: string): boolean {
     this.get(projectId)
     const busy = this.database.db.prepare(`SELECT 1 FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ? AND r.status IN ('queued', 'running') LIMIT 1`).get(projectId)
     if (busy) throw new Error(tm().projects.agentWorkingInProject)
-    // `runs.chat_id` e `test_runs.run_id` não apagam em cascata: sai o histórico de execuções dos chats do projeto antes do resto.
+    // `runs.chat_id` and `test_runs.run_id` do not delete in cascade: the run history of the project's chats goes first, before the rest.
     const runs = `SELECT r.id FROM runs r JOIN chats c ON c.id = r.chat_id WHERE c.project_id = ?`
     return this.database.db.transaction(() => {
       this.database.db.prepare(`DELETE FROM test_runs WHERE run_id IN (${runs})`).run(projectId)
@@ -308,7 +308,7 @@ export class ProjectRepository {
   }
 }
 
-/** Dentro de cada coluna os cards ficam por prioridade (urgente primeiro) e, na mesma prioridade, pela ordem manual. */
+/** Within each column the cards are ordered by priority (urgent first) and, at the same priority, by manual order. */
 const priorityRank = `CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END`
 
 export class BoardRepository {
@@ -334,36 +334,36 @@ export class BoardRepository {
     const criteria = (this.database.db.prepare(`SELECT id, card_id AS cardId, body, checked, sort_order AS sortOrder
       FROM card_acceptance_criteria WHERE card_id = ? ORDER BY sort_order`).all(cardId) as Array<{ id: string; cardId: string; body: string; checked: number; sortOrder: number }>)
       .map((item) => ({ ...item, checked: Boolean(item.checked) }))
-    const tasks = countTasks(this.documents.read(cardId, 'tasks')), run = cardRunState(this.database.db, cardId), hasPlan = Boolean(this.database.db.prepare('SELECT plan_ready_at FROM cards WHERE id = ?').pluck().get(cardId)) || (row.workflow === 'light' && Boolean(row.description.trim())) // fluxo curto não tem plano: basta dizer o que fazer
-    // Planejamento aberto: começou a planejar (card sem título ou com chat de planejamento) e ainda não saiu nada dele.
+    const tasks = countTasks(this.documents.read(cardId, 'tasks')), run = cardRunState(this.database.db, cardId), hasPlan = Boolean(this.database.db.prepare('SELECT plan_ready_at FROM cards WHERE id = ?').pluck().get(cardId)) || (row.workflow === 'light' && Boolean(row.description.trim())) // short flow has no plan: describing what to do is enough
+    // Open planning: planning has started (card without a title or with a planning chat) and nothing has come out of it yet.
     const hasPlanningChat = Boolean(this.database.db.prepare("SELECT 1 FROM chats WHERE card_id = ? AND purpose = 'planning' LIMIT 1").get(cardId))
     const planningOpen = run.state === 'idle' && !hasPlan && tasks.total === 0 && !row.description.trim() && !this.documents.read(cardId, 'especificacao').trim() && (!row.title.trim() || hasPlanningChat)
-    // Branch e worktree em que o card trabalha (a mais recente ativa), para mostrar no card.
+    // Branch and worktree the card works in (the most recent active one), to show on the card.
     const workspace = (this.database.db.prepare("SELECT branch, base_ref AS baseRef, path FROM worktrees WHERE card_id = COALESCE((SELECT worktree_card_id FROM cards WHERE id = ?), ?) AND cleanup_state = 'active' ORDER BY created_at DESC, rowid DESC LIMIT 1").get(cardId, cardId) as { branch: string; baseRef: string; path: string } | undefined) ?? null
-    // Todos os agentes que trabalharam no card (planejamento, implementação e teste), na ordem em que entraram.
+    // All the agents that worked on the card (planning, implementation and test), in the order they joined.
     const agentIds = this.database.db.prepare('SELECT profile_id FROM chats WHERE card_id = ? GROUP BY profile_id ORDER BY MIN(created_at)').pluck().all(cardId) as string[]
-    // Quando o card usa a worktree de outro, a tela mostra de quem é (e oferece desvincular).
+    // When the card uses another card's worktree, the screen shows whose it is (and offers to unlink).
     const sharedFrom = (this.database.db.prepare('SELECT o.title FROM cards c JOIN cards o ON o.id = c.worktree_card_id WHERE c.id = ?').pluck().get(cardId) as string | undefined) ?? null
     return { ...row, acceptanceCriteria: criteria, tasks, run, hasPlan, planningOpen, workspace: workspace ? { ...workspace, sharedFrom } : null, pending: this.pendingCounts(cardId), ...this.execSettings(cardId), agentIds, complexity: complexitySummary(this.database.db, cardId), repoIds: this.repoIds(cardId), workflow: row.workflow ?? null, sddMethod: this.sddMethod(cardId, row.workflow) }
   }
 
-  /** Método do SDD escolhido junto com o fluxo (último `workflow.selected`); só vale no fluxo `sdd`. */
+  /** SDD method chosen along with the flow (last `workflow.selected`); only applies in the `sdd` flow. */
   private sddMethod(cardId: string, workflow: Card['workflow']): Card['sddMethod'] {
     if (workflow !== 'sdd') return null
     const json = this.database.db.prepare("SELECT json FROM card_events WHERE card_id = ? AND type = 'workflow.selected' ORDER BY created_at DESC, rowid DESC LIMIT 1").pluck().get(cardId) as string | undefined
     try { const method = json ? (JSON.parse(json) as { payload?: { method?: unknown } }).payload?.method : null; return method === 'native' || method === 'speckit' ? method : null } catch { return null }
   }
 
-  /** Tipos de card valendo no projeto (os próprios ou a lista padrão). */
+  /** Card types in effect for the project (its own or the default list). */
   cardTypes(projectId: string): Project['cardTypes'] { return projectCardTypes(this.database.db, projectId).types }
 
-  /** Repositórios em que o card trabalha (nulo = todos os do projeto). */
+  /** Repositories the card works in (null = all of the project's). */
   repoIds(cardId: string): string[] | null {
     const raw = this.database.db.prepare('SELECT repo_ids FROM cards WHERE id = ?').pluck().get(cardId) as string | null | undefined
     return raw ? JSON.parse(raw) as string[] : null
   }
 
-  /** Escolhe os repositórios do card; só aceita repositórios Git do próprio projeto. Lista vazia ou nula volta a valer todos. */
+  /** Chooses the card's repositories; only accepts Git repositories of the project itself. An empty or null list goes back to all. */
   setRepos(cardId: string, sourceIds: string[] | null): Card {
     const card = this.card(cardId)
     const valid = new Set(this.database.db.prepare('SELECT id FROM project_sources WHERE project_id = ? AND is_git_repository = 1').pluck().all(card.projectId) as string[])
@@ -409,15 +409,15 @@ export class BoardRepository {
     this.database.db.prepare('UPDATE cards SET base_branch = ? WHERE id = ?').run(branch, cardId)
   }
 
-  /** Spec Kit: o selo "Plano pronto" segue os arquivos reais (spec, plan e tasks da feature do card), nunca o fim de uma resposta. */
+  /** Spec Kit: the "Plan ready" badge follows the real files (the card feature's spec, plan and tasks), never the end of a reply. */
   setSpecKitReady(cardId: string, ready: boolean): void {
     if (ready) this.database.db.prepare('UPDATE cards SET plan_ready_at = COALESCE(plan_ready_at, ?) WHERE id = ?').run(new Date().toISOString(), cardId)
     else this.database.db.prepare('UPDATE cards SET plan_ready_at = NULL WHERE id = ? AND plan_ready_at IS NOT NULL').run(cardId)
   }
 
-  /** O planejador só declara o plano concluído com Especificação, Plano e Tasks escritos; devolve o que falta. */
+  /** The planner only declares the plan complete with Specification, Plan and Tasks written; returns what is missing. */
   markPlanReady(cardId: string): string[] {
-    // Fluxo curto: sem Especificação, Plano e Tasks; basta a descrição do que fazer.
+    // Short flow: no Specification, Plan and Tasks; describing what to do is enough.
     if (this.card(cardId).workflow === 'light') {
       if (!this.documents.read(cardId, 'resumo').trim()) return ['descricao']
       this.database.db.prepare('UPDATE cards SET plan_ready_at = COALESCE(plan_ready_at, ?) WHERE id = ?').run(new Date().toISOString(), cardId)
@@ -444,7 +444,7 @@ export class BoardRepository {
     return this.card(input.cardId)
   }
 
-  /** `skipGate` (só pelo usuário, depois de confirmar) pula teste e revisão do Done e deixa isso registrado no histórico de colunas. */
+  /** `skipGate` (only by the user, after confirming) skips the Done test and review and records that in the column history. */
   move(cardId: string, columnId: string, beforeCardId: string | null, actor: 'user' | 'agent' = 'user', skipGate = false): Card {
     const current = this.card(cardId)
     this.assertColumn(current.projectId, columnId)
@@ -499,11 +499,11 @@ export class BoardRepository {
     criteria.forEach((item, index) => insert.run(randomUUID(), cardId, item.body, item.checked ? 1 : 0, index))
   }
 
-  /** Confere o gate de Done; devolve true quando testes/revisão estavam pendentes e o usuário escolheu pular. */
+  /** Checks the Done gate; returns true when tests/review were pending and the user chose to skip. */
   private assertDoneGate(cardId: string, skip = false): boolean {
     const pending = this.pendingChecks(cardId)
     if (pending && !skip) throw new Error(pending)
-    // Entrega em vários repositórios não é atômica: um repositório que falhou impede declarar o card entregue.
+    // Delivery across several repositories is not atomic: a repository that failed prevents declaring the card delivered.
     const failed = this.database.db.prepare(`SELECT m.repo_path FROM worktree_members m JOIN worktrees w ON w.id = m.worktree_id
       WHERE w.card_id = ? AND m.status = 'failed' AND w.id = (SELECT id FROM worktrees x WHERE x.card_id = w.card_id ORDER BY x.created_at DESC LIMIT 1)`).pluck().all(cardId) as string[]
     if (failed.length) throw new Error(tm().projects.doneNeedsAllRepos(failed.map((path) => basename(path)).join(', ')))

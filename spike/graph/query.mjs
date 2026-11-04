@@ -1,5 +1,5 @@
-// Consultas sobre o índice de uma pasta. As saídas são texto pensado para o agente: curto, com caminho:linha,
-// e código lido do disco na hora (nunca uma cópia velha).
+// Queries over a folder's index. Outputs are text designed for the agent: short, with path:line,
+// and code read from disk on the spot (never an old copy).
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -34,7 +34,7 @@ export class Queries {
       rootIds: db.prepare('select s.id from symbols s join trees t on t.sha = s.sha and t.root = ?')
     }
     this.symCache = new Map()
-    // busca textual é global (os blobs são compartilhados); filtra pelos símbolos desta pasta
+    // text search is global (blobs are shared); filter by this folder's symbols
     let ids = null
     this.st.fts = { all: (match, _root, limit) => {
       ids ??= new Set(this.st.rootIds.all(this.root).map((r) => r.id))
@@ -42,7 +42,7 @@ export class Queries {
     } }
   }
 
-  // ---- básicos ----------------------------------------------------------------------------------------------------
+  // ---- basics ----------------------------------------------------------------------------------------------------
 
   sym(id) {
     if (this.symCache.has(id)) return this.symCache.get(id)
@@ -77,7 +77,7 @@ export class Queries {
   incoming(id, kinds) { return this.st.in.all(this.root, id).filter((e) => !kinds || kinds.includes(e.kind)) }
   outgoing(id, kinds) { return this.st.out.all(this.root, id).filter((e) => !kinds || kinds.includes(e.kind)) }
 
-  // membros de uma classe (para impacto/quem chama de uma classe)
+  // members of a class (for impact/callers of a class)
   members(s) { return this.st.inFile.all(this.root, s.path).filter((m) => m.sha === s.sha && m.parent === s.idx) }
 
   testsFor(ids, hops = 3) {
@@ -103,7 +103,7 @@ export class Queries {
   snippet(s, maxLines = 120) {
     const L = this.lines(s.path)
     let start = s.line
-    // comentário de documentação logo acima
+    // documentation comment right above
     while (start > 1 && /^\s*(\/\/|\/\*|\*|#|"""|@)/.test(L[start - 2] ?? '') && s.line - start < 12) start--
     const end = Math.min(s.end_line, start + maxLines - 1)
     let out = ''
@@ -112,7 +112,7 @@ export class Queries {
     return out
   }
 
-  // ---- ferramentas ------------------------------------------------------------------------------------------------
+  // ---- tools ------------------------------------------------------------------------------------------------
 
   search(query, { kind, limit = 10 } = {}) {
     const seen = new Map()
@@ -121,7 +121,7 @@ export class Queries {
     const tokens = expandTerms(words(query).split(' ').filter((w) => w.length > 1))
     if (tokens.length) {
       const match = tokens.map((t) => `"${t.replace(/"/g, '')}"*`).join(' OR ')
-      try { for (const r of this.st.fts.all(match, this.root, limit * 6)) push(this.sym(r.id), 50 - r.score) } catch { /* consulta inválida */ }
+      try { for (const r of this.st.fts.all(match, this.root, limit * 6)) push(this.sym(r.id), 50 - r.score) } catch { /* invalid query */ }
     }
     const list = [...seen.values()].sort((a, b) => b.score - a.score || isGenerated(a.s.path) - isGenerated(b.s.path)).slice(0, limit)
     if (!list.length) return `Nada encontrado para "${query}".`
@@ -215,7 +215,7 @@ export class Queries {
     const s = defs[0]
     const start = CLASSY.has(s.kind) ? [s.id, ...this.members(s).map((m) => m.id)] : [s.id]
     const seen = new Map(start.map((id) => [id, 0]))
-    const callLines = new Map() // chamador direto -> linhas onde chama
+    const callLines = new Map() // direct caller -> lines where it calls
     let frontier = start
     for (let d = 1; d <= Math.min(depth, 5) && frontier.length; d++) {
       const next = []
@@ -231,10 +231,10 @@ export class Queries {
     const where = (o) => (callLines.has(o.id) ? ` — chama nas linhas ${[...new Set(callLines.get(o.id))].sort((a, b) => a - b).join(', ')}` : '')
     out += 'Nível 1 (·) usa direto: a linha de cada chamada vem depois do traço. Nível 2 (··) usa quem usa.\n'
     for (const [p, list] of files.filter(([p]) => !isTest(p)).slice(0, 25)) out += `\n${p}\n` + list.sort((a, b) => a.d - b.d || a.o.line - b.o.line).slice(0, 30).map(({ o, d }) => `  ${'·'.repeat(d)} ${o.kind === 'file' ? '(nível do arquivo)' : o.qname}:${o.line}${where(o)}`).join('\n') + (list.length > 30 ? `\n  … +${list.length - 30}` : '')
-    // testes que chamam direto também precisam mudar numa renomeação
+    // tests that call directly also need to change in a rename
     const direct = files.filter(([p]) => isTest(p)).flatMap(([, list]) => list.filter(({ o }) => callLines.has(o.id)).map(({ o }) => `  ${o.path}:${[...new Set(callLines.get(o.id))].join(', ')}`))
     if (direct.length) out += `\n\nTestes que usam direto (mudam junto):\n${direct.join('\n')}`
-    // nome citado fora do código ligado: strings (mock.patch, rotas, config), comentários, docstrings
+    // name mentioned outside linked code: strings (mock.patch, routes, config), comments, docstrings
     const known = new Set([...callLines].flatMap(([id, ls]) => { const o = this.sym(id); return o ? ls.map((l) => `${o.path}:${l}`) : [] }))
     for (const d of defs) known.add(`${d.path}:${d.line}`)
     const mentions = this.textMentions(s.name, known)
@@ -244,7 +244,7 @@ export class Queries {
     return out
   }
 
-  // linhas (arquivo:linha) que citam o nome como palavra, menos as já conhecidas
+  // lines (file:line) that mention the name as a word, minus the already known ones
   textMentions(name, known = new Set()) {
     if (!name || name.length < 3) return []
     const re = new RegExp(`(^|[^\\w$])${name.replace(/[$]/g, '\\$')}(?![\\w$])`)
@@ -290,7 +290,7 @@ export class Queries {
     return `Pasta: ${this.root}\nIndexada em: ${r ? new Date(r.indexed_at).toLocaleString() : 'nunca'} (${r?.ms ?? '?'} ms)\nArquivos: ${files.reduce((a, f) => a + f.n, 0)} (${files.map((f) => `${f.lang} ${f.n}`).join(', ')})\nSímbolos: ${syms}\nArestas: ${edges.map((e) => `${e.kind} ${e.n}`).join(', ')}`
   }
 
-  // testes que dependem dos arquivos mudados (padrão: o que mudou desde o HEAD)
+  // tests that depend on the changed files (default: what changed since HEAD)
   affected({ files } = {}) {
     let changed = files
     if (!changed?.length) {
@@ -309,7 +309,7 @@ export class Queries {
     return `Arquivos mudados (${changed.length}): ${changed.slice(0, 15).join(', ')}${changed.length > 15 ? ' …' : ''}\nTestes afetados (${tests.length}):\n${tests.map(([p, d]) => `  ${p}${d === 0 ? ' (mudou)' : d === 1 ? '' : ` (${d} níveis)`}`).join('\n') || '  nenhum'}`
   }
 
-  // visão geral: arquivos centrais (PageRank no grafo de arquivos) com seus símbolos principais
+  // overview: central files (PageRank on the file graph) with their main symbols
   map({ tokens = 1500, path = '', focus = [] } = {}) {
     const edges = this.db.prepare('select src, dst, weight from file_edges where root = ?').all(this.root).filter((e) => e.src.startsWith(path) && e.dst.startsWith(path) && !isGenerated(e.src) && !isGenerated(e.dst) && !isTest(e.src) && !isTest(e.dst))
     const nodes = new Set(edges.flatMap((e) => [e.src, e.dst]))
@@ -341,10 +341,10 @@ export class Queries {
     return text || 'Sem dados para o mapa.'
   }
 
-  // ---- explorar ---------------------------------------------------------------------------------------------------
+  // ---- explore ---------------------------------------------------------------------------------------------------
 
-  // Modo resumo: onde está cada coisa (linhas exatas + assinatura) e só os trechos mais importantes e curtos inteiros.
-  // O agente abre o resto com Read(offset/limit) ou codigo_no — paga só pelo que precisar.
+  // Summary mode: where each thing is (exact lines + signature) and only the most important, short snippets in full.
+  // The agent opens the rest with Read(offset/limit) or codigo_no — pays only for what it needs.
   exploreOutline(picked, fileOrder, score, { wantsTests, inFlow = new Set(), snippets = 4, snippetMax = 45, budget = 8000 } = {}) {
     let out = '**Onde está** (linhas exatas; abra só o que precisar com Read offset/limit ou codigo_no codigo=true)\n\n'
     for (const p of fileOrder.slice(0, 15)) {
@@ -352,7 +352,7 @@ export class Queries {
       const syms = picked.filter((s) => s.path === p).sort((a, b) => a.line - b.line)
       out += `\`${p}\`\n` + syms.map((s) => `  ${s.line}-${s.end_line} ${s.kind} ${s.qname}${s.kind === 'const' ? '' : ' — ' + s.signature.slice(0, 120)}${s.doc ? `\n      ${s.doc.slice(0, 110)}` : ''}`).join('\n') + '\n'
     }
-    // trechos inteiros: os de maior nota, curtos, que não sejam classes inteiras
+    // whole snippets: the highest-scored, short ones, that are not whole classes
     const best = [...picked].filter((s) => !CLASSY.has(s.kind) && s.end_line - s.line + 1 <= snippetMax && (!isTest(s.path) || wantsTests)).sort((a, b) => inFlow.has(b.id) - inFlow.has(a.id) || (score.get(b.id) ?? 0) - (score.get(a.id) ?? 0)).slice(0, snippets)
     let used = 0
     const blocks = []
@@ -383,7 +383,7 @@ export class Queries {
         if (p) { const syms = this.st.inFile.all(this.root, p).filter((s) => s.parent === 0); for (const s of syms.slice(0, 12)) add(s, s.exported ? 5 : 3) }
         continue
       }
-      // identificador de código (camelCase, snake_case, PascalCase) pesa muito; palavra comum pesa pouco
+      // code identifier (camelCase, snake_case, PascalCase) weighs a lot; common word weighs little
       const ident = /[A-Z_]|\d/.test(t.slice(1)) || /^[A-Z]/.test(t) || t.includes('.')
       const hits = ident ? this.find(t) : this.st.byName.all(this.root, t)
       if (hits.length) {
@@ -396,11 +396,11 @@ export class Queries {
       try {
         const rows = this.st.fts.all(ftsWords.map((w) => `"${w.replace(/"/g, '')}"*`).join(' OR '), this.root, 60)
         rows.forEach((r, i) => add(this.sym(r.id), (exactHits.size ? 4 : 7) * (1 - i / 60)))
-      } catch { /* consulta inválida */ }
+      } catch { /* invalid query */ }
     }
     if (!score.size) return `Nada encontrado para "${query}". Tente nomes de funções, classes ou arquivos.`
 
-    // ligações entre os candidatos sobem a nota
+    // links between candidates raise the score
     let cands = [...score].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([id]) => id)
     const candSet = new Set(cands)
     for (const id of cands) {
@@ -409,7 +409,7 @@ export class Queries {
     }
     cands = [...score].sort((a, b) => b[1] - a[1]).map(([id]) => id)
 
-    // fluxo: caminhos de chamada entre os símbolos citados (ou, sem citação, entre os mais fortes)
+    // flow: call paths between the mentioned symbols (or, with no mention, between the strongest)
     const strong = exactHits.size >= 2 ? cands.filter((id) => exactHits.has(id)).slice(0, 10) : cands.slice(0, 8)
     const strongSet = new Set(strong)
     const flows = []
@@ -431,18 +431,18 @@ export class Queries {
         frontier = next
       }
     }
-    // prefere caminhos que passam por mais símbolos citados e são curtos
+    // prefers paths that go through more mentioned symbols and are short
     const named = (f) => f.filter((id) => strongSet.has(id)).length
     const flowsKept = []
     for (const f of flows.sort((x, y) => named(y) - named(x) || x.length - y.length)) if (!flowsKept.some((k) => f.every((id) => k.includes(id)))) flowsKept.push(f)
-    // junta caminhos encadeados (a→b e b→c viram a→b→c)
+    // joins chained paths (a→b and b→c become a→b→c)
     for (let changed = true; changed;) {
       changed = false
       for (const a of flowsKept) for (const b of flowsKept) if (a !== b && a.at(-1) === b[0] && !b.slice(1).some((id) => a.includes(id))) { a.push(...b.slice(1)); flowsKept.splice(flowsKept.indexOf(b), 1); changed = true; break }
     }
     for (const f of flowsKept) for (const id of f) if (!score.has(id)) score.set(id, 4)
 
-    // seleção por arquivo; corta o que ficou muito abaixo do melhor
+    // selection per file; cuts what ended up far below the best
     const top = score.get(cands[0]) ?? 0
     const floor = Math.max(2.5, top * (exactHits.size ? 0.22 : 0.35))
     const inFlow = new Set(flowsKept.flat())
@@ -470,7 +470,7 @@ export class Queries {
     const fileOrder = [...new Set(picked.map((s) => s.path))].sort((a, b) => picked.filter((s) => s.path === b).reduce((t, s) => t + (score.get(s.id) ?? 0), 0) - picked.filter((s) => s.path === a).reduce((t, s) => t + (score.get(s.id) ?? 0), 0))
     out += `**Explorar: ${query}**\n\n${picked.length} símbolos em ${fileOrder.length} arquivos.\n\n`
 
-    // quem depende (antes de editar)
+    // who depends (before editing)
     const blast = picked.filter((s) => ['function', 'method', 'class', 'interface', 'struct', 'trait'].includes(s.kind) && exactHits.has(s.id)).concat(picked.filter((s) => ['function', 'method', 'class'].includes(s.kind) && !exactHits.has(s.id))).slice(0, 6)
     if (blast.length) {
       out += '**Quem depende destes (confira antes de editar)**\n\n'
@@ -484,7 +484,7 @@ export class Queries {
       out += '\n'
     }
 
-    // relações entre o que foi escolhido
+    // relations among the chosen ones
     const rel = {}
     for (const s of picked) for (const e of this.outgoing(s.id)) {
       const d = this.sym(e.dst)
@@ -499,7 +499,7 @@ export class Queries {
 
     if (detail === 'resumo') return out + this.exploreOutline(picked, fileOrder, score, { wantsTests, inFlow })
 
-    // código atual do disco, agrupado por arquivo
+    // current code from disk, grouped by file
     out += '**Código** (conteúdo atual do disco, com número de linha — trate como já lido; não precisa abrir estes trechos de novo)\n\n'
     let used = out.length
     let shownFiles = 0

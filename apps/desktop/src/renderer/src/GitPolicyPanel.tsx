@@ -10,19 +10,19 @@ import { toast } from './toasts'
 import { cachedGit, refreshGit, rememberGit } from './gitConfigCache'
 import { useT } from './i18n'
 
-/** Seção recolhível; fechada, mostra um resumo ao lado do título. */
+/** Collapsible section; when closed, shows a summary next to the title. */
 function Fold({ title, summary, closed = false, children }: { title: string; summary: string; closed?: boolean; children: React.ReactNode }): React.JSX.Element {
   const [shut, setShut] = useState(closed)
   return <div className="f"><span className="foldh" role="button" tabIndex={0} aria-expanded={!shut} onClick={() => setShut(!shut)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShut(!shut) } }}><i>{shut ? '▸' : '▾'}</i>{title}{shut && <small>{summary}</small>}</span>{!shut && children}</div>
 }
 
-/** Aba Git de Configurar projeto: quem commita (padrão do projeto) e exceções por branch. Os repositórios aparecem nas contas Git. Salva ao mudar. */
+/** Configure project Git tab: who commits (project default) and per-branch exceptions. Repositories appear in the Git accounts. Saves on change. */
 export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const { common, git: { policy: t } } = useT()
   const warm = cachedGit(projectId)
   const [policy, setPolicy] = useState<GitPolicy | undefined>(warm.policy), [repos, setRepos] = useState<GitRepo[]>(warm.repos ?? []), [reposLoaded, setReposLoaded] = useState(Boolean(warm.repos)), [error, setError] = useState(''), [askRemove, setAskRemove] = useState<number | null>(null)
   useEffect(() => {
-    // Já tem o que foi carregado ao abrir o projeto: mostra na hora e confere de novo em segundo plano.
+    // Already has what was loaded when the project was opened: shows it right away and checks again in the background.
     const now = cachedGit(projectId)
     setPolicy(now.policy); setRepos(now.repos ?? []); setReposLoaded(Boolean(now.repos))
     let alive = true
@@ -30,7 +30,7 @@ export function GitPolicyPanel({ projectId }: { projectId: string }): React.JSX.
       if (changed) window.dispatchEvent(new Event(gitChangedEvent))
       if (!alive) return
       const fresh = cachedGit(projectId)
-      // A regra que o usuário está editando não é trocada por baixo dele.
+      // The rule the user is editing is not swapped from under them.
       setPolicy((current) => current ?? fresh.policy); setRepos(fresh.repos ?? []); setReposLoaded(true)
     }).catch((reason: unknown) => { if (alive) { setError(plainError(reason)); setReposLoaded(true) } })
     return () => { alive = false }

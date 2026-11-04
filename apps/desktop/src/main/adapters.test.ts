@@ -98,7 +98,7 @@ describe('real provider protocol adapters', () => {
     await new ClaudeCliAdapter(withMcp).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: true, profile: profile('claude'), mcp, onEvent: () => undefined })
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('default'); expect(args[args.indexOf('--tools') + 1]).not.toMatch(/Edit|Write|Bash/)
     expect(args[args.indexOf('--allowedTools') + 1]).toBe('mcp__gearmod'); 
-    // S2: o segredo não vai na linha de comando; vai por arquivo, que é apagado no fim da run
+    // S2: the secret does not go on the command line; it goes through a file, which is deleted at the end of the run
     expect(args.join(' ')).not.toContain('GEARMOD_TOKEN')
     expect(args[args.indexOf('--mcp-config') + 1]).toMatch(/mcp\.json$/); expect(JSON.parse(mcpFile).mcpServers.gearmod.env.GEARMOD_TOKEN).toBe('t'); expect(existsSync(args[args.indexOf('--mcp-config') + 1]!)).toBe(false)
     await new ClaudeCliAdapter(withMcp).run({ cwd: 'C:\\repo', prompt: 'x', sessionId: null, planning: false, profile: profile('claude'), mcp, onEvent: () => undefined })

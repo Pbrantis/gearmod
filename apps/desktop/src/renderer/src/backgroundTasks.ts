@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { toast } from './toasts'
 import { tr } from './i18n'
 
-/** Um processo demorado (instalação, revisão de skill…) que continua rodando mesmo com o diálogo fechado. */
+/** A long-running process (install, skill review…) that keeps running even with the dialog closed. */
 export interface BgTask { id: string; key: string; title: string; detail: string; state: 'running' | 'done' | 'failed'; startedAt: number; endedAt?: number; error?: string }
 
 let state: BgTask[] = []
@@ -15,7 +15,7 @@ const text = (reason: unknown): string => String(reason instanceof Error ? reaso
 export const tasks = {
   subscribe(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener) } },
   snapshot: (): BgTask[] => state,
-  /** Começa a acompanhar um processo (se já houver um rodando com a mesma chave, devolve o dele). */
+  /** Starts tracking a process (if one is already running with the same key, returns it). */
   begin(meta: { key?: string; title: string; detail?: string }): string {
     const key = meta.key ?? `task-${++counter}`
     const running = state.find((item) => item.key === key && item.state === 'running')
@@ -31,7 +31,7 @@ export const tasks = {
     if (task?.state !== 'running') return
     if (error === undefined) toast.success(tr().shell.tasks.completed(task.title), task.detail || undefined); else toast.error(tr().shell.tasks.failedTitle(task.title), text(error))
   },
-  /** Roda a operação acompanhando-a; o resultado (ou o erro) continua chegando a quem chamou. */
+  /** Runs the operation while tracking it; the result (or error) still reaches the caller. */
   track<T>(meta: { key?: string; title: string; detail?: string }, run: () => Promise<T>): { id: string; promise: Promise<T> } {
     const id = tasks.begin(meta)
     const promise = run().then((value) => { tasks.end(id); return value }, (reason: unknown) => { tasks.end(id, reason); throw reason })
@@ -41,7 +41,7 @@ export const tasks = {
   clearFinished(): void { set(state.filter((item) => item.state === 'running')) }
 }
 
-// A revisão de uma skill convertida roda no processo principal, sem nenhum diálogo aberto: acompanha pelos avisos dela.
+// A converted skill's review runs in the main process, with no dialog open: follow it through its toasts.
 if (typeof window !== 'undefined' && window.gearmod) {
   const reviews = new Map<string, string>()
   window.gearmod.onRunEvent((event) => {

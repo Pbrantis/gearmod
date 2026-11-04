@@ -11,7 +11,7 @@ import { useT, dateLocale } from './i18n'
 const when = (value: string): string => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(dateLocale(), { dateStyle: 'short', timeStyle: 'short' }) }
 const message = (error: unknown): string => plainError(error)
 
-/** Detalhe de um PR: descrição, conversa, arquivos, diff e as ações de comentar e revisar. */
+/** PR detail: description, conversation, files, diff and the comment and review actions. */
 function PrDetail({ sourceId, provider, pr, back, changed }: { sourceId: string; provider: 'github' | 'gitlab' | null; pr: PullRequestSummary; back(): void; changed(): void }): React.JSX.Element {
   const { common, git: { pr: t } } = useT(), decisionLabel = t.decision, reviewLabel = t.review
   const [detail, setDetail] = useState<PullRequestDetail>(), [error, setError] = useState(''), [text, setText] = useState(''), [busy, setBusy] = useState(''), [diff, setDiff] = useState(false)
@@ -49,7 +49,7 @@ function PrDetail({ sourceId, provider, pr, back, changed }: { sourceId: string;
   </div>
 }
 
-/** Formulário para abrir um PR a partir de uma branch local do repositório (a branch é publicada no origin). */
+/** Form to open a PR from a local branch of the repository (the branch is published to origin). */
 function PrCreate({ sourceId, branches, head, back, created }: { sourceId: string; branches: string[]; head: string | null; back(): void; created(): void }): React.JSX.Element {
   const t = useT().git.pr
   const [from, setFrom] = useState(head && branches.includes(head) ? head : branches[0] ?? ''), [base, setBase] = useState(() => ['main', 'master', 'develop'].find((name) => branches.includes(name) && name !== head) ?? branches.find((name) => name !== head) ?? '')
@@ -71,10 +71,10 @@ function PrCreate({ sourceId, branches, head, back, created }: { sourceId: strin
   </form>
 }
 
-/** Abre a configuração do projeto na aba Git, onde ficam as contas (tokens). */
+/** Opens the project settings on the Git tab, where the accounts (tokens) live. */
 export const openGitAccounts = (): void => { window.dispatchEvent(new CustomEvent('gearmod:open-project-config', { detail: { tab: 'git', focus: 'git-accounts' } })) }
 
-/** Por que os PRs não carregaram, com a saída certa: atualizar o token vencido ou adicionar um (no lugar do gh/glab). */
+/** Why the PRs did not load, with the right output: update the expired token or add one (in place of gh/glab). */
 export function PrAccessNotice({ list }: { list: PullRequestList }): React.JSX.Element | null {
   const ta = useT().git.accounts
   if (list.problem === 'invalid-token') return <div className="cx-note warn gacc-note"><i className="gacc-dot" aria-hidden="true" /><span>{list.error ?? ta.invalidBanner}</span><button type="button" className="mini secondary withicon" onClick={openGitAccounts}><KeyIcon />{ta.updateToken}</button></div>
@@ -82,7 +82,7 @@ export function PrAccessNotice({ list }: { list: PullRequestList }): React.JSX.E
   return list.error ? <p className="error">{list.error}</p> : null
 }
 
-/** Lateral direita do Git: PRs abertos do repositório, com a bolinha amarela nos que têm novidade. */
+/** Git right sidebar: the repository's open PRs, with a yellow dot on those with news. */
 export function PrPanel({ sourceId, repoName, branches, head, prs, focus, close }: { focus?: { number: number; at: number }; sourceId: string; repoName: string; branches: string[]; head: string | null; prs: PullRequestsState; close(): void }): React.JSX.Element {
   const { common, git: { pr: t } } = useT(), decisionLabel = t.decision
   const [open, setOpen] = useState<PullRequestSummary>(), [creating, setCreating] = useState(false), [loading, setLoading] = useState(false)

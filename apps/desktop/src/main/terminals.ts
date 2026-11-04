@@ -15,7 +15,7 @@ export function shellCommand(platform: NodeJS.Platform, userShell?: string): { f
   }
   return { file: userShell || '/bin/sh', args: [], prelude: '' }
 }
-/** Sessões PTY reais, compartilhadas com a janela independente pelo ID. */
+/** Real PTY sessions, shared with the standalone window by ID. */
 export class TerminalService {
   private shells = new Map<string, { proc: IPty; cwd: string; shell: string; text: string; seq: number; exited: boolean }>()
   constructor(private emit: (type: string, payload: Record<string, unknown>) => void, private platform: NodeJS.Platform = process.platform) {}

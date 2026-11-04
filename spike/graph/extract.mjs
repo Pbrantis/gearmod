@@ -1,4 +1,4 @@
-// Extração de um arquivo: símbolos, imports, referências, tipos conhecidos e herança. Roda dentro dos workers.
+// Extraction of a file: symbols, imports, references, known types and inheritance. Runs inside the workers.
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -16,7 +16,7 @@ const JS_EXTRA = `
 
 let initPromise
 const compiled = new Map()
-export const dropped = {} // padrões que a gramática não aceitou (para depurar as consultas)
+export const dropped = {} // patterns the grammar did not accept (to debug the queries)
 
 async function language(lang) {
   if (compiled.has(lang)) return compiled.get(lang)
@@ -57,7 +57,7 @@ function findBody(node, depth = 0) {
 const squash = (s, n) => s.replace(/\s+/g, ' ').trim().slice(0, n)
 
 function docOf(holder, def, lang, src) {
-  // comentário logo acima (//, /** */, #) ou docstring do Python
+  // comment right above (//, /** */, #) or Python docstring
   if (lang === 'python') {
     const body = def.childForFieldName('body')
     const first = body?.namedChildren[0]
@@ -72,7 +72,7 @@ function docOf(holder, def, lang, src) {
     n = n.previousNamedSibling
   }
   if (!out.length) return null
-  // limpa cada comentário (///, //, /** */, #) e as tags XML de documentação do C#
+  // cleans each comment (///, //, /** */, #) and the C# XML documentation tags
   const clean = out.map((c) => c.replace(/\*\/\s*$/, '').replace(/^\s*(\/\*\*?|\/\/\/?|#|\*)\s?/gm, '')).join(' ')
   return squash(clean.replace(/<\/?(summary|remarks|returns|para|c|code|example|value)>/gi, ' ').replace(/<(see|seealso|paramref|typeparamref)\s+\w+="([^"]*)"\s*\/>/gi, '$2').replace(/<param name="(\w+)">/gi, '$1: ').replace(/<\/param>/gi, ';').replace(/<[^>]+>/g, ' '), 240) || null
 }
@@ -133,10 +133,10 @@ export async function extract(lang, src) {
     if (caps.ref) { pending.refs.push({ pos: caps.ref.startIndex, node: caps.ref, name: caps.ref.text, receiver: null, kind: 'ref', line: caps.ref.startPosition.row + 1 }); continue }
   }
 
-  // ---- símbolos, ordenados por posição; o índice 0 é o próprio arquivo
+  // ---- symbols, sorted by position; index 0 is the file itself
   const lines = src.split('\n').length
   const symbols = [{ name: '', qname: '', kind: 'file', parent: -1, line: 1, end: lines, sb: 0, eb: src.length, signature: '', doc: null, exported: 1 }]
-  // `namespace X;` (C#) vale até o fim do arquivo
+  // `namespace X;` (C#) is valid until the end of the file
   for (const d of defsByNode.values()) d.eb = d.node.type === 'file_scoped_namespace_declaration' ? src.length : d.node.endIndex
   const defs = [...defsByNode.values()].sort((a, b) => a.node.startIndex - b.node.startIndex || b.eb - a.eb)
   const stack = [] // [{sb, eb, idx}]
@@ -148,7 +148,7 @@ export async function extract(lang, src) {
     const parentIdx = parentEntry ? parentEntry.idx : 0
     const parent = symbols[parentIdx]
     let kind = d.kind
-    // consts e propriedades só no topo do arquivo / da classe
+    // consts and properties only at the top of the file / class
     if (kind === 'const' && parent.kind !== 'file' && parent.kind !== 'module') continue
     if (kind === 'property' && !CLASSY.has(parent.kind)) continue
     if (kind === 'function' && CLASSY.has(parent.kind) && parent.kind !== 'module') kind = 'method'
@@ -172,7 +172,7 @@ export async function extract(lang, src) {
   }
   for (const n of [...pending.defaults, ...pending.localExports]) for (const s of symbols) if (s.name === n && s.parent === 0) s.exported = 1
 
-  // ---- símbolo que envolve uma posição (varredura com pilha)
+  // ---- symbol that encloses a position (stack scan)
   const scopes = symbols.map((s, idx) => ({ ...s, idx })).filter((s) => s.idx > 0).sort((a, b) => a.sb - b.sb || b.eb - a.eb)
   const enclosingAll = (items) => {
     const sorted = items.map((it, i) => [it.pos, i]).sort((a, b) => a[0] - b[0])
@@ -194,13 +194,13 @@ export async function extract(lang, src) {
     const k = r.pos + r.kind
     if (seenRef.has(k)) return false
     seenRef.add(k)
-    // referência de tipo que já é chamada/instanciação no mesmo ponto
+    // type reference that is already a call/instantiation at the same point
     return !(r.kind === 'type' && (seenRef.has(r.pos + 'new') || seenRef.has(r.pos + 'call')))
   })
   const refEnc = enclosingAll(refsRaw)
   const refs = refsRaw.map((r, i) => ({ src: refEnc[i], name: r.name, receiver: r.receiver, kind: r.kind, line: r.line }))
 
-  // a variável pertence ao escopo onde é declarada, não ao próprio símbolo const que ela define
+  // the variable belongs to the scope where it is declared, not to the const symbol it defines itself
   const bindEnc = enclosingAll(pending.binds).map((idx) => (symbols[idx]?.kind === 'const' ? symbols[idx].parent : idx))
   const binds = pending.binds.map((b, i) => ({ scope: b.kind === 'field' ? classOf(bindEnc[i]) || bindEnc[i] : bindEnc[i], name: b.name, type: b.type.replace(/\s+/g, ' ').slice(0, 2000), kind: b.kind }))
     .sort((a, b) => BIND_PRIORITY.indexOf(a.kind) - BIND_PRIORITY.indexOf(b.kind))
@@ -213,7 +213,7 @@ export async function extract(lang, src) {
 
   const imports = []
   for (const node of pending.imports) {
-    try { for (const i of cfg.imports(node)) if (i.spec) imports.push({ ...i, line: node.startPosition.row + 1 }) } catch { /* import malformado */ }
+    try { for (const i of cfg.imports(node)) if (i.spec) imports.push({ ...i, line: node.startPosition.row + 1 }) } catch { /* malformed import */ }
   }
 
   tree.delete()

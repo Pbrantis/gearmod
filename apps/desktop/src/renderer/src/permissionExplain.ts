@@ -1,10 +1,10 @@
 import { tr } from './i18n'
 
-/** Traduz o comando de um pedido de permissão em passos legíveis. Só descreve: nunca executa nem decide nada. */
+/** Translates the command of a permission request into readable steps. It only describes: it never runs or decides anything. */
 export type Risk = 'read' | 'write' | 'other'
 export interface Step { tool: string; label: string; detail: string; risk: Risk; joinedBy: string }
 
-/** Divide em `&&`, `||`, `;`, `|` e quebras de linha, respeitando aspas. */
+/** Splits on `&&`, `||`, `;`, `|` and line breaks, respecting quotes. */
 export function splitCommand(command: string): Array<{ text: string; joinedBy: string }> {
   const parts: Array<{ text: string; joinedBy: string }> = []
   let current = '', quote = '', joinedBy = ''
@@ -38,7 +38,7 @@ export function tokenize(segment: string): string[] {
   return words
 }
 
-/** Caminhos longos da worktree do card e da pasta do usuário ficam curtos e reconhecíveis. */
+/** Long paths from the card's worktree and the user's folder become short and recognizable. */
 export function shortPath(value: string): string {
   const slashes = value.replace(/\\/g, '/')
   const worktree = /^.*?\/data\/wt\/[0-9a-f]{6,}\/([^/]+)(\/.*)?$/i.exec(slashes)

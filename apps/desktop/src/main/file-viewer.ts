@@ -8,7 +8,7 @@ const maxBytes = 1_000_000
 
 const inside = (root: string, target: string): boolean => { const rel = relative(root, target); return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel)) }
 
-/** Resolve caminhos reais antes de listar ou gravar, inclusive quando há junctions no Windows. */
+/** Resolves real paths before listing or writing, including when there are junctions on Windows. */
 export async function allowedPath(roots: string[], requested: string): Promise<string> {
   if (requested.includes('\0')) throw new Error(tm().fileViewer.invalidPath)
   for (const root of roots) {
@@ -30,10 +30,10 @@ export async function listProjectDirectory(roots: string[], path: string): Promi
   return visible.filter((entry): entry is NonNullable<typeof entry> => entry !== null).sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name))
 }
 
-/** Todas as letras de `needle`, em ordem, dentro de `text` (busca "aproximada" do Ctrl+P; o ranking final é do renderer). */
+/** All letters of `needle`, in order, inside `text` ("fuzzy" Ctrl+P search; the final ranking is the renderer's). */
 const subsequence = (text: string, needle: string): boolean => { let at = 0; for (const letter of needle) { at = text.indexOf(letter, at); if (at < 0) return false; at++ } return true }
 
-/** Busca arquivos por nome: contém o texto, ou (com `fuzzy`) tem as letras em ordem no caminho relativo à raiz, devolvendo mais candidatos para o renderer ordenar. */
+/** Searches files by name: contains the text, or (with `fuzzy`) has the letters in order in the path relative to the root, returning more candidates for the renderer to sort. */
 export async function searchProjectFiles(roots: string[], query: string, fuzzy = false): Promise<{ paths: string[]; limited: boolean }> {
   const paths: string[] = [], pending = [...roots], visited = new Set<string>(), needle = query.toLocaleLowerCase().replace(/\s+/g, ''), cap = fuzzy ? 1500 : 200
   const real = await Promise.all(roots.map((root) => realpath(root).catch(() => root)))
@@ -53,7 +53,7 @@ export async function searchProjectFiles(roots: string[], query: string, fuzzy =
   return { paths, limited: pending.length > 0 || paths.length >= cap }
 }
 
-/** Resolve referências Markdown apenas dentro das raízes permitidas; nomes ambíguos não são adivinhados. */
+/** Resolves Markdown references only inside the allowed roots; ambiguous names are not guessed. */
 export async function resolveProjectReferences(roots: string[], targets: string[], markdownPath?: string): Promise<Array<{ target: string; path: string; directory: boolean }>> {
   const found: Array<{ target: string; path: string; directory: boolean }> = [], missing: Array<{ target: string; name: string }> = []
   let base: string | undefined
@@ -84,7 +84,7 @@ export async function resolveProjectReferences(roots: string[], targets: string[
   return found
 }
 
-/** Só grava texto completo e exige a versão lida: uma edição do agente nunca é sobrescrita silenciosamente. */
+/** Only writes complete text and requires the version read: an agent edit is never silently overwritten. */
 export async function writeProjectFile(roots: string[], path: string, content: string, expected: string): Promise<ProjectFile> {
   if (Buffer.byteLength(content) > maxBytes) throw new Error(tm().fileViewer.editLimit)
   const target = await allowedPath(roots, path), handle = await open(target, 'r+')
@@ -103,8 +103,8 @@ export async function writeProjectFile(roots: string[], path: string, content: s
 }
 
 /**
- * Lê um arquivo para o visualizador do chat. Só abre o que está dentro de uma das raízes (worktree do card e pasta do projeto),
- * seguindo links simbólicos, para o agente (ou um texto qualquer do chat) não conseguir apontar para fora do projeto.
+ * Reads a file for the chat viewer. Only opens what is inside one of the roots (the card's worktree and the project folder),
+ * following symbolic links, so the agent (or any text in the chat) cannot point outside the project.
  */
 export async function readProjectFile(roots: string[], requested: string, exact = false): Promise<ProjectFile> {
   const clean = exact ? requested : requested.trim().replace(/^file:\/+/i, '').replace(/[?#].*$/, '').replace(/:\d+(?::\d+)?$/, '')
@@ -125,7 +125,7 @@ export async function readProjectFile(roots: string[], requested: string, exact 
       return { path: real, relative: relative(base, real).split(sep).join('/'), content: binary ? '' : bytes.toString('utf8'), truncated: info.size > maxBytes, size: info.size, binary }
     } finally { await handle.close() }
   }
-  // O agente costuma citar só o nome (ContractExtension.tsx:279) ou um caminho parcial: procura nas pastas do projeto um arquivo que termine assim.
+  // The agent usually cites only the name (ContractExtension.tsx:279) or a partial path: look in the project folders for a file that ends that way.
   if (!exact && !isAbsolute(clean)) {
     const parts = clean.split(/[\\/]+/).filter(Boolean), tail = '/' + parts.join('/').toLocaleLowerCase()
     const { paths } = await searchProjectFiles(roots, parts.at(-1) ?? clean)
@@ -136,22 +136,22 @@ export async function readProjectFile(roots: string[], requested: string, exact 
 }
 
 const reserved = /[\\/:*?"<>|\0]/
-/** Uma parte de caminho (nome de arquivo ou pasta): sem caracteres proibidos no Windows, sem `.`/`..`, sem espaço nas pontas nem ponto no fim. */
+/** A path part (file or folder name): no characters forbidden on Windows, no `.`/`..`, no space at the ends nor a dot at the end. */
 export function validateName(name: string): string {
   const clean = name.trim()
   if (!clean || clean === '.' || clean === '..') throw new Error(tm().fileViewer.enterValidName)
   if (clean.length > 255) throw new Error(tm().fileViewer.nameTooLong)
-  // Espaço nas pontas é recusado, não aparado: o Windows cortaria em silêncio.
+  // A space at the ends is refused, not trimmed: Windows would cut it silently.
   if (reserved.test(clean) || clean !== name || clean.endsWith('.')) throw new Error(tm().fileViewer.nameForbiddenChars)
   return clean
 }
 
-/** A raiz em si (ou algo que a contenha) nunca é renomeada nem excluída. */
+/** The root itself (or anything that contains it) is never renamed nor deleted. */
 async function ensureNotRoot(roots: string[], target: string): Promise<void> {
   for (const root of roots) { const base = await realpath(root).catch(() => null); if (!base) continue; const rel = relative(target, base); if (!rel.startsWith('..') && !isAbsolute(rel)) throw new Error(tm().fileViewer.cannotChangeRootFolder) }
 }
 
-/** Cria arquivo ou pasta dentro de `parent`; `pasta/arquivo.ts` cria as pastas do meio. Nunca sobrescreve. */
+/** Creates a file or folder inside `parent`; `folder/file.ts` creates the middle folders. Never overwrites. */
 export async function createProjectItem(roots: string[], parent: string, name: string, kind: 'file' | 'folder'): Promise<{ path: string }> {
   const folder = await allowedPath(roots, parent)
   if (!(await stat(folder)).isDirectory()) throw new Error(tm().fileViewer.chooseFolderToCreate)
@@ -173,7 +173,7 @@ export async function createProjectItem(roots: string[], parent: string, name: s
   throw new Error(tm().fileViewer.enterValidName)
 }
 
-/** Troca só o nome do item, dentro da mesma pasta. */
+/** Renames only the item, inside the same folder. */
 export async function renameProjectItem(roots: string[], path: string, name: string): Promise<{ path: string }> {
   const target = await allowedPath(roots, path), clean = validateName(name)
   await ensureNotRoot(roots, target)
@@ -183,7 +183,7 @@ export async function renameProjectItem(roots: string[], path: string, name: str
   return { path: next }
 }
 
-/** Caminho validado de algo que pode ir para a Lixeira (nunca uma raiz). */
+/** Validated path of something that can go to the Recycle Bin (never a root). */
 export async function trashablePath(roots: string[], path: string): Promise<string> {
   const target = await allowedPath(roots, path)
   await ensureNotRoot(roots, target)
@@ -193,7 +193,7 @@ export async function trashablePath(roots: string[], path: string): Promise<stri
 const imageExtension: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }
 const stamp = (date: Date): string => { const two = (value: number): string => String(value).padStart(2, '0'); return `${date.getFullYear()}${two(date.getMonth() + 1)}${two(date.getDate())}-${two(date.getHours())}${two(date.getMinutes())}${two(date.getSeconds())}` }
 
-/** Grava uma imagem colada numa subpasta `imagens/` ao lado do `.md` (`imagem-AAAAMMDD-HHMMSS.png`, com `-2`, `-3`... se já existir). */
+/** Saves a pasted image in an `imagens/` subfolder next to the `.md` (`imagem-AAAAMMDD-HHMMSS.png`, with `-2`, `-3`... if it already exists). */
 export async function saveMarkdownImage(roots: string[], markdownPath: string, data: string, mime: string, now = new Date()): Promise<{ path: string; relative: string }> {
   const extension = imageExtension[mime]
   if (!extension) throw new Error(tm().fileViewer.imageTypeUnsupported)

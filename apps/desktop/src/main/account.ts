@@ -28,19 +28,19 @@ function geminiEmail(configDir: string): string | null {
   return email(readJson(join(configDir, '.gemini', 'google_accounts.json'))?.active)
 }
 
-/** Conta (e-mail) a que o agente está ligado, lida dos arquivos locais do próprio Claude/Codex; null quando não dá para saber. */
+/** Account (email) the agent is signed in to, read from Claude's/Codex's own local files; null when it cannot be determined. */
 export function readAccountEmail(profile: Pick<AgentProfile, 'provider' | 'configDir'>): string | null {
   return profile.provider === 'codex' ? codexEmail(profile.configDir) : profile.provider === 'gemini' ? geminiEmail(profile.configDir) : claudeEmail(profile.configDir)
 }
 
-/** Chave opaca e estável: a identidade bruta nunca é persistida no ledger nem enviada pelo histórico. */
+/** Opaque, stable key: the raw identity is never persisted in the ledger nor sent through the history. */
 export function accountKey(provider: string, identity: string | null | undefined): string | null {
   const normalized = identity?.trim().toLowerCase()
   if (!normalized || normalized.length > 512) return null
   return `acct_${createHash('sha256').update(`agentboard/account/v1/${provider}/${normalized}`).digest('hex').slice(0, 32)}`
 }
 
-/** Aceita somente identificadores explícitos retornados pelo provedor, nunca caminhos ou conteúdo de sessão. */
+/** Accepts only explicit identifiers returned by the provider, never paths or session content. */
 export function accountKeyFromProvider(provider: string, payload: Record<string, unknown>): string | null {
   const sources = [payload, payload.account, payload.user].filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
   for (const source of sources) for (const field of ['accountId', 'account_id', 'organizationId', 'organization_id', 'userId', 'user_id', 'email']) {

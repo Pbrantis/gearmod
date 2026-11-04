@@ -61,7 +61,7 @@ export class AgentProbeService {
     return { started: true }
   }
 
-  /** Atualiza a CLI do agente num terminal aberto para o usuário acompanhar: `claude update` (serve para instalação nativa e npm) ou o npm do Codex. */
+  /** Updates the agent CLI in a terminal opened for the user to follow: `claude update` (works for native and npm installs) or Codex's npm. */
   updateProvider(provider: 'codex' | 'claude' | 'gemini'): { started: true } {
     const command = provider === 'claude' ? ['claude', 'update'] : provider === 'gemini' ? ['npm', 'install', '-g', '@google/gemini-cli@latest'] : ['npm', 'install', '-g', '@openai/codex@latest']
     if (process.platform === 'win32') spawn('cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe', '/k', ...command], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
@@ -78,7 +78,7 @@ export class AgentProbeService {
     const profile = this.profiles.get(profileId)
     const env = this.environment(profile)
     const command = resolveCommand(profile.executablePath || profile.provider, env)
-    // O Gemini CLI não tem subcomando de login: abrir a CLI interativa mostra a escolha de login (Google ou chave); depois é só sair com /quit.
+    // Gemini CLI has no login subcommand: opening the interactive CLI shows the login choice (Google or key); then just exit with /quit.
     const args = profile.provider === 'codex' ? ['login'] : profile.provider === 'gemini' ? [] : ['auth', 'login']
     if (process.platform === 'win32') {
       const child = spawn('cmd.exe', ['/d', '/c', 'start', '', command, ...args], { env, detached: true, stdio: 'ignore', windowsHide: true })
@@ -99,7 +99,7 @@ export class AgentProbeService {
   }
 
   private async authentication(profile: AgentProfile, command: string, env: NodeJS.ProcessEnv): Promise<boolean> {
-    // Gemini: logado = credencial OAuth do perfil ou chave de API liberada para o perfil (nada é executado nem consumido aqui).
+    // Gemini: logged in = the profile's OAuth credential or an API key enabled for the profile (nothing is executed or consumed here).
     if (profile.provider === 'gemini') return existsSync(join(profile.configDir, '.gemini', 'oauth_creds.json')) || Boolean(env.GEMINI_API_KEY && profile.envPassthrough.includes('GEMINI_API_KEY'))
     try {
       const result = await this.runner.run(command, profile.provider === 'codex' ? ['login', 'status'] : ['auth', 'status'], env)

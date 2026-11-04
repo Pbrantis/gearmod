@@ -2,7 +2,7 @@ import { CodeIndex } from './code-index'
 import type { HostMessage, HostRequest } from './protocol'
 import { runCodeTool } from './tools'
 
-/** O que o processo utilitário faz com cada pedido (separado para poder testar sem o Electron). */
+/** What the utility process does with each request (separated so it can be tested without Electron). */
 export function createHostHandler(send: (message: HostMessage) => void): { handle(request: HostRequest): Promise<unknown>; close(): void } {
   let index: CodeIndex | undefined
   return {

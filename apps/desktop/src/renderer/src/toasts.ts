@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { ToastKind } from './ToastCard'
 
-/** Aviso flutuante: sucesso, erro, informação, atenção ou notificação (algo que aconteceu por conta própria, como uma ação do agente). `duration` > 0: some sozinho depois desse tempo. */
+/** Floating notice: success, error, info, warning or notification (something that happened on its own, like an agent action). `duration` > 0: disappears by itself after that time. */
 export interface Toast { id: number; kind: ToastKind; title: string; message: string; meta: string; duration: number; paused: boolean }
 export interface ToastOptions { meta?: string }
 
@@ -11,7 +11,7 @@ const clocks = new Map<number, { timer: number; startedAt: number; remaining: nu
 let counter = 0
 const set = (next: Toast[]): void => { state = next; listeners.forEach((listener) => listener()) }
 const maxVisible = 4
-// Todos somem sozinhos; erro, atenção e notificação ficam mais tempo, por serem mais importantes que um "deu certo". Com o mouse em cima o tempo para.
+// All disappear by themselves; error, warning and notification stay longer, since they matter more than a "done". Hovering with the mouse pauses the timer.
 const lengths: Record<ToastKind, number> = { success: 5000, info: 4000, warning: 8000, notify: 6000, error: 10000 }
 
 function arm(id: number, remaining: number): void {
@@ -24,7 +24,7 @@ function push(kind: Toast['kind'], title: string, message = '', options: ToastOp
   const dropped = state.length >= maxVisible ? state.slice(0, state.length - maxVisible + 1) : []
   dropped.forEach((item) => dismiss(item.id))
   set([...state.filter((item) => !dropped.includes(item)), { id, kind, title, message, meta: options.meta ?? '', duration: lengths[kind], paused: false }])
-  // Some sozinho depois do tempo do tipo (a barra embaixo mostra); com o mouse em cima, pausa.
+  // Disappears by itself after the type's time (the bar below shows it); paused while hovering.
   if (lengths[kind]) arm(id, lengths[kind])
   return id
 }
@@ -34,7 +34,7 @@ export function dismiss(id: number): void {
   set(state.filter((item) => item.id !== id))
 }
 
-/** Com o mouse em cima, o tempo para (para dar tempo de ler); ao sair, continua de onde parou. */
+/** While hovering, the timer stops (to give time to read); on leaving, it resumes where it stopped. */
 function hold(id: number, paused: boolean): void {
   const clock = clocks.get(id)
   if (paused && clock) { window.clearTimeout(clock.timer); clock.remaining = Math.max(400, clock.remaining - (Date.now() - clock.startedAt)); clock.timer = 0 }

@@ -1,24 +1,24 @@
-// Liga referências a definições (arestas) para uma pasta. Depende da árvore inteira (imports, tipos), por isso
-// é por root, ao contrário da extração. Pode refazer só os arquivos afetados por uma mudança.
+// Links references to definitions (edges) for a folder. Depends on the whole tree (imports, types), so it
+// is per root, unlike extraction. Can redo only the files affected by a change.
 import { existsSync, readFileSync } from 'node:fs'
 import { join, posix } from 'node:path'
 import { LANGUAGES } from './langs.mjs'
 
-// suba quando a regra de ligação mudar: força religar as pastas mesmo sem arquivo alterado
+// bump when the linking rule changes: forces relinking the folders even with no changed file
 export const LINKER_VERSION = 6
 
 const CLASSY = new Set(['class', 'interface', 'struct', 'trait', 'enum', 'type', 'module'])
 const SELF = new Set(['this', 'self', 'cls', 'Self', '$this'])
 const EDGE_KIND = { call: 'calls', new: 'instantiates', render: 'renders', type: 'references', ref: 'references' }
-// nomes genéricos demais para ligar só pelo nome quando não se sabe o tipo do receptor
+// names too generic to link by name alone when the receiver type is unknown
 const STOP = new Set('get set has add delete push pop shift unshift map filter forEach reduce find findIndex some every join split slice splice replace replaceAll trim then catch finally toString valueOf keys values entries includes indexOf lastIndexOf run all exec prepare close open on off once emit send write read start stop parse stringify log error warn info debug test match assign from of call apply bind resolve reject next length size clear sort concat flat flatMap at fill startsWith endsWith padStart padEnd toLowerCase toUpperCase dispose update create list remove invoke handle listen format load save init render setState append insert pipe subscribe unsubscribe dispatch query execute fetch post put patch request response json text status sync reset destroy kill spawn exit wait sleep print println printf len cap make new append copy close String Error'.split(' '))
 
-// linguagens com tipos declarados: dá para confiar quando a cadeia de tipos falha
+// languages with declared types: can be trusted when the type chain fails
 const TYPED = new Set(['csharp', 'java', 'go', 'rust'])
-// métodos de coleções e da biblioteca padrão do C#/Java/Unity, comuns demais para ligar pelo nome
+// collection and standard library methods of C#/Java/Unity, too common to link by name
 for (const n of 'Add AddRange Remove RemoveAt RemoveAll Contains ContainsKey TryGetValue Find FindAll FindIndex Exists Where Select SelectMany Any All First FirstOrDefault Last LastOrDefault Single ToList ToArray ToDictionary Count Sum Min Max Average OrderBy OrderByDescending ThenBy GroupBy Distinct Skip Take Reverse Insert IndexOf Sort Clear Equals GetHashCode ToString Dispose Invoke GetComponent GetComponents GetComponentInChildren AddComponent Destroy Instantiate SetActive Log LogWarning LogError Format Substring Trim Split Replace StartsWith EndsWith Parse TryParse Lerp Clamp Abs Range Play Pause Stop Start Update Awake Enable Disable Show Hide Move Rotate Translate Load Save Init Initialize Reset Close Open Read Write Send Get Set Put Peek Push Pop Enqueue Dequeue CopyTo forEach stream collect equals hashCode toString size isEmpty contains'.split(' ')) STOP.add(n)
 
-// globais do ambiente: chamadas neles nunca são do projeto
+// environment globals: calls on them are never the project's
 const GLOBALS = new Set('window document console Math JSON process navigator localStorage sessionStorage Object Array Promise Date Number String Boolean Symbol Reflect Proxy globalThis require module exports Buffer URL URLSearchParams Intl RegExp Error Map Set WeakMap WeakSet crypto performance fetch setTimeout setInterval clearTimeout clearInterval queueMicrotask structuredClone describe it test expect beforeEach afterEach beforeAll afterAll vi jest os sys print len str int dict list fmt'.split(' '))
 
 const dirOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
@@ -73,7 +73,7 @@ function returnType(fn, family) {
   return normType(r ?? '')
 }
 
-// ---- resolução de módulos ------------------------------------------------------------------------------------------
+// ---- module resolution ------------------------------------------------------------------------------------------
 
 function moduleResolver(root, paths, manifests) {
   const byBase = new Map()
@@ -100,7 +100,7 @@ function moduleResolver(root, paths, manifests) {
         for (const [k, v] of Object.entries(o.paths)) aliases.push({ dir, prefix: k.replace(/\*$/, ''), wild: k.endsWith('*'), targets: v.map((t) => posix.join(baseUrl, t.replace(/\*$/, ''))) })
       } else if (o?.baseUrl) aliases.push({ dir, prefix: '', wild: true, targets: [posix.normalize(posix.join(dir, o.baseUrl))], baseUrlOnly: true })
     } else if (base === 'go.mod') {
-      try { const mod = readFileSync(join(root, m), 'utf8').match(/^module\s+(\S+)/m)?.[1]; if (mod) goMods.push({ dir, mod }) } catch { /* sem go.mod legível */ }
+      try { const mod = readFileSync(join(root, m), 'utf8').match(/^module\s+(\S+)/m)?.[1]; if (mod) goMods.push({ dir, mod }) } catch { /* no readable go.mod */ }
     } else if (base === 'Cargo.toml') cargo.push(dir)
   }
   pkgs.sort((a, b) => b.name.length - a.name.length)
@@ -194,7 +194,7 @@ function moduleResolver(root, paths, manifests) {
   }
 }
 
-// ---- contexto da pasta ---------------------------------------------------------------------------------------------
+// ---- folder context ---------------------------------------------------------------------------------------------
 
 export function loadContext(db, root) {
   const trees = db.prepare('select path, sha, lang from trees where root = ?').all(root)
@@ -209,7 +209,7 @@ export function loadContext(db, root) {
   const symRows = db.prepare(`select id, sha, idx, name, qname, kind, parent, line, end_line, signature, exported, owner from symbols where ${inRoot} order by sha, idx`).all(root)
   const syms = new Map()
   const byName = new Map()
-  const members = new Map() // nome do dono -> nome -> [sym]
+  const members = new Map() // owner name -> name -> [sym]
   for (const s of symRows) {
     s.path = pathOf.get(s.sha)
     s.family = familyOf(langOfSha.get(s.sha))
@@ -229,7 +229,7 @@ export function loadContext(db, root) {
       mm.get(s.name).push(s)
     }
   }
-  // C#: namespace -> nome -> símbolos (os `using` apontam para namespaces, não para arquivos)
+  // C#: namespace -> name -> symbols (`using` points to namespaces, not to files)
   const nsMembers = new Map()
   for (const s of symRows) {
     if (s.family !== 'csharp' || s.kind === 'file') continue
@@ -252,7 +252,7 @@ export function loadContext(db, root) {
   }
 }
 
-// ---- ligação -------------------------------------------------------------------------------------------------------
+// ---- linking -------------------------------------------------------------------------------------------------------
 
 export function linker(ctx) {
   const fileCtxCache = new Map()
@@ -269,17 +269,17 @@ export function linker(ctx) {
       targetsAll.push(...targets)
       if (imp.local === '*') { wild.push(...targets); continue }
       if (!imp.local) continue
-      // Python: `from pacote import modulo` traz o módulo, não um símbolo
+      // Python: `from package import module` brings the module, not a symbol
       if (family === 'python' && imp.imported && imp.imported !== '*' && imp.imported !== 'pkg') {
         const sub = ctx.resolveModule(family, path, imp.spec.endsWith('.') ? imp.spec + imp.imported : imp.spec + '.' + imp.imported)
         if (sub.length) { scope.set(imp.local, { paths: sub, imported: '*' }); targetsAll.push(...sub); continue }
       }
       scope.set(imp.local, { paths: targets, imported: imp.imported })
     }
-    // nomes importados, inclusive de pacotes externos: nunca caem no "nome único do projeto"
+    // imported names, including from external packages: never fall to the "project's unique name"
     const bound = new Set((ctx.imports.get(sha) ?? []).map((i) => i.local).filter(Boolean))
     const fsyms = ctx.syms.get(sha) ?? []
-    // C#: namespaces visíveis = os do arquivo (e os de fora, A.B -> A) + os `using`
+    // C#: visible namespaces = those of the file (and the outer ones, A.B -> A) + the `using`s
     const namespaces = []
     if (family === 'csharp') {
       for (const s of fsyms) if (s?.kind === 'module') { const parts = s.qname.split('.'); for (let i = parts.length; i > 0; i--) namespaces.push(parts.slice(0, i).join('.')) }
@@ -291,7 +291,7 @@ export function linker(ctx) {
     return fc
   }
 
-  // símbolo exportado `name` de um conjunto de arquivos, seguindo re-exports
+  // exported symbol `name` of a set of files, following re-exports
   const exportCache = new Map()
   function resolveExport(paths, name, depth = 0) {
     if (!paths?.length || depth > 6) return []
@@ -309,7 +309,7 @@ export function linker(ctx) {
       for (const imp of ctx.imports.get(fc.sha) ?? []) {
         if (imp.local === name || (name === 'default' && imp.local === want)) {
           const t = ctx.resolveModule(fc.family, p, imp.spec)
-          if (imp.imported === '*') { /* namespace reexport — tratado pelo chamador */ } else out.push(...resolveExport(t, imp.imported, depth + 1))
+          if (imp.imported === '*') { /* namespace reexport — handled by the caller */ } else out.push(...resolveExport(t, imp.imported, depth + 1))
         } else if (imp.local === '*' && imp.reexport) out.push(...resolveExport(ctx.resolveModule(fc.family, p, imp.spec), name, depth + 1))
       }
     }
@@ -318,14 +318,14 @@ export function linker(ctx) {
     return out
   }
 
-  // C#: procura o nome nos namespaces visíveis do arquivo, do mais específico para o mais geral
+  // C#: looks for the name in the file's visible namespaces, from the most specific to the most general
   function nsLookup(fc, name) {
     if (!fc.namespaces?.length) return []
     for (const ns of fc.namespaces) { const hit = ctx.nsMembers.get(ns)?.get(name); if (hit?.length) return hit }
     return []
   }
 
-  // namespace exportado (export * as ns / import * as ns)
+  // exported namespace (export * as ns / import * as ns)
   function exportNamespace(paths, name) {
     for (const p of paths) {
       const fc = fileCtx(p)
@@ -337,7 +337,7 @@ export function linker(ctx) {
   const chainOf = (fc, idx) => { const out = []; for (let i = idx; i >= 0 && fc.syms[i]; i = fc.syms[i].parent) { out.push(fc.syms[i]); if (i === 0) break } return out }
   const classOf = (fc, idx) => chainOf(fc, idx).find((s) => CLASSY.has(s.kind) && s.kind !== 'module') ?? null
 
-  // tipo (símbolo de classe/interface/struct) pelo nome, no contexto de um arquivo
+  // type (class/interface/struct symbol) by name, in the context of a file
   function resolveTypeName(fc, name, depth = 0) {
     if (!name || depth > 4) return null
     if (name.includes('.')) {
@@ -368,13 +368,13 @@ export function linker(ctx) {
     const out = []
     const fc = fileCtx(T.path)
     for (const h of ctx.heritage.get(T.sha) ?? []) if (h.owner === T.idx || h.owner_name === T.name) { const p = resolveTypeName(fc, h.target); if (p && p.id !== T.id) out.push(p) }
-    // impl Trait for T / métodos com dono em outros arquivos (Go, Rust)
+    // impl Trait for T / methods with owners in other files (Go, Rust)
     for (const [sha, list] of ctx.heritage) if (sha !== T.sha) for (const h of list) if (h.owner_name === T.name) { const p = resolveTypeName(fileCtx(ctx.pathOf.get(sha)), h.target); if (p && p.id !== T.id) out.push(p) }
     parentCache.set(T.id, out)
     return out
   }
 
-  // a mesma classe declarada em vários arquivos (partial do C#, classe reaberta do Ruby)
+  // the same class declared in several files (C# partial, Ruby reopened class)
   const partsCache = new Map()
   function partsOf(T) {
     if (partsCache.has(T.id)) return partsCache.get(T.id)
@@ -401,7 +401,7 @@ export function linker(ctx) {
       if (b) return typeFromBind(fileCtx(P.path), b, P.idx, depth + 1)
     }
     for (const p of parentsOf(T)) { const r = fieldType(p, name, depth + 1); if (r) return r }
-    // getter/propriedade com tipo de retorno
+    // getter/property with return type
     const m = memberLookup(T, name).find((s) => s.kind === 'method' || s.kind === 'property')
     if (m) { const rt = returnType(m, m.family); if (rt) { const t = resolveTypeName(fileCtx(m.path), rt, depth + 1); if (t) return { type: t } } }
     return null
@@ -426,7 +426,7 @@ export function linker(ctx) {
     return t ? { type: t } : null
   }
 
-  // `foo` ou `a.b.foo` como callee de um bindcall
+  // `foo` or `a.b.foo` as the callee of a bindcall
   function resolveCallee(fc, text, srcIdx, depth) {
     const parts = text.replace(/\?\./g, '.').replace(/::/g, '.').replace(/->/g, '.').split('.')
     const name = parts.pop()
@@ -497,10 +497,10 @@ export function linker(ctx) {
     return t
   }
 
-  // nome sem receptor: mesmo arquivo -> import -> membro implícito -> mesmo pacote -> import * -> nome único
+  // name without receiver: same file -> import -> implicit member -> same package -> import * -> unique name
   function bareLookup(fc, name, srcIdx, kind) {
     const wantType = kind === 'type'
-    // `new X()` só pode ser classe (em JS, também função construtora)
+    // `new X()` can only be a class (in JS, also a constructor function)
     const ok = (s) => s && s.idx > 0 && (wantType ? CLASSY.has(s.kind) : kind === 'new' ? CLASSY.has(s.kind) || (fc.family === 'js' && s.kind === 'function') : true)
     const chain = srcIdx !== null ? chainOf(fc, srcIdx) : [fc.syms[0]]
     const chainIdx = new Set(chain.map((s) => s.idx))
@@ -509,7 +509,7 @@ export function linker(ctx) {
     if (local.length) { local.sort((a, b) => chain.findIndex((c) => c.idx === a.parent) - chain.findIndex((c) => c.idx === b.parent)); return [{ s: local[0], conf: 1 }] }
     const b = fc.scope.get(name)
     if (b && b.imported !== '*') { const hit = resolveExport(b.paths, b.imported).filter(ok); if (hit.length) return hit.map((s) => ({ s, conf: 1 })) }
-    // const { open } = useFileDocuments(): a função interna `open` do hook (ou membro do tipo de retorno)
+    // const { open } = useFileDocuments(): the hook's inner function `open` (or member of the return type)
     if (!wantType) {
       const binds = ctx.binds.get(fc.sha) ?? []
       const d = chain.map((c) => binds.find((x) => x.scope === c.idx && x.name === name && x.kind === 'destrcall')).find(Boolean)
@@ -538,7 +538,7 @@ export function linker(ctx) {
     const w = resolveExport(fc.wild, name).filter(ok)
     if (w.length) return w.slice(0, 3).map((s) => ({ s, conf: 0.8 }))
     if (kind === 'ref' || fc.bound.has(name) || GLOBALS.has(name)) return []
-    // em JS/TS, Python e Rust um nome solto sem import não pode vir de outro arquivo
+    // in JS/TS, Python and Rust a bare name without import cannot come from another file
     if (['js', 'python', 'rust'].includes(fc.family)) return []
     const all = (ctx.byName.get(name) ?? []).filter((s) => ok(s) && s.family === fc.family && s.sha !== fc.sha && (s.parent === 0 || CLASSY.has(s.kind)) && s.kind !== 'method' && s.kind !== 'const' && s.kind !== 'property')
     if (all.length === 1) return [{ s: all[0], conf: 0.5 }]
@@ -555,13 +555,13 @@ export function linker(ctx) {
       const t = chainType(fc, parts, r.src)
       if (t?.ns) { const hit = resolveExport(t.ns, r.name); if (hit.length) return hit.map((s) => ({ s, conf: 1 })) }
       if (t?.type) { const hit = memberLookup(t.type, r.name); if (hit.length) return hit.map((s) => ({ s, conf: 1 })) }
-      // o começo do receptor é conhecido, mas o resto não (ex.: Data.actors.Find): é coleção/biblioteca, não chute
+      // the start of the receiver is known, but the rest is not (e.g. Data.actors.Find): it's a collection/library, not a guess
       if (TYPED.has(fc.family) && (t || (parts.length > 1 && headType(fc, parts[0], r.src)))) return []
     }
     const head = r.receiver.split('.')[0]
     if (STOP.has(r.name) || r.kind === 'type' || GLOBALS.has(head) || fc.bound.has(head)) return []
-    // receptor desconhecido: só liga se o método tiver um dono só no projeto
-    // e se ele estiver num arquivo que este importa (ou na mesma pasta)
+    // unknown receiver: only links if the method has a single owner in the project
+    // and if it is in a file this one imports (or in the same folder)
     const near = new Set(fc.targets)
     const cands = (ctx.byName.get(r.name) ?? []).filter((s) => (s.kind === 'method' || s.kind === 'property') && s.family === fc.family && (near.has(s.path) || dirOf(s.path) === dirOf(fc.path)))
     const owners = new Set(cands.map((s) => s.owner ?? ctx.syms.get(s.sha)[s.parent]?.id))
@@ -626,7 +626,7 @@ export function link(db, root, { changed = null, oldNames = [] } = {}) {
     const delFile = db.prepare('delete from file_edges where root = ? and src = ?')
     db.exec('begin')
     for (const p of [...targets, ...changed]) { delFile.run(root, p); const sha = ctx.shaOf.get(p); if (sha) for (const { id } of ids.all(sha)) delSrc.run(root, id) }
-    // arestas que apontam para símbolos de blobs que saíram da pasta
+    // edges pointing to symbols of blobs that left the folder
     db.prepare(`delete from edges where root = ? and (src not in (select s.id from trees t join symbols s on s.sha = t.sha where t.root = ?) or dst not in (select s.id from trees t join symbols s on s.sha = t.sha where t.root = ?))`).run(root, root, root)
     db.exec('commit')
   }

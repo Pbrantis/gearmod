@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3'
 export interface Migration {
   version: number
   checksum: string
-  /** Migração que recria tabelas referenciadas por outras: roda com foreign_keys desligado (fora da transação) e confere as chaves no fim. */
+  /** Migration that recreates tables referenced by others: runs with foreign_keys off (outside the transaction) and checks the keys at the end. */
   disableForeignKeys?: boolean
   up(db: Database.Database): void
 }
@@ -186,7 +186,7 @@ export const migrations: readonly Migration[] = [
     version: 6,
     checksum: 'sha256:gearmod-backlog-and-no-mr-v6-2026-10-21',
     up(db) {
-      // Colunas Backlog/To do/Doing/Test/Done. A linha 'mr' fica no banco (volta segura, o histórico aponta para ela), mas sai do quadro.
+      // Columns Backlog/To do/Doing/Test/Done. The 'mr' row stays in the database (safe rollback, history points to it), but leaves the board.
       const projects = db.prepare('SELECT id FROM projects').all() as { id: string }[]
       const now = new Date().toISOString()
       for (const { id: projectId } of projects) {
@@ -228,8 +228,8 @@ export const migrations: readonly Migration[] = [
           UNIQUE(card_id, kind, version)
         );
       `)
-      // A descrição antiga vira o Resumo, os critérios viram tasks de primeiro nível e o último plano vira o documento Plano.
-      // As colunas e tabelas antigas continuam no banco (volta segura).
+      // The old description becomes the Summary, the criteria become top-level tasks and the last plan becomes the Plan document.
+      // Old columns and tables stay in the database (safe rollback).
       const insertDoc = db.prepare('INSERT INTO card_documents(card_id, kind, content_md, updated_at, updated_by) VALUES (?, ?, ?, ?, \'system\')')
       const insertVersion = db.prepare(`INSERT INTO card_document_versions(id, card_id, kind, version, content_md, created_at, actor)
         VALUES (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-8' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), ?, ?, 1, ?, ?, 'system')`)
@@ -248,7 +248,7 @@ export const migrations: readonly Migration[] = [
     version: 8,
     checksum: 'sha256:gearmod-card-viewed-v8-2026-10-21',
     up(db) {
-      // viewed_at marca quando o usuário viu o resultado da última execução (destaque de "terminado"); o que já existe conta como visto.
+      // viewed_at marks when the user saw the result of the last run ("finished" highlight); what already exists counts as seen.
       db.exec(`ALTER TABLE cards ADD COLUMN viewed_at TEXT; UPDATE cards SET viewed_at = datetime('now');`)
     }
   },
@@ -290,7 +290,7 @@ export const migrations: readonly Migration[] = [
     version: 12,
     checksum: 'sha256:gearmod-test-purpose-v12-2026-10-21',
     up(db) {
-      // A finalidade "test" (agente de teste) entra na tabela; o CHECK antigo só aceitava planning/execution, então a tabela é recriada.
+      // The "test" purpose (test agent) enters the table; the old CHECK only accepted planning/execution, so the table is recreated.
       db.exec(`
         CREATE TABLE card_agent_settings_new (
           card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -308,8 +308,8 @@ export const migrations: readonly Migration[] = [
     version: 13,
     checksum: 'sha256:gearmod-collaboration-v13-2026-10-21',
     up(db) {
-      // Comunicação entre as etapas: dúvidas (dev/teste → planejador → usuário) e propostas de mudança (esperam autorização).
-      // Os documentos Dúvidas e Mudanças são gerados a partir destas tabelas; card_documents é recriada para aceitar os dois tipos novos.
+      // Communication between steps: questions (dev/test → planner → user) and change proposals (wait for authorization).
+      // The Questions and Changes documents are generated from these tables; card_documents is recreated to accept the two new types.
       db.exec(`
         CREATE TABLE card_documents_new (
           card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -340,7 +340,7 @@ export const migrations: readonly Migration[] = [
     version: 14,
     checksum: 'sha256:gearmod-plan-ready-v14-2026-10-21',
     up(db) {
-      // O planejador declara o plano concluído (ferramenta/marcador); antes disso o card só "está em planejamento". Cards antigos com Plano escrito seguem prontos.
+      // The planner declares the plan complete (tool/marker); before that the card is only "in planning". Old cards with a written Plan stay ready.
       db.exec(`ALTER TABLE cards ADD COLUMN plan_ready_at TEXT;
         UPDATE cards SET plan_ready_at = datetime('now') WHERE EXISTS (SELECT 1 FROM card_documents d WHERE d.card_id = cards.id AND d.kind = 'plano' AND length(trim(d.content_md)) > 0);`)
     }
@@ -350,7 +350,7 @@ export const migrations: readonly Migration[] = [
     checksum: 'sha256:gearmod-free-chat-v15-2026-10-21',
     disableForeignKeys: true,
     up(db) {
-      // Chat livre: conversa sem card. runs.card_id passa a aceitar NULL (recriação da tabela, mantendo run_events/test_runs/approvals) e o chat ganha um título.
+      // Free chat: a conversation without a card. runs.card_id now accepts NULL (table recreated, keeping run_events/test_runs/approvals) and the chat gets a title.
       db.exec(`
         CREATE TABLE runs_new (
           id TEXT PRIMARY KEY, card_id TEXT REFERENCES cards(id) ON DELETE CASCADE,
@@ -370,7 +370,7 @@ export const migrations: readonly Migration[] = [
     version: 16,
     checksum: 'sha256:gearmod-profile-removed-v16-2026-10-21',
     up(db) {
-      // Remover um agente com histórico só o desativa: some das listas e não executa mais, mas os cards e chats seguem mostrando quem executou.
+      // Removing an agent with history only deactivates it: it disappears from lists and no longer runs, but cards and chats keep showing who ran.
       db.exec('ALTER TABLE agent_profiles ADD COLUMN removed_at TEXT;')
     }
   },
@@ -378,7 +378,7 @@ export const migrations: readonly Migration[] = [
     version: 17,
     checksum: 'sha256:gearmod-card-base-branch-v17-2026-10-22',
     up(db) {
-      // Branch base escolhida ao iniciar a execução: a worktree do card nasce a partir dela (vazio = a branch atual de cada repositório).
+      // Base branch chosen when starting the run: the card worktree is born from it (empty = each repository's current branch).
       db.exec('ALTER TABLE cards ADD COLUMN base_branch TEXT;')
     }
   },
@@ -386,7 +386,7 @@ export const migrations: readonly Migration[] = [
     version: 18,
     checksum: 'sha256:gearmod-run-tokens-v18-2026-10-22',
     up(db) {
-      // Tokens gastos por execução (somados por etapa do card): lidos de novo, vindos do cache e escritos pelo agente.
+      // Tokens spent per run (summed per card step): read again, from cache and written by the agent.
       db.exec(`ALTER TABLE runs ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE runs ADD COLUMN cached_tokens INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE runs ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0;`)
@@ -396,7 +396,7 @@ export const migrations: readonly Migration[] = [
     version: 19,
     checksum: 'sha256:gearmod-constitution-v19-2026-10-21',
     up(db) {
-      // Constituição do projeto (opcional): texto atual, versões e as mudanças que os agentes sugerem fora do chat dela.
+      // Project Constitution (optional): current text, versions and the changes agents suggest outside its chat.
       db.exec(`CREATE TABLE project_constitutions (
           project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE, content_md TEXT NOT NULL, version INTEGER NOT NULL,
           updated_at TEXT NOT NULL, updated_by TEXT NOT NULL CHECK (updated_by IN ('user', 'agent', 'system')));
@@ -413,7 +413,7 @@ export const migrations: readonly Migration[] = [
     version: 20,
     checksum: 'sha256:gearmod-project-icon-v20-2026-10-21',
     up(db) {
-      // Ícone do projeto (imagem em data URL) no lugar da inicial na barra lateral.
+      // Project icon (image as data URL) in place of the initial in the sidebar.
       db.exec('ALTER TABLE projects ADD COLUMN icon TEXT;')
     }
   },
@@ -421,7 +421,7 @@ export const migrations: readonly Migration[] = [
     version: 21,
     checksum: 'sha256:gearmod-test-checklist-v21-2026-10-21',
     up(db) {
-      // Checklist do testador: o que ele vai verificar, marcado conforme verifica (aparece ao lado do chat do teste).
+      // Tester checklist: what it will verify, checked off as it verifies (appears next to the test chat).
       db.exec(`CREATE TABLE card_checklists (
           card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, purpose TEXT NOT NULL CHECK (purpose IN ('test')),
           content_md TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(card_id, purpose));`)
@@ -431,7 +431,7 @@ export const migrations: readonly Migration[] = [
     version: 22,
     checksum: 'sha256:gearmod-project-order-v22-2026-10-21',
     up(db) {
-      // Ordem dos projetos na barra lateral (o usuário arrasta). Começa na ordem de antes: o mais recente em cima.
+      // Project order in the sidebar (the user drags). Starts in the previous order: most recent on top.
       db.exec(`ALTER TABLE projects ADD COLUMN sort_order INTEGER;
         UPDATE projects SET sort_order = (SELECT COUNT(*) FROM projects p WHERE p.updated_at > projects.updated_at OR (p.updated_at = projects.updated_at AND p.id < projects.id));`)
     }
@@ -440,7 +440,7 @@ export const migrations: readonly Migration[] = [
     version: 23,
     checksum: 'sha256:gearmod-auto-resume-v23-2026-10-21',
     up(db) {
-      // Retomadas agendadas para quando o limite de uso do agente voltar.
+      // Resumes scheduled for when the agent's usage limit comes back.
       db.exec(`CREATE TABLE auto_resumes (
           id TEXT PRIMARY KEY, chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE, card_id TEXT REFERENCES cards(id) ON DELETE CASCADE,
           purpose TEXT NOT NULL, profile_id TEXT NOT NULL, resume_at TEXT NOT NULL,
@@ -452,7 +452,7 @@ export const migrations: readonly Migration[] = [
     version: 24,
     checksum: 'sha256:gearmod-git-manager-v24-2026-10-22',
     up(db) {
-      // Gerenciador Git: regra de commit do agente por projeto (JSON), pedidos de commit esperando o usuário e quem (agente) fez cada commit.
+      // Git manager: per-project agent commit rule (JSON), commit requests waiting for the user and who (agent) made each commit.
       db.exec(`ALTER TABLE projects ADD COLUMN git_policy TEXT;
         CREATE TABLE git_commit_requests (
           id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, source_id TEXT NOT NULL, repo_name TEXT NOT NULL, repo_path TEXT NOT NULL,
@@ -466,7 +466,7 @@ export const migrations: readonly Migration[] = [
     version: 25,
     checksum: 'sha256:gearmod-change-sent-v25-2026-10-22',
     up(db) {
-      // Mudança autorizada só deixa de lembrar o usuário quando foi mandada ao desenvolvedor (automático ao fim do planejador, ou pelo botão). As já aplicadas contam como enviadas.
+      // An authorized change only stops reminding the user once it was sent to the developer (automatic at the end of the planner, or via the button). Already applied ones count as sent.
       db.exec(`ALTER TABLE card_changes ADD COLUMN sent_at TEXT;
         UPDATE card_changes SET sent_at = COALESCE(decided_at, created_at) WHERE status = 'applied';`)
     }
@@ -475,8 +475,8 @@ export const migrations: readonly Migration[] = [
     version: 26,
     checksum: 'sha256:gearmod-assessments-v26-2026-10-23',
     up(db) {
-      // Complexity Engine e rastreabilidade (docs/09): avaliações versionadas (nunca sobrescritas), decisões, eventos espelhados em
-      // history.jsonl, fluxo escolhido do card, configuração de workflow do projeto e métricas por execução (só o que o agente informa).
+      // Complexity Engine and traceability (docs/09): versioned evaluations (never overwritten), decisions, events mirrored in
+      // history.jsonl, the card's chosen flow, project workflow configuration and per-run metrics (only what the agent reports).
       db.exec(`CREATE TABLE card_assessments (
           id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE, version INTEGER NOT NULL, preliminary INTEGER NOT NULL,
           scores_json TEXT NOT NULL, weights_json TEXT NOT NULL, total INTEGER NOT NULL, level TEXT NOT NULL CHECK (level IN ('simple', 'medium', 'complex')),
@@ -507,8 +507,8 @@ export const migrations: readonly Migration[] = [
     version: 27,
     checksum: 'sha256:gearmod-coordinated-worktrees-v27-2026-10-23',
     up(db) {
-      // Worktrees coordenados: repositórios envolvidos no card (vazio = todos, como antes), estado de cada repositório da worktree
-      // (falha parcial não derruba os outros) e o PR de cada um. Uso do Playwright CLI por execução, para comparar custo.
+      // Coordinated worktrees: repositories involved in the card (empty = all, as before), state of each worktree repository
+      // (a partial failure does not take the others down) and each one's PR. Playwright CLI usage per run, to compare cost.
       db.exec(`ALTER TABLE cards ADD COLUMN repo_ids TEXT;
         ALTER TABLE worktree_members ADD COLUMN status TEXT NOT NULL DEFAULT 'active';
         ALTER TABLE worktree_members ADD COLUMN error TEXT;
@@ -520,7 +520,7 @@ export const migrations: readonly Migration[] = [
     version: 28,
     checksum: 'sha256:gearmod-checklist-marks-v28-2026-10-26',
     up(db) {
-      // Quem marcou cada item do checklist de teste (usuário ou agente) e quando: JSON { "<texto do item>": { by, at } }.
+      // Who checked each test checklist item (user or agent) and when: JSON { "<item text>": { by, at } }.
       db.exec(`ALTER TABLE card_checklists ADD COLUMN marks TEXT;`)
     }
   },
@@ -528,7 +528,7 @@ export const migrations: readonly Migration[] = [
     version: 29,
     checksum: 'sha256:gearmod-shared-worktree-v29-2026-10-27',
     up(db) {
-      // Card que usa a worktree de outro card (em vez de criar a sua): guarda quem é o dono. Vazio = o card tem a própria.
+      // Card that uses another card's worktree (instead of creating its own): stores who the owner is. Empty = the card has its own.
       db.exec(`ALTER TABLE cards ADD COLUMN worktree_card_id TEXT;`)
     }
   },
@@ -637,8 +637,8 @@ export const migrations: readonly Migration[] = [
     checksum: 'sha256:gearmod-env-passthrough-v37-2026-10-29',
     up(db) {
       db.exec(`ALTER TABLE agent_profiles ADD COLUMN env_passthrough TEXT NOT NULL DEFAULT '[]';`)
-      // O resultado da migração não pode depender do ambiente da máquina na hora do upgrade: ela não lê variáveis de ambiente.
-      // Quem usa chave de API no ambiente declara a variável no perfil do agente (envPassthrough).
+      // The migration result must not depend on the machine's environment at upgrade time: it does not read environment variables.
+      // Whoever uses an API key from the environment declares the variable in the agent profile (envPassthrough).
     }
   },
   {
@@ -684,7 +684,7 @@ export const migrations: readonly Migration[] = [
     version: 40,
     checksum: 'sha256:gearmod-db-server-parent-v40-2026-10-30',
     up(db) {
-      // Servidor = conexão raiz (parent_id nulo); banco = conexão filha que herda host, usuário, SSL, ambiente e senha do servidor.
+      // Server = root connection (null parent_id); database = child connection that inherits the server's host, user, SSL, environment and password.
       db.exec(`ALTER TABLE db_connections ADD COLUMN parent_id TEXT REFERENCES db_connections(id) ON DELETE CASCADE;
       CREATE INDEX db_connections_parent ON db_connections(parent_id);`)
     }
@@ -693,7 +693,7 @@ export const migrations: readonly Migration[] = [
     version: 41,
     checksum: 'sha256:gearmod-db-server-first-database-v41-2026-10-30',
     up(db) {
-      // O servidor é só o contêiner: conexões antigas, sem nenhum banco dentro, passam a mostrar o próprio banco como filho.
+      // The server is only the container: old connections, with no database inside, now show their own database as a child.
       const roots = db.prepare(`SELECT * FROM db_connections r WHERE r.parent_id IS NULL AND NOT EXISTS (SELECT 1 FROM db_connections c WHERE c.parent_id = r.id)`).all() as Array<Record<string, unknown>>
       const insert = db.prepare(`INSERT INTO db_connections(id,project_id,parent_id,name,klass,host,port,database_name,username,ssl_mode,has_secret,allow_write,agent_access,origin,env_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?)`)
       for (const row of roots) insert.run(randomUUID(), row.project_id, row.id, row.database_name, row.klass, row.host, row.port, row.database_name, row.username, row.ssl_mode, row.allow_write, row.agent_access, row.origin, row.env_id, row.created_at, row.updated_at)
@@ -703,7 +703,7 @@ export const migrations: readonly Migration[] = [
     version: 42,
     checksum: 'sha256:gearmod-card-types-v42-2026-10-31',
     up(db) {
-      // Tipos de card cadastráveis por projeto (JSON; nulo = segue a lista padrão). "Tarefa pequena" deixa de ser tipo: vira o fluxo curto.
+      // Card types configurable per project (JSON; null = follows the default list). "Tarefa pequena" stops being a type: it becomes the short flow.
       db.exec(`ALTER TABLE projects ADD COLUMN card_types TEXT;
       UPDATE cards SET workflow = 'light' WHERE type = 'minor' AND workflow IS NULL;
       UPDATE cards SET type = 'improvement' WHERE type IN ('minor', 'task');`)

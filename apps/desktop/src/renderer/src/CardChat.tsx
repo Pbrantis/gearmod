@@ -39,23 +39,23 @@ import { pop } from './popout'
 import { useT } from './i18n'
 import { useProjectSkills, useSlashSkills } from './SlashSkills'
 
-/** Estado do dock que sobrevive à troca de aba (o chat remonta a cada etapa): recolhido/expandido e largura. */
+/** Dock state that survives tab switching (the chat remounts at each stage): collapsed/expanded and width. */
 const dockMin = 440
 const stored = (): number => { try { return Number(localStorage.getItem('gearmod.dockWidth')) || dockMin } catch { return dockMin } }
 const dockState = { expanded: true, width: stored() }
 const clampWidth = (value: number): number => Math.max(dockMin, Math.min(Math.round(window.innerWidth * 0.65), value))
 
-/** Recolhido/expandido e largura do dock, compartilhados entre o chat do card e o chat livre. */
+/** Collapsed/expanded and width of the dock, shared between the card chat and the free chat. */
 export function useDockSize(): { expanded: boolean; setExpanded(value: boolean): void; width: number; setWidth(value: number): void; dragging: boolean; startResize(event: React.PointerEvent<HTMLDivElement>): void; resetWidth(): void } {
   const [expanded, setExpandedState] = useState(dockState.expanded), [width, setWidthState] = useState(() => clampWidth(dockState.width)), [dragging, setDragging] = useState(false)
   const setExpanded = (value: boolean): void => { dockState.expanded = value; setExpandedState(value) }
   const startResize = (event: React.PointerEvent<HTMLDivElement>): void => {
     event.preventDefault(); setDragging(true)
     const move = (e: PointerEvent): void => { const next = clampWidth(window.innerWidth - e.clientX); dockState.width = next; setWidthState(next) }
-    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); try { localStorage.setItem('gearmod.dockWidth', String(dockState.width)) } catch { /* só vale nesta sessão */ } }
+    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); try { localStorage.setItem('gearmod.dockWidth', String(dockState.width)) } catch { /* only valid for this session */ } }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  const setWidth = (value: number): void => { dockState.width = value; setWidthState(value); try { localStorage.setItem('gearmod.dockWidth', String(value)) } catch { /* só vale nesta sessão */ } }
+  const setWidth = (value: number): void => { dockState.width = value; setWidthState(value); try { localStorage.setItem('gearmod.dockWidth', String(value)) } catch { /* only valid for this session */ } }
   return { expanded, setExpanded, width, setWidth, dragging, startResize, resetWidth: () => { dockState.width = dockMin; setWidthState(dockMin) } }
 }
 
@@ -63,7 +63,7 @@ const typeColor: Record<Card['type'], string> = { feature: 'var(--blue)', bug: '
 
 const SearchGlyph = (): React.JSX.Element => <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5" /><path d="M13.2 13.2L17 17" /></svg>
 
-/** Ações do cabeçalho agrupadas quando o dock estreito não comporta todos os botões. */
+/** Header actions grouped when the narrow dock cannot fit all the buttons. */
 export function ChatMoreMenu({ messages, log, projectId, cardId, chatId, purpose, expand, view, openCard, searchRequest = 0 }: { openCard?(): void; messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; projectId: string; cardId?: string; chatId?: string; purpose?: AgentPurpose; expand(): void; close(): void; view?: { git: boolean; set(value: 'chat' | 'git'): void }; searchRequest?: number }): React.JSX.Element {
   const t = useT(), m = t.chat.moreMenu
   const [open, setOpen] = useState(false), [page, setPage] = useState<'main' | 'search' | 'window'>('main'), [query, setQuery] = useState('')
@@ -121,7 +121,7 @@ function Tile({ card, board, here, profiles, open }: { card: Card; board: Projec
   return <button type="button" className={`tile ${run === 'running' ? 'run' : ''} ${run === 'planning' ? 'plan' : ''} ${here ? 'here' : ''}`} onClick={open}><span className="tdot" style={{ background: typeColor[card.type] }} /><span className="ttl">{card.title || t.newCard}</span><span className="tfoot">{agent ? <AgentIcon profile={agent} size="sm" /> : <i />}<span className="tst">{status}</span></span></button>
 }
 
-/** Visão rápida (protótipo): o que está executando agora e os demais cards, com o estado de cada um. */
+/** Quick view (prototype): what is running now and the other cards, with each one's state. */
 function Activity({ board, cardId, profiles, openEdit, hide }: { board: ProjectBoard; cardId: string; profiles: AgentProfile[]; openEdit(card: Card): void; hide(): void }): React.JSX.Element {
   const t = useT().chat.activity
   const cards = board.cards.filter((card) => !card.archivedAt && board.columns.find((column) => column.id === card.columnId)?.semanticState !== 'done'), running = cards.filter((card) => card.run.state === 'running')
@@ -135,7 +135,7 @@ function Activity({ board, cardId, profiles, openEdit, hide }: { board: ProjectB
   </div></section>
 }
 
-/** Chat do card (planejamento ou execução) como o dock do protótipo: encaixado à direita ou em tela cheia com a visão rápida. */
+/** Card chat (planning or execution) like the prototype's dock: docked to the right or fullscreen with the quick view. */
 export function CardChat({ project, card, board, profiles, columnLabel, mode, close, openEdit, onSwitch, ensureCard, initialView = 'chat', openRules, openGraph }: { initialView?: 'chat' | 'git'; openRules?(): void; openGraph?(cardId: string): void; project: Project; card: Card; board: ProjectBoard; profiles: AgentProfile[]; columnLabel: string; mode: AgentPurpose; close(): void; openEdit(card: Card): void; onSwitch(purpose: AgentPurpose): void; ensureCard?(): Promise<Card> }): React.JSX.Element {
   const t = useT(), c = t.chat.cardChat, d = t.chat.dock, act = t.chat.activity
   const usable = profiles.filter((profile) => project.allowedProfileIds.includes(profile.id))
@@ -145,9 +145,9 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const chatRef = useRef<Chat | undefined>(undefined)
   const log = useRef<HTMLDivElement>(null), runId =useRef<string | undefined>(undefined), wrap = useRef<HTMLDivElement>(null), skillFilterInput = useRef<HTMLInputElement>(null)
   const [chats, setChats] = useState<Chat[]>([])
-  // Fluxo curto tem um agente e um chat só (planeja, executa e valida): a aba não distingue etapas.
+  // A short flow has a single agent and a single chat (plans, executes and validates): the tab does not distinguish stages.
   const singleChat = card.workflow === 'light' && chats.length <= 1
-  // A worktree já existe durante o planejamento; a coluna define quando o chat único entra em execução.
+  // The worktree already exists during planning; the column defines when the single chat enters execution.
   const columnState = board.columns.find((column) => column.id === card.columnId)?.semanticState
   const fullAgent = singleChat && (columnState === 'doing' || columnState === 'test' || columnState === 'done')
   const planning = mode === 'planning' && !fullAgent
@@ -164,7 +164,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     const onShortcut = (event: Event): void => { if ((event as CustomEvent<{ id: string }>).detail.id === 'toggleQuickView' && expandedRef.current && !diffOpenRef.current) setQuickHidden(!quickHiddenRef.current) }
     window.addEventListener(shortcutEvent, onShortcut); return () => window.removeEventListener(shortcutEvent, onShortcut)
   }, [])
-  const setQuickHidden = (value: boolean): void => { setQuickHiddenState(value); try { localStorage.setItem('gearmod.quickView.hidden', value ? '1' : '0') } catch { /* só conveniência */ } }
+  const setQuickHidden = (value: boolean): void => { setQuickHiddenState(value); try { localStorage.setItem('gearmod.quickView.hidden', value ? '1' : '0') } catch { /* convenience only */ } }
   useEffect(() => { if (!card.id) return; terminal.setContext({ projectId: project.id, cardId: card.id }); return () => terminal.setContext({ projectId: project.id, cardId: null }) }, [card.id, project.id])
   const viewer = useFileViewer(width, setWidth)
   const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])
@@ -182,14 +182,14 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   useEffect(() => window.gearmod.onRunEvent((event) => {
     if (event.eventType === 'gearmod/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void loadMessages(id); return current }); return }
     const own = Boolean(chatRef.current) && event.payload.chatId === chatRef.current?.id
-    // Run que começou fora deste componente (mensagem da fila, retomada, encadeamento): o chat a adota para mostrar o stream.
+    // Run that started outside this component (queued message, resume, chaining): the chat adopts it to show the stream.
     if (event.eventType === 'gearmod/run-started' && own && event.runId) { runId.current = event.runId; setLive(''); void loadMessages(chatRef.current!.id); return }
     if (event.eventType !== 'gearmod/run-completed' || !own) { if (event.runId !== runId.current) return }
     if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
     if (event.eventType === 'gearmod/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void window.gearmod.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }
   }), [card.id, loadMessages])
   useEffect(() => { chatRef.current = chat }, [chat])
-  // Chat aberto com a run já em andamento (saiu e voltou): adota a run para voltar a receber o stream.
+  // Chat opened with the run already in progress (left and came back): adopts the run to receive the stream again.
   useEffect(() => { if (!runId.current && card.run.runId && card.run.purpose === mode && (card.run.state === 'running' || card.run.state === 'planning')) runId.current = card.run.runId }, [card.run.runId, card.run.state, card.run.purpose, mode])
   useStickToBottom(log)
   const skills = useProjectSkills(project.id)
@@ -209,7 +209,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     try {
       const saved = JSON.parse(localStorage.getItem(skillPreferenceKey) ?? 'null') as SkillRef | null
       if (saved && available.some((item) => item.name === saved.name && item.paths[provider] === saved.path)) setSkill(saved)
-    } catch { /* preferência opcional inválida */ }
+    } catch { /* invalid optional preference */ }
   }, [chat?.id, skillPreferenceKey, skills, provider])
   useEffect(() => { if (menu === 'skill') window.setTimeout(() => skillFilterInput.current?.focus(), 0) }, [menu])
   const chooseSkill = async (next: SkillRef | null): Promise<void> => {
@@ -228,7 +228,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       let current = chat
       const chosen = agentState.config?.profileId
       let cardId = card.id
-      // Planejamento começado sem card: ele só nasce agora, na primeira mensagem, para o chat ter a que se referir.
+      // Planning started without a card: it is only born now, on the first message, so the chat has something to refer to.
       if (!cardId) {
         if (!ensureCard) throw new Error(c.cardNotFound)
         cardId = (await ensureCard()).id
@@ -247,9 +247,9 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     if (busy) later.queue(prompt, attach.take()); else await deliver(prompt)
   }
   const stop = async (): Promise<void> => { later.markStopped(); await cancel() }
-  // Respostas das perguntas do agente voltam como mensagem normal (na fila, se ele ainda estiver trabalhando).
+  // Answers to the agent's questions go back as a normal message (queued, if it is still working).
   const answerQuestions = (text: string): void => { if (busy) later.queue(text); else void deliver(text) }
-  /** Comentário feito sobre o diff é feedback de implementação: sempre segue para o desenvolvedor. */
+  /** A comment made on the diff is implementation feedback: always goes to the developer. */
   const sendReview = async (text: string): Promise<boolean> => {
     if (mode === 'execution') { answerQuestions(text); setDiff(undefined); setView('chat'); return true }
     if (!card.id) return false
@@ -271,9 +271,9 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     if (!card.id || pop) return
     try { await window.gearmod.invoke('windows:open', { kind: 'chat', projectId: project.id, cardId: card.id, purpose: mode, placement: 'new', ...point }); close() } catch (reason) { setError(plainError(reason)) }
   }
-  // Atalhos do modo teste, acima da caixa de conversa: cada botão manda um pedido pronto ao testador (entra na fila se ele estiver ocupado).
-  // Um botão só: a skill de teste já roda os testes, o lint e o typecheck e, com o Playwright CLI ligado no projeto, também os critérios de tela.
-  // Com o Playwright ligado, pergunta se é para ver o navegador ou rodar em segundo plano.
+  // Test mode shortcuts, above the conversation box: each button sends a ready-made request to the tester (queued if it is busy).
+  // A single button: the test skill already runs the tests, lint and typecheck and, with Playwright CLI enabled in the project, also the screen criteria.
+  // With Playwright enabled, asks whether to watch the browser or run in the background.
   const [pwReady, setPwReady] = useState(false), [testChoice, setTestChoice] = useState(false)
   useEffect(() => { if (mode !== 'test') return; void window.gearmod.invoke('playwright:status', { projectId: project.id }).then((status) => setPwReady(status.enabled && Boolean(status.selected))).catch(() => setPwReady(false)) }, [mode, project.id])
   const retestPrompt = (headed?: boolean): string => `Refaça o teste deste card do começo: reabra o checklist que já existe (mantenha os mesmos itens, desmarque todos e revalide um a um, acrescentando só o que for novo), rode os testes automatizados, o lint e o typecheck${pwReady ? ' e confira os critérios de tela com o Playwright CLI, seguindo a skill gearmod-test.' : '.'}${headed === undefined ? '' : headed ? ' Rode o Playwright com o navegador visível (--headed) e com slowMo para eu acompanhar.' : ' Rode o Playwright sem janela (headless), guardando screenshot e trace do que falhar.'} Me diga o que passou e o que falhou.`
@@ -287,7 +287,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       if (card.id) setChats(await window.gearmod.invoke('chats:list', { projectId: project.id, cardId: card.id }))
     } catch (reason) { setError(plainError(reason)) }
   }
-  // Agente removido (desativado): o histórico fica, mas ele não executa mais; para continuar é preciso reiniciar o chat com outro.
+  // Agent removed (deactivated): the history stays, but it no longer executes; to continue the chat must be restarted with another one.
   const inactive = chat && !usable.some((item) => item.id === chat.profileId) ? profiles.find((item) => item.id === chat.profileId) : undefined
   const resetInactive = async (): Promise<void> => {
     if (!chat) return
@@ -361,7 +361,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     </QuestionAnswerContext.Provider></FileOpenContext.Provider>
     {testChoice && <ConfirmDialog eyebrow={c.testChoiceEyebrow} title={c.testChoiceTitle} text={c.testChoiceText} ok={c.watchBrowser} secondary={{ label: c.runBackground, run: () => { setTestChoice(false); answerQuestions(retestPrompt(false)) } }} cancel={() => setTestChoice(false)} confirm={() => { setTestChoice(false); answerQuestions(retestPrompt(true)) }} />}
     {switchTo && <ConfirmDialog eyebrow={d.switchAgent} title={c.restartWith(switchTo.label)} text={c.restartText} ok={c.switchAndRestart} danger cancel={() => setSwitchTo(undefined)} confirm={() => void resetAndSwitch(switchTo)} />}
-    {/* Só com o chat em tela cheia: coluna à esquerda com o progresso (Tasks ou checklist do teste) e as Alterações. Dividindo a tela com o quadro, não aparece. */}
+    {/* Only with the chat fullscreen: left column with progress (Tasks or test checklist) and the Changes. Splitting the screen with the board, it does not appear. */}
     {expanded && diffOpen && diff && <DiffPane cardId={card.id} target={diff} close={() => setDiff(undefined)} ask={sendReview} />}
     {expanded && !diffOpen && !planning && card.id && <div className="dockside"><ProgressCard key={`${card.id}-${mode}-${columnState}`} cardId={card.id} purpose={mode === 'test' || (fullAgent && columnState === 'test') ? 'test' : 'execution'} />{(card.workspace || fullAgent) && <ChangesCard key={card.id} cardId={card.id} projectId={project.id} busy={busy} shared={card.workspace?.sharedFrom ?? null} />}</div>}
     {expanded && !diffOpen && !quickHidden && <Activity board={board} cardId={card.id} profiles={profiles} openEdit={openEdit} hide={() => setQuickHidden(true)} />}

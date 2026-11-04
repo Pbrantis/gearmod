@@ -12,7 +12,7 @@ const closers: Array<() => void> = []
 afterEach(async () => { for (const close of closers.splice(0)) close(); await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-code-editor-')); dirs.push(dir); return dir }
 
-/** Processo utilitário falso: o mesmo handler do host, no mesmo processo. */
+/** Fake utility process: the same host handler, in the same process. */
 function fakeHost(): HostProcess {
   const listeners: Array<(message: HostMessage) => void> = []
   const handler = createHostHandler((message) => listeners.forEach((listener) => listener(message)))

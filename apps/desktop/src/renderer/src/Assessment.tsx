@@ -8,8 +8,8 @@ import { Markdown } from './markdown'
 import { useEscape } from './useEscape'
 import { dateLocale, tr, useT } from './i18n'
 
-/** Indicador de complexidade (Kanban, editor e chat): só os pontos; ao passar o mouse desce um cartão com nível, fluxo, variação e confiança. `full` mostra tudo no próprio selo, como no editor do card. */
-/** `workflowText`: nome do fluxo já escolhido, no lugar da sigla do fluxo recomendado. */
+/** Complexity indicator (Kanban, editor and chat): only the dots; on hover a card drops down with level, flow, variation and confidence. `full` shows everything in the badge itself, as in the card editor. */
+/** `workflowText`: name of the already chosen flow, in place of the recommended flow's abbreviation. */
 export function ComplexityBadge({ complexity, onClick, full = false, workflowText }: { complexity: CardComplexity | null; onClick?(): void; full?: boolean; workflowText?: string }): React.JSX.Element | null {
   const tb = useT().board, t = tb.assessment
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null), button = useRef<HTMLButtonElement>(null)
@@ -40,11 +40,11 @@ export function ComplexityBadge({ complexity, onClick, full = false, workflowTex
 type Stage = { state: string; run: Card['run']; hasPlan: boolean; planningOpen: boolean }
 export type Tab = 'avaliacao' | 'riscos' | 'decisoes' | 'entendimento' | 'metricas' | 'eventos'
 
-/** Histórico auditável do card: versões da avaliação, comparação, evidências, decisões, contestação e escolha do fluxo. */
+/** Auditable card history: assessment versions, comparison, evidence, decisions, contestation and flow choice. */
 export function AssessmentDialog({ card, close, changed, initialTab = 'avaliacao' }: { card: Card; close(): void; changed(): void; initialTab?: Tab }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.assessment
   const [history, setHistory] = useState<CardHistory>(), [metrics, setMetrics] = useState<RunMetric[]>([]), [selected, setSelected] = useState<string>(), [tab, setTab] = useState<Tab>(initialTab), [riskFocus, setRiskFocus] = useState<string>(), [stage, setStage] = useState<Stage>(), [pendingFlow, setPendingFlow] = useState<{ workflow: WorkflowKind; method?: 'native' | 'speckit'; warnings: string[] }>(), [error, setError] = useState(''), [contesting, setContesting] = useState(false)
-  /** Onde o card está agora (coluna, execução, plano pronto), sempre lido de novo: é o que decide travar ou avisar. */
+  /** Where the card is now (column, run, plan ready), always read anew: it decides whether to lock or warn. */
   const readStage = async (): Promise<Stage | undefined> => {
     try {
       const board = await window.gearmod.invoke('board:get', { projectId: card.projectId }), fresh = board.cards.find((item) => item.id === card.id), column = board.columns.find((item) => item.id === fresh?.columnId)
@@ -69,7 +69,7 @@ export function AssessmentDialog({ card, close, changed, initialTab = 'avaliacao
     return list
   }
   const choose = (workflow: WorkflowKind, method: 'native' | 'speckit' | undefined, reason?: string): Promise<void> => apply(window.gearmod.invoke('history:select-workflow', { cardId: card.id, workflow, ...(method ? { method } : {}), ...(reason ? { reason } : {}) }))
-  // Mudar o fluxo nunca é barrado (menos em card concluído), mas avisa quando já há execução, plano, desenvolvimento ou teste; o que ele confirma vai para as decisões.
+  // Changing the flow is never blocked (except on a completed card), but warns when there is already a run, plan, development or test; what the user confirms goes into the decisions.
   const askBeforeChoosing = async (workflow: WorkflowKind, method?: 'native' | 'speckit'): Promise<void> => {
     const now = await readStage()
     if (now?.state === 'done') return
@@ -136,7 +136,7 @@ function AssessmentView({ item, previous, latest, history, specKit, contest, cho
   </>
 }
 
-/** Riscos críticos por avaliação: a mais recente aberta e as antigas encolhidas; só entram avaliações que apontaram algum risco. */
+/** Critical risks per assessment: the most recent one open and the old ones collapsed; only assessments that pointed to some risk are included. */
 function CriticalRisks({ assessments, focus }: { assessments: Assessment[]; focus?: string }): React.JSX.Element {
   const t = useT().board.assessment, tb = useT().board
   const withRisks = [...assessments].reverse().filter((item) => item.criticalRisks.length > 0)
@@ -205,7 +205,7 @@ const fmt = (value: number): string => value.toLocaleString(dateLocale())
 const compact = (value: number): string => { const t = tr().board.assessment; return (value < 1000 ? String(value) : value < 1_000_000 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)}${t.thousandUnit}` : `${(value / 1_000_000).toFixed(1)}${t.millionUnit}`).replace('.', t.decimalSeparator) }
 const seconds = (ms: number): string => ms < 90_000 ? `${Math.round(ms / 1000)} s` : ms < 5_400_000 ? `${Math.round(ms / 60_000)} min` : `${(ms / 3_600_000).toFixed(1).replace('.', tr().board.assessment.decimalSeparator)} h`
 
-/** Um card da fileira de métricas: rosca de entrada, cache e saída de um conjunto de execuções, com os números alinhados e o resumo embaixo. */
+/** A card in the metrics row: donut of input, cache and output for a set of runs, with the numbers aligned and the summary below. */
 function MixCard({ title, runs }: { title: string; runs: RunMetric[] }): React.JSX.Element {
   const t = useT().board.assessment
   const input = runs.reduce((sum, run) => sum + run.input, 0), cached = runs.reduce((sum, run) => sum + run.cached, 0), output = runs.reduce((sum, run) => sum + run.output, 0)
@@ -219,7 +219,7 @@ function MixCard({ title, runs }: { title: string; runs: RunMetric[] }): React.J
   </section>
 }
 
-/** Pizza (rosca) de entrada, cache e saída; o total vai no meio. */
+/** Pie (donut) of input, cache and output; the total goes in the middle. */
 function Donut({ parts, center, label }: { parts: Array<{ key: string; value: number }>; center: string; label: string }): React.JSX.Element {
   const sum = parts.reduce((total, part) => total + part.value, 0)
   let offset = 0
@@ -234,10 +234,10 @@ function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): Reac
   const t = useT().board.assessment
   const [view, setView] = useState<'dashboard' | 'tabela'>(() => { try { return localStorage.getItem('gearmod.metricsView') === 'tabela' ? 'tabela' : 'dashboard' } catch { return 'dashboard' } })
   const [openSteps, setOpenSteps] = useState<string[]>([])
-  const choose = (value: 'dashboard' | 'tabela'): void => { setView(value); try { localStorage.setItem('gearmod.metricsView', value) } catch { /* só conveniência */ } }
+  const choose = (value: 'dashboard' | 'tabela'): void => { setView(value); try { localStorage.setItem('gearmod.metricsView', value) } catch { /* only a convenience */ } }
   if (!runs.length) return <div className="cx-empty"><b>{t.noRuns}</b><span>{t.noRunsHint}</span></div>
   const total = runs.reduce((sum, run) => ({ input: sum.input + run.input, cached: sum.cached + run.cached, output: sum.output + run.output, cost: sum.cost + (run.costUsd ?? 0), unknown: sum.unknown + (run.costUsd === null ? 1 : 0), ms: sum.ms + (run.durationMs ?? 0) }), { input: 0, cached: 0, output: 0, cost: 0, unknown: 0, ms: 0 })
-  // Comparação honesta do Playwright CLI: média de tokens das execuções de teste com e sem ele (só quando há as duas).
+  // Honest Playwright CLI comparison: average tokens of test runs with and without it (only when there are both).
   const tests = runs.filter((run) => run.purpose === 'test'), average = (items: RunMetric[]): number => Math.round(items.reduce((sum, run) => sum + run.input + run.output, 0) / items.length)
   const withCli = tests.filter((run) => run.usedPlaywrightCli), withoutCli = tests.filter((run) => !run.usedPlaywrightCli)
   const steps = ['planning', 'execution', 'test'].map((key) => { const items = runs.filter((run) => run.purpose === key); return { key, runs: items.length, input: items.reduce((s, r) => s + r.input, 0), output: items.reduce((s, r) => s + r.output, 0), cached: items.reduce((s, r) => s + r.cached, 0), ms: items.reduce((s, r) => s + (r.durationMs ?? 0), 0) } }).filter((step) => step.runs > 0)

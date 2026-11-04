@@ -73,7 +73,7 @@ describe('tipos de card', () => {
   it('acha o tipo pelo id ou pelo nome, sem diferenciar maiúsculas', () => {
     const types = builtinCardTypes()
     expect(findCardType(types, 'improvement')?.id).toBe('improvement')
-    // Os tipos padrão têm nome em inglês em qualquer idioma (combinam com os prefixos de branch).
+    // The default types have English names in any language (they match the branch prefixes).
     expect(findCardType(types, 'IMPROVEMENT')?.id).toBe('improvement')
     expect(findCardType(types, ' BUG ')?.id).toBe('bug')
     expect(findCardType(types, 'minor')).toBeUndefined()

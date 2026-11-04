@@ -11,7 +11,7 @@ import { useT } from './i18n'
 import { TrashIcon } from './icons'
 import { loadLatest } from './toolUpdates'
 
-/** Playwright CLI: ferramenta do app, em pasta própria, com várias versões e uma escolhida por projeto. */
+/** Playwright CLI: an app tool, in its own folder, with several versions and one chosen per project. */
 export function PlaywrightSection({ projectId, enabled, toggle, latest }: { projectId: string; enabled: boolean; toggle(value: boolean): void; latest?: string | null }): React.JSX.Element {
   const t = useT(), tw = t.settings.playwright
   const [status, setStatus] = useState<PlaywrightStatus>(), [sources, setSources] = useState<Array<{ id: string; name: string; node: boolean }>>([]), [sourceId, setSourceId] = useState('')
@@ -24,7 +24,7 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
   }, [projectId])
   useEffect(() => { setVersion((current) => current || latest || 'latest') }, [latest])
   const busy = useTasks().some((item) => item.key === `playwright:${projectId}` && item.state === 'running')
-  // O diálogo mostra o andamento ao vivo (o log do processo principal) e pode ser minimizado: a instalação continua em segundo plano.
+  // The dialog shows live progress (the main process log) and can be minimized: the installation continues in the background.
   useEffect(() => {
     if (!busy) return
     const timer = window.setInterval(() => { void window.gearmod.invoke('playwright:status', { projectId }).then(setStatus).catch(() => undefined) }, 1500)

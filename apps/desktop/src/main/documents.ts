@@ -7,9 +7,9 @@ import { tm } from './i18n'
 
 type Actor = 'user' | 'agent' | 'system'
 
-/** Os 4 documentos Markdown do card (Resumo, Especificação, Plano e Tasks) e o histórico de versões de cada um. */
+/** The card's 4 Markdown documents (Summary, Specification, Plan and Tasks) and the version history of each. */
 export class DocumentRepository {
-  /** Chamado depois de cada gravação que mudou o documento (usado para manter as cópias em arquivo iguais). */
+  /** Called after each write that changed the document (used to keep the file copies identical). */
   onWrite?: (cardId: string, kind: CardDocumentKind) => void
   constructor(private readonly database: AppDatabase) {}
 
@@ -28,7 +28,7 @@ export class DocumentRepository {
   write(cardId: string, kind: CardDocumentKind, contentMd: string, actor: Actor = 'user'): CardDocument {
     this.assertCard(cardId)
     if (kind === 'tasks') { const problem = validateTasks(contentMd); if (problem) throw new Error(problem) }
-    // Só o agente é barrado (o usuário escreve o que quiser): verificação vai para o Plano de testes, vale para qualquer método (Spec Kit, OpenSpec...).
+    // Only the agent is blocked (the user writes whatever they want): verification goes to the Test plan, valid for any method (Spec Kit, OpenSpec...).
     if (kind === 'tasks' && actor === 'agent') {
       const checks = verificationOnlyTasks(contentMd)
       if (checks.length) throw new Error(tm().documents.verificationOnlyTasks(checks.join(', '), checks.length > 1))
@@ -46,7 +46,7 @@ export class DocumentRepository {
       else this.database.db.prepare('UPDATE cards SET updated_at = ? WHERE id = ?').run(now, cardId)
     })
     save()
-    try { this.onWrite?.(cardId, kind) } catch { /* a cópia em arquivo é melhor esforço */ }
+    try { this.onWrite?.(cardId, kind) } catch { /* the file copy is best effort */ }
     return this.get(cardId)[kind]
   }
 

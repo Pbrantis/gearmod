@@ -7,16 +7,16 @@ import { useEscape } from './useEscape'
 import { plainError } from './NoticeDialog'
 import { tr, useT } from './i18n'
 
-/** Rótulos do esforço no idioma atual (lidos na hora do uso, então acompanham a troca de idioma). */
+/** Effort labels in the current language (read at time of use, so they follow language changes). */
 export const effortLabel = new Proxy({} as Record<Effort, string>, { get: (_target, key) => tr().chat.effort[key as Effort] })
 
-/** Rótulo e descrição de um modo de permissão no idioma atual; o contracts só traz o texto em português. */
+/** Label and description of a permission mode in the current language; contracts only carries the Portuguese text. */
 export function permissionModeText(provider: AgentProfile['provider'], mode: PermissionModeInfo): { label: string; description: string } {
   const found = (tr().chat.permissionModes[provider] as Record<string, { label: string; description: string }>)[mode.id]
   return found ?? { label: mode.label, description: mode.description }
 }
 
-/** Configuração de agente do card (agente, modelo, esforço e modo) para planejar ou executar; salva no card a cada mudança. */
+/** Card agent configuration (agent, model, effort and mode) for planning or executing; saved on the card at each change. */
 export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: AgentProfile[], lockedProfileId?: string): { config?: AgentConfig; options?: AgentOptions; update(patch: Partial<AgentConfig>): Promise<void>; error: string; touched: boolean } {
   const [config, setConfig] = useState<AgentConfig>(), [options, setOptions] = useState<AgentOptions>(), [error, setError] = useState('')
   const profileId = config?.profileId, profileKey = profiles.map((item) => item.id).join(',')
@@ -43,7 +43,7 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
     void window.gearmod.invoke('agents:options', { profileId }).then((loaded) => { if (alive) setOptions(loaded) }).catch(() => { if (alive) setOptions({ models: [], mostUsed: { planning: null, execution: null, test: null } }) })
     return () => { alive = false }
   }, [profileId])
-  // Sem escolha salva, mostra o padrão: o mais usado ou o recomendado para a finalidade.
+  // With no saved choice, shows the default: the most used or the recommended one for the purpose.
   useEffect(() => {
     if (!config || !options || config.model !== null || config.effort !== null) return
     const used = options.mostUsed[purpose], recommended = options.models.find((model) => model.recommendedFor.includes(purpose))
@@ -60,8 +60,8 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
 }
 
 /**
- * Menu de modelo do protótipo (`.mmbtn` + `.mmpop`): lista de modelos, e os submenus Agente e Esforço.
- * `field` = versão do editor (mostra o nome do agente); `noAgent` = o agente é escolhido em outro campo.
+ * Prototype model menu (`.mmbtn` + `.mmpop`): list of models, and the Agent and Effort submenus.
+ * `field` = editor version (shows the agent name); `noAgent` = the agent is chosen in another field.
  */
 export function ModelMenu({ profiles, purpose, state, noAgent = false, field = false, lockProfile = false, onLockedPick }: { profiles: AgentProfile[]; purpose: AgentPurpose; state: ReturnType<typeof useAgentConfig>; noAgent?: boolean; field?: boolean; lockProfile?: boolean; onLockedPick?(profile: AgentProfile): void }): React.JSX.Element {
   const t = useT(), m = t.chat.model
@@ -72,7 +72,7 @@ export function ModelMenu({ profiles, purpose, state, noAgent = false, field = f
   useLayoutEffect(() => {
     if (!open || !button.current) return
     const rect = button.current.getBoundingClientRect()
-    // Campo: abre para baixo e vira para cima quando falta espaço, sempre com altura limitada para não cortar na janela.
+    // Field: opens downward and flips upward when space is lacking, always with limited height so it is not cut off by the window.
     const below = window.innerHeight - rect.bottom - 16, above = rect.top - 16, flip = field && below < 260 && above > below
     setPos({ right: window.innerWidth - rect.right, ...(field && !flip ? { top: rect.bottom + 8, maxHeight: below } : { bottom: window.innerHeight - rect.top + 8, ...(field ? { maxHeight: above } : {}) }) })
   }, [open, field])

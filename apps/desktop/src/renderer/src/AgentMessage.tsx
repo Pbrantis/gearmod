@@ -3,14 +3,14 @@ import { answersMessage, splitQuestionBlocks, type QuestionBlock } from '@gearmo
 import { Markdown } from './markdown'
 import { useT } from './i18n'
 
-/** Quem hospeda o chat recebe as respostas já formatadas e as manda ao agente como mensagem normal. */
+/** Whoever hosts the chat receives the replies already formatted and sends them to the agent as a normal message. */
 export const QuestionAnswerContext = React.createContext<((text: string) => void) | null>(null)
 
 const other = '__outro__'
 
 /**
- * Perguntas do agente com opções, uma por vez: escolher (ou marcar várias), "Outro" com texto livre, voltar e revisar.
- * Só quando todas têm resposta o botão final aparece e o contexto volta ao agente.
+ * Agent questions with options, one at a time: pick (or tick several), "Other" with free text, go back and review.
+ * Only when all have an answer does the final button appear and the context goes back to the agent.
  */
 function QuestionCard({ block, answer, busy }: { block: QuestionBlock; answer: (text: string) => void; busy: boolean }): React.JSX.Element {
   const t = useT().chat.question
@@ -25,11 +25,11 @@ function QuestionCard({ block, answer, busy }: { block: QuestionBlock; answer: (
   const toggle = (label: string): void => {
     if (multiple) { set(current.includes(label) ? current.filter((item) => item !== label) : [...current, label]); return }
     set([label])
-    // Escolha única avança sozinha; "Outro" espera o texto.
+    // A single choice advances on its own; "Other" waits for the text.
     if (label !== other && !last) window.setTimeout(() => setStep((value) => Math.min(total - 1, value + 1)), 180)
   }
   const submit = (): void => answer(answersMessage(block, block.perguntas.map((_, index) => final(index))))
-  // Perguntas de alturas diferentes: ao ir para a próxima ou voltar, o cartão continua inteiro à vista, no fim da conversa.
+  // Questions of different heights: when going to the next or back, the card stays fully in view, at the end of the conversation.
   useEffect(() => { if (first.current) { first.current = false; return }; requestAnimationFrame(() => card.current?.scrollIntoView({ block: 'end' })) }, [step])
   return <div className="qcard" ref={card} role="group" aria-label={t.agentQuestions}>
     <div className="q-top">
@@ -55,21 +55,21 @@ function QuestionCard({ block, answer, busy }: { block: QuestionBlock; answer: (
   </div>
 }
 
-/** Perguntas já respondidas (há mensagem sua depois): só o resumo, sem botões. */
+/** Questions already answered (there is a message of yours after): only the summary, no buttons. */
 function AnsweredQuestions({ block, answers }: { block: QuestionBlock; answers?: Map<string, string> }): React.JSX.Element {
   const t = useT().chat.question
   return <div className="qcard answered"><div className="q-top"><span className="q-count">{t.answered}</span></div>
     <ul>{block.perguntas.map((item, index) => { const reply = answers?.get(item.pergunta); return <li key={index}>{item.pergunta}{reply && <b className="q-reply">{reply}</b>}</li> })}</ul></div>
 }
 
-/** Lê de volta a mensagem montada por `answersMessage`: pergunta → resposta. */
+/** Reads back the message built by `answersMessage`: question → answer. */
 export function parseAnswers(body: string): Map<string, string> {
   const found = new Map<string, string>()
   for (const part of body.split('\n\n')) { const [ask, reply] = part.split('\n→ '); if (ask && reply !== undefined) found.set(ask, reply) }
   return found
 }
 
-/** Respostas do usuário que cobrem todas as perguntas do primeiro bloco da mensagem do agente (senão, continua como mensagem normal). */
+/** User answers that cover all the questions of the first block of the agent's message (otherwise, it continues as a normal message). */
 export function answersFor(agentBody: string, userBody: string): Map<string, string> | null {
   const part = splitQuestionBlocks(agentBody).find((item) => item.kind === 'questions')
   if (!part || part.kind !== 'questions') return null
@@ -77,7 +77,7 @@ export function answersFor(agentBody: string, userBody: string): Map<string, str
   return part.block.perguntas.every((item) => answers.has(item.pergunta)) ? answers : null
 }
 
-/** Mensagem do agente: Markdown normal e, no meio, os blocos de perguntas viram cartão interativo. `answered` = o usuário já respondeu depois. */
+/** Agent message: normal Markdown and, in the middle, question blocks become an interactive card. `answered` = the user has already answered afterwards. */
 export function AgentMessage({ source, answered = false, live = false, busy = false, answers }: { source: string; answered?: boolean; live?: boolean; busy?: boolean; answers?: Map<string, string> }): React.JSX.Element {
   const answer = React.useContext(QuestionAnswerContext)
   return <>{splitQuestionBlocks(source).map((part, index) => part.kind === 'text'

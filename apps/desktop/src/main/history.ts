@@ -12,7 +12,7 @@ import type { AppDatabase } from './database'
 import { redact, redactObject } from './redaction'
 import { tm } from './i18n'
 
-/** Fonte de quem registrou: agente (com a execução) ou usuário. */
+/** Source of who recorded: agent (with the run) or user. */
 export interface HistorySource { actor: 'agent' | 'user' | 'system'; runId?: string | null; chatId?: string | null }
 export interface AssessInput {
   cardId: string; scores: DimensionScores; justifications: Record<string, string>; confidence: Confidence; preliminary: boolean; criticalRisks: string[]
@@ -23,7 +23,7 @@ type EventRow = { id: string; cardId: string; projectId: string; type: string; v
 const eventColumns = 'id, card_id AS cardId, project_id AS projectId, type, schema_version AS version, actor, created_at AS at, json'
 const auditEventTypes = new Set(['policy.decided', 'approval.requested', 'approval.approved', 'approval.denied', 'approval.consumed'])
 
-/** Auditorias antigas guardam só o payload em json; os demais campos estão nas colunas da linha. */
+/** Old audits keep only the payload as json; the other fields are in the row's columns. */
 function eventFromRow(row: EventRow): HistoryEvent {
   const data: unknown = JSON.parse(row.json)
   const full = historyEventSchema.safeParse(data)
@@ -33,22 +33,22 @@ function eventFromRow(row: EventRow): HistoryEvent {
 }
 
 /**
- * Decision & Evidence Registry + Complexity Engine (docs/09). O SQLite guarda o estado para consulta rápida; cada evento também vai
- * para `history.jsonl` na pasta de artefatos do card, de onde o histórico pode ser reconstruído sem o banco. Nada é sobrescrito:
- * avaliações novas viram versões, decisões trocadas ficam `superseded`.
+ * Decision & Evidence Registry + Complexity Engine (docs/09). SQLite holds the state for fast queries; each event also goes
+ * to `history.jsonl` in the card's artifacts folder, from which the history can be rebuilt without the database. Nothing is overwritten:
+ * new evaluations become versions, replaced decisions stay `superseded`.
  */
 export class CardHistoryService {
   constructor(private readonly database: AppDatabase, private readonly dataDir: string) {}
 
   private get db(): Database.Database { return this.database.db }
 
-  // ---- Configuração de workflow do projeto -------------------------------------------------------------------------------
+  // ---- Project workflow configuration -------------------------------------------------------------------------------
 
   config(projectId: string): WorkflowConfig {
     const raw = this.db.prepare('SELECT workflow_config FROM projects WHERE id = ?').pluck().get(projectId) as string | null | undefined
     if (raw === undefined) throw new Error(tm().common.projectNotFound)
     if (!raw) return defaultWorkflowConfig
-    // G01: configs de antes do `sdd` (sddPath/customManifest/complexMethod legado) normalizam na leitura, sem erro.
+    // G01: configs from before `sdd` (legacy sddPath/customManifest/complexMethod) are normalized on read, without error.
     const parsed = workflowConfigSchema.safeParse({ ...defaultWorkflowConfig, ...normalizeLegacySdd(JSON.parse(raw) as Record<string, unknown>) })
     return parsed.success ? parsed.data : defaultWorkflowConfig
   }
@@ -60,7 +60,7 @@ export class CardHistoryService {
     if (config.complexMethod === 'custom') readManifest(config.customManifest)
     const before = this.config(projectId)
     this.db.prepare('UPDATE projects SET workflow_config = ? WHERE id = ?').run(JSON.stringify(config), projectId)
-    // Pasta de artefatos trocada: os eventos são gravados de novo na pasta nova (a escrita deduplica pelo id).
+    // Artifacts folder changed: events are written again to the new folder (the write dedups by id).
     if ((before.artifactsDir ?? null) !== (config.artifactsDir ?? null)) {
       this.db.prepare('UPDATE card_events SET synced_at = NULL WHERE project_id = ?').run(projectId)
       for (const cardId of this.db.prepare('SELECT DISTINCT card_id FROM card_events WHERE project_id = ?').pluck().all(projectId) as string[]) this.sync(cardId)
@@ -71,15 +71,15 @@ export class CardHistoryService {
   defaultArtifactsRoot(projectId: string): string { return join(this.dataDir, 'artifacts', projectId) }
 
   /**
-   * Pasta dos artefatos do card. Se a pasta de artefatos configurada fica dentro de um repositório do projeto e o card já tem worktree
-   * desse repositório, a pasta é a da worktree (os arquivos entram no commit do card); senão, a pasta configurada de sempre.
+   * Card artifacts folder. If the configured artifacts folder is inside a project repository and the card already has a worktree
+   * of that repository, the folder is the worktree's (files go into the card's commit); otherwise, the usual configured folder.
    */
   artifactsDir(cardId: string): string {
     const projectId = this.projectOf(cardId), root = this.config(projectId).artifactsDir ?? this.defaultArtifactsRoot(projectId)
     return this.cardFolder(this.worktreeBase(cardId, root) ?? root, cardId)
   }
 
-  /** Mesma pasta, mas no lugar de antes (fora da worktree), para trazer o que já foi gravado lá. */
+  /** Same folder, but in the previous place (outside the worktree), to bring over what was already written there. */
   private previousDir(cardId: string): string | null {
     const projectId = this.projectOf(cardId), root = this.config(projectId).artifactsDir ?? this.defaultArtifactsRoot(projectId), found = this.existingFolder(root, cardId)
     return found ? join(root, found) : null
@@ -101,7 +101,7 @@ export class CardHistoryService {
     try { return existsSync(base) ? readdirSync(base).find((name) => name === `card-${short}` || name.endsWith(`-${short}`)) ?? null : null } catch { return null }
   }
 
-  /** Nome claro: o título do card em minúsculas com hífens e o código curto (`login-page-redesign-2e84d10e`); a pasta que já existe mantém o nome. */
+  /** Clear name: the card title in lowercase with hyphens and the short code (`login-page-redesign-2e84d10e`); an existing folder keeps its name. */
   private cardFolder(base: string, cardId: string): string {
     const existing = this.existingFolder(base, cardId)
     if (existing) return join(base, existing)
@@ -110,15 +110,15 @@ export class CardHistoryService {
     return join(base, `${slug || 'card'}-${cardId.slice(0, 8)}`)
   }
 
-  /** Primeira gravação no lugar novo (worktree): traz o que já existia na pasta antiga, sem sobrescrever nada. */
+  /** First write in the new place (worktree): brings what already existed in the old folder, overwriting nothing. */
   private adopt(cardId: string, dir: string): void {
     if (existsSync(join(dir, 'history.jsonl'))) return
     const old = this.previousDir(cardId)
     if (!old || resolve(old) === resolve(dir) || !existsSync(old)) return
-    try { cpSync(old, dir, { recursive: true, force: false, errorOnExist: false }) } catch { /* melhor esforço: o que faltar é regravado pela sincronização */ }
+    try { cpSync(old, dir, { recursive: true, force: false, errorOnExist: false }) } catch { /* best effort: what is missing is rewritten by the sync */ }
   }
 
-  /** Spec Kit (`.specify/`) e OpenSpec (`openspec/`) já instalados na pasta do projeto ou nos repositórios dele. Nada é instalado aqui. */
+  /** Spec Kit (`.specify/`) and OpenSpec (`openspec/`) already installed in the project folder or its repositories. Nothing is installed here. */
   detect(projectId: string): SddDetection[] {
     const project = this.db.prepare('SELECT local_path FROM projects WHERE id = ?').pluck().get(projectId) as string | undefined
     if (!project) throw new Error(tm().common.projectNotFound)
@@ -133,12 +133,12 @@ export class CardHistoryService {
     return found
   }
 
-  // ---- Avaliações ------------------------------------------------------------------------------------------------------
+  // ---- Evaluations ------------------------------------------------------------------------------------------------------
 
   assess(input: AssessInput): { assessment: Assessment; previous: Assessment | null } {
     const projectId = this.projectOf(input.cardId), config = this.config(projectId), previous = this.latest(input.cardId)
     const scores = input.scores, total = weightedTotal(scores, config.weights), level = complexityLevel(total, config.limits)
-    // Mesmas notas, mesma confiança e mesmo estado preliminar não viram versão nova: só mudanças justificadas entram no histórico.
+    // Same scores, same confidence and same preliminary state do not become a new version: only justified changes enter the history.
     if (previous && input.source.actor === 'agent' && sameScores(previous.scores, scores) && previous.confidence === input.confidence && previous.preliminary === input.preliminary) {
       throw new Error(`A avaliação atual (v${previous.version}, ${previous.total} pontos) já tem essas notas. Só reavalie quando algo mudar de verdade.`)
     }
@@ -159,7 +159,7 @@ export class CardHistoryService {
     return { assessment, previous }
   }
 
-  /** Correção do usuário: vira uma versão nova (a do agente continua no histórico) e registra o motivo como evidência. */
+  /** User correction: becomes a new version (the agent's stays in the history) and records the reason as evidence. */
   contest(cardId: string, scores: DimensionScores, reason: string): Assessment {
     const previous = this.latest(cardId)
     const changed = complexityDimensions.filter((dimension) => !previous || previous.scores[dimension] !== scores[dimension])
@@ -174,7 +174,7 @@ export class CardHistoryService {
     return (this.db.prepare('SELECT * FROM card_assessments WHERE card_id = ? ORDER BY version').all(cardId) as AssessmentRow[]).map(fromAssessmentRow)
   }
 
-  // ---- Decisões e fluxo -----------------------------------------------------------------------------------------------
+  // ---- Decisions and flow -----------------------------------------------------------------------------------------------
 
   decide(cardId: string, input: { kind: DecisionKind; statement: string; rationale?: string; actor: 'agent' | 'user'; status?: 'proposed' | 'approved'; supersedes?: number | string | null; source?: HistorySource }): Decision {
     const old = input.supersedes == null ? null : this.decisions(cardId).find((item) => item.id === input.supersedes || item.number === input.supersedes)
@@ -192,7 +192,7 @@ export class CardHistoryService {
     return decision
   }
 
-  /** O usuário aprova uma recomendação do agente ou a marca como substituída. */
+  /** The user approves an agent recommendation or marks it as superseded. */
   setDecision(decisionId: string, status: 'approved' | 'superseded'): string {
     const row = this.db.prepare('SELECT * FROM card_decisions WHERE id = ?').get(decisionId) as DecisionRow | undefined
     if (!row) throw new Error(tm().common.decisionNotFound)
@@ -214,8 +214,8 @@ export class CardHistoryService {
     return (this.db.prepare('SELECT * FROM card_decisions WHERE card_id = ? ORDER BY number').all(cardId) as DecisionRow[]).map(fromDecisionRow)
   }
 
-  /** Fluxo efetivo do card. Fica registrado mesmo quando difere do recomendado; a decisão de fluxo anterior vira `superseded`. */
-  /** `decidedBy`: quem decidiu (o agente pode registrar a escolha que o usuário confirmou no chat). */
+  /** Effective card flow. It is recorded even when it differs from the recommended one; the previous flow decision becomes `superseded`. */
+  /** `decidedBy`: who decided (the agent may record the choice the user confirmed in the chat). */
   selectWorkflow(cardId: string, workflow: WorkflowKind, source: HistorySource, reason = '', decidedBy: 'agent' | 'user' = source.actor === 'user' ? 'user' : 'agent', method?: 'native' | 'speckit'): void {
     const recommended = this.latest(cardId)?.workflow ?? null
     const previous = this.decisions(cardId).filter((item) => item.kind === 'workflow' && item.status !== 'superseded').at(-1)
@@ -235,7 +235,7 @@ export class CardHistoryService {
     this.insertEvent(this.event(cardId, 'workflow.method-recommended', source, { method, reason: redact(reason), assessmentId: this.latest(cardId)?.id ?? null })); this.sync(cardId)
   }
 
-  // ---- Discovery e exploração --------------------------------------------------------------------------------------------
+  // ---- Discovery and exploration --------------------------------------------------------------------------------------------
 
   recordDiscovery(cardId: string, input: DiscoveryBrief, source: HistorySource): DiscoveryBrief {
     const brief = discoveryBriefSchema.parse({ ...redactDeep(input), registradoEm: new Date().toISOString() })
@@ -248,7 +248,7 @@ export class CardHistoryService {
     return event ? discoveryBriefSchema.parse(event.payload.brief) : null
   }
 
-  /** Resultado do explorador guardado em cache com a versão do código; fica desatualizado quando o HEAD de algum repositório muda. */
+  /** Explorer result cached with the code version; becomes stale when the HEAD of any repository changes. */
   recordExploration(cardId: string, input: { summary: string; modules: string[]; repositories: string[]; evidence: Evidence[] }, source: HistorySource): Exploration {
     const codeVersions = this.codeVersions(this.projectOf(cardId))
     const evidence = input.evidence.map((item) => evidenceSchema.parse({ ...item, detail: redact(item.detail) }))
@@ -266,9 +266,9 @@ export class CardHistoryService {
     return { summary: saved.summary, modules: saved.modules, repositories: saved.repositories, evidence: saved.evidence, codeVersions: saved.codeVersions, stale, createdAt: event.at }
   }
 
-  // ---- Execuções e handoff --------------------------------------------------------------------------------------------
+  // ---- Runs and handoff --------------------------------------------------------------------------------------------
 
-  /** Fim de uma execução do card: evento com as métricas que o agente informou e relatórios de implementação/verificação atualizados. */
+  /** End of a card run: event with the metrics the agent reported and updated implementation/verification reports. */
   runFinished(info: { cardId: string; runId: string; chatId: string; purpose: string; status: string }): void {
     const run = this.db.prepare('SELECT profile_id AS profileId, provider, model, effort, started_at AS startedAt, ended_at AS endedAt, input_tokens AS input, cached_tokens AS cached, output_tokens AS output, cost_usd AS costUsd, prompt_chars AS promptChars FROM runs WHERE id = ?').get(info.runId) as Record<string, unknown> | undefined
     if (!run) return
@@ -277,17 +277,17 @@ export class CardHistoryService {
     this.sync(info.cardId)
   }
 
-  /** Alerta do harness (ex.: arquivos fora do escopo do Plano); só registra, não bloqueia. */
+  /** Harness alert (e.g. files outside the Plan's scope); only records, does not block. */
   recordAlert(cardId: string, payload: Record<string, unknown>): void {
     this.insertEvent(this.event(cardId, 'harness.alert', { actor: 'system', runId: typeof payload.runId === 'string' ? payload.runId : null }, payload)); this.sync(cardId)
   }
 
-  /** Arquivos de artefato gravados (Especificação/Plano/Tasks exportados, inclusive na pasta central do SDD). */
+  /** Artifact files written (exported Specification/Plan/Tasks, including in the central SDD folder). */
   recordArtifacts(cardId: string, paths: string[]): void {
     this.insertEvent(this.event(cardId, 'artifact.updated', { actor: 'system' }, { paths }, paths)); this.sync(cardId)
   }
 
-  // ---- Leitura completa -----------------------------------------------------------------------------------------------
+  // ---- Full read -----------------------------------------------------------------------------------------------
 
   history(cardId: string): CardHistory {
     const recommendation = this.lastEvent(cardId, 'workflow.method-recommended'), method = recommendation?.payload.method
@@ -299,9 +299,9 @@ export class CardHistoryService {
     return (this.db.prepare(`SELECT ${eventColumns} FROM card_events WHERE card_id = ? ORDER BY created_at, rowid`).all(cardId) as EventRow[]).map(eventFromRow)
   }
 
-  // ---- Arquivos: gravação recuperável, reconciliação e reconstrução -------------------------------------------------
+  // ---- Files: recoverable writing, reconciliation and rebuild -------------------------------------------------
 
-  /** Grava em `history.jsonl` os eventos ainda não gravados (dedup pelo id) e regenera os relatórios Markdown do card. */
+  /** Writes to `history.jsonl` the events not yet written (dedup by id) and regenerates the card's Markdown reports. */
   sync(cardId: string): void {
     const dir = this.artifactsDir(cardId)
     try {
@@ -311,21 +311,21 @@ export class CardHistoryService {
       const pending = this.db.prepare(`SELECT ${eventColumns} FROM card_events WHERE card_id = ? AND (synced_at IS NULL OR type IN ('policy.decided', 'approval.requested', 'approval.approved', 'approval.denied', 'approval.consumed')) ORDER BY created_at, rowid`).all(cardId) as EventRow[]
       const lines = pending.filter((item) => !known.has(item.id)).map((item) => `${JSON.stringify(eventFromRow(item))}\n`).join('')
       if (lines) appendFileSync(file, lines, 'utf8')
-      // Só marca depois de gravar: se o app cair no meio, a próxima reconciliação grava de novo e a dedup evita duplicar.
+      // Only marks after writing: if the app crashes midway, the next reconciliation writes again and dedup avoids duplicating.
       const mark = this.db.prepare('UPDATE card_events SET synced_at = ? WHERE id = ?'), now = new Date().toISOString()
       this.db.transaction(() => pending.forEach((item) => mark.run(now, item.id)))()
       this.writeReports(cardId, dir)
-    } catch { /* artefato em disco é best-effort; o banco continua com tudo e a reconciliação tenta de novo */ }
+    } catch { /* artifact on disk is best-effort; the database keeps everything and reconciliation tries again */ }
   }
 
-  /** Na abertura do app: grava os eventos que ficaram pendentes (app fechado no meio, pasta indisponível). */
+  /** On app open: writes the events left pending (app closed midway, folder unavailable). */
   reconcile(): number {
     const cards = this.db.prepare('SELECT DISTINCT card_id FROM card_events WHERE synced_at IS NULL').pluck().all() as string[]
     cards.forEach((cardId) => this.sync(cardId))
     return cards.length
   }
 
-  /** Reconstrói avaliações, decisões e eventos a partir de `history.jsonl`, sem apagar nem duplicar nada do banco. */
+  /** Rebuilds evaluations, decisions and events from `history.jsonl`, without deleting or duplicating anything in the database. */
   rebuild(cardId: string): { events: number; assessments: number; decisions: number } {
     const file = join(this.artifactsDir(cardId), 'history.jsonl')
     if (!existsSync(file)) throw new Error(tm().history.noHistoryAt(file))
@@ -348,7 +348,7 @@ export class CardHistoryService {
     return counts
   }
 
-  // ---- Internos -------------------------------------------------------------------------------------------------------
+  // ---- Internals -------------------------------------------------------------------------------------------------------
 
   private writeReports(cardId: string, dir: string): void {
     const card = this.db.prepare('SELECT title, type FROM cards WHERE id = ?').get(cardId) as { title: string; type: string } | undefined
@@ -403,7 +403,7 @@ export class CardHistoryService {
     return row ?? { profileId: null, provider: null, model: null, effort: null }
   }
 
-  /** HEAD de cada repositório do projeto, lido dos arquivos do Git (sem abrir processo). */
+  /** HEAD of each project repository, read from Git's files (without spawning a process). */
   codeVersions(projectId: string): Record<string, string> {
     const sources = this.db.prepare('SELECT name, local_path AS path FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order').all(projectId) as Array<{ name: string; path: string }>
     const versions: Record<string, string> = {}
@@ -417,7 +417,7 @@ export class CardHistoryService {
   }
 }
 
-/** Resumo para o card do quadro, calculado direto do banco (o BoardRepository não depende do serviço). */
+/** Summary for the board card, computed straight from the database (BoardRepository does not depend on the service). */
 export function complexitySummary(db: Database.Database, cardId: string): CardComplexity | null {
   const rows = db.prepare('SELECT total, level, confidence, preliminary, workflow, version, created_at AS createdAt FROM card_assessments WHERE card_id = ? ORDER BY version DESC LIMIT 2').all(cardId) as Array<{ total: number; level: CardComplexity['level']; confidence: Confidence; preliminary: number; workflow: WorkflowKind; version: number; createdAt: string }>
   const [current, previous] = rows
@@ -426,7 +426,7 @@ export function complexitySummary(db: Database.Database, cardId: string): CardCo
   return { total: current.total, level: current.level, confidence: current.confidence, preliminary: Boolean(current.preliminary), recommended: current.workflow, workflow: chosen ?? null, delta: previous ? current.total - previous.total : null, version: current.version, createdAt: current.createdAt }
 }
 
-/** Histórico lido só dos arquivos (cenário de recuperação sem SQLite): avaliações e decisões na ordem em que aconteceram. */
+/** History read from files only (recovery scenario without SQLite): evaluations and decisions in the order they happened. */
 export function readArtifactHistory(dir: string): { events: HistoryEvent[]; assessments: Assessment[]; decisions: Decision[] } {
   const events = readJsonl(join(dir, 'history.jsonl'))
   const assessments = events.map((event) => assessmentSchema.safeParse(event.payload.assessment)).filter((item) => item.success).map((item) => item.data)
@@ -440,7 +440,7 @@ export function readArtifactHistory(dir: string): { events: HistoryEvent[]; asse
   return { events, assessments, decisions: [...decisions.values()].sort((a, b) => a.number - b.number) }
 }
 
-/** Manifesto declarativo de método personalizado (JSON versionado): etapas, entradas, saídas e comandos permitidos. */
+/** Declarative manifest of a custom method (versioned JSON): steps, inputs, outputs and allowed commands. */
 export interface MethodManifest { name: string; version: string; steps: Array<{ id: string; description: string; inputs?: string[]; outputs?: string[]; commands?: string[] }> }
 export function readManifest(path: string | null): MethodManifest {
   if (!path || !existsSync(path)) throw new Error(tm().history.manifestFileRequired)
@@ -466,8 +466,8 @@ function sameScores(a: DimensionScores, b: DimensionScores): boolean { return co
 function readJsonl(file: string): HistoryEvent[] {
   if (!existsSync(file)) return []
   const events: HistoryEvent[] = []
-  // Linha cortada (app caiu no meio da escrita) é ignorada; as demais continuam valendo.
-  for (const line of readFileSync(file, 'utf8').split('\n')) { if (!line.trim()) continue; try { const parsed = historyEventSchema.safeParse(JSON.parse(line)); if (parsed.success) events.push(parsed.data) } catch { /* linha inválida */ } }
+  // A truncated line (app crashed midway through writing) is ignored; the others still count.
+  for (const line of readFileSync(file, 'utf8').split('\n')) { if (!line.trim()) continue; try { const parsed = historyEventSchema.safeParse(JSON.parse(line)); if (parsed.success) events.push(parsed.data) } catch { /* invalid line */ } }
   return events
 }
 
@@ -485,7 +485,7 @@ function commandsIn(root: string, pattern: RegExp): string[] {
   return found
 }
 
-/** HEAD sem processo: segue `.git` (pasta ou arquivo de worktree), refs soltas e `packed-refs`. */
+/** HEAD without a process: follows `.git` (folder or worktree file), loose refs and `packed-refs`. */
 export function readHead(repoPath: string): string | null {
   try {
     let gitDir = join(repoPath, '.git')
@@ -503,7 +503,7 @@ export function readHead(repoPath: string): string | null {
   } catch { return null }
 }
 
-/** Nada de segredo vai para artefatos: tokens e chaves comuns viram `[redacted]`. */
+/** No secrets go into artifacts: common tokens and keys become `[redacted]`. */
 export { redact }
 function redactDeep<T>(value: T): T { return redactObject(value) }
 

@@ -2,7 +2,7 @@ import { EditorView } from '@codemirror/view'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 
-/** Usa só variáveis do app: o mesmo tema serve ao escuro e ao claro, sem `dark: true` fixo. */
+/** Uses only app variables: the same theme serves dark and light, with no fixed `dark: true`. */
 export const editorTheme = EditorView.theme({
   '&': { color: 'var(--text)', backgroundColor: 'transparent', font: '12.5px/21px var(--mono)' },
   '&.cm-focused': { outline: 'none' },
@@ -31,7 +31,7 @@ export const editorTheme = EditorView.theme({
   '.cm-panel.cm-search [name=close]': { color: 'var(--muted)', border: '0', background: 'none' }
 })
 
-/** Mapeia as tags do Lezer para as classes `tok-*` que o CSS do app já pinta (escuro e claro). */
+/** Maps Lezer tags to the `tok-*` classes that the app CSS already paints (dark and light). */
 export const codeHighlightStyle = HighlightStyle.define([
   { tag: tags.comment, class: 'tok-comment' },
   { tag: [tags.string, tags.special(tags.string)], class: 'tok-string' },

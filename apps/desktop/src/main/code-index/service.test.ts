@@ -11,7 +11,7 @@ const closers: Array<() => void> = []
 afterEach(async () => { closers.splice(0).forEach((close) => close()); await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 const temp = async (): Promise<string> => { const dir = await mkdtemp(join(tmpdir(), 'gearmod-code-service-')); dirs.push(dir); return dir }
 
-/** Processo falso: roda o mesmo código do utilityProcess, no próprio teste. */
+/** Fake process: runs the same utilityProcess code, inside the test itself. */
 function fakeHost(): HostProcess & { killed: boolean } {
   const listeners: Array<(message: HostMessage) => void> = []
   const exits: Array<(code: number) => void> = []

@@ -5,19 +5,19 @@ import { TrashIcon } from './icons'
 import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
 
-/** Tipo do card para mostrar: o cadastrado no projeto ou, se saiu da lista, o id com cor neutra. */
+/** Card type to display: the one registered in the project or, if it left the list, the id with a neutral color. */
 export function cardTypeView(types: readonly CardTypeDef[], id: string): { name: string; color: string | null } {
   const found = types.find((item) => item.id === id)
   return found ? { name: found.name, color: found.color } : { name: id, color: null }
 }
 
-/** Selo do tipo (`.pill`) na cor cadastrada; tipo desconhecido fica com a cor neutra do selo. */
+/** Type badge (`.pill`) in the registered color; unknown type gets the badge's neutral color. */
 export function CardTypePill({ types, type }: { types: readonly CardTypeDef[]; type: string }): React.JSX.Element {
   const view = cardTypeView(types, type)
   return <span className={`pill cardtype-pill ${view.color ? 'tc' : ''}`} title={view.name} style={view.color ? { '--tc': view.color } as React.CSSProperties : undefined}>{view.name}</span>
 }
 
-/** Opções de tipo para os seletores (com a cor); mantém o tipo atual do card mesmo que tenha saído da lista. */
+/** Type options for the selectors (with the color); keeps the card's current type even if it left the list. */
 export function cardTypeOptions(types: readonly CardTypeDef[], current?: string): Array<{ value: string; label: string; color?: string }> {
   const options = types.map((item) => ({ value: item.id, label: item.name, color: item.color }))
   return current && !types.some((item) => item.id === current) ? [...options, { value: current, label: current }] : options
@@ -31,12 +31,12 @@ function newId(name: string, taken: readonly CardTypeDef[]): string {
   return id
 }
 
-/** Chave da paleta aberta para o tipo que ainda está sendo criado. */
+/** Key of the palette open for the type that is still being created. */
 const newTypeKey = '__new__'
 
 /**
- * Editor da lista de tipos de card (nome + cor). Cada mudança grava na hora (`save`). Remover um tipo em uso pede confirmação:
- * os cards continuam, só passam a aparecer com cor neutra e o id como nome.
+ * Editor for the card type list (name + color). Each change is saved immediately (`save`). Removing a type in use asks for confirmation:
+ * the cards remain, they just show up with a neutral color and the id as the name.
  */
 export function CardTypesEditor({ types, save, usage, disabled = false }: { types: CardTypeDef[]; save(types: CardTypeDef[]): Promise<void>; usage(): Promise<Record<string, number>>; disabled?: boolean }): React.JSX.Element {
   const t = useT().settings.cardTypes
@@ -65,7 +65,7 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
   const askRemove = async (type: CardTypeDef): Promise<void> => {
     if (types.length <= 1) { setError(t.lastOne); return }
     let count = 0
-    try { count = (await usage())[type.id] ?? 0 } catch { /* sem contagem: confirma do mesmo jeito */ count = -1 }
+    try { count = (await usage())[type.id] ?? 0 } catch { /* no count: confirms anyway */ count = -1 }
     if (count === 0) void persist(types.filter((item) => item.id !== type.id))
     else setRemoving({ type, count })
   }
@@ -84,7 +84,7 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
       {palette === type.id && <div className="cardtypes-palette" role="listbox" aria-label={t.colorOf(type.name)}>{agentColorPalette.map((color) => <button type="button" role="option" aria-selected={color.toLowerCase() === type.color.toLowerCase()} key={color} className={color.toLowerCase() === type.color.toLowerCase() ? 'on' : ''} style={{ background: color }} aria-label={color} onClick={() => recolor(type, color)} />)}<label className="cardtypes-custom tip" data-tip={t.customColor}><input type="color" aria-label={t.customColor} value={type.color} onChange={(event) => recolor(type, event.target.value)} /></label></div>}
     </li>)}
       {adding !== null && <li className="cardtypes-row" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) add() }}>
-        {/* Tipo novo: a cor pode ser escolhida antes de salvar; salva com Enter ou quando o foco sai da linha. */}
+        {/* New type: the color can be chosen before saving; saves with Enter or when focus leaves the row. */}
         <button type="button" className="cardtypes-swatch tip" data-tip={t.color} aria-label={t.colorOf(adding || t.newName)} aria-expanded={palette === newTypeKey} style={{ background: newColor }} onClick={() => setPalette(palette === newTypeKey ? undefined : newTypeKey)} />
         <input className="in cardtypes-name" autoFocus aria-label={t.name} maxLength={40} placeholder={t.newName} value={adding} onChange={(event) => setAdding(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') add(); if (event.key === 'Escape') { event.stopPropagation(); setAdding(null); setPalette(undefined) } }} />
         {palette === newTypeKey && <div className="cardtypes-palette" role="listbox" aria-label={t.color}>{agentColorPalette.map((color) => <button type="button" role="option" aria-selected={color.toLowerCase() === newColor.toLowerCase()} key={color} className={color.toLowerCase() === newColor.toLowerCase() ? 'on' : ''} style={{ background: color }} aria-label={color} onClick={() => setNewColor(color)} />)}<label className="cardtypes-custom tip" data-tip={t.customColor}><input type="color" aria-label={t.customColor} value={newColor} onChange={(event) => setNewColor(event.target.value)} /></label></div>}
@@ -96,7 +96,7 @@ export function CardTypesEditor({ types, save, usage, disabled = false }: { type
   </div>
 }
 
-/** Configurações › Geral: a lista padrão de tipos (projetos sem lista própria, inclusive os novos). */
+/** Settings › General: the default list of types (projects without their own list, including new ones). */
 export function DefaultCardTypes(): React.JSX.Element {
   const t = useT().settings.cardTypes
   const [types, setTypes] = useState<CardTypeDef[]>()
@@ -105,7 +105,7 @@ export function DefaultCardTypes(): React.JSX.Element {
     {types && <CardTypesEditor types={types} save={async (next) => { setTypes(await window.gearmod.invoke('card-types:set-default', { types: next })); window.dispatchEvent(new Event('gearmod:board-changed')) }} usage={() => window.gearmod.invoke('card-types:usage', {})} />}</div>
 }
 
-/** Configurar projeto › Geral: tipos do projeto. Mexer na lista cria a lista própria; "Voltar à lista padrão" a descarta. */
+/** Configure project › General: project types. Changing the list creates the project's own list; "Back to default list" discards it. */
 export function ProjectCardTypes({ project }: { project: Project }): React.JSX.Element {
   const t = useT().settings.cardTypes
   const [state, setState] = useState({ types: project.cardTypes, custom: project.customCardTypes }), [error, setError] = useState('')

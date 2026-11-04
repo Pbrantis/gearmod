@@ -3,12 +3,12 @@ import type { AgentPurpose, ChatMessage } from '@gearmod/contracts'
 import thinkingGif from './assets/thinking.gif'
 import { tr, useT } from './i18n'
 
-/** Mascote do GearMod "pensando" (GIF animado): indicador de agente trabalhando. */
+/** GearMod mascot "thinking" (animated GIF): shows the agent is working. */
 export function ThinkingMascot({ size = 22 }: { size?: number }): React.JSX.Element {
   return <img className="mascot" src={thinkingGif} width={size} height={size} alt="" draggable={false} />
 }
 
-/** O que o agente está fazendo agora, pela última ferramenta usada neste turno (depois da última mensagem minha). */
+/** What the agent is doing now, based on the last tool used in this turn (after my last message). */
 export function activityVerb(messages: ChatMessage[]): string | null {
   const lastUser = messages.map((item) => item.role).lastIndexOf('user')
   const tool = messages.slice(lastUser + 1).filter((item) => item.role === 'tool').at(-1)
@@ -28,7 +28,7 @@ export function formatElapsed(ms: number): string {
   return minutes ? `${minutes}m ${String(seconds).padStart(2, '0')}s` : `${seconds}s`
 }
 
-/** Linha "átomo + verbo + tempo" enquanto o agente trabalha (como o Claude Code e o Codex). */
+/** "Atom + verb + time" line while the agent works (like Claude Code and Codex). */
 export function ThinkingIndicator({ purpose, messages, since }: { purpose: AgentPurpose | 'free'; messages: ChatMessage[]; since: number }): React.JSX.Element {
   const t = useT(), [now, setNow] = useState(() => Date.now())
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id) }, [])
@@ -37,7 +37,7 @@ export function ThinkingIndicator({ purpose, messages, since }: { purpose: Agent
   return <div className="thinking" role="status" aria-live="polite" aria-label={`${verb}, ${formatElapsed(elapsed)}`}><ThinkingMascot /><span className="tverb">{verb}…</span><span className="tmeta">{formatElapsed(elapsed)}</span></div>
 }
 
-/** Início do trabalho atual (para o cronômetro): usa a hora de início da execução quando conhecida, senão o momento em que ficou ocupado. */
+/** Start of the current work (for the timer): uses the run's start time when known, otherwise the moment it became busy. */
 export function useBusySince(busy: boolean, startedAt?: string): number {
   const ref = useRef(Date.now())
   const was = useRef(false)
@@ -46,7 +46,7 @@ export function useBusySince(busy: boolean, startedAt?: string): number {
   return ref.current
 }
 
-/** Mostra o texto aos poucos (efeito de digitação): acompanha o que chega do agente, mais rápido quando há muito atrasado. */
+/** Shows the text gradually (typing effect): follows what arrives from the agent, faster when it is far behind. */
 export function useTypewriter(target: string): string {
   const [shown, setShown] = useState(''), state = useRef({ target, count: 0 })
   state.current.target = target

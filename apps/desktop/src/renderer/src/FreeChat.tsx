@@ -38,9 +38,9 @@ const savedKey = (projectId: string): string => `gearmod.freeChatAgent.${project
 const readSaved = (projectId: string): Saved | null => { try { return JSON.parse(localStorage.getItem(savedKey(projectId)) ?? 'null') as Saved | null } catch { return null } }
 
 /**
- * Chat livre: conversa solta com um agente, sem card e sem alterar arquivos. Se a conversa virar um planejamento, o agente cria o
- * card (gearmod_create_card) e este mesmo chat passa a ser o chat de planejamento dele; aí `onConverted` abre o card.
- * Com `mode="constitution"` é o chat da Constituição do projeto; `prompt` já envia o primeiro pedido ao abrir.
+ * Free chat: loose conversation with an agent, without a card and without changing files. If the conversation becomes planning, the agent creates the
+ * card (gearmod_create_card) and this same chat becomes its planning chat; then `onConverted` opens the card.
+ * With `mode="constitution"` it is the project's Constitution chat; `prompt` sends the first request right on open.
  */
 export function FreeChat({ project, profiles, chat: start, close, onConverted, changed, mode = 'free', prompt: firstPrompt }: { project: Project; profiles: AgentProfile[]; chat?: Chat; close(): void; onConverted(cardId: string): void; changed(): void; mode?: 'free' | 'constitution'; prompt?: string }): React.JSX.Element {
   const t = useT(), d = t.chat.dock, f = t.chat.freeChat
@@ -54,15 +54,15 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), converted = useRef<string | undefined>(undefined)
   const agentState = useAgentConfig('', 'execution', profiles, profileId || undefined), agentConfig = mode === 'free' ? agentState.config : undefined
   const restored = useRef(false)
-  // Volta a configuração escolhida da última vez (modelo, esforço e modo) assim que as opções do agente chegam.
+  // Restores the configuration chosen last time (model, effort and mode) as soon as the agent's options arrive.
   useEffect(() => {
     if (mode !== 'free' || restored.current || !agentState.config || !agentState.options) return
     restored.current = true
     if (saved && saved.profileId === agentState.config.profileId) void agentState.update({ model: saved.model, effort: saved.effort, mode: saved.mode })
   }, [agentState.config, agentState.options])
-  useEffect(() => { if (mode === 'free' && restored.current && agentState.config) { try { localStorage.setItem(savedKey(project.id), JSON.stringify({ profileId: agentState.config.profileId, model: agentState.config.model, effort: agentState.config.effort, mode: agentState.config.mode })) } catch { /* só vale nesta sessão */ } } }, [agentState.config])
+  useEffect(() => { if (mode === 'free' && restored.current && agentState.config) { try { localStorage.setItem(savedKey(project.id), JSON.stringify({ profileId: agentState.config.profileId, model: agentState.config.model, effort: agentState.config.effort, mode: agentState.config.mode })) } catch { /* only valid for this session */ } } }, [agentState.config])
   const readOnly = mode === 'constitution' || agentConfig?.mode === 'plan'
-  // Trocar o agente de um chat que já começou abre uma conversa nova com o outro agente (a atual continua salva em Chats).
+  // Switching the agent of a chat that already started opens a new conversation with the other agent (the current one stays saved in Chats).
   const [switchTo, setSwitchTo] = useState<AgentProfile>()
   useEffect(() => { if (agentState.config && agentState.config.profileId !== profileId && !chat) setProfileId(agentState.config.profileId) }, [agentState.config?.profileId])
   const restartWith = (target: AgentProfile): void => {
@@ -85,7 +85,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const skills = useProjectSkills(project.id)
   const skillProvider = profiles.find((item) => item.id === (agentConfig?.profileId ?? chat?.profileId ?? profileId))?.provider
   const available = skills.filter((item) => skillProvider && item.paths[skillProvider]), skillNames = available.map((item) => item.name)
-  // A skill vale para a mensagem que cita `/nome`: no envio, o chat passa a usá-la (ou deixa de usar).
+  // The skill applies to the message that cites `/name`: on send, the chat starts using it (or stops using it).
   const slashSkill = useSlashSkills({ available, provider: skillProvider, input, setInput, area: mention.ref, choose: () => undefined })
   useContextText({ projectId: project.id, cardId: null }, (text) => setInput((value) => (value.trim() ? `${value.replace(/\s+$/, '')}\n\n${text}` : text)))
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []))
@@ -118,7 +118,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   }
   const cancel = async (): Promise<void> => { if (runId.current) await window.gearmod.invoke('agents:cancel', { runId: runId.current }).catch((reason: unknown) => setError(plainError(reason))) }
   const later = useQueuedMessage(busy, deliver)
-  // Pedido que veio de fora (ex.: aplicar uma mudança sugerida na Constituição): envia uma vez ao abrir.
+  // Request that came from outside (e.g. applying a change suggested in the Constitution): sent once on open.
   const sentFirst = useRef(false)
   useEffect(() => { if (firstPrompt && !sentFirst.current && profileId) { sentFirst.current = true; if (busy) later.queue(firstPrompt); else void deliver(firstPrompt) } }, [firstPrompt, profileId])
   const send = async (): Promise<void> => {
@@ -132,7 +132,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
     if (!chat?.id || pop) return
     try { await window.gearmod.invoke('windows:open', { kind: 'chat', projectId: project.id, chatId: chat.id, placement: 'new', ...point }); close() } catch (reason) { setError(plainError(reason)) }
   }
-  // Respostas das perguntas do agente voltam como mensagem normal (na fila, se ele ainda estiver trabalhando).
+  // Answers to the agent's questions go back as a normal message (queued, if it is still working).
   const answerQuestions = (text: string): void => { if (busy) later.queue(text); else void deliver(text) }
   const viewer = useFileViewer(width, setWidth), viewing = !expanded && viewer.requested !== null
   const openFile = useCallback((path: string) => { setExpanded(false); viewer.open(path) }, [viewer.open])

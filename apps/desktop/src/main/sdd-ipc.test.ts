@@ -72,7 +72,7 @@ describe('IPC do SDD file-first (G10)', () => {
     const preview = await ipc.invoke('sdd:detect-constitutions', { projectId: project.id })
     expect(preview).toMatchObject({ kind: 'existing', candidates: { db: null, native: { content: 'versão inicial', sha256: expect.any(String) }, speckit: null } })
 
-    // Sem card, a escrita recusa (o contrato exige cardId; .strict() nem deixa passar sem ele).
+    // Without a card, the write is refused (the contract requires cardId; .strict() does not even let it through without it).
     await expect(ipc.invoke('constitution:write', { projectId: project.id, content: 'x', expectBlobSha: null })).rejects.toThrow()
 
     await worktrees.prepare(card.id)
@@ -94,7 +94,7 @@ describe('IPC do SDD file-first (G10)', () => {
     await expect(ipc.invoke('approvals:decide', { id: stale.id, approve: true })).rejects.toThrow()
     expect((await ipc.invoke('constitution:read', { projectId: project.id, cardId: card.id }) as { content: string }).content).toBe('proposta aprovada')
 
-    // A cópia principal não mudou: a escrita foi só na worktree do card.
+    // The main copy did not change: the write went only to the card's worktree.
     expect((await git(repo, 'show', 'HEAD:.gearmod/constitution.md')).stdout).toBe('versão inicial')
 
     database.close()

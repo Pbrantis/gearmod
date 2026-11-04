@@ -5,10 +5,10 @@ import { Select } from './Select'
 import { useEscape } from './useEscape'
 import { useT } from './i18n'
 
-/** Avisa o app inteiro que o cadastro de repositórios do projeto mudou (o quadro recarrega o projeto). */
+/** Tells the whole app that the project's repository registry changed (the board reloads the project). */
 export const gitChangedEvent = 'gearmod:git-changed'
 
-/** Diálogo único (Git do quadro e Configurar projeto → Git): iniciar o Git do zero ou vincular uma origin SSH/HTTPS. */
+/** Single dialog (board Git and Configure project → Git): start Git from scratch or link an SSH/HTTPS origin. */
 export function GitSetupDialog({ projectId, close, done }: { projectId: string; close(): void; done(repos: GitRepo[]): void }): React.JSX.Element {
   const { common, git: { setup: t } } = useT()
   const [targets, setTargets] = useState<Array<{ sourceId: string; name: string; path: string }>>(), [sourceId, setSourceId] = useState(''), [mode, setMode] = useState<'init' | 'origin'>('init'), [url, setUrl] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -40,7 +40,7 @@ export function GitSetupDialog({ projectId, close, done }: { projectId: string; 
   </div></div>
 }
 
-/** Estado vazio simples: projeto ou pasta sem repositório Git, com o botão centralizado que abre o diálogo. */
+/** Simple empty state: project or folder without a Git repository, with the centered button that opens the dialog. */
 export function GitEmpty({ projectId, done }: { projectId: string; done(repos: GitRepo[]): void }): React.JSX.Element {
   const t = useT().git.setup
   const [open, setOpen] = useState(false)
@@ -51,7 +51,7 @@ export function GitEmpty({ projectId, done }: { projectId: string; done(repos: G
   </div>
 }
 
-/** Pergunta com qual remoto/branch a branch atual faz pull e push (quando ela ainda não está ligada a nenhuma). */
+/** Asks which remote/branch the current branch pulls from and pushes to (when it is not yet linked to any). */
 export function GitUpstreamDialog({ sourceId, cardId, branch, remotes, close, done }: { sourceId: string; cardId: string | null; branch: string; remotes: string[]; close(): void; done(): void }): React.JSX.Element {
   const { common, git: { setup: t } } = useT()
   const [remote, setRemote] = useState(remotes.includes('origin') ? 'origin' : remotes[0] ?? ''), [name, setName] = useState(branch), [busy, setBusy] = useState(false), [error, setError] = useState('')

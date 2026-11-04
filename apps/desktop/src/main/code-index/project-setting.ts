@@ -3,8 +3,8 @@ import type { AppDatabase } from '../database'
 const key = (projectId: string): string => `codeIndex.disabled.${projectId}`
 
 /**
- * Liga ou desliga o índice de código por projeto (ligado por padrão). Fica na tabela `settings`, uma chave por projeto
- * desligado, para não precisar de migração.
+ * Turns the code index on or off per project (on by default). It lives in the `settings` table, one key per project
+ * turned off, so no migration is needed.
  */
 export class CodeIndexSettings {
   constructor(private readonly database: AppDatabase) {}

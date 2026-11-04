@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 /**
- * Perguntas com opções que o agente faz ao usuário (como o AskUserQuestion do Claude Code). Viajam dentro da mensagem do agente
- * num bloco ```gearmod-perguntas com JSON, tanto pela ferramenta MCP quanto escritas direto no texto (agentes sem MCP).
+ * Questions with options that the agent asks the user (like Claude Code's AskUserQuestion). They travel inside the agent's message
+ * in a ```gearmod-perguntas block with JSON, both through the MCP tool and written directly in the text (agents without MCP).
  */
 export const questionOptionSchema = z.object({ rotulo: z.string().trim().min(1).max(120), descricao: z.string().trim().max(400).optional() })
 export const userQuestionSchema = z.object({
@@ -18,14 +18,14 @@ export type QuestionBlock = z.output<typeof questionBlockSchema>
 export const questionFence = 'gearmod-perguntas'
 const fencePattern = new RegExp('```' + questionFence + '\\s*\\n([\\s\\S]*?)\\n```', 'g')
 
-/** Texto da mensagem do agente com o bloco de perguntas: `intro` (opcional) + bloco. */
+/** Agent message text with the questions block: `intro` (optional) + block. */
 export function questionMessage(block: QuestionBlock, intro = ''): string {
   return `${intro.trim() ? `${intro.trim()}\n\n` : ''}\`\`\`${questionFence}\n${JSON.stringify(block, null, 2)}\n\`\`\``
 }
 
 export type MessagePart = { kind: 'text'; text: string } | { kind: 'questions'; block: QuestionBlock }
 
-/** Separa o texto em partes: Markdown normal e blocos de perguntas válidos (um bloco inválido continua como texto). Corta um bloco ainda incompleto (streaming). */
+/** Splits the text into parts: normal Markdown and valid question blocks (an invalid block stays as text). Cuts an incomplete block (streaming). */
 export function splitQuestionBlocks(body: string): MessagePart[] {
   const open = body.indexOf('```' + questionFence)
   const complete = open >= 0 && !fencePattern.test(body.slice(open)) ? body.slice(0, open) : body
@@ -43,7 +43,7 @@ export function splitQuestionBlocks(body: string): MessagePart[] {
   return parts.filter((part) => part.kind === 'questions' || part.text.trim())
 }
 
-/** Resposta do usuário: um texto legível que volta ao agente como mensagem normal. */
+/** User's answer: readable text that goes back to the agent as a normal message. */
 export function answersMessage(block: QuestionBlock, answers: string[][]): string {
   return block.perguntas.map((question, index) => `${question.pergunta}\n→ ${(answers[index] ?? []).join('; ') || '(sem resposta)'}`).join('\n\n')
 }

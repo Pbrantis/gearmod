@@ -1,18 +1,18 @@
 import type { GitRef, GitRow, GitRule } from '@gearmod/contracts'
 import { tr } from './i18n'
 
-/** Cores das faixas do grafo, na ordem da faixa. */
+/** Colors of the graph lanes, in lane order. */
 export const laneColors = ['#8db99a', '#8fb8d6', '#e8c27a', '#b98fd6', '#e07a9a']
 export const laneColor = (lane: number): string => laneColors[lane % laneColors.length]!
-/** Posição horizontal do ponto de uma faixa. */
+/** Horizontal position of a lane's dot. */
 export const laneSpacing = 26
-/** `spacing` encolhe com a coluna do grafo: as pistas vão se juntando até virar uma linha só (spacing 0). */
+/** `spacing` shrinks with the graph column: the lanes get closer until they become a single line (spacing 0). */
 export const laneX = (lane: number, spacing = laneSpacing): number => 16 + lane * spacing
 export const rowHeight = 36
 
 export const isWip = (row: GitRow): boolean => row.wip !== null
 
-/** Etiqueta de data por semana: "esta semana", "semana passada", "há N semanas"; depois de um mês, meses e anos. */
+/** Date label by week: "this week", "last week", "N weeks ago"; after a month, months and years. */
 export function agoLabel(date: string | null, now = Date.now()): string {
   const v = tr().git.view
   if (!date) return v.thisWeek
@@ -27,7 +27,7 @@ export function agoLabel(date: string | null, now = Date.now()): string {
   return v.yearsAgo(years)
 }
 
-/** Tempo curto para listas: "agora", "12 min", "3 h", "2 dias". */
+/** Short time for lists: "now", "12 min", "3 h", "2 days". */
 export function shortAgo(date: string | null, now = Date.now()): string {
   const v = tr().git.view
   if (!date) return v.now
@@ -42,7 +42,7 @@ export function shortAgo(date: string | null, now = Date.now()): string {
 
 export interface RefChip { name: string; local?: boolean; remote?: boolean; head?: boolean; tag?: boolean }
 
-/** Um chip por branch: local (computador) e origin (nuvem) juntos, em vez de repetir o nome com "origin/". */
+/** One chip per branch: local (computer) and origin (cloud) together, instead of repeating the name with "origin/". */
 export function refChips(refs: GitRef[]): RefChip[] {
   const map = new Map<string, RefChip>()
   for (const ref of refs) {
@@ -57,7 +57,7 @@ export function refChips(refs: GitRef[]): RefChip[] {
   return [...map.values()]
 }
 
-/** Nas linhas sem branch, a branch daquela faixa (a mais próxima acima) aparece apagada ao passar o mouse. */
+/** On rows with no branch, that lane's branch (the nearest one above) appears dimmed on hover. */
 export function ghostChip(rows: GitRow[], index: number, headName: string | null): RefChip | null {
   const row = rows[index]!
   if (row.refs.length || isWip(row) || row.stash) return null
@@ -68,7 +68,7 @@ export function ghostChip(rows: GitRow[], index: number, headName: string | null
   return row.lane === 0 && headName ? { name: headName, local: true } : null
 }
 
-/** Iniciais do autor para o ponto do grafo. */
+/** Author initials for the graph dot. */
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return '?'
@@ -77,7 +77,7 @@ export function initials(name: string): string {
 
 export interface GraphEdge { d: string; color: string; wip: boolean; dim: boolean }
 
-/** Linhas finas do grafo, com cantos arredondados de quase 90°. Pai fora da lista (além do limite) desce até o fim. */
+/** Thin graph lines, with rounded corners of almost 90°. A parent outside the list (beyond the limit) goes down to the end. */
 export function graphEdges(rows: GitRow[], dimmed: (row: GitRow) => boolean, height = rowHeight, spacing = laneSpacing): GraphEdge[] {
   const index = new Map(rows.map((row, i) => [row.hash, i]))
   const y = (i: number): number => i * height + height / 2
@@ -97,7 +97,7 @@ export function graphEdges(rows: GitRow[], dimmed: (row: GitRow) => boolean, hei
   return edges
 }
 
-/** Separa "pasta/arquivo.ts" em diretório e nome. */
+/** Splits "folder/file.ts" into directory and name. */
 export function splitPath(path: string): { dir: string; name: string } {
   const at = path.lastIndexOf('/')
   return at < 0 ? { dir: '', name: path } : { dir: path.slice(0, at + 1), name: path.slice(at + 1) }

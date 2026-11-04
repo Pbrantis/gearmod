@@ -2,7 +2,7 @@ import React, { useEffect } from 'react'
 import { useEscape } from './useEscape'
 import { tr, useT } from './i18n'
 
-/** Aviso na frente de tudo (um botão só): para explicar por que uma ação não foi feita, ou o que aconteceu por baixo dos panos. */
+/** Notice in front of everything (a single button): to explain why an action was not done, or what happened behind the scenes. */
 export function NoticeDialog({ eyebrow, title, text, ok, close }: { eyebrow: string; title: string; text: string; ok?: string; close(): void }): React.JSX.Element {
   const t = useT()
   useEscape(close)
@@ -10,16 +10,16 @@ export function NoticeDialog({ eyebrow, title, text, ok, close }: { eyebrow: str
   return <div className="overlay top" role="alertdialog" aria-label={title} style={{ zIndex: 90 }}><div className="modal" style={{ width: 'min(430px,100%)' }}><header><div><div className="eyebrow">{eyebrow}</div><h2>{title}</h2></div></header><p className="dialog-text">{text}</p><div className="actions"><button type="button" autoFocus onClick={close}>{ok ?? t.shell.notice.understood}</button></div></div></div>
 }
 
-/** Tira o prefixo técnico do Electron das mensagens de erro do main. */
+/** Strips Electron's technical prefix from the main process error messages. */
 export const plainError = (reason: unknown): string => {
   let message = String(reason)
   for (let index = 0; index < 3; index += 1) message = message.replace(/^Error:\s*/i, '').replace(/^Error invoking remote method ['"][^'"]+['"]:\s*/i, '')
-  return zodText(message) ?? (message || tr().shell.notice.operationFailed)  // o código `[[...]]` fica: quem precisa dele lê com errorCodeOf e a tela tira com withoutErrorCode
+  return zodText(message) ?? (message || tr().shell.notice.operationFailed)  // the `[[...]]` code stays: whoever needs it reads it with errorCodeOf and the screen strips it with withoutErrorCode
 }
 
-/** Erro de validação do contrato (lista JSON do Zod) vira texto: "campo: o que falta", um por linha. */
+/** Contract validation error (Zod JSON list) becomes text: "field: what is missing", one per line. */
 function zodText(message: string): string | undefined {
-  // O Zod formata a lista com quebras de linha: "[\n  {".
+  // Zod formats the list with line breaks: "[\n  {".
   const start = message.search(/\[\s*\{/)
   if (start < 0) return undefined
   let issues: unknown

@@ -18,9 +18,9 @@ export const voiceModels: Record<LocalVoiceModel, { file: string; label: string;
 const groqUrl = 'https://api.groq.com/openai/v1/audio/transcriptions'
 const modelBase = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
 const engineAsset = 'https://github.com/ggml-org/whisper.cpp/releases'
-/** Versão e SHA-256 fixos: o executável baixado roda na máquina do usuário, então só é aceito o arquivo exato que foi conferido. */
+/** Fixed version and SHA-256: the downloaded executable runs on the user's machine, so only the exact file that was checked is accepted. */
 const windowsEngine = { url: `${engineAsset}/download/v1.7.6/whisper-bin-x64.zip`, sha256: '0d2eca299c248f965bd0341bcb219db4b433c7f0c0ce2200d4df85765e8156a9' }
-/** Termos em inglês que aparecem no meio do português; ajudam o Whisper a não "traduzir" worktree, commit etc. */
+/** English terms that show up in the middle of Portuguese; they help Whisper not to "translate" worktree, commit etc. */
 export const supportVocabulary = 'worktree, commit, branch, pull request, merge, rebase, lint, typecheck, deploy, backend, frontend, Kanban, backlog, To do, Doing, Test, Done, Claude, Codex, GearMod, Markdown, SQLite, Electron, React, TypeScript, skill, prompt'
 
 export interface VoiceDeps {
@@ -31,15 +31,15 @@ export interface VoiceDeps {
   pathEnv?: string
   emit?: (type: string, payload: Record<string, unknown>) => void
   modelUrl?: (model: VoiceModel) => string
-  /** SHA-256 esperado quando as URLs são injetadas (testes); com as URLs padrão vale sempre o checksum fixo no código. */
+  /** Expected SHA-256 when the URLs are injected (tests); with the default URLs the checksum fixed in the code always applies. */
   expectedSha256?: Partial<Record<'engine' | LocalVoiceModel, string>>
   engineUrl?: string
-  /** Guarda a chave do Groq fora do banco (no app, cifrada pelo sistema operacional). */
+  /** Stores the Groq key outside the database (in the app, encrypted by the operating system). */
   secrets?: { read(): Promise<string | null>; write(value: string | null): Promise<void> }
   groqUrl?: string
 }
 
-/** Ditado por voz: whisper.cpp local como processo separado (nunca na thread da interface, modelo baixado sob demanda) ou Groq na nuvem com a chave do usuário. */
+/** Voice dictation: local whisper.cpp as a separate process (never on the UI thread, model downloaded on demand) or cloud Groq with the user's key. */
 export class VoiceService {
   private downloading: VoiceStatus['downloading'] = null
   private readonly platform: NodeJS.Platform
@@ -52,7 +52,7 @@ export class VoiceService {
   private engineNames(): string[] { return this.platform === 'win32' ? ['whisper-cli.exe'] : ['whisper-cli', 'whisper-cpp'] }
 
   async findEngine(): Promise<string | null> {
-    // O pacote do Windows traz o whisper-cli.exe junto das DLLs (e um main.exe obsoleto que só avisa e sai com erro): usa o whisper-cli onde ele estiver.
+    // The Windows package ships whisper-cli.exe alongside the DLLs (and an obsolete main.exe that only warns and exits with an error): uses whisper-cli wherever it is.
     const local = await findFile(this.binDir, this.engineNames()).catch(() => null)
     if (local) return local
     for (const folder of (this.deps.pathEnv ?? process.env.PATH ?? '').split(delimiter).filter(Boolean)) {
@@ -71,14 +71,14 @@ export class VoiceService {
 
   async setGroqKey(key: string, model: VoiceModel): Promise<VoiceStatus> {
     if (!this.deps.secrets) throw new Error(tm().voice.cannotStoreKey)
-    // Remove quebras de linha e caracteres invisíveis que costumam vir junto ao colar.
+    // Removes line breaks and invisible characters that usually come along when pasting.
     const value = key.replace(/[^\x21-\x7e]/g, '')
     if (value) await this.checkGroqKey(value)
     await this.deps.secrets.write(value || null)
     return this.status(model)
   }
 
-  /** Testa a chave antes de guardar: Groq (groq.com, chave gsk_…) é fácil de confundir com o Grok da xAI (chave xai-…). */
+  /** Tests the key before storing it: Groq (groq.com, key gsk_…) is easy to confuse with xAI's Grok (key xai-…). */
   private async checkGroqKey(key: string): Promise<void> {
     if (/^xai-/i.test(key)) throw new Error(tm().voice.grokKeyMistake)
     const modelsUrl = (this.deps.groqUrl ?? groqUrl).replace(/\/audio\/transcriptions$/, '/models')
@@ -93,7 +93,7 @@ export class VoiceService {
     return Boolean(info && info.size > 10 * 1024 * 1024)
   }
 
-  /** Baixa o modelo (e, no Windows, o executável) com progresso; nada é baixado sem o usuário pedir. */
+  /** Downloads the model (and, on Windows, the executable) with progress; nothing is downloaded unless the user asks. */
   async install(model: VoiceModel): Promise<VoiceStatus> {
     if (model === 'groq') throw new Error(tm().voice.registerGroqKey)
     if (this.downloading) throw new Error(tm().voice.downloadInProgress)
@@ -110,7 +110,7 @@ export class VoiceService {
   private async installEngine(): Promise<void> {
     await mkdir(this.binDir, { recursive: true })
     const zip = join(this.binDir, 'whisper-bin.zip')
-    // URL injetada (testes) não tem checksum conhecido; a padrão sempre é conferida.
+    // Injected URL (tests) has no known checksum; the default one is always checked.
     if (this.deps.engineUrl) await this.download(this.deps.engineUrl, zip, 'programa', this.deps.expectedSha256?.engine)
     else await this.download(windowsEngine.url, zip, 'programa', windowsEngine.sha256)
     await (this.deps.run ?? defaultRun)('tar', ['-xf', zip, '-C', this.binDir], 120_000)
@@ -136,7 +136,7 @@ export class VoiceService {
     } catch (error) { await rm(partial, { force: true }); throw error }
   }
 
-  /** Transcreve um WAV (16 kHz, mono, 16 bits). O texto volta para o campo do chat; ditado não gasta token dos agentes. */
+  /** Transcribes a WAV (16 kHz, mono, 16 bits). The text goes back to the chat field; dictation does not spend the agents' tokens. */
   async transcribe(input: { wav: Uint8Array; model: VoiceModel; language: string; prompt?: string }): Promise<string> {
     if (input.model === 'groq') return this.transcribeGroq(input)
     const engine = await this.findEngine()
@@ -164,7 +164,7 @@ export class VoiceService {
     form.append('language', input.language)
     form.append('response_format', 'json')
     form.append('temperature', '0')
-    // O Groq aceita até 224 tokens de prompt.
+    // Groq accepts up to 224 prompt tokens.
     form.append('prompt', [supportVocabulary, input.prompt].filter(Boolean).join(', ').slice(0, 600))
     const response = await (this.deps.fetchImpl ?? fetch)(this.deps.groqUrl ?? groqUrl, { method: 'POST', headers: { authorization: `Bearer ${key}` }, body: form, signal: AbortSignal.timeout(60_000) })
     if (response.status === 401) throw new Error(tm().voice.groqRejectedSavedKey(await groqReason(response)))
@@ -175,7 +175,7 @@ export class VoiceService {
   }
 }
 
-/** Motivo que o Groq devolve no corpo do erro ({ error: { message } }), para não esconder o que ele disse. */
+/** Reason Groq returns in the error body ({ error: { message } }), so as not to hide what it said. */
 async function groqReason(response: Response): Promise<string> {
   const body = await response.json().catch(() => null) as { error?: { message?: string } } | null
   const message = body?.error?.message?.trim()

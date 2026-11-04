@@ -35,7 +35,7 @@ describe('anexos no chat', () => {
     expect(calls[0]!.attachments).toEqual([file])
     expect(calls[0]!.prompt).toContain(`- ${file}`)
     expect(conversations.listMessages(chat.id).find((message) => message.role === 'user')!.body).toContain('Arquivos anexados')
-    // Espera o orquestrador gravar o fim da execução antes de fechar o banco.
+    // Wait for the orchestrator to write the end of the run before closing the database.
     for (let i = 0; i < 50 && !conversations.listMessages(chat.id).some((message) => message.role === 'assistant'); i += 1) await new Promise((resolve) => setTimeout(resolve, 10))
     await new Promise((resolve) => setTimeout(resolve, 20))
     database.close()

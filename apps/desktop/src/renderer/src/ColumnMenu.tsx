@@ -3,7 +3,7 @@ import { ArchiveIcon, PlusIcon } from './icons'
 import { useEscape } from './useEscape'
 import { useT } from './i18n'
 
-/** Menu "···" do cabeçalho de uma coluna do quadro: adicionar card e arquivar todos os da coluna. */
+/** "···" menu in a board column header: add card and archive all of the column's cards. */
 export function ColumnMenu({ label, count, add, archiveAll }: { label: string; count: number; add(): void; archiveAll(): void }): React.JSX.Element {
   const t = useT().board
   const [open, setOpen] = React.useState(false), box = useRef<HTMLSpanElement>(null)

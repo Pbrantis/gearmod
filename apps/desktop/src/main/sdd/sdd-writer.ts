@@ -5,7 +5,7 @@ import { dirname, isAbsolute, resolve, sep } from 'node:path'
 import { nativeGit, type GitRunner, type WorktreeService } from '../worktrees'
 import { tm } from '../i18n'
 
-/** G08: `expect.blobSha` não bate com o blob atual do arquivo — outra edição aconteceu entre a leitura e esta escrita. */
+/** G08: `expect.blobSha` does not match the file's current blob — another edit happened between the read and this write. */
 export class SddConflict extends Error {
   constructor(message: string, readonly expectedBlobSha: string | null, readonly actualBlobSha: string | null) { super(message) }
 }
@@ -13,9 +13,9 @@ export class SddConflict extends Error {
 const reservedWindowsNames = /^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\.|$)/i
 
 /**
- * Caminho relativo seguro dentro de `rootAbs`: sem `..`, sem absoluto, sem nome reservado do Windows em nenhum segmento.
- * Devolve o caminho absoluto já resolvido (lexicamente contido em `rootAbs`); a verificação de link simbólico é separada
- * (`assertNoSymlinkEscape`), porque depende do disco, não só do texto do caminho.
+ * Safe relative path inside `rootAbs`: no `..`, no absolute path, no reserved Windows name in any segment.
+ * Returns the already resolved absolute path (lexically contained in `rootAbs`); the symlink check is separate
+ * (`assertNoSymlinkEscape`), because it depends on the disk, not only on the path text.
  */
 function allowedPath(rootAbs: string, relPath: string): string {
   const clean = relPath.replace(/\\/g, '/')
@@ -30,10 +30,10 @@ function allowedPath(rootAbs: string, relPath: string): string {
 }
 
 /**
- * Nenhuma pasta já existente, entre o arquivo e a raiz (sem incluir a raiz, que é de confiança), pode ser, de verdade
- * (via link simbólico), uma saída da raiz do SDD. A parada do laço é sempre pelo caminho léxico (igual ao que
- * `allowedPath` usou para montar `targetAbs`), nunca pelo caminho real: no Windows, `realpath` pode trocar um nome curto
- * (`FRANCI~1`) pelo longo mesmo sem link nenhum, e comparar isso com a raiz sem o mesmo tratamento pararia fora dela.
+ * No already existing folder, between the file and the root (not including the root, which is trusted), may actually be
+ * (via symlink) an exit from the SDD root. The loop always stops by the lexical path (the same one
+ * `allowedPath` used to build `targetAbs`), never by the real path: on Windows, `realpath` can swap a short name
+ * (`FRANCI~1`) for the long one even with no link at all, and comparing that with the root without the same treatment would stop outside it.
  */
 async function assertNoSymlinkEscape(rootAbs: string, targetAbs: string): Promise<void> {
   const rootLexical = resolve(rootAbs).toLowerCase()
@@ -51,16 +51,16 @@ async function assertNoSymlinkEscape(rootAbs: string, targetAbs: string): Promis
   }
 }
 
-/** Hash de blob Git do conteúdo de um arquivo, sem precisar que esteja staged nem committed; `null` se o arquivo não existir. */
+/** Git blob hash of a file's content, with no need for it to be staged or committed; `null` if the file does not exist. */
 async function currentBlobSha(git: GitRunner, targetAbs: string): Promise<string | null> {
   if (!existsSync(targetAbs)) return null
   try { return (await git.run(['hash-object', targetAbs])).stdout.trim() || null } catch { return null }
 }
 
 /**
- * G08 — única escrita de SDD (resolver, G03, é read-only). Escreve só dentro da worktree do card (nunca na cópia
- * principal do repositório): garante o repositório como membro (`WorktreeService.ensureMember`, G07), valida o
- * caminho (`allowedPath` + link simbólico), checa conflito por blob sha e grava com temp+rename atômico.
+ * G08 — the only SDD write (the resolver, G03, is read-only). Writes only inside the card's worktree (never in the main
+ * copy of the repository): ensures the repository is a member (`WorktreeService.ensureMember`, G07), validates the
+ * path (`allowedPath` + symlink), checks for conflict by blob sha and writes with an atomic temp+rename.
  */
 export class SddWriter {
   constructor(private readonly worktrees: Pick<WorktreeService, 'ensureMember'>, private readonly git: GitRunner = nativeGit) {}

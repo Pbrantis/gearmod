@@ -8,7 +8,7 @@ type TableItem = { oid: number; name: string; kind: string }
 type Description = IpcOutput<'db:describe'>
 const groups = [['tables', 'tables', (kind: string) => kind === 'r' || kind === 'p'], ['views', 'views', (kind: string) => kind === 'v' || kind === 'm'], ['sequences', 'sequences', (kind: string) => kind === 'S']] as const
 
-/** Com o mouse, só a seta expande; pelo teclado (Enter/espaço, `detail` 0) a linha inteira continua expandindo. */
+/** With the mouse, only the arrow expands; with the keyboard (Enter/space, `detail` 0) the whole row still expands. */
 export const viaChevron = (event: React.MouseEvent): boolean => event.detail === 0 || Boolean((event.target as Element).closest('.wf-chevron'))
 
 const Chevron = ({ open, empty }: { open: boolean; empty?: boolean }): React.JSX.Element => <span className={`wf-chevron ${open ? 'open' : ''}`} aria-hidden="true">{!empty && <svg viewBox="0 0 12 12"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" /></svg>}</span>
@@ -22,7 +22,7 @@ const Icon = ({ kind }: { kind: 'schema' | 'folder' | 'table' | 'view' | 'sequen
   key: <><circle cx="5.5" cy="8" r="2.5" /><path d="M8 8h5.5M11.5 8v2" /></>
 }[kind]}</svg>
 
-/** Árvore de objetos: servidor/banco já escolhido → esquemas → tables/views/sequences → colunas, chaves e índices. */
+/** Object tree: already chosen server/database → schemas → tables/views/sequences → columns, keys and indexes. */
 export function DbTree({ connectionId, schemas, tables, expanded, toggleSchema, query, activeOid, open, fail }: { connectionId: string; schemas: Array<{ oid: number; name: string }>; tables: Record<number, TableItem[]>; expanded: number[]; toggleSchema(oid: number, open: boolean): void; query: string; activeOid: number | 'sql'; open(item: { oid: number; name: string }): void; fail(message: string): void }): React.JSX.Element {
   const t = useT()
   const [toggled, setToggled] = useState<Set<string>>(new Set()), [details, setDetails] = useState<Record<number, Description>>({})

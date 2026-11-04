@@ -84,7 +84,7 @@ describe('ferramentas gearmod_code_* pelo servidor MCP', () => {
     expect(impact.content[0]!.text).toContain('readFile:2 — calls at lines 2')
     const free = mcpClient(bridge.register('r2', null, () => undefined, { id: 'c2', purpose: 'free' }))
     expect((await free.call('gearmod_code_explore', { pergunta: 'readFile allowedPath' })).content[0]!.text).toContain('**Flow')
-    // as pastas são pedidas ao registrar a execução (indexação antecipada) e a cada chamada
+    // the folders are requested when the run is registered (early indexing) and on each call
     expect(asked).toContainEqual({ cardId: card.id, chatId: 'c1' })
     expect(asked).toContainEqual({ cardId: null, chatId: 'c2' })
     const missing = await free.call('gearmod_code_search', {})
@@ -98,7 +98,7 @@ describe('ferramentas gearmod_code_* pelo servidor MCP', () => {
     const { bridge, card, asked } = await setup(on)
     const off = mcpClient(bridge.register('r1', card.id, () => undefined, { id: 'c1', purpose: 'execution' }))
     expect((await off.names()).some((tool) => tool.name.startsWith('gearmod_code_'))).toBe(false)
-    expect(asked).toEqual([]) // nada de indexação antecipada
+    expect(asked).toEqual([]) // no early indexing
     on.value = true
     const running = mcpClient(bridge.register('r2', card.id, () => undefined, { id: 'c2', purpose: 'execution' }))
     expect((await running.names()).some((tool) => tool.name === 'gearmod_code_explore')).toBe(true)

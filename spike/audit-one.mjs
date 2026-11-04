@@ -1,4 +1,4 @@
-// Sorteia arestas de um projeto (sem referência externa) e mostra a linha de código e o destino, para julgar à mão.
+// Samples edges of a project (no external reference) and shows the code line and the target, to judge by hand.
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'

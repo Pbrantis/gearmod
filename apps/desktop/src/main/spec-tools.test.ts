@@ -10,7 +10,7 @@ import type { CommandRunner } from './playwright-cli'
 const roots: string[] = [], opened: AppDatabase[] = []
 afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 
-/** Executor falso: só responde aos comandos listados; o resto "não existe". */
+/** Fake executor: only answers the listed commands; everything else "does not exist". */
 const runner = (answers: Record<string, string>): CommandRunner => ({ run: async (command, args) => { const key = `${command} ${args.join(' ')}`; if (key in answers) return answers[key]!; throw new Error(`${command}: comando não encontrado`) } })
 
 async function setup(): Promise<{ root: string; database: AppDatabase; projectId: string; started: string; plain: string }> {

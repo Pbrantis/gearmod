@@ -1,4 +1,4 @@
-// Sorteia arestas de chamada que só um dos lados tem e mostra a linha de código, para julgar à mão.
+// Samples call edges that only one side has and shows the code line, to judge by hand.
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'

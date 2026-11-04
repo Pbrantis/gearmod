@@ -1,6 +1,6 @@
 /**
- * Resumo do card em texto corrido para o quadro: tira só a marcação de Markdown (marcador de lista e caixinha no começo da linha,
- * `#` de título, citação, cerca de código, ênfase *x* / **x** / _x_, `código` e links), preservando hífens e asteriscos no meio do texto.
+ * Card summary as plain running text for the board: strips only the Markdown markup (list marker and checkbox at the start of the line,
+ * heading `#`, quote, code fence, emphasis *x* / **x** / _x_, `code` and links), keeping hyphens and asterisks in the middle of the text.
  */
 export function plainSummary(markdown: string): string {
   return markdown

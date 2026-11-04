@@ -26,7 +26,7 @@ export function SqBtn({ label, onClick, children }: { label: string; onClick(): 
   return <button type="button" className="db-sq" data-tip={label} aria-label={label} onClick={onClick}><svg viewBox="0 0 16 16" aria-hidden="true">{children}</svg></button>
 }
 
-/** Janela de uma tabela: filtros WHERE/ORDER BY, grade e paginação, com estado próprio. */
+/** Table window: WHERE/ORDER BY filters, grid and pagination, with its own state. */
 export function DbTableView({ tabId, connectionId, oid, name, allowWrite }: { tabId?: string; connectionId: string; oid: number; name: string; allowWrite: boolean }): React.JSX.Element {
   const t = useT()
   const req = useDbRequest(connectionId)
@@ -57,11 +57,11 @@ export function DbTableView({ tabId, connectionId, oid, name, allowWrite }: { ta
   }
   const goLast = async (): Promise<void> => { const total = Number(exactCount ?? await count()); if (!Number.isFinite(total) || total < 1) return; await loadPage(Math.floor((total - 1) / pageSize) * pageSize, order) }
   const applyClauses = (): void => { clauses.current = { where: whereText, orderBy: orderText }; void loadPage(0, order) }
-  const changeSize = (size: number): void => { setPageSizeState(size); sizeRef.current = size; setPagerMenu(undefined); try { localStorage.setItem('gearmod.db.pageSize', String(size)) } catch { /* preferência local */ } void loadPage(0, order) }
+  const changeSize = (size: number): void => { setPageSizeState(size); sizeRef.current = size; setPagerMenu(undefined); try { localStorage.setItem('gearmod.db.pageSize', String(size)) } catch { /* local preference */ } void loadPage(0, order) }
   const pagerItems: DbMenuItem[] = [{ label: t.database.table.countRows, run: () => { setPagerMenu(undefined); void count() } }, ...[10, 50, 100, 200, 500, 1000].map((size) => ({ label: `${size === pageSize ? '✓' : '  '} ${t.database.table.rowsPerPage(size)}`, run: () => changeSize(size) }))]
   const busy = req.busy
   const offsetRef = useRef(offset), orderRef = useRef(order); offsetRef.current = offset; orderRef.current = order
-  // Alterações pendentes: células editadas, linhas novas (no fim da grade) e linhas marcadas para apagar.
+  // Pending changes: edited cells, new rows (at the end of the grid) and rows marked for deletion.
   const baseRows = page?.rows ?? [], pkIndex = page && meta ? meta.columns.filter((column) => column.primaryKey).map((column) => page.columns.findIndex((item) => item.attnum === column.attnum)) : []
   const hasPk = pkIndex.length > 0 && pkIndex.every((index) => index >= 0)
   const rowKey = (row: number): Record<string, string | null> | undefined => {
@@ -110,7 +110,7 @@ export function DbTableView({ tabId, connectionId, oid, name, allowWrite }: { ta
     try {
       const result = await window.gearmod.invoke('db:apply', { connectionId, requestId: id, oid, dryRun, ...changeSet() })
       if (dryRun) { setPreview(result.sql); return }
-      // O ref também é zerado já: senão o loadPage abaixo ainda vê as pendências e não recarrega a grade.
+      // The ref is also reset right away: otherwise the loadPage below still sees the pending changes and does not reload the grid.
       setPreview(undefined); setPending(noPending); pendingRef.current = noPending
       toast.success(t.database.table.applied, t.database.table.commandsSummary(result.sql.length, result.durationMs))
       if (result.counts.some((item) => item.rowCount === 0 && item.command !== 'INSERT')) toast.warning(t.database.table.rowsNotFound, t.database.table.rowsNotFoundText)

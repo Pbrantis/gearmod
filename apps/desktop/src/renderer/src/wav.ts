@@ -1,4 +1,4 @@
-/** WAV PCM 16 bits mono (o formato que o whisper.cpp lê) a partir de amostras Float32 em [-1, 1]. */
+/** 16-bit mono PCM WAV (the format whisper.cpp reads) from Float32 samples in [-1, 1]. */
 export function encodeWav(samples: Float32Array, sampleRate: number): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(new ArrayBuffer(44 + samples.length * 2)), view = new DataView(bytes.buffer)
   const text = (offset: number, value: string): void => { for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i)) }

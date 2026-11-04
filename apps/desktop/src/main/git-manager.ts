@@ -15,35 +15,35 @@ import { entryLabel, sameState, UndoJournal, undoActions, type DiscardFile, type
 
 interface Source { id: string; projectId: string; name: string; path: string }
 interface Member { cardId: string; title: string; branch: string; path: string; repoPath: string; baseRef: string; status: 'active' | 'failed'; error: string | null; prUrl: string | null }
-/** Roda um programa de linha de comando (gh, glab) numa pasta; nos testes é trocado por um falso. */
+/** Runs a command-line program (gh, glab) in a folder; replaced by a fake in tests. */
 export interface CliRunner { run(command: string, args: string[], cwd: string): Promise<string> }
 const execCli = promisify(execFile)
 export const nativeCli: CliRunner = { run: async (command, args, cwd) => (await execCli(command, args, { cwd, timeout: 120_000, windowsHide: true, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GH_PROMPT_DISABLED: '1' } })).stdout }
 interface Target { dir: string; branch: string | null; baseRef: string | null }
 interface RequestRow { id: string; cardId: string; sourceId: string; repoName: string; message: string; files: string; status: GitRequest['status']; profileId: string | null; hash: string | null; error: string | null; createdAt: string; approvalId: string | null }
 
-/** Tamanho máximo das cópias de um descarte (mais que isso, o descarte funciona mas não se desfaz). */
+/** Maximum size of the copies made for a discard (above that, the discard works but cannot be undone). */
 const maxDiscardBackup = 100 * 1024 * 1024
 const same = (a: string, b: string): boolean => (process.platform === 'win32' ? resolve(a).toLowerCase() === resolve(b).toLowerCase() : resolve(a) === resolve(b))
-/** Mesma pasta, resolvendo atalhos e nomes curtos do Windows (C:\Users\NOME~1) antes de comparar. */
+/** Same folder, resolving shortcuts and Windows short names (C:\Users\NAME~1) before comparing. */
 const real = (path: string): string => { try { return realpathSync.native(path) } catch { return resolve(path) } }
 const sameDir = (a: string, b: string): boolean => (process.platform === 'win32' ? real(a).toLowerCase() === real(b).toLowerCase() : real(a) === real(b))
 const existsSyncDir = (path: string): boolean => { try { return statSync(path).isDirectory() } catch { return false } }
 const isDir = (path: string): Promise<boolean> => stat(path).then((value) => value.isDirectory(), () => false)
 
-/** Atribui a faixa (coluna) de cada linha do grafo. As linhas vêm em ordem topológica: filhos antes dos pais. */
+/** Assigns the lane (column) of each graph row. Rows come in topological order: children before parents. */
 export function assignLanes(rows: ReadonlyArray<{ hash: string; parents: readonly string[] }>): number[] {
   const lanes: Array<string | null> = [], result: number[] = []
   const free = (): number => { const at = lanes.indexOf(null); if (at >= 0) return at; lanes.push(null); return lanes.length - 1 }
   for (const row of rows) {
     let lane = lanes.indexOf(row.hash)
     if (lane < 0) lane = free()
-    // Outras faixas que esperavam este commit terminam aqui: a linha delas desce até ele.
+    // Other lanes that were waiting for this commit end here: their line goes down to it.
     for (let i = 0; i < lanes.length; i++) if (lanes[i] === row.hash) lanes[i] = null
     result.push(lane)
     row.parents.forEach((parent, index) => {
       const waiting = lanes.indexOf(parent)
-      // Primeiro pai já esperado por outra faixa: a faixa mais à esquerda fica com ele, assim a história principal não "pula" de coluna.
+      // First parent already awaited by another lane: the leftmost lane keeps it, so the main history does not "jump" columns.
       if (waiting >= 0) { if (index === 0 && waiting > lane) { lanes[waiting] = null; lanes[lane] = parent } return }
       if (index === 0) lanes[lane] = parent
       else lanes[free()] = parent
@@ -54,13 +54,13 @@ export function assignLanes(rows: ReadonlyArray<{ hash: string; parents: readonl
 
 const globToRegExp = (pattern: string): RegExp => new RegExp(`^${pattern.trim().replace(/[.+^${}()|[\]\\?]/g, '\\$&').replace(/\*/g, '.*')}$`)
 
-/** Regra de commit do agente para uma branch: a primeira exceção que bater vence; senão vale o padrão do projeto. */
+/** The agent's commit rule for a branch: the first matching exception wins; otherwise the project default applies. */
 export function resolveRule(policy: GitPolicy, branch: string): { rule: GitRule; why: string } {
   const found = policy.rules.find((item) => item.pattern.trim() && globToRegExp(item.pattern).test(branch))
   return found ? { rule: found.rule, why: tm().git.branchException(found.pattern.trim()) } : { rule: policy.def, why: tm().git.projectDefault }
 }
 
-/** Mensagem curta em português para os erros mais comuns do Git. */
+/** Short message (in Portuguese) for the most common Git errors. */
 export function friendlyError(error: unknown): string {
   const text = [(error as { stderr?: string })?.stderr, error instanceof Error ? error.message : String(error)].filter(Boolean).join('\n')
   if (/Please tell me who you are|unable to auto-detect email|empty ident/i.test(text)) return tm().git.gitIdentityMissing
@@ -81,18 +81,18 @@ export function friendlyError(error: unknown): string {
 }
 
 /**
- * Revisões dos commits que são só do card: o que a branch dele tem e nenhuma outra branch (local ou remota) tem, nem a origem.
- * Não basta `origem..branch`: se a branch for rebaseada sobre outra (ex.: main) ou a origem gravada ficar velha, entrariam commits alheios.
+ * Revisions of the commits that belong only to the card: what its branch has that no other branch (local or remote) has, nor the origin.
+ * `origin..branch` is not enough: if the branch is rebased onto another (e.g. main) or the recorded origin goes stale, commits from others would get in.
  */
 export const cardRevs = (branch: string, baseRef: string, tip = branch): string[] =>
-  // Antes de --branches/--remotes, o --exclude é comparado sem o prefixo refs/heads/ ou refs/remotes/.
+  // Before --branches/--remotes, --exclude is compared without the refs/heads/ or refs/remotes/ prefix.
   [tip, '--not', baseRef, `--exclude=${branch}`, '--branches', `--exclude=*/${branch}`, '--exclude=*/HEAD', '--remotes']
 
 const statusOf = (code: string): 'M' | 'A' | 'D' => (code === 'A' || code === '?' ? 'A' : code === 'D' ? 'D' : 'M')
 const splitMessage = (message: string): { subject: string; body: string } => { const [subject = '', ...rest] = message.trim().split(/\r?\n/); return { subject: subject.trim(), body: rest.join('\n').trim() } }
 
-/** Gerenciador Git do projeto: grafo, status, commit, sincronização e a regra de commit do agente. Só usa o `git` instalado. */
-/** Operação que deixou conflitos; `stash` = apply/pop de stash (sem arquivo de estado no .git). */
+/** Project Git manager: graph, status, commit, sync and the agent's commit rule. It only uses the installed `git`. */
+/** Operation that left conflicts; `stash` = stash apply/pop (no state file in .git). */
 export type ConflictOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'stash'
 
 export class GitManager {
@@ -101,7 +101,7 @@ export class GitManager {
     this.approvals = approvals ?? new ApprovalService(database)
   }
 
-  /** Chamado depois que uma pasta de worktree some (o índice de código para de observá-la). */
+  /** Called after a worktree folder is gone (the code index stops watching it). */
   onFolderRemoved?: (path: string) => void
 
   private async run(dir: string, args: string[]): Promise<string> {
@@ -111,19 +111,19 @@ export class GitManager {
     try { return (await this.git.run(['-c', 'core.quotepath=false', '-C', dir, ...args])).stdout } catch { return null }
   }
 
-  // ---------- desfazer e refazer (só o que o usuário faz na tela de Git; fica na memória) ----------
+  // ---------- undo and redo (only what the user does on the Git screen; kept in memory) ----------
   private readonly undo = new UndoJournal()
   private readonly swept = new Set<string>()
   private backupsSwept = false
   private readonly locks = new Map<string, Promise<unknown>>()
   private keyOf(sourceId: string, cardId: string | null | undefined): string { return `${sourceId}:${cardId ?? ''}` }
 
-  /** HEAD e branch da pasta (HEAD nulo em repositório sem commit; branch nula com HEAD solto). */
+  /** HEAD and branch of the folder (HEAD null in a repository with no commit; branch null with a detached HEAD). */
   private async state(dir: string): Promise<GitState> {
     return { head: (await this.tryRun(dir, ['rev-parse', '-q', '--verify', 'HEAD']))?.trim() || null, branch: (await this.tryRun(dir, ['symbolic-ref', '-q', '--short', 'HEAD']))?.trim() || null }
   }
 
-  /** Prende os hashes em `refs/gearmod/undo/<id>-<n>` para o `git gc` não levar o que o refazer ainda usa. Devolve as refs criadas. */
+  /** Pins the hashes under `refs/gearmod/undo/<id>-<n>` so `git gc` does not take what redo still uses. Returns the refs created. */
   private async pin(dir: string, id: string, hashes: string[]): Promise<string[]> {
     const refs: string[] = []
     for (const hash of new Set(hashes)) { const ref = `refs/gearmod/undo/${id}-${refs.length}`; if (await this.tryRun(dir, ['update-ref', ref, hash]) !== null) refs.push(ref) }
@@ -132,7 +132,7 @@ export class GitManager {
 
   private async dropBackup(id: string): Promise<void> { if (this.backupDir) await rm(join(this.backupDir, id), { recursive: true, force: true }).catch(() => undefined) }
 
-  /** Solta o que as entradas seguravam: as refs e a pasta de cópias de arquivos. */
+  /** Releases what the entries were holding: the refs and the file-copies folder. */
   private async release(entries: UndoEntry[]): Promise<void> {
     for (const entry of entries) {
       for (const ref of entry.pins) await this.tryRun(entry.dir, ['update-ref', '-d', ref])
@@ -140,10 +140,10 @@ export class GitManager {
     }
   }
 
-  /** Ação que não se desfaz (push, pull, merge, rebase…): as entradas antigas não conseguiriam mais conferir a pasta. */
+  /** Action that cannot be undone (push, pull, merge, rebase…): old entries could no longer check the folder. */
   private async forget(key: string): Promise<void> { await this.release(this.undo.clear(key)) }
 
-  /** Grava na pilha uma ação que acabou de dar certo. Nunca falha: se não der para gravar, a ação só deixa de ser desfazível. */
+  /** Pushes a just-succeeded action onto the stack. Never fails: if it cannot be saved, the action just becomes non-undoable. */
   private async record(key: string, dir: string, kind: UndoKind, before: GitState, data: Record<string, unknown> = {}, extraPins: Array<string | null> = [], id: string = randomUUID()): Promise<void> {
     try {
       const after = await this.state(dir)
@@ -153,7 +153,7 @@ export class GitManager {
     } catch { await this.forget(key); await this.dropBackup(id) }
   }
 
-  /** Uma desfazer/refazer por vez em cada pasta (Ctrl+Z repetido não pode atropelar o anterior). */
+  /** One undo/redo at a time per folder (repeated Ctrl+Z must not run over the previous one). */
   private exclusive<T>(key: string, job: () => Promise<T>): Promise<T> {
     const run = (this.locks.get(key) ?? Promise.resolve()).then(job)
     const tail = run.then(() => undefined, () => undefined)
@@ -166,7 +166,7 @@ export class GitManager {
     return { dir, entry, run: (args) => this.run(dir, args), tryRun: (args) => this.tryRun(dir, args), backupDir: this.backupDir, inside: (path) => this.inside(sourceId, cardId, path), discard: (paths) => this.discardPaths(sourceId, cardId, dir, paths) }
   }
 
-  /** O que dá para desfazer e refazer agora nessa pasta. Entrada que ficou velha (alguém mexeu na pasta por fora) sai da pilha, para o botão não prometer o que não dá. */
+  /** What can be undone and redone now in this folder. An entry that went stale (someone touched the folder from outside) leaves the stack, so the button does not promise what it cannot do. */
   async undoState(sourceId: string, cardId: string | null): Promise<{ undo: { label: string } | null; redo: { label: string } | null }> {
     const key = this.keyOf(sourceId, cardId), source = this.source(sourceId)
     let dir: string
@@ -189,7 +189,7 @@ export class GitManager {
       const dir = (await this.busyTarget(this.source(sourceId), cardId)).dir, entry = redo ? this.undo.peekRedo(key) : this.undo.peekUndo(key)
       if (!entry) throw new Error(redo ? tm().git.redoNothing : tm().git.undoNothing)
       if ((await this.conflictState(dir)).operation) throw new Error(tm().git.undoFinishFirst)
-      // Só mexe se a pasta continua como a ação (ou o desfazer) deixou; senão a entrada sai da pilha.
+      // Only touches it if the folder is still as the action (or the undo) left it; otherwise the entry leaves the stack.
       if (!sameState(await this.state(dir), redo ? entry.before : entry.after)) { await this.release(this.undo.drop(key, entry.id)); throw new Error(tm().git.undoRepoChanged(redo)) }
       const note = await undoActions[entry.kind][redo ? 'redo' : 'undo'](this.undoCtx(sourceId, cardId, dir, entry))
       if (redo) this.undo.moveToDone(key); else this.undo.moveToUndone(key)
@@ -198,7 +198,7 @@ export class GitManager {
     })
   }
 
-  /** Ao abrir o app: apaga as refs e as cópias que a sessão anterior deixou (o que a sessão atual ainda usa fica). */
+  /** On app open: deletes the refs and copies the previous session left behind (what the current session still uses stays). */
   private async sweep(source: Source): Promise<void> {
     if (this.swept.has(source.id)) return
     this.swept.add(source.id)
@@ -212,7 +212,7 @@ export class GitManager {
     }
   }
 
-  // ---------- repositórios e contexto ----------
+  // ---------- repositories and context ----------
   private source(sourceId: string): Source {
     const row = this.database.db.prepare('SELECT id, project_id AS projectId, name, local_path AS path FROM project_sources WHERE id = ?').get(sourceId) as Source | undefined
     if (!row) throw new Error(tm().common.repoNotFoundInProject)
@@ -226,7 +226,7 @@ export class GitManager {
       ORDER BY c.title, m.path`).all(...(cardId ? [projectId, cardId] : [projectId])) as Member[]
   }
 
-  /** Como `target`, para quem altera arquivos: com um card, recusa enquanto um agente roda nessa pasta (D1). */
+  /** Like `target`, for whoever changes files: with a card, refuses while an agent is running in that folder (D1). */
   private async busyTarget(source: Source, cardId: string | null): Promise<Target> {
     const target = await this.target(source, cardId)
     if (cardId) this.assertIdle(source.id, target.dir)
@@ -250,8 +250,8 @@ export class GitManager {
     })))
   }
 
-  // ---------- descoberta e configuração do Git ----------
-  /** Repositório (raiz e branch) da pasta, ou null se ela não está dentro de um repositório Git. */
+  // ---------- Git discovery and setup ----------
+  /** Repository (root and branch) of the folder, or null if it is not inside a Git repository. */
   private async repositoryAt(dir: string): Promise<{ root: string; branch: string } | null> {
     const root = (await this.tryRun(dir, ['rev-parse', '--show-toplevel']))?.trim()
     if (!root) return null
@@ -260,8 +260,8 @@ export class GitManager {
   }
 
   /**
-   * Procura repositórios nas pastas do projeto (a própria pasta e as filhas diretas), inclusive os criados ou configurados por fora
-   * depois do cadastro, e acerta o cadastro: o que virou repositório passa a valer como tal e o que deixou de ser é desmarcado.
+   * Looks for repositories in the project folders (the folder itself and its direct children), including those created or configured outside
+   * after registration, and fixes the registration: what became a repository counts as one and what stopped being one is unmarked.
    */
   async detect(projectId: string): Promise<{ repos: GitRepo[]; changed: boolean }> {
     const rows = this.database.db.prepare('SELECT id, project_id AS projectId, name, local_path AS path, is_git_repository AS git, current_branch AS branch FROM project_sources WHERE project_id = ? ORDER BY sort_order').all(projectId) as Array<Source & { git: number; branch: string | null }>
@@ -295,12 +295,12 @@ export class GitManager {
     return { repos: await this.repos(projectId), changed }
   }
 
-  /** Pastas do projeto que ainda não são repositório: onde o Git pode ser adicionado. */
+  /** Project folders that are not repositories yet: where Git can be added. */
   setupTargets(projectId: string): Array<{ sourceId: string; name: string; path: string }> {
     return this.database.db.prepare('SELECT id AS sourceId, name, local_path AS path FROM project_sources WHERE project_id = ? AND is_git_repository = 0 ORDER BY sort_order').all(projectId) as Array<{ sourceId: string; name: string; path: string }>
   }
 
-  /** Inicia o Git na pasta (sem mexer nos arquivos dela) ou vincula uma origin SSH/HTTPS; cria o repositório se a pasta ainda não tem. */
+  /** Initializes Git in the folder (without touching its files) or links an SSH/HTTPS origin; creates the repository if the folder does not have one yet. */
   async setup(input: { projectId: string; sourceId: string; mode: 'init' | 'origin'; url?: string | undefined }): Promise<GitRepo[]> {
     const source = this.source(input.sourceId)
     if (source.projectId !== input.projectId) throw new Error(tm().git.folderNotInProject)
@@ -323,12 +323,12 @@ export class GitManager {
     return this.repos(input.projectId)
   }
 
-  // ---------- regra de commit ----------
+  // ---------- commit rule ----------
   policy(projectId: string): GitPolicy {
     const row = this.database.db.prepare('SELECT git_policy AS policy FROM projects WHERE id = ?').get(projectId) as { policy: string | null } | undefined
     if (!row) throw new Error(tm().common.projectNotFound)
     if (!row.policy) return structuredClone(defaultGitPolicy)
-    try { const parsed = gitPolicySchema.safeParse(JSON.parse(row.policy)); if (parsed.success) return parsed.data } catch { /* JSON ruim: volta ao padrão */ }
+    try { const parsed = gitPolicySchema.safeParse(JSON.parse(row.policy)); if (parsed.success) return parsed.data } catch { /* bad JSON: back to the default */ }
     return structuredClone(defaultGitPolicy)
   }
 
@@ -340,7 +340,7 @@ export class GitManager {
 
   ruleFor(projectId: string, branch: string): { rule: GitRule; why: string } { return resolveRule(this.policy(projectId), branch) }
 
-  /** Frase para o contexto do agente de implementação: o que ele pode fazer quanto a commit nesta branch. */
+  /** Sentence for the implementation agent's context: what it may do about commits on this branch. */
   agentRule(cardId: string): string | null {
     const card = this.database.db.prepare('SELECT project_id AS projectId FROM cards WHERE id = ?').get(cardId) as { projectId: string } | undefined
     const wt = this.latestWorktree(cardId)
@@ -355,7 +355,7 @@ export class GitManager {
     return this.database.db.prepare(`SELECT id, branch FROM worktrees WHERE card_id = COALESCE((SELECT worktree_card_id FROM cards WHERE id = ?), ?) AND cleanup_state != 'removed' ORDER BY created_at DESC LIMIT 1`).get(cardId, cardId) as { id: string; branch: string } | undefined
   }
 
-  // ---------- grafo ----------
+  // ---------- graph ----------
   async graph(projectId: string, sourceId: string, limit = 300, cardId?: string | null): Promise<GitGraph> {
     const source = this.source(sourceId)
     if (source.projectId !== projectId) throw new Error(tm().common.repoNotFoundInProject)
@@ -381,7 +381,7 @@ export class GitManager {
       }
       else if (ref.startsWith('refs/remotes/') && !ref.endsWith('/HEAD')) remotes.add(ref.slice(13))
     }
-    // Commits de cada card: tudo que a branch dele tem além da base.
+    // Commits of each card: everything its branch has beyond the base.
     const cardOf = new Map<string, string>()
     await Promise.all(live.map(async (member) => {
       if (!locals.has(member.branch)) return
@@ -402,7 +402,7 @@ export class GitManager {
       }
       return { hash, short: hash.slice(0, 7), parents: parents.split(' ').filter(Boolean), lane: 0, author, email, date: new Date(date).toISOString(), subject, refs, cardId: cardOf.get(hash) ?? null, agentProfileId: agents.get(hash) ?? null, wip: null }
     })
-    // Alterações sem commit: pasta principal e cada worktree de card.
+    // Uncommitted changes: main folder and each card worktree.
     const places: Array<{ cardId: string | null; dir: string; branch: string | null }> = [{ cardId: null, dir: source.path, branch: null }, ...live.map((member) => ({ cardId: member.cardId, dir: member.path, branch: member.branch }))]
     const wips = (await Promise.all(places.map(async (place): Promise<GitRow | null> => {
       const files = await this.listChanges(place.dir).catch(() => [] as GitChange[])
@@ -421,7 +421,7 @@ export class GitManager {
     const visible = new Set(commits.map((commit) => commit.hash))
     const rows = [...wips, ...stashRows.filter((row) => !visible.has(row.parents[0]!)), ...commits.flatMap((commit) => [...(byParent.get(commit.hash) ?? []), commit])]
     assignLanes(rows).forEach((lane, index) => { rows[index]!.lane = lane })
-    // A pasta da worktree pode estar em outra branch que a registrada (o usuário ou o agente fez checkout lá): vale a que está aberta de fato.
+    // The worktree folder may be on a different branch than the registered one (the user or the agent ran checkout there): the one actually open wins.
     const opened = await Promise.all(live.map(async (member) => (await this.tryRun(member.path, ['branch', '--show-current']))?.trim() ?? ''))
     const cardByBranch = new Map<string, string>()
     live.forEach((member, index) => { cardByBranch.set(member.branch, member.cardId); if (opened[index]) cardByBranch.set(opened[index]!, member.cardId) })
@@ -453,7 +453,7 @@ export class GitManager {
     return { body: body.trim(), files }
   }
 
-  // ---------- alterações da pasta de trabalho ----------
+  // ---------- working folder changes ----------
   private async listChanges(dir: string): Promise<GitChange[]> {
     const [status, unstaged, staged] = await Promise.all([
       this.run(dir, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames']),
@@ -478,7 +478,7 @@ export class GitManager {
     return { branch: typeof current === 'string' ? current.trim() || null : current, files, lastMessage: (last ?? '').trim() }
   }
 
-  /** Diff de um arquivo dentro de um commit já feito (contra o pai; no primeiro commit, contra o vazio). */
+  /** Diff of a file inside an existing commit (against the parent; for the first commit, against empty). */
   async commitDiff(sourceId: string, hash: string, path: string): Promise<string> {
     if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
     const out = await this.run(this.source(sourceId).path, ['show', '--format=', '--no-ext-diff', '--no-renames', '--first-parent', hash, '--', path])
@@ -490,19 +490,19 @@ export class GitManager {
     const out = await this.run(target.dir, ['diff', ...(staged ? ['--cached'] : []), '--no-ext-diff', '--', path])
     if (out.trim() || staged) return out.slice(0, 400_000)
     if (await this.tryRun(target.dir, ['ls-files', '--error-unmatch', '--', path]) !== null) return ''
-    // fixo em português: o parseDiff do renderer (gitDiff.tsx) depende do prefixo 'Arquivo novo: '
+    // fixed in Portuguese: the renderer's parseDiff (gitDiff.tsx) depends on the 'Arquivo novo: ' prefix
     const text = await readFile(join(target.dir, path), 'utf8').catch(() => '')
     return `Arquivo novo: ${path}\n${text.slice(0, 200_000).split(/\r?\n/).map((line) => `+${line}`).join('\n')}`
   }
 
-  /** Caminho do arquivo dentro da pasta de trabalho (worktree do card ou repositório); nada fora dela. */
+  /** Path of the file inside the working folder (card worktree or repository); nothing outside it. */
   private async inside(sourceId: string, cardId: string | null, path: string): Promise<string> {
     const target = await this.target(this.source(sourceId), cardId), full = resolve(target.dir, path), rel = relative(target.dir, full)
     if (!path.trim() || !rel || rel.startsWith('..') || isAbsolute(rel)) throw new Error(tm().git.fileOutsideProject)
     return full
   }
 
-  /** Texto atual do arquivo, para editar na mão. */
+  /** Current text of the file, for manual editing. */
   async readFileText(sourceId: string, cardId: string | null, path: string): Promise<string> {
     const full = await this.inside(sourceId, cardId, path)
     if ((await stat(full)).size > 2_000_000) throw new Error(tm().git.fileTooLargeToEdit)
@@ -511,7 +511,7 @@ export class GitManager {
     return buffer.toString('utf8')
   }
 
-  /** Caminho absoluto, na worktree do card ou no repositório, para abrir o arquivo no editor. */
+  /** Absolute path, in the card worktree or in the repository, to open the file in the editor. */
   async filePath(sourceId: string, cardId: string | null, path: string): Promise<{ projectId: string; path: string }> { return { projectId: this.source(sourceId).projectId, path: await this.inside(sourceId, cardId, path) } }
 
   async writeFileText(sourceId: string, cardId: string | null, path: string, content: string): Promise<void> {
@@ -537,7 +537,7 @@ export class GitManager {
       if (!available.has(path)) throw new Error(tm().git.noUnstagedChangesFor(path))
       await this.inside(sourceId, cardId, path)
     }
-    // A cópia do desfazer sai ANTES de descartar (depois, o arquivo novo já estaria na Lixeira). Sem pasta de cópias, o descarte não se desfaz.
+    // The undo copy is made BEFORE discarding (afterwards, the new file would already be in the Recycle Bin). With no copies folder, the discard cannot be undone.
     const key = this.keyOf(sourceId, cardId), id = randomUUID(), before = await this.state(target.dir)
     const files = await this.backupForDiscard(sourceId, cardId, target.dir, id, paths)
     try { await this.discardPaths(sourceId, cardId, target.dir, paths) } catch (error) { await this.dropBackup(id); throw error }
@@ -550,14 +550,14 @@ export class GitManager {
       const literal = `:(literal)${path}`
       if (await this.tryRun(dir, ['ls-files', '--error-unmatch', '--', literal]) !== null) await this.run(dir, ['restore', '--worktree', '--', literal])
       else {
-        // Arquivo novo não existe no Git: vai para a Lixeira do sistema (quando o app a oferece), não é apagado de vez.
+        // A new file does not exist in Git: it goes to the system Recycle Bin (when the app offers it), not deleted for good.
         const file = await this.inside(sourceId, cardId, path)
         if (this.trashItem) await this.trashItem(file); else await unlink(file)
       }
     }
   }
 
-  /** Copia os arquivos que serão descartados para `<backupDir>/<id>/files/<n>` e anota como cada um deve ficar depois (`afterHash`). `null` = sem cópia (sem pasta, grande demais ou erro). */
+  /** Copies the files to be discarded into `<backupDir>/<id>/files/<n>` and notes how each should end up (`afterHash`). `null` = no copy (no folder, too large or error). */
   private async backupForDiscard(sourceId: string, cardId: string | null, dir: string, id: string, paths: string[]): Promise<DiscardFile[] | null> {
     if (!this.backupDir) return null
     try {
@@ -574,7 +574,7 @@ export class GitManager {
           backup = `files/${index}`
           await copyFile(full, join(this.backupDir, id, backup))
         }
-        // Rastreado volta ao que está no índice; arquivo novo deixa de existir.
+        // Tracked goes back to what is in the index; a new file stops existing.
         const afterHash = tracked ? (await this.tryRun(dir, ['ls-files', '-s', '--', literal]))?.trim().split(/\s+/)[1] ?? null : null
         if (tracked && !afterHash) throw new Error('backup')
         files.push({ path, tracked, backup, afterHash })
@@ -593,7 +593,7 @@ export class GitManager {
     return this.changes(sourceId, cardId)
   }
 
-  /** Grava o stash que acabou de ser criado (o `stash@{0}`); `paths` = só esses arquivos, para o refazer guardar os mesmos. */
+  /** Saves the stash that was just created (`stash@{0}`); `paths` = only those files, so redo stores the same ones. */
   private async recordStash(key: string, dir: string, before: GitState, paths?: string[]): Promise<void> {
     const hash = (await this.tryRun(dir, ['rev-parse', '-q', '--verify', 'stash@{0}']))?.trim()
     if (hash) await this.record(key, dir, 'stash', before, { hash, ...(paths ? { paths } : {}) }, [hash]); else await this.forget(key)
@@ -624,7 +624,7 @@ export class GitManager {
     const args = ['commit']
     if (subject) args.push('-m', subject, ...(description ? ['-m', description] : []))
     if (input.amend) args.push('--amend', ...(subject ? [] : ['--no-edit']))
-    // Lista longa não cabe na linha de comando do Windows: vai por arquivo (separada por NUL), sempre com --only para não levar o resto do index.
+    // A long list does not fit in the Windows command line: it goes via a file (NUL-separated), always with --only so the rest of the index is not taken.
     let listDir: string | null = null
     if (paths.length && paths.length <= 400) args.push('--only', '--', ...paths)
     else if (paths.length) {
@@ -638,7 +638,7 @@ export class GitManager {
     return (await this.run(dir, ['rev-parse', 'HEAD'])).trim()
   }
 
-  /** Texto para a IA sugerir a mensagem do commit: commits recentes (estilo), resumo e diff dos arquivos marcados. */
+  /** Text for the AI to suggest the commit message: recent commits (style), summary and diff of the checked files. */
   async suggestionContext(sourceId: string, cardId: string | null, paths: string[]): Promise<string> {
     const dir = (await this.target(this.source(sourceId), cardId)).dir, listed = paths.slice(0, 200)
     const recent = (await this.tryRun(dir, ['log', '-8', '--format=%s']))?.trim() ?? ''
@@ -663,7 +663,7 @@ ${diff}`
   async commit(input: { sourceId: string; cardId: string | null; message: string; description?: string; amend?: boolean; paths?: string[] }): Promise<{ hash: string }> {
     const target = await this.target(this.source(input.sourceId), input.cardId), before = await this.state(target.dir)
     const hash = await this.commitAt(target.dir, input)
-    // Amend sem mensagem nova (--no-edit) mantém o resumo do commit antigo: lê do commit que ficou.
+    // Amend with no new message (--no-edit) keeps the old commit's summary: read it from the commit that remains.
     const message = (await this.tryRun(target.dir, ['log', '-1', '--format=%s']))?.trim() || splitMessage(input.message).subject
     await this.record(this.keyOf(input.sourceId, input.cardId), target.dir, 'commit', before, { message, amend: Boolean(input.amend), hash })
     return { hash }
@@ -685,7 +685,7 @@ ${diff}`
   async sync(sourceId: string, cardId: string | null, action: 'fetch' | 'pull' | 'push' | 'stash' | 'pop', pull: 'ff' | 'ff-only' | 'rebase' = 'ff-only', force = false): Promise<{ output: string; conflicts?: number }> {
     const source = this.source(sourceId), target = await (action === 'fetch' || action === 'push' ? this.target(source, cardId) : this.busyTarget(source, cardId))
     if (action === 'stash') {
-      // Guarda também os não rastreados (-u): eles saem da pasta, então a mensagem diz quantos foram junto.
+      // Also stashes untracked files (-u): they leave the folder, so the message says how many went along.
       if (!(await this.run(target.dir, ['status', '--porcelain'])).trim()) return { output: tm().git.nothingToStash }
       const untracked = (await this.run(target.dir, ['ls-files', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean).length
       const before = await this.state(target.dir)
@@ -699,13 +699,13 @@ ${diff}`
     if (action === 'pull') { await this.forget(this.keyOf(sourceId, cardId)); return { output: (await this.run(target.dir, ['pull', pull === 'rebase' ? '--rebase' : pull === 'ff' ? '--ff' : '--ff-only'])).trim() || tm().git.allUpToDate } }
     const branch = target.branch ?? (await this.run(target.dir, ['branch', '--show-current'])).trim()
     if (!branch) throw new Error(tm().git.detachedHeadBeforePublish)
-    // Forçar usa --force-with-lease: só sobrescreve se o remoto ainda estiver como o último fetch (não atropela o que chegou depois).
+    // Force uses --force-with-lease: it only overwrites if the remote is still as of the last fetch (it does not trample what arrived later).
     const output = (await this.run(target.dir, ['push', '-u', ...(force ? ['--force-with-lease'] : []), 'origin', branch])).trim() || (force ? tm().git.branchForcePublished(branch) : tm().git.branchPublished(branch))
     await this.forget(this.keyOf(sourceId, cardId))
     return { output }
   }
 
-  /** Branch atual (da pasta principal ou da worktree do card), a remota que ela acompanha (null se nenhuma) e os remotos do repositório. */
+  /** Current branch (of the main folder or the card worktree), the remote one it tracks (null if none) and the repository's remotes. */
   async upstream(sourceId: string, cardId: string | null): Promise<{ branch: string | null; upstream: string | null; remotes: string[] }> {
     const source = this.source(sourceId), target = await this.target(source, cardId)
     const branch = target.branch ?? ((await this.tryRun(target.dir, ['branch', '--show-current']))?.trim() || null)
@@ -714,7 +714,7 @@ ${diff}`
     return { branch, upstream, remotes }
   }
 
-  /** Liga a branch atual a remoto/branch (para o pull e o push saberem para onde ir). Busca a branch remota antes; se ela não existe, explica. */
+  /** Links the current branch to remote/branch (so pull and push know where to go). Fetches the remote branch first; if it does not exist, explains. */
   async setUpstream(input: { sourceId: string; cardId: string | null; remote: string; branch: string }): Promise<{ upstream: string }> {
     const source = this.source(input.sourceId), target = await this.target(source, input.cardId)
     const current = target.branch ?? (await this.run(target.dir, ['branch', '--show-current'])).trim()
@@ -728,7 +728,7 @@ ${diff}`
     return { upstream: `${remote}/${branch}` }
   }
 
-  /** Trava: não atualiza a pasta de um card enquanto um agente (dele, ou de quem usa a worktree dele) está rodando, para não trocar arquivos debaixo dele. */
+  /** Lock: does not update a card's folder while an agent (its own, or whoever uses its worktree) is running, so files are not swapped under it. */
   private assertIdle(sourceId: string, folder: string): void {
     const normal = (value: string): string => value.split(String.fromCharCode(92)).join('/').toLowerCase().replace(/\/+$/, '')
     const owner = this.members(this.source(sourceId).projectId).find((member) => normal(member.path) === normal(folder))
@@ -738,14 +738,14 @@ ${diff}`
     if (busy !== undefined) throw new Error(tm().git.cardAgentBusy(busy || tm().common.untitled))
   }
 
-  /** O que se perde ao apagar a worktree do card: commits só dela (sem push) e arquivos sem commit, por repositório. */
+  /** What is lost when deleting the card worktree: commits only in it (not pushed) and uncommitted files, per repository. */
   projectOfCard(cardId: string): string {
     const projectId = this.database.db.prepare('SELECT project_id FROM cards WHERE id = ?').pluck().get(cardId) as string | undefined
     if (!projectId) throw new Error(tm().common.cardNotFound)
     return projectId
   }
 
-  /** Pastas da worktree do card; com `sourceId`, só a do repositório escolhido. */
+  /** Card worktree folders; with `sourceId`, only the one for the chosen repository. */
   private worktreeMembers(projectId: string, cardId: string, sourceId?: string): Member[] {
     const all = this.members(projectId, cardId)
     if (!sourceId) return all
@@ -769,8 +769,8 @@ ${diff}`
   }
 
   /**
-   * Apaga a worktree do card (todas as pastas dela) e libera o espaço. O card e o histórico dele ficam; só o vínculo vira "removida".
-   * A branch local só é apagada se `deleteBranch`; sem isso ela guarda os commits que não foram enviados.
+   * Deletes the card worktree (all its folders) and frees the space. The card and its history stay; only the link becomes "removed".
+   * The local branch is only deleted if `deleteBranch`; otherwise it keeps the commits that were not pushed.
    */
   async deleteWorktree(projectId: string, cardId: string, deleteBranch: boolean, sourceId?: string): Promise<{ output: string; keptBranches: string[] }> {
     const members = this.worktreeMembers(projectId, cardId, sourceId)
@@ -780,7 +780,7 @@ ${diff}`
       AND EXISTS (SELECT 1 FROM runs r WHERE r.card_id = c.id AND r.status IN ('queued', 'running')) LIMIT 1`).pluck().get(cardId, cardId) as string | undefined
     if (busy !== undefined) throw new Error(tm().git.worktreeAgentBusy(busy || tm().common.untitled))
     const info = await this.worktreeInfo(projectId, cardId, sourceId), kept: string[] = []
-    // As pastas do card vão sumir: o histórico de desfazer delas não serve mais.
+    // The card folders are going away: their undo history is no longer useful.
     await this.release(this.undo.clearWhere((key) => key.endsWith(`:${cardId}`)))
     for (const member of members) {
       const branch = info.repos.find((repo) => repo.name === basename(member.repoPath))?.branch ?? member.branch
@@ -789,13 +789,13 @@ ${diff}`
       await this.tryRun(member.repoPath, ['worktree', 'prune'])
       if (existsSyncDir(member.path)) throw new Error(tm().git.worktreeFolderLocked(member.path))
       this.database.db.prepare('DELETE FROM worktree_members WHERE worktree_id = ? AND path = ?').run(worktree.id, member.path)
-      try { this.onFolderRemoved?.(member.path) } catch { /* o índice é informativo */ }
+      try { this.onFolderRemoved?.(member.path) } catch { /* the index is informational */ }
       if (deleteBranch && await this.tryRun(member.repoPath, ['branch', '-d', branch]) === null && await this.tryRun(member.repoPath, ['show-ref', '--verify', '-q', `refs/heads/${branch}`]) !== null) kept.push(branch)
     }
-    // Só apagou uma pasta e ainda restam outras: a worktree do card continua valendo.
+    // Only one folder was deleted and others remain: the card worktree is still valid.
     const remaining = this.database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(worktree.id) as number
     if (remaining > 0) return { output: tm().git.worktreeDeleted(info.title), keptBranches: kept }
-    // A pasta-mãe (uma por card) só some se não for o próprio repositório de ninguém.
+    // The parent folder (one per card) only goes away if it is nobody's own repository.
     if (!members.some((member) => same(member.repoPath, worktree.path)) && !existsSyncDir(join(worktree.path, '.git'))) await rm(worktree.path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }).catch(() => undefined)
     this.database.db.transaction(() => {
       this.database.db.prepare(`UPDATE worktrees SET cleanup_state = 'removed' WHERE id = ?`).run(worktree.id)
@@ -804,7 +804,7 @@ ${diff}`
     return { output: tm().git.worktreeDeleted(info.title), keptBranches: kept }
   }
 
-  /** Pasta (worktree) onde a branch está aberta, se não for a pasta principal; `null` se não estiver aberta em lugar nenhum. */
+  /** Folder (worktree) where the branch is open, if it is not the main folder; `null` if it is not open anywhere. */
   private async worktreeOf(dir: string, branch: string): Promise<string | null> {
     let path = ''
     for (const line of ((await this.tryRun(dir, ['worktree', 'list', '--porcelain'])) ?? '').split(/\r?\n/)) {
@@ -814,7 +814,7 @@ ${diff}`
     return null
   }
 
-  /** Atualiza a branch escolhida somente por fast-forward antes de abri-la. */
+  /** Updates the chosen branch by fast-forward only before opening it. */
   async checkoutRemote(sourceId: string, cardId: string | null, name: string): Promise<{ output: string }> {
     const dir = (await this.busyTarget(this.source(sourceId), cardId)).dir, slash = name.indexOf('/')
     const remote = name.slice(0, slash), local = name.slice(slash + 1)
@@ -840,12 +840,12 @@ ${diff}`
       else await this.run(dir, ['branch', '-f', local, remoteRef])
     }
     if (current !== local) await this.run(dir, ['checkout', local])
-    // A branch andou por fast-forward: só o checkout não desfaz isso, então a pilha é limpa.
+    // The branch moved by fast-forward: checkout alone does not undo that, so the stack is cleared.
     if (isBehind && !isAhead) await this.forget(key); else await this.record(key, dir, 'checkout', before, { to: local })
     return { output: isBehind && !isAhead ? tm().git.branchFastForwardedOpened(local) : tm().git.branchOpenedContains(local, name) }
   }
 
-  /** Ações do menu de uma branch na pasta principal do repositório. Merge e rebase com conflito são desfeitos, para não deixar a pasta no meio do caminho. */
+  /** Branch menu actions on the repository's main folder. Merge and rebase with conflicts are undone, so the folder is not left halfway. */
   async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string }): Promise<{ output: string }> {
     const dir = (await (input.action === 'push' || input.action === 'delete-remote' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))).dir, { action, name } = input
     const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(tm().git.invalidBranchName(ref)) }
@@ -857,7 +857,7 @@ ${diff}`
     if (action === 'checkout') {
       const remote = await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${name}`]) === null && await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/remotes/${name}`]) !== null
       if (!remote) { await this.run(dir, ['checkout', name]); await this.record(key, dir, 'checkout', before, { to: name }); return { output: tm().git.nowOn(name) } }
-      // Branch remota: cria a local acompanhando a remota e muda para ela; se a local já existe, só muda para ela.
+      // Remote branch: creates the local one tracking the remote and switches to it; if the local one already exists, just switches to it.
       const local = name.replace(/^[^/]+\//, '')
       const exists = await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${local}`]) !== null
       await this.run(dir, exists ? ['checkout', local] : ['checkout', '--track', name])
@@ -865,7 +865,7 @@ ${diff}`
       return { output: exists ? tm().git.nowOnExisting(local) : tm().git.branchCreatedFromNowOn(local, name, local) }
     }
     if (action === 'delete-remote') {
-      // `name` vem como origem/branch (ex.: origin/feature/x). Apaga no servidor; nunca o HEAD nem a branch padrão do remoto.
+      // `name` comes as origin/branch (e.g. origin/feature/x). Deletes on the server; never HEAD nor the remote's default branch.
       const slash = name.indexOf('/'), remoteName = name.slice(0, slash), branch = name.slice(slash + 1)
       if (slash <= 0 || !branch) throw new Error(tm().git.enterRemoteBranchFormat)
       await valid(remoteName); await valid(branch)
@@ -908,7 +908,7 @@ ${diff}`
     return { output: tm().git.branchDeleted(name) }
   }
 
-  /** Atualiza a branch local pelo remoto só com fast-forward. Se estiver aberta numa worktree, o pull roda dentro dela (o Git não deixa fazer `fetch name:name` nesse caso). */
+  /** Updates the local branch from the remote with fast-forward only. If it is open in a worktree, the pull runs inside it (Git does not allow `fetch name:name` in that case). */
   private async fastForwardBranch(sourceId: string, dir: string, name: string, current: string): Promise<string> {
     if (current === name) return this.run(dir, ['pull', '--ff-only'])
     const inWorktree = await this.worktreeOf(dir, name)
@@ -917,14 +917,14 @@ ${diff}`
     return this.run(dir, ['fetch', remote, `${name}:${name}`])
   }
 
-  /** Antes de um rebase sobre uma branch local, baixa as novidades dela se o upstream estiver à frente (sem upstream ou sem remoto, não faz nada). */
+  /** Before a rebase onto a local branch, fetches its news if the upstream is ahead (with no upstream or no remote, it does nothing). */
   private async updateIfBehind(sourceId: string, dir: string, name: string, current: string): Promise<void> {
     if (await this.tryRun(dir, ['show-ref', '--verify', '-q', `refs/heads/${name}`]) === null) return
     const behind = Number((await this.tryRun(dir, ['rev-list', '--count', `${name}..${name}@{upstream}`]))?.trim() ?? 0)
     if (behind > 0) await this.fastForwardBranch(sourceId, dir, name, current)
   }
 
-  /** Ações do menu de um commit na pasta principal. Cherry-pick, revert e rebase com conflito ficam abertos para a tela de conflitos, ou são desfeitos se não houver conflito. */
+  /** Commit menu actions on the main folder. Cherry-pick, revert and rebase with conflicts stay open for the conflicts screen, or are undone if there is no conflict. */
   async commitAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'cherry-pick' | 'revert' | 'rebase' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag'; hash: string; name?: string }): Promise<{ output: string }> {
     const dir = (await (action_ => action_ === 'branch' || action_ === 'tag' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))(input.action)).dir, { action, hash } = input
     if (!/^[0-9a-f]{7,64}$/.test(hash)) throw new Error(tm().git.invalidCommit)
@@ -937,11 +937,11 @@ ${diff}`
     }
     if (action === 'checkout') { await this.run(dir, ['checkout', '--detach', hash]); await this.record(key, dir, 'checkout', before, { to: hash.slice(0, 7) }); return { output: tm().git.mainFolderAtDetached(hash.slice(0, 7)) } }
     if (action.startsWith('reset-')) {
-      // Reset hard descarta o que não foi commitado: antes, guarda uma cópia recuperável (o commit antigo continua no reflog).
+      // Hard reset discards what was not committed: first, saves a recoverable copy (the old commit stays in the reflog).
       const saved = action === 'reset-hard' ? await this.saveRecovery(dir, 'reset') : null
       const snapshot = saved ? (await this.tryRun(dir, ['rev-parse', '-q', '--verify', saved]))?.trim() || null : null
       await this.run(dir, ['reset', `--${action.slice(6)}`, hash])
-      // Com alterações, a cópia do `stash create` é o que permite desfazer; sem elas e sem mudar o HEAD, não há o que desfazer.
+      // With changes, the `stash create` copy is what allows undo; with none and no HEAD change, there is nothing to undo.
       const to = (await this.tryRun(dir, ['rev-parse', 'HEAD']))?.trim() ?? ''
       if (snapshot) await this.record(key, dir, 'reset-hard-dirty', before, { mode: 'hard', from: before.head, to, snapshot }, [snapshot])
       else if (to && to !== before.head) await this.record(key, dir, 'reset', before, { mode: action.slice(6), from: before.head, to })
@@ -951,7 +951,7 @@ ${diff}`
     if (action === 'rebase') {
       const current = (await this.run(dir, ['branch', '--show-current'])).trim()
       if (!current) throw new Error(tm().git.mainFolderDetached)
-      // Se o commit é a ponta de uma branch local atrasada em relação ao remoto, baixa essa branch antes e rebaseia sobre a ponta nova.
+      // If the commit is the tip of a local branch behind the remote, fetches that branch first and rebases onto the new tip.
       let onto = hash
       const tips = ((await this.tryRun(dir, ['for-each-ref', '--points-at', hash, '--format=%(refname:short)', 'refs/heads'])) ?? '').split(/\r?\n/).filter((ref) => ref && ref !== current)
       for (const tip of tips) {
@@ -964,7 +964,7 @@ ${diff}`
     try { await this.run(dir, action === 'revert' ? ['revert', '--no-edit', hash] : ['cherry-pick', hash]); return { output: action === 'revert' ? tm().git.commitReverted(hash.slice(0, 7)) : tm().git.commitCherryPicked(hash.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, action as 'cherry-pick' | 'revert', error) }
   }
 
-  /** Guarda em `refs/gearmod/backup/*` o que uma ação destrutiva vai descartar (alterações do `git stash create`, ou o stash indicado). Devolve o nome da ref. */
+  /** Saves under `refs/gearmod/backup/*` what a destructive action will discard (changes from `git stash create`, or the given stash). Returns the ref name. */
   private async saveRecovery(dir: string, kind: 'reset' | 'stash', stashRef?: string): Promise<string | null> {
     const commit = (kind === 'stash' ? await this.tryRun(dir, ['rev-parse', '--verify', stashRef!]) : await this.tryRun(dir, ['stash', 'create']))?.trim()
     if (!commit) return null
@@ -972,7 +972,7 @@ ${diff}`
     return await this.tryRun(dir, ['update-ref', ref, commit]) === null ? null : ref
   }
 
-  /** Falha de merge/rebase/cherry-pick/revert: com conflito a operação fica aberta para a tela de conflitos; sem conflito é desfeita. */
+  /** Merge/rebase/cherry-pick/revert failure: with a conflict the operation stays open for the conflicts screen; without a conflict it is undone. */
   private async afterFailure(dir: string, kind: 'merge' | 'rebase' | 'cherry-pick' | 'revert', error: unknown): Promise<Error> {
     const state = await this.conflictState(dir)
     if (state.operation && state.files.length) return new Error(tm().git.conflictInFiles(state.files.length))
@@ -981,8 +981,8 @@ ${diff}`
   }
 
   /**
-   * Operação com conflito em andamento. `stash` = há arquivos não mesclados sem MERGE_HEAD etc. (stash apply/pop que conflitou):
-   * não existe operação para continuar nem abortar, só marcar os arquivos como resolvidos.
+   * Operation with a conflict in progress. `stash` = there are unmerged files without MERGE_HEAD etc. (a stash apply/pop that conflicted):
+   * there is no operation to continue or abort, only marking the files as resolved.
    */
   private async conflictState(dir: string): Promise<{ operation: ConflictOperation | null; files: string[] }> {
     const gitDir = ((await this.tryRun(dir, ['rev-parse', '--absolute-git-dir'])) ?? '').trim()
@@ -994,12 +994,12 @@ ${diff}`
     return { operation, files: operation ? files : [] }
   }
 
-  /** Pasta onde o conflito vive: o repositório do projeto ou, com `cardId`, a worktree do card nesse repositório. */
+  /** Folder where the conflict lives: the project repository or, with `cardId`, the card worktree in that repository. */
   private async conflictDir(sourceId: string, cardId?: string | null, write = true): Promise<string> { return (await (write ? this.busyTarget : this.target).call(this, this.source(sourceId), cardId ?? null)).dir }
 
   async conflicts(sourceId: string, cardId?: string | null): Promise<{ operation: ConflictOperation | null; files: string[] }> { return this.conflictState(await this.conflictDir(sourceId, cardId, false)) }
 
-  /** Repositórios (e worktrees de card) do projeto com merge/rebase/cherry-pick/revert em andamento, para marcar a lista da página Git. */
+  /** Project repositories (and card worktrees) with a merge/rebase/cherry-pick/revert in progress, to mark the Git page list. */
   async conflictsAll(projectId: string): Promise<Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: ConflictOperation; files: string[] }>> {
     const sources = this.database.db.prepare(`SELECT id, project_id AS projectId, name, local_path AS path FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order`).all(projectId) as Source[]
     const found: Array<{ sourceId: string; cardId: string | null; repo: string; cardTitle: string | null; operation: ConflictOperation; files: string[] }> = []
@@ -1016,14 +1016,14 @@ ${diff}`
     return found
   }
 
-  /** Conteúdo do arquivo em conflito, com os marcadores do Git. */
+  /** Content of the conflicted file, with Git's markers. */
   async conflictFile(sourceId: string, path: string, cardId?: string | null): Promise<string> {
     const dir = await this.conflictDir(sourceId, cardId, false)
     if (!(await this.conflictState(dir)).files.includes(path)) throw new Error(tm().git.fileNotInConflict)
     return (await readFile(join(dir, path), 'utf8').catch(() => '')).slice(0, 400_000)
   }
 
-  /** Grava o texto editado de um arquivo que ainda está em conflito (sem `git add`) e diz quantos continuam em conflito. */
+  /** Saves the edited text of a file that is still conflicted (without `git add`) and says how many remain conflicted. */
   async saveConflict(sourceId: string, path: string, content: string, cardId?: string | null): Promise<{ left: number }> {
     const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
     if (!state.files.includes(path)) throw new Error(tm().git.fileNotInConflict)
@@ -1037,7 +1037,7 @@ ${diff}`
     if (side === 'marked') {
       if (/^(<{7}|>{7}) /m.test(await readFile(join(dir, path), 'utf8').catch(() => ''))) throw new Error(tm().git.conflictMarkersRemain)
       await this.run(dir, ['add', '--', path])
-    } else if (await this.tryRun(dir, ['checkout', `--${side}`, '--', path]) === null) await this.run(dir, ['rm', '-f', '--', path]) // um dos lados apagou o arquivo
+    } else if (await this.tryRun(dir, ['checkout', `--${side}`, '--', path]) === null) await this.run(dir, ['rm', '-f', '--', path]) // one of the sides deleted the file
     else await this.run(dir, ['add', '--', path])
     return { left: (await this.conflictState(dir)).files.length }
   }
@@ -1045,7 +1045,7 @@ ${diff}`
   async finishConflicts(sourceId: string, action: 'continue' | 'abort', cardId?: string | null): Promise<{ output: string }> {
     const dir = await this.conflictDir(sourceId, cardId), state = await this.conflictState(dir)
     if (!state.operation) throw new Error(tm().git.noOperationInProgress)
-    // Stash com conflito: não há "stash --abort/--continue"; cada arquivo resolvido já foi marcado com git add e o stash continua guardado.
+    // Conflicted stash: there is no "stash --abort/--continue"; each resolved file was already marked with git add and the stash is still kept.
     if (state.operation === 'stash') throw new Error(action === 'abort' ? tm().git.stashConflictNoAbort : tm().git.stillInConflict(state.files.length))
     if (action === 'abort') { await this.run(dir, [state.operation, '--abort']); await this.forget(this.keyOf(sourceId, cardId)); return { output: tm().git.mergeAborted } }
     if (state.files.length) throw new Error(tm().git.stillInConflict(state.files.length))
@@ -1055,8 +1055,8 @@ ${diff}`
   }
 
   /**
-   * As duas versões de um arquivo para o `DiffEditor` da página Git: `unstaged` = índice × disco, `staged` = HEAD × índice e `commit` = pai × commit
-   * (seguindo renomeações). `null` num lado = arquivo novo ou apagado; binário ou acima de 1 MB não manda conteúdo.
+   * The two versions of a file for the Git page's `DiffEditor`: `unstaged` = index × disk, `staged` = HEAD × index and `commit` = parent × commit
+   * (following renames). `null` on a side = new or deleted file; binary or above 1 MB sends no content.
    */
   async fileVersions(sourceId: string, cardId: string | null, path: string, mode: 'unstaged' | 'staged' | 'commit', hash?: string): Promise<{ before: string | null; after: string | null; binary: boolean; truncated: boolean }> {
     const target = await this.target(this.source(sourceId), cardId)
@@ -1088,7 +1088,7 @@ ${diff}`
     return this.applyStash(dir, ['stash', input.action, input.ref], input.action === 'pop' ? tm().git.stashAppliedRemoved : tm().git.stashApplied)
   }
 
-  /** Aplica um stash (apply/pop). Se sobrar conflito, não é erro: o Git mantém o stash e a tela de conflitos assume (`conflicts` > 0). */
+  /** Applies a stash (apply/pop). If a conflict remains, it is not an error: Git keeps the stash and the conflicts screen takes over (`conflicts` > 0). */
   private async applyStash(dir: string, args: string[], ok: string): Promise<{ output: string; conflicts?: number }> {
     try { await this.run(dir, args); return { output: ok } } catch (error) {
       const state = await this.conflictState(dir)
@@ -1125,8 +1125,8 @@ ${diff}`
     return { ref: 'stash@{0}', commit: replacement }
   }
 
-  // ---------- origem de cada repositório do card ----------
-  /** Branches que servem de origem num repositório (locais e de origin), sem repetir. */
+  // ---------- origin of each card repository ----------
+  /** Branches that serve as origin in a repository (local and from origin), without repeats. */
   async baseOptions(sourceId: string): Promise<string[]> {
     const source = this.source(sourceId)
     const out = await this.tryRun(source.path, ['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes/origin'])
@@ -1134,7 +1134,7 @@ ${diff}`
     return [...new Set((out ?? '').split(/\r?\n/).map((line) => line.trim()).filter((name) => name && name !== 'origin' && name !== 'origin/HEAD' && !name.startsWith('gearmod/') && !cardBranches.has(name) && !cardBranches.has(name.replace(/^origin\//, ''))))]
   }
 
-  /** Troca a origem de UM repositório do card (a dos outros não muda): os commits do card passam a ser contados a partir dela. */
+  /** Changes the origin of ONE card repository (the others do not change): the card's commits are counted from it from now on. */
   async setBase(cardId: string, sourceId: string, baseRef: string): Promise<{ baseRef: string }> {
     const source = this.source(sourceId), wt = this.latestWorktree(cardId)
     if (!wt) throw new Error(tm().git.cardHasNoWorktree)
@@ -1146,7 +1146,7 @@ ${diff}`
     return { baseRef }
   }
 
-  // ---------- painel do card ----------
+  // ---------- card panel ----------
   async card(cardId: string): Promise<GitCard> {
     const card = this.database.db.prepare('SELECT project_id AS projectId FROM cards WHERE id = ?').get(cardId) as { projectId: string } | undefined
     if (!card) throw new Error(tm().common.cardNotFound)
@@ -1175,13 +1175,13 @@ ${diff}`
       return { ...empty, ahead: commits.length, behind: Number.parseInt(behind ?? '0', 10) || 0, published: Boolean(published?.trim()), hasRemote: Boolean(remote?.trim()), commits, files, request: pending.find((item) => item.sourceId === source.id) ?? null }
     }))
     const base = members[0]?.baseRef, list = repos.filter((item): item is NonNullable<typeof item> => Boolean(item))
-    // Entrega por repositório: o card só está entregue quando todos estão prontos, commitados e sem pendência.
+    // Delivery per repository: the card is only delivered when all are ready, committed and with nothing pending.
     const missing = list.flatMap((repo) => repo.state === 'failed' ? [tm().git.deliveryWorktreeFailed(repo.name, repo.error ?? tm().git.unknownError)] : repo.state === 'missing' ? [tm().git.deliveryWorktreeFolderGone(repo.name)] : repo.files.length ? [tm().git.deliveryUncommitted(repo.name, repo.files.length)] : [])
     return { branch: wt.branch, baseBranch: base ? base.replace(/^origin\//, '') : null, rule: resolveRule(policy, wt.branch), repos: list, delivery: { complete: !missing.length && list.some((repo) => repo.ahead > 0), pending: missing } }
   }
 
   // ---------- pull requests ----------
-  /** Só abre no navegador um endereço de PR que o próprio card registrou (nunca um link qualquer vindo da tela). */
+  /** Only opens in the browser a PR address that the card itself registered (never an arbitrary link coming from the screen). */
   prUrlOf(cardId: string, url: string): string {
     const known = this.database.db.prepare('SELECT m.pr_url FROM worktree_members m JOIN worktrees w ON w.id = m.worktree_id WHERE w.card_id = ? AND m.pr_url IS NOT NULL').pluck().all(cardId) as string[]
     if (!known.includes(url) || !/^https:\/\//.test(url)) throw new Error(tm().git.unknownPrUrl)
@@ -1189,8 +1189,8 @@ ${diff}`
   }
 
   /**
-   * Um PR (GitHub, pelo gh) ou MR (GitLab, pelo glab) por repositório do card que tem commits. Só roda quando o usuário pede:
-   * publica a branch e abre o PR em rascunho por padrão. Falha num repositório não impede os outros; o resultado diz o que faltou.
+   * One PR (GitHub, via gh) or MR (GitLab, via glab) per card repository that has commits. Only runs when the user asks:
+   * publishes the branch and opens the PR as a draft by default. A failure in one repository does not stop the others; the result says what was missing.
    */
   async createPullRequests(cardId: string, input: { draft: boolean; title?: string; body?: string; sourceId?: string }): Promise<{ results: Array<{ repo: string; url: string | null; error: string | null }> }> {
     const card = this.database.db.prepare('SELECT project_id AS projectId, title FROM cards WHERE id = ?').get(cardId) as { projectId: string; title: string } | undefined
@@ -1202,7 +1202,7 @@ ${diff}`
     const title = input.title?.trim() || card.title || 'Alterações do GearMod'
     const body = input.body ?? `${summary}${members.length > 1 ? `\n\nEste card altera ${members.length} repositórios (${names.join(', ')}); cada um tem o seu PR na mesma branch.` : ''}\n\n_Aberto pelo GearMod._`
     const results: Array<{ repo: string; url: string | null; error: string | null }> = []
-    // Com `sourceId`, só esse repositório; sem ele, todos os do card.
+    // With `sourceId`, only that repository; without it, all of the card's.
     const only = input.sourceId ? resolve(this.source(input.sourceId).path) : null
     for (const [index, member] of members.entries()) {
       if (only && resolve(member.repoPath) !== only) continue
@@ -1224,7 +1224,7 @@ ${diff}`
         catch (error) {
           const text = error instanceof Error ? error.message : String(error)
           if (/ENOENT|not recognized|não é reconhecido/i.test(text)) throw new Error(gitlab ? tm().git.installGlab : tm().git.installGh)
-          // PR já aberto para a branch: reaproveita o endereço dele.
+          // PR already open for the branch: reuse its address.
           if (!gitlab && /already exists/i.test(text)) output = await this.cli.run('gh', ['pr', 'view', member.branch, '--json', 'url', '-q', '.url'], member.path)
           else throw new Error(text.split(/\r?\n/).find((line) => line.trim())?.slice(0, 300) ?? text)
         }
@@ -1237,12 +1237,12 @@ ${diff}`
     return { results }
   }
 
-  // ---------- pedidos de commit do agente ----------
+  // ---------- agent commit requests ----------
   private toRequest(row: RequestRow): GitRequest {
     return { id: row.id, cardId: row.cardId, sourceId: row.sourceId, repoName: row.repoName, message: row.message, files: JSON.parse(row.files) as string[], status: row.status, agentProfileId: row.profileId, hash: row.hash, error: row.error, createdAt: row.createdAt }
   }
 
-  /** Pedidos pendentes do card e os 10 mais recentes já decididos (o chat mostra o resultado). */
+  /** The card's pending requests and the 10 most recent already decided (the chat shows the result). */
   requests(cardId: string): GitRequest[] {
     const sql = 'SELECT id, card_id AS cardId, source_id AS sourceId, repo_name AS repoName, message, files, status, profile_id AS profileId, hash, error, created_at AS createdAt FROM git_commit_requests'
     const pending = this.database.db.prepare(`${sql} WHERE card_id = ? AND status = 'pending' ORDER BY created_at`).all(cardId) as RequestRow[]
@@ -1250,7 +1250,7 @@ ${diff}`
     return [...decided, ...pending].map((row) => this.toRequest(row))
   }
 
-  /** Ferramenta do agente: segue a regra da branch (nunca / pedir / automático). Devolve o texto para o agente. */
+  /** Agent tool: follows the branch rule (never / ask / automatic). Returns the text for the agent. */
   async agentCommit(input: { cardId: string; chatId: string; message: string; files?: string[]; repo?: string }): Promise<{ rule: GitRule; text: string }> {
     const card = this.database.db.prepare('SELECT project_id AS projectId FROM cards WHERE id = ?').get(input.cardId) as { projectId: string } | undefined
     const wt = this.latestWorktree(input.cardId)
@@ -1272,7 +1272,7 @@ ${diff}`
       if (paths.length) plan.push({ source, dir: member.path, paths })
     }
     if (!plan.length) throw new Error(tm().git.nothingToCommitInPlan)
-    // S13: segredo no que vai ser commitado barra o commit do agente (automático ou com pedido); o usuário decide pela página Git.
+    // S13: a secret in what is about to be committed blocks the agent's commit (automatic or on request); the user decides on the Git page.
     const found = (await Promise.all(plan.map(async (item) => (await scanForSecrets(item.dir, item.paths)).map((hit) => `${hit.path}:${hit.line}`)))).flat()
     if (found.length) throw new Error(tm().git.secretsFound(found.slice(0, 5).join(', ')))
     if (rule === 'auto') {
@@ -1288,7 +1288,7 @@ ${diff}`
     const drop = this.database.db.prepare(`DELETE FROM git_commit_requests WHERE card_id = ? AND source_id = ? AND status = 'pending'`)
     for (const item of plan) {
       const requestId = randomUUID()
-      // Auditoria unificada (S06): o pedido de commit também vira uma approval_record; a UX de decisão continua sendo a do card (`decide`).
+      // Unified audit (S06): the commit request also becomes an approval_record; the decision UX remains the card's (`decide`).
       const approval = this.approvals.request({ kind: 'git-commit', subjectRef: requestId, payload: { message, files: item.paths, repo: item.source.name }, requestedActor: 'agent', cardId: input.cardId, projectId: card.projectId })
       this.database.db.transaction(() => {
         drop.run(input.cardId, item.source.id)
@@ -1302,8 +1302,8 @@ ${diff}`
     const row = this.database.db.prepare('SELECT id, card_id AS cardId, source_id AS sourceId, repo_name AS repoName, message, files, status, profile_id AS profileId, hash, error, created_at AS createdAt, approval_id AS approvalId FROM git_commit_requests WHERE id = ?').get(requestId) as RequestRow | undefined
     if (!row) throw new Error(tm().git.commitRequestNotFound)
     if (row.status !== 'pending') return this.toRequest(row)
-    // Auditoria unificada (S06): a decisão do card também fecha a approval_record, sem mudar a UX deste fluxo.
-    if (row.approvalId) try { this.approvals.decide(row.approvalId, decision === 'allow') } catch { /* auditoria é best-effort; nunca bloqueia a decisão do usuário */ }
+    // Unified audit (S06): the card's decision also closes the approval_record, without changing this flow's UX.
+    if (row.approvalId) try { this.approvals.decide(row.approvalId, decision === 'allow') } catch { /* audit is best-effort; it never blocks the user's decision */ }
     const finish = (status: GitRequest['status'], extra: { hash?: string; error?: string } = {}): GitRequest => {
       this.database.db.prepare('UPDATE git_commit_requests SET status = ?, hash = ?, error = ?, decided_at = ? WHERE id = ?').run(status, extra.hash ?? null, extra.error ?? null, new Date().toISOString(), requestId)
       return this.toRequest({ ...row, status, hash: extra.hash ?? null, error: extra.error ?? null })
@@ -1319,7 +1319,7 @@ ${diff}`
       return finish('done', { hash })
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error)
-      // Sem alterações restantes não há o que tentar de novo; qualquer outro erro (identidade do Git, hook) deixa o pedido pendente para nova tentativa.
+      // With no changes left there is nothing to retry; any other error (Git identity, hook) leaves the request pending for another attempt.
       if (text.includes('já não têm alterações')) finish('failed', { error: text })
       else this.database.db.prepare('UPDATE git_commit_requests SET error = ? WHERE id = ?').run(text, requestId)
       throw error

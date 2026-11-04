@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react'
 
-/** Campo livre de WHERE / ORDER BY com sugestões (colunas e palavras-chave) para a palavra sob o cursor. */
+/** Free WHERE / ORDER BY field with suggestions (columns and keywords) for the word under the cursor. */
 export function ClauseInput({ label, caption, value, onChange, onSubmit, suggestions, placeholder }: { label: string; caption: string; value: string; onChange(value: string): void; onSubmit(): void; suggestions: string[]; placeholder?: string }): React.JSX.Element {
   const input = useRef<HTMLInputElement>(null), [caret, setCaret] = useState(0), [open, setOpen] = useState(false), [index, setIndex] = useState(0)
   const token = /["\w.]*$/.exec(value.slice(0, caret))?.[0] ?? ''

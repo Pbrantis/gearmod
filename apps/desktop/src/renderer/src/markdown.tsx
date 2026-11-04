@@ -6,22 +6,22 @@ import { toast } from './toasts'
 import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
 
-/** Renderizador Markdown mínimo e seguro (sem HTML cru). Devolve só os blocos: quem chama põe dentro de um `.md`. Checklists no formato do protótipo (`ul.tasks > li.tk`). */
+/** Minimal, safe Markdown renderer (no raw HTML). Returns only the blocks: the caller puts them inside a `.md`. Checklists in the prototype format (`ul.tasks > li.tk`). */
 interface Item { indent: number; ordered: boolean; checked: boolean | null; text: string; line: number; children: Item[] }
 
 const inlinePattern = /(!\[[^\]]*\]\([^)]*\)|`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_|\[[^\]]+\]\([^)]*\))/g
 
-/** Quem estiver acima (o chat) recebe o clique em um arquivo citado e abre o visualizador; sem ele, a citação fica como texto. */
+/** Whoever is above (the chat) receives the click on a cited file and opens the viewer; without it, the citation stays as text. */
 export const FileOpenContext = React.createContext<((path: string) => void) | null>(null)
 const codeExtensions = /\.(md|mdx|txt|json|jsonc|ya?ml|toml|ini|env|csv|html?|css|scss|less|svg|[cm]?[jt]sx?|vue|svelte|py|rb|go|rs|java|kt|cs|php|sh|bat|ps1|sql|xml|lock|log|c|h|cpp|hpp)$/i
 const withoutLine = (target: string): string => target.replace(/[?#].*$/, '').replace(/:\d+(:\d+)?$/, '')
-/** Link de Markdown aponta para um arquivo local (não é URL, âncora nem e-mail). */
+/** Markdown link points to a local file (not a URL, anchor or email). */
 const shellLangs = /^(bash|sh|shell|zsh|powershell|pwsh|ps1|ps|cmd|bat|console|terminal)$/i
 
-/** Bloco de código do chat; os de shell (ou sem linguagem) ganham ▶ para rodar no terminal do app, e todos ganham copiar. */
+/** Chat code block; shell ones (or with no language) get ▶ to run in the app terminal, and all get copy. */
 function CodeBlock({ code, lang, runnable: allowRun = true }: { code: string; lang: string; runnable?: boolean }): React.JSX.Element {
   const t = useT(), { context } = useTerminal(), [copied, setCopied] = useState(false), [pieces, setPieces] = useState<Piece[]>([]), [seen, setSeen] = useState(false), box = useRef<HTMLDivElement>(null)
-  // Só colore o que chega perto da tela: uma conversa longa tem dezenas de blocos e a rolagem não pode travar.
+  // Only colors what gets near the screen: a long conversation has dozens of blocks and scrolling must not stall.
   useEffect(() => { const element = box.current; if (!element || seen) return; if (typeof IntersectionObserver === 'undefined') { setSeen(true); return } const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) { setSeen(true); observer.disconnect() } }, { rootMargin: '300px' }); observer.observe(element); return () => observer.disconnect() }, [seen])
   useEffect(() => { if (!seen) return; let alive = true; void highlightCode(code, lang).then((result) => { if (alive) setPieces(result) }).catch(() => undefined); return () => { alive = false } }, [seen, code, lang])
   const runnable = allowRun && Boolean(context) && (!lang || shellLangs.test(lang)) && code.trim().length > 0 && code.length < 4000
@@ -34,7 +34,7 @@ function CodeBlock({ code, lang, runnable: allowRun = true }: { code: string; la
     </div></div>
 }
 
-/** De qual arquivo o Markdown veio: com isso as imagens de caminho relativo são carregadas do projeto (`workspace:image`). */
+/** Which file the Markdown came from: with this, relative-path images are loaded from the project (`workspace:image`). */
 export interface MarkdownBaseInfo { projectId: string; cardId: string | null; path: string }
 const MarkdownBase = React.createContext<MarkdownBaseInfo | null>(null)
 const MarkdownFiles = React.createContext<{ paths: Map<string, { path: string; directory: boolean }>; open(target: string): void } | null>(null)
@@ -62,7 +62,7 @@ function isFileLink(target: string): boolean {
   if (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) return false
   return /\.[A-Za-z0-9]{1,8}$|[\\/]/.test(withoutLine(target))
 }
-/** Trecho de código que parece um caminho de arquivo conhecido (ex.: `src/App.tsx`, `README.md:12`). */
+/** Code snippet that looks like a known file path (e.g. `src/App.tsx`, `README.md:12`). */
 const isFileCode = (text: string): boolean => /^[\w@.~/\\:-]+$/.test(text) && codeExtensions.test(withoutLine(text))
 
 function FileRef({ target, children, code }: { target: string; children: React.ReactNode; code?: boolean }): React.JSX.Element {
@@ -88,7 +88,7 @@ function inline(text: string, key: string): React.ReactNode[] {
   })
 }
 
-/** Uma linha de Markdown sem blocos (código, negrito, itálico, links), para títulos curtos como o de uma task. */
+/** A single Markdown line with no blocks (code, bold, italic, links), for short titles like a task's. */
 export function InlineMarkdown({ text }: { text: string }): React.JSX.Element { return <>{inline(text, 'il')}</> }
 
 const listLine =/^(\s*)([-*+]|\d+\.)\s+(?:\[( |x|X)\]\s+)?(.*)$/
@@ -127,20 +127,20 @@ export function Markdown({ source, onToggle, base, runnable = true, onOpenRefere
     const timer = window.setTimeout(() => { if (candidates.size) void window.gearmod.invoke('workspace:resolve-references', { projectId: context.projectId, cardId: context.cardId, ...(context.path ? { markdownPath: context.path } : {}), targets: [...candidates].slice(0, 200) }).then((items) => { if (alive) setPaths(new Map(items.map((item) => [item.target, item]))) }).catch(() => undefined) }, 250)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [source, context?.projectId, context?.cardId, context?.path])
-  // Aceita quebras do Windows (CRLF): o `\r` no fim da linha impedia de reconhecer títulos e listas.
+  // Accepts Windows line breaks (CRLF): the `\r` at the end of the line prevented recognizing headings and lists.
   const lines = source.split(/\r?\n/), blocks: React.ReactNode[] = []
   let i = 0
   while (i < lines.length) {
     const line = lines[i]!
     if (!line.trim()) { i += 1; continue }
-    // Comentário HTML (ex.: o relatório de versões que o Spec Kit põe no topo da constituição) não aparece.
+    // HTML comment (e.g. the version report that Spec Kit puts at the top of the constitution) is not shown.
     if (/^\s*<!--/.test(line)) { while (i < lines.length && !lines[i]!.includes('-->')) i += 1; i += 1; continue }
     const fence = /^(`{3,})\s*([\w-]*)/.exec(line)
     if (fence) {
       const start = i; const body: string[] = []; const size = fence[1]!.length; i += 1
       while (i < lines.length && !new RegExp(`^\`{${size},}\\s*$`).test(lines[i]!)) { body.push(lines[i]!); i += 1 }
       i += 1
-      // Arquivo Markdown colado no chat: mostra renderizado, não como código.
+      // Markdown file pasted into the chat: shows it rendered, not as code.
       if (/^(md|markdown)$/i.test(fence[2]!)) blocks.push(<div key={`b${start}`} className="mdfile"><Markdown source={body.join('\n')} runnable={runnable} /></div>)
       else blocks.push(<CodeBlock key={`b${start}`} code={body.join('\n')} lang={fence[2]!} runnable={runnable} />)
       continue
@@ -157,7 +157,7 @@ export function Markdown({ source, onToggle, base, runnable = true, onOpenRefere
       const start = i; const collected: Array<{ match: RegExpExecArray; line: number }> = []
       while (i < lines.length) {
         const match = listLine.exec(lines[i]!)
-        // Linha recuada logo depois de um item é a continuação do texto dele, não um parágrafo novo.
+        // An indented line right after an item is the continuation of its text, not a new paragraph.
         if (!match && /^\s+\S/.test(lines[i]!) && collected.length) { const last = collected[collected.length - 1]!.match; last[4] = `${last[4]} ${lines[i]!.trim()}`; i += 1; continue }
         if (!match) break
         collected.push({ match, line: i }); i += 1

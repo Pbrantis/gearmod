@@ -7,7 +7,7 @@ import { dateLocale, useT } from './i18n'
 
 type Mode = 'text' | 'prev' | 'current'
 
-/** Histórico de versões de um documento no lugar do editor: lista com "Ver", "Mudanças" (diff) e "Restaurar"; a última versão é a atual. */
+/** Version history of a document in place of the editor: list with "View", "Changes" (diff) and "Restore"; the last version is the current one. */
 export function DocHistory({ title, versions, restore }: { title: string; versions: DocumentVersion[]; restore(version: DocumentVersion): void }): React.JSX.Element {
   const t = useT().board.docHistory
   const who = (actor: string): string => (actor === 'agent' ? t.agent : actor === 'system' ? t.system : t.you)

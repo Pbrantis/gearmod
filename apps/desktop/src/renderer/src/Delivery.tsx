@@ -5,8 +5,8 @@ import { Checkbox } from './Checkbox'
 import { useT } from './i18n'
 
 /**
- * Em quais repositórios o card trabalha: só eles ganham worktree. Mostra só os marcados, como etiquetas; o lápis abre a lista para marcar.
- * Nenhum marcado = todos (como era antes). `bare` = sem título, para ficar dentro do bloco de branch e worktree.
+ * Which repositories the card works in: only they get a worktree. Shows only the checked ones, as tags; the pencil opens the list to check.
+ * None checked = all (as before). `bare` = no title, to sit inside the branch and worktree block.
  */
 export function RepoChooser({ card, sources, changed, bare = false }: { card: Card; sources: ProjectSource[]; changed(card: Card): void; bare?: boolean }): React.JSX.Element {
   const t = useT().board.delivery

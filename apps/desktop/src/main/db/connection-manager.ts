@@ -2,7 +2,7 @@ import type { DbActor, PgSession } from './pg-driver'
 import type { DbConnection } from './connections'
 import { tm } from '../i18n'
 
-/** Uma abertura por id, mesmo quando vários painéis solicitam a conexão ao mesmo tempo. */
+/** One open per id, even when several panels request the connection at the same time. */
 export class ConnectionManager {
   private readonly sessions = new Map<string, Promise<PgSession>>()
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -16,7 +16,7 @@ export class ConnectionManager {
     if (existing) { this.touch(id); return existing }
     this.states.set(id, 'connecting')
     let promise!: Promise<PgSession>
-    // eslint-disable-next-line prefer-const -- a função abaixo lê `promise` depois que ela é atribuída
+    // eslint-disable-next-line prefer-const -- the function below reads `promise` after it is assigned
     promise = (async () => { const config = this.connections.get(id), password = await this.connections.password(id); const session = await this.driver.open(config, password, actor); session.onLost?.(() => { if (this.sessions.get(id) === promise) { this.states.set(id, 'lost'); this.sessions.delete(id); this.clearTimer(id); void session.close().catch(() => undefined); this.scheduleReconnect(id) } }); if (this.sessions.get(id) === promise && this.states.get(id) !== 'lost') this.states.set(id, 'ready'); return session })()
     this.sessions.set(id, promise)
     void promise.catch(() => { if (this.sessions.get(id) === promise) { this.sessions.delete(id); this.clearTimer(id); this.states.set(id, 'error') } })
@@ -34,7 +34,7 @@ export class ConnectionManager {
     this.clearReconnect(id)
     const pending = this.sessions.get(id); if (!pending) { this.states.delete(id); this.clearTimer(id); return }
     this.sessions.delete(id); this.clearTimer(id); this.states.delete(id)
-    try { await (await pending).close() } catch { /* uma abertura que falhou já não tem sessão */ }
+    try { await (await pending).close() } catch { /* an open that failed no longer has a session */ }
   }
   async closeAll(): Promise<void> { await Promise.all([...new Set([...this.sessions.keys(), ...this.reconnectTimers.keys()])].map((id) => this.close(id))) }
   private clearTimer(id: string): void { const timer = this.timers.get(id); if (timer) clearTimeout(timer); this.timers.delete(id) }

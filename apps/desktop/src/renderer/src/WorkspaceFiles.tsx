@@ -28,19 +28,19 @@ import { useT } from './i18n'
 type Entry = IpcOutput<'workspace:list'>[number] & { branch?: string | null; worktree?: boolean; primary?: boolean; cardId?: string | null; cardTitle?: string | null }
 type Position = 'left' | 'right' | 'top' | 'bottom'
 const positionKey = 'gearmod.filePanelPosition'
-/** Painel que, no momento, reserva espaço ao lado do conteúdo principal (só um por vez). */
+/** Panel that currently reserves space beside the main content (only one at a time). */
 let dockOwner: HTMLElement | null = null
-/** O painel de arquivos abre à esquerda e lembra a posição que o usuário escolheu em "Mover". */
+/** The files panel opens on the left and remembers the position the user chose in "Move". */
 const readPosition = (): Position => { try { const saved = localStorage.getItem(positionKey); return saved === 'right' || saved === 'top' || saved === 'bottom' ? saved : 'left' } catch { return 'left' } }
 const pathKey = (path: string): string => path.replace(/\\/g, '/').replace(/\/$/, '').toLocaleLowerCase()
 
 type TreeEdit = { type: 'create'; kind: 'file' | 'folder'; parent: string } | { type: 'rename'; path: string }
 const parentOf = (path: string): string => path.replace(/[\\/][^\\/]*$/, '')
 
-/** Texto do campo sem aparar: espaço nas pontas vai para o main e vira erro de nome inválido. */
+/** Field text without trimming: whitespace at the ends goes to main and becomes an invalid-name error. */
 const typed = (value: string): string | null => value.trim() ? value : null
 
-/** Campo de texto no lugar da linha (novo item ou renomear): Enter confirma, Esc cancela, perder o foco confirma se houver texto. */
+/** Text field in place of the row (new item or rename): Enter confirms, Esc cancels, losing focus confirms if there is text. */
 function TreeInput({ initial, directory, depth, finish }: { initial: string; directory: boolean; depth: number; finish(name: string | null): void }): React.JSX.Element {
   const t = useT(), done = useRef(false), field = useRef<HTMLInputElement>(null)
   const end = (value: string | null): void => { if (done.current) return; done.current = true; finish(value) }
@@ -73,7 +73,7 @@ function TreeFolder({ entry, context, contexts, selected, open, reveal, menu, ed
   </div>
 }
 
-/** Explorador do projeto/worktree com editor, visualização e uma janela exclusiva por arquivo. */
+/** Project/worktree explorer with editor, preview and a dedicated window per file. */
 export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, initialPaths = [], close, standalone = false, isolated = false, changes, startExpanded = false }: { projectId: string; cardId: string | null; initialPath?: string; initialReveal?: { path: string; at: number }; initialPaths?: string[]; close(): void; standalone?: boolean; isolated?: boolean; changes?: FileChange[]; startExpanded?: boolean }): React.JSX.Element {
   const t = useT(), context = { projectId, cardId }
   const [roots, setRoots] = useState<IpcOutput<'workspace:roots'>>([]), [query, setQuery] = useState(''), [results, setResults] = useState<IpcOutput<'workspace:search'>>(), [searching, setSearching] = useState(false)
@@ -91,7 +91,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   const currentRoot = current ? [...roots].sort((a, b) => b.path.length - a.path.length).find((root) => { const path = slashed(current.path), base = slashed(root.path).replace(/\/$/, ''); return path === base || path.startsWith(`${base}/`) }) : undefined
   const commentCardId = currentRoot?.cardId ?? cardId, commentTarget = currentRoot?.cardTitle || (commentCardId ? t.files.workspace.openCard : t.files.workspace.newChat)
   const [treeWidth, setTreeWidth] = useState(() => { try { return Number(localStorage.getItem('gearmod.fileTreeWidth')) || 240 } catch { return 240 } }), [resizingTree, setResizingTree] = useState(false)
-  // Ordem de uso das abas (Ctrl+Tab volta para a anterior) e arquivos recentes do projeto (Ctrl+P).
+  // Tab usage order (Ctrl+Tab goes back to the previous one) and the project's recent files (Ctrl+P).
   useEffect(() => { if (!active) return; mru.current = [active, ...mru.current.filter((path) => path !== active)]; pushRecent(projectId, active) }, [active])
   useEffect(() => { mru.current = mru.current.filter((path) => documents.some((file) => file.path === path)) }, [documents])
   const openQuick = (path: string, line?: number, column?: number, length?: number): void => { void open(path).then((resolved) => { if (resolved && line) setJump({ path: resolved, line, column: column ?? 1, ...(length ? { length } : {}) }) }) }
@@ -100,7 +100,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     if (!parent) return
     setTreeVisible(true); change({ tree: true }); setQuery(''); setResults(undefined); setEditing({ type: 'create', kind, parent })
   }
-  /** Renomear muda o caminho das abas abertas (e dos arquivos dentro de uma pasta renomeada) sem perder edição pendente. */
+  /** Renaming changes the path of open tabs (and of files inside a renamed folder) without losing pending edits. */
   const remapTabs = (from: string, to: string, name: string): void => {
     const base = slashed(from)
     const inside = (path: string): boolean => slashed(path) === base || slashed(path).startsWith(`${base}/`)
@@ -125,7 +125,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
       setTreeNonce((value) => value + 1)
     } catch (reason) { setError(plainError(reason)) }
   }
-  /** Arquivo apagado por fora com texto aberto: recria vazio e grava o texto da aba (a versão esperada passa a ser a do arquivo novo). */
+  /** File deleted externally while its text is open: recreates it empty and writes the tab's text (the expected version becomes the new file's). */
   const restore = async (path: string): Promise<void> => {
     const file = latest.current.find((item) => item.path === path); if (!file) return
     try {
@@ -137,11 +137,11 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   }
   const cycleTabs = (backwards: boolean): void => { const order = mru.current.filter((path) => documents.some((file) => file.path === path)); const next = backwards ? order.at(-1) : order[1]; if (next && next !== active) startTransition(() => setActive(next)) }
   const [collapsedRepos, setCollapsedRepos] = useState<string[]>([])
-  // Painel encostado à esquerda ou à direita: avisa a largura que ocupa (--files-dock-left/right) e o conteúdo principal abre espaço, lado a lado.
+  // Panel docked to the left or right: reports the width it takes (--files-dock-left/right) and the main content makes room, side by side.
   const panel = useRef<HTMLElement>(null)
   useEffect(() => { const navigate = (): void => { if (expanded && !standalone && panel.current?.getClientRects().length) close() }; window.addEventListener('gearmod:select-view', navigate); return () => window.removeEventListener('gearmod:select-view', navigate) }, [expanded, standalone, close])
   const [dockWidth, setDockWidth] = useState<number | null>(() => { try { return Number(localStorage.getItem('gearmod.fileDockWidth')) || null } catch { return null } }), [dockHeight, setDockHeight] = useState<number | null>(() => { try { return Number(localStorage.getItem('gearmod.fileDockHeight')) || null } catch { return null } }), [resizingDock, setResizingDock] = useState(false)
-  // A borda interna ajusta largura ou altura conforme o lado em que o painel está.
+  // The inner edge adjusts width or height depending on the side the panel is on.
   const resizeDock = (event: React.PointerEvent<HTMLDivElement>): void => {
     const element = panel.current; if (!element) return
     event.preventDefault()
@@ -151,7 +151,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     let latestSize = initial
     setResizingDock(true)
     const move = (next: PointerEvent): void => { const point = vertical ? next.clientY : next.clientX; latestSize = Math.round(Math.max(vertical ? 180 : 320, Math.min(limit * .75, initial + sign * (point - start)))); if (vertical) setDockHeight(latestSize); else setDockWidth(latestSize) }
-    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setResizingDock(false); try { localStorage.setItem(vertical ? 'gearmod.fileDockHeight' : 'gearmod.fileDockWidth', String(latestSize)) } catch { /* só vale nesta sessão */ } }
+    const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setResizingDock(false); try { localStorage.setItem(vertical ? 'gearmod.fileDockHeight' : 'gearmod.fileDockWidth', String(latestSize)) } catch { /* only valid for this session */ } }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
   const docked = !expanded && !standalone
@@ -168,7 +168,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     publish(); const observer = new ResizeObserver(publish); observer.observe(element)
     return () => { observer.disconnect(); if (dockOwner === element) { dockOwner = null; clear() } }
   }, [position, expanded, standalone])
-  const setPosition = (value: Position): void => { setPositionState(value); try { localStorage.setItem(positionKey, value) } catch { /* só vale nesta sessão */ } }
+  const setPosition = (value: Position): void => { setPositionState(value); try { localStorage.setItem(positionKey, value) } catch { /* only valid for this session */ } }
   useEffect(() => { void window.gearmod.invoke('workspace:roots', context).then(setRoots).catch((reason) => setError(plainError(reason))) }, [projectId, cardId])
   useEffect(() => { if (initialReveal) { setTreeVisible(true); change({ tree: true }); setReveal(initialReveal) } }, [initialReveal?.at])
   const openedInitial = useRef('')
@@ -201,7 +201,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     if (file.content !== file.saved && !(await confirmAsk({ eyebrow: t.files.workspace.closeFile, title: t.files.workspace.discardTitle, text: t.files.workspace.discardOne(nameOf(file.path)), ok: t.files.workspace.discard, danger: true }))) return
     const rest = documents.filter((item) => item.path !== file.path); setDocuments(rest); if (active === file.path) setActive(rest.at(-1)?.path ?? '')
   }
-  // Fecha vários de uma vez (outros, à esquerda, à direita, todos); se algum tiver alterações sem salvar, pergunta uma vez só.
+  // Closes several at once (others, to the left, to the right, all); if any has unsaved changes, asks only once.
   const closeMany = async (files: Document[], keep?: Document): Promise<void> => {
     if (!files.length) return
     const dirty = files.filter((item) => item.content !== item.saved)
@@ -216,7 +216,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     }
     close()
   }
-  /** Pede ao painel do arquivo aberto que abra o localizar/substituir/ir para linha (o estado vive no `FilePane`). */
+  /** Asks the open file's panel to open find/replace/go to line (the state lives in `FilePane`). */
   const ask = (type: PaneCommand['type'], path = active): void => { setActive(path); setTabMenu(undefined); setCommand({ type, at: Date.now() }) }
   const perform = (action: () => Promise<unknown>): void => { void action().catch((reason) => setError(plainError(reason))) }
   const relative = (path: string): string => {
@@ -301,12 +301,12 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
     }
     const up = (): void => {
       document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setResizingTree(false)
-      const width = treeElement?.getBoundingClientRect().width; if (width) try { localStorage.setItem('gearmod.fileTreeWidth', String(Math.round(width))) } catch { /* só vale nesta sessão */ }
+      const width = treeElement?.getBoundingClientRect().width; if (width) try { localStorage.setItem('gearmod.fileTreeWidth', String(Math.round(width))) } catch { /* only valid for this session */ }
     }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
   const fill = (): void => { if (standalone) void window.gearmod.invoke('windows:place', { placement: expanded ? 'new' : 'fill' }); setExpanded(!expanded); setMenu(null) }
-  // Busca rápida: arquivos sem texto inicial; conteúdo e símbolos começam com o que estiver selecionado no editor.
+  // Quick search: files start with no initial text; content and symbols start with whatever is selected in the editor.
   const openQuickMode = (mode: QuickMode): void => { const picked = mode === 'files' ? '' : selectionText.current?.().split('\n')[0]?.trim() ?? ''; setQuick({ mode, text: picked }) }
   const openQuickRef = useRef(openQuickMode); openQuickRef.current = openQuickMode
   useEffect(() => {
@@ -331,7 +331,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
   }
   const tree = treeVisible && preferences.tree
   return <section ref={panel} className={`workspacefiles ${standalone ? 'standalone' : ''} ${expanded ? 'expanded' : position} ${resizingTree ? 'tree-resizing' : ''} ${resizingDock ? 'dock-resizing' : ''}`} style={sideDocked && dockWidth ? { width: dockWidth } : docked && !sideDocked && dockHeight ? { height: dockHeight } : undefined} aria-label={t.files.workspace.panelLabel} onKeyDown={keyDown}>{reloadDialog}{confirmDialog}
-    {docked && <div className={`wf-dockgrip ${position}`} role="separator" aria-orientation={sideDocked ? "vertical" : "horizontal"} aria-label={sideDocked ? t.files.workspace.resizeWidth : t.files.workspace.resizeHeight} onPointerDown={resizeDock} onDoubleClick={() => { if (sideDocked) setDockWidth(null); else setDockHeight(null); try { localStorage.removeItem(sideDocked ? 'gearmod.fileDockWidth' : 'gearmod.fileDockHeight') } catch { /* só vale nesta sessão */ } }} />}
+    {docked && <div className={`wf-dockgrip ${position}`} role="separator" aria-orientation={sideDocked ? "vertical" : "horizontal"} aria-label={sideDocked ? t.files.workspace.resizeWidth : t.files.workspace.resizeHeight} onPointerDown={resizeDock} onDoubleClick={() => { if (sideDocked) setDockWidth(null); else setDockHeight(null); try { localStorage.removeItem(sideDocked ? 'gearmod.fileDockWidth' : 'gearmod.fileDockHeight') } catch { /* only valid for this session */ } }} />}
     <header className="wf-header" draggable={!standalone} onDragStart={(event) => { if ((event.target as HTMLElement).closest('.wf-actions')) { event.preventDefault(); return }; event.preventDefault(); void detachPanel({ x: Math.round(event.screenX), y: Math.round(event.screenY) }) }}><FolderGlyph /><b>{isolated ? nameOf(active || initialPath || t.files.workspace.header.file) : changes ? t.files.workspace.header.changes : t.files.workspace.header.files}</b>{changes ? <span className="wf-context wf-totals" data-tip={roots.map((root) => root.path).join('\n')}><span className="ch-add">+{changeTotals.added}</span> <span className="ch-del">−{changeTotals.removed}</span> · {t.files.workspace.header.fileCount(changes.length)}</span> : <span className="wf-context" data-tip={roots.map((root) => root.path).join('\n')}>{cardId ? t.files.workspace.header.cardWorktree : t.common.project}</span>}{!changes && !isolated && <button type="button" className="wf-unified-search" data-tip={t.files.workspace.header.searchTip} onClick={() => setQuick({ mode: 'files', text: '' })}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg><span>{t.files.workspace.header.search}</span><kbd>Ctrl+P</kbd></button>}<div className="wf-actions">
       {isolated && <button type="button" className="ibtn" data-tip={t.files.workspace.header.backToMain} aria-label={t.files.workspace.header.backToMain} onClick={() => void returnToMain()}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 6h10v10H5zM8 3H3v5m0-5 7 7" /></svg></button>}
       {changes && <button type="button" className="ibtn tip" data-tip={t.files.workspace.header.openAllChanges} aria-label={t.files.workspace.header.openAllChanges} disabled={!changes.length} onClick={openAllChanges}><DiffIcon /></button>}
@@ -377,7 +377,7 @@ export function WorkspaceFiles({ projectId, cardId, initialPath, initialReveal, 
         const row = (item: FileChange): React.JSX.Element => { const slash = item.path.lastIndexOf('/'), name = item.path.slice(slash + 1), dir = slash > 0 ? item.path.slice(0, slash) : '', path = absolute(item.path, item.root), detail = [grouped ? '' : item.root ? nameOf(item.root) : '', dir].filter(Boolean).join('/'); return <button key={`${item.root ?? ''}:${item.path}`} type="button" role="listitem" className={`wf-result wf-changed ${path && slashed(active) === slashed(path) ? 'on' : ''}`} data-tip={path ?? item.path} onContextMenu={(event) => { if (path) showContext({ path, name, directory: false }, event) }} onClick={() => openChange(item)} onDoubleClick={() => openChange(item, true)}><b><FileTypeIcon path={item.path} />{name}{item.untracked ? <span className="ch-new">{t.files.workspace.changed.newBadge}</span> : <span className="wf-nums"><span className="ch-add">+{item.added}</span><span className="ch-del">−{item.removed}</span></span>}</b>{detail && <small>{detail}</small>}</button> }
         return <div role="list" aria-label={t.files.workspace.changed.listLabel}>{grouped ? groups.map((group) => { const closed = collapsedRepos.includes(group.root ?? ''); return <div key={group.root ?? ''} className="wf-repogroup"><div className="wf-repohead"><button type="button" className="wf-repotoggle" aria-expanded={!closed} data-tip={group.root ?? group.name} onClick={() => setCollapsedRepos((all) => closed ? all.filter((key) => key !== (group.root ?? '')) : [...all, group.root ?? ''])}><span className={`wf-chevron ${closed ? '' : 'open'}`} aria-hidden="true"><svg viewBox="0 0 12 12"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" /></svg></span>{group.worktree ? <WorktreeIcon /> : <BranchIcon />}<b>{group.name}</b>{group.branch && <small>{group.branch}</small>}<span className="wf-nums"><span className="ch-add">+{group.added}</span><span className="ch-del">−{group.removed}</span></span></button><button type="button" className="ibtn tip" data-tip={t.files.workspace.changed.openRepoFiles(group.files.length)} aria-label={t.files.workspace.changed.openRepoFilesLabel(group.name)} onClick={() => group.files.slice(0, 20).forEach((item) => openChange(item, true))}><DiffIcon /></button></div>{!closed && group.files.map(row)}</div> }) : filtered.map(row)}{!changes.length && <p className="wf-note">{t.files.workspace.changed.none}</p>}</div>
       })() : results ? <div>{results.paths.map((path) => <button key={path} type="button" className={`wf-result ${active === path ? 'on' : ''}`} data-tip={path} onContextMenu={(event) => showContext({ path, name: nameOf(path), directory: false }, event)} onClick={() => void openClick(path)} onDoubleClick={() => void openClick(path, true)}><b><FileTypeIcon path={path} />{nameOf(path)}</b><small>{path}</small></button>)}{!results.paths.length && !searching && <p className="wf-note">{t.files.workspace.notFound}</p>}{results.limited && <p className="wf-note">{t.files.workspace.searchLimited}</p>}</div> : <div role="tree">{roots.filter((root) => root.primary).map((root) => <TreeFolder key={root.path} entry={{ ...root, directory: true }} context={context} contexts={roots} selected={active} open={(path, pinned) => { void openClick(path, pinned) }} reveal={reveal} menu={showContext} editing={editing} finish={(name) => void finishEdit(name)} ask={askTree} create={startCreate} nonce={treeNonce} />)}</div>}</nav>}
-      {tree && <div className="wf-treesplit" role="separator" aria-label={t.files.workspace.resizeTree} aria-orientation="vertical" onPointerDown={resizeTree} onDoubleClick={() => { setTreeWidth(240); try { localStorage.setItem('gearmod.fileTreeWidth', '240') } catch { /* só vale nesta sessão */ } }} />}
+      {tree && <div className="wf-treesplit" role="separator" aria-label={t.files.workspace.resizeTree} aria-orientation="vertical" onPointerDown={resizeTree} onDoubleClick={() => { setTreeWidth(240); try { localStorage.setItem('gearmod.fileTreeWidth', '240') } catch { /* only valid for this session */ } }} />}
       {current ? <FilePane doc={current} mode="full" context={context} preferences={preferences} changePreferences={change} change={changeFor(current.path)} root={currentRoot} commentCardId={commentCardId} commentTarget={commentTarget} update={updateDocument} save={save} reload={(path) => void reload(path)} afterComment={() => { if (!standalone) close() }} error={error} loading={loading} setError={setError} roots={roots} selectionText={selectionText} closeDocument={() => closeTab(current)} restore={(path) => void restore(path)} command={command} jump={jump && slashed(jump.path) === slashed(current.path) ? jump : undefined} onJumped={() => setJump(undefined)} openAt={(path, line) => openQuick(path, line)} />
         : <div className="wf-document">{(error) && <div className="wf-error" role="alert">{error}</div>}{loading && <p className="wf-note">{t.files.workspace.opening}</p>}<div className="wf-empty"><FolderGlyph /><p>{changes ? t.files.workspace.pickChanged : t.files.workspace.pickInTree}</p>{!tree && <button type="button" className="mini secondary" onClick={() => { change({ tree: true }); setTreeVisible(true) }}>{t.files.workspace.showFiles}</button>}</div></div>}
     </div>

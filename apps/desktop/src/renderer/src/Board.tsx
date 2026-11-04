@@ -36,7 +36,7 @@ import { plainSummary as plain } from './cardText'
 
 
 type State = 'backlog' | 'todo' | 'doing' | 'test' | 'done'
-/** Etapa do chat ao abrir o card: a que está rodando; senão a da coluna (Test = teste, Doing/Done = implementação, o resto = planejamento). */
+/** Chat stage when opening the card: the one that is running; otherwise the column's (Test = test, Doing/Done = implementation, the rest = planning). */
 export function chatMode(board: ProjectBoard, card: Card): AgentPurpose {
   const fresh = board.cards.find((item) => item.id === card.id) ?? card, state = board.columns.find((column) => column.id === fresh.columnId)?.semanticState
   if (fresh.run.state === 'planning') return 'planning'
@@ -45,7 +45,7 @@ export function chatMode(board: ProjectBoard, card: Card): AgentPurpose {
   return state === 'doing' || state === 'done' ? 'execution' : 'planning'
 }
 
-/** Card "virtual" (ainda não existe no banco) do planejamento aberto sem card: id vazio até a primeira mensagem. */
+/** "Virtual" card (does not exist in the database yet) for planning opened without a card: empty id until the first message. */
 function draftCard(board: ProjectBoard, columnId: string): Card {
   const now = new Date().toISOString()
   return { id: '', projectId: board.project.id, columnId, sourceId: null, type: board.project.cardTypes[0]?.id ?? 'feature', title: '', description: '', priority: 'medium', orderKey: 0, createdAt: now, updatedAt: now, archivedAt: null, acceptanceCriteria: [], tasks: { done: 0, total: 0 }, run: { state: 'idle', runId: null, profileId: null, purpose: null }, hasPlan: false, planningOpen: false, workspace: null, pending: { changes: 0, questions: 0, commits: 0, toSend: 0 }, execProfileId: null, execModel: null, agentIds: [], complexity: null, repoIds: null, workflow: null, sddMethod: null } as Card
@@ -94,7 +94,7 @@ const dockPinKey = 'gearmod.viewDockPinned'
 const dockPointKey = 'gearmod.viewDockPoint'
 const readDockPoint = (): { x: number; y: number } | null => { try { const value = JSON.parse(localStorage.getItem(dockPointKey) ?? 'null') as { x?: unknown; y?: unknown } | null; return value && typeof value.x === 'number' && typeof value.y === 'number' ? { x: value.x, y: value.y } : null } catch { return null } }
 
-/** Seletor de visão destacável: o próprio menu é a alça para mover o dock. */
+/** Detachable view selector: the menu itself is the handle for moving the dock. */
 function ViewDock({ projectId, view, select, databaseEnabled, gitAlert, onDropPreview }: { projectId: string; view: ProjectView; select(value: ProjectView): void; databaseEnabled: boolean; gitAlert?: boolean; onDropPreview?(show: boolean): void }): React.JSX.Element {
   const t = useT().board
   const [pinned, setPinned] = useState(() => { try { return localStorage.getItem(dockPinKey) === '1' } catch { return false } })
@@ -111,7 +111,7 @@ function ViewDock({ projectId, view, select, databaseEnabled, gitAlert, onDropPr
     document.addEventListener('pointerdown', close); document.addEventListener('keydown', key)
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', key) }
   }, [menu])
-  const pin = (value: boolean): void => { setPinned(value); setMenu(undefined); try { localStorage.setItem(dockPinKey, value ? '1' : '0') } catch { /* preferência apenas desta instalação */ } }
+  const pin = (value: boolean): void => { setPinned(value); setMenu(undefined); try { localStorage.setItem(dockPinKey, value ? '1' : '0') } catch { /* preference for this installation only */ } }
   const beginMove = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return
     moved.current = false
@@ -133,7 +133,7 @@ function ViewDock({ projectId, view, select, databaseEnabled, gitAlert, onDropPr
       document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setSnapping(false); setDragging(false)
       if (!detached) return
       if (lastY <= snapLine) { pin(true); return }
-      const rectNow = dock.current?.getBoundingClientRect(); if (rectNow) try { localStorage.setItem(dockPointKey, JSON.stringify({ x: Math.round(rectNow.left), y: Math.round(rectNow.top) })) } catch { /* preferência apenas desta instalação */ }
+      const rectNow = dock.current?.getBoundingClientRect(); if (rectNow) try { localStorage.setItem(dockPointKey, JSON.stringify({ x: Math.round(rectNow.left), y: Math.round(rectNow.top) })) } catch { /* preference for this installation only */ }
     }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
@@ -150,7 +150,7 @@ function ViewDock({ projectId, view, select, databaseEnabled, gitAlert, onDropPr
   </div>
 }
 
-/** Prévia de onde o dock vai fixar ao soltar perto do topo: mesmos botões do dock de verdade, pra ficar do mesmo tamanho. */
+/** Preview of where the dock will pin when dropped near the top: same buttons as the real dock, so it has the same size. */
 function ViewDockDropPreview({ databaseEnabled }: { databaseEnabled: boolean }): React.JSX.Element {
   const t = useT().board
   return <div className="viewdock-dropghost" aria-hidden="true">
@@ -166,16 +166,16 @@ function ViewDockDropPreview({ databaseEnabled }: { databaseEnabled: boolean }):
 export function Board({ board, profiles, history, refresh, onProjectConfig, openSettings, freeRequest, freeHandled, constitutionRequest, constitutionHandled, openTarget, targetHandled, slots }: { slots?: { view: HTMLElement | null; gear: HTMLElement | null; tray?: HTMLElement | null }; board: ProjectBoard; profiles: AgentProfile[]; history: AgentProfile[]; refresh(): Promise<void>; onProjectConfig(tab?: 'general' | 'git'): void; openSettings(): void; freeRequest?: { projectId: string; at: number }; freeHandled(): void; constitutionRequest?: { projectId: string; prompt?: string; at: number }; constitutionHandled(): void; openTarget?: { projectId: string; cardId: string | null; chatId: string | null; purpose: string | null }; targetHandled(): void }): React.JSX.Element {
   const t = useT().board
   const [draft, setDraft] = useState<Draft>(), [chatCard, setChatCardState] = useState<Card>(), [chatPurpose, setChatPurpose] = useState<AgentPurpose>('planning'), [starting, setStartingState] = useState<{ card: Card; purpose: 'execution' | 'test' }>(), [choosing, setChoosing] = useState<string>(), [stopping, setStopping] = useState<Card>(), [pendingCard, setPendingCard] = useState<Card>(), [assessing, setAssessing] = useState<Card>()
-  /** Manda ao desenvolvedor cada mudança já autorizada do card que ainda não foi enviada. */
+  /** Sends the developer each already-authorized card change that has not been sent yet. */
   const sendChanges = async (cardId: string): Promise<void> => {
     try { const { changes } = await window.gearmod.invoke('collab:list', { cardId }); for (const change of changes) if ((change.status === 'accepted' || change.status === 'applied') && !change.sentAt) await window.gearmod.invoke('collab:send-change', { changeId: change.id }); await refresh() } catch (reason) { say(plainError(reason), 'error') }
   }
   const [gate, setGate] = useState<{ cardId: string; columnId: string; beforeCardId: string | null; stage: 'test' | 'review' }>(), [dragId, setDragId] = useState<string>(), [dropOn, setDropOn] = useState<string>(), [overColumn, setOverColumn] = useState<string>()
   const [boardQuery, setBoardQuery] = useState(''), [priorityFilter, setPriorityFilter] = useState<Card['priority'] | ''>(''), [typeFilter, setTypeFilter] = useState<string>(''), [agentFilter, setAgentFilter] = useState('')
-  // Agentes do projeto, só os ativos (excluído com histórico fica desativado e sai de `profiles`). Cards de agentes fora dele continuam no quadro.
+  // Project agents, only the active ones (deleted with history is deactivated and leaves `profiles`). Cards of agents outside it stay on the board.
   const allowed = profiles.filter((profile) => board.project.allowedProfileIds.includes(profile.id))
   const cardTypes = board.project.cardTypes
-  // O terminal abre na pasta do projeto (o chat de um card troca para a worktree dele).
+  // The terminal opens in the project folder (a card's chat switches to its worktree).
   useEffect(() => { terminal.setContext({ projectId: board.project.id, cardId: null }) }, [board.project.id])
   const active = board.cards.filter((card) => !card.archivedAt)
   const filtering = Boolean(boardQuery.trim() || priorityFilter || typeFilter || agentFilter)
@@ -193,25 +193,25 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const [dbOpen, setDbOpen] = useState(pop?.kind === 'db'), [databaseEnabled, setDatabaseEnabled] = useState(false), [dropPreview, setDropPreview] = useState(false)
   useEffect(() => { void window.gearmod.invoke('db:feature-enabled', undefined).then(setDatabaseEnabled).catch(() => undefined) }, [])
   const [menu, setMenu] = useState<{ x: number; y: number; card: Card }>(), [deleting, setDeleting] = useState<Card>()
-  // Excluiu o card (pelo menu, pelo editor ou por outro caminho) com o chat dele aberto: fecha o chat junto.
+  // Deleted the card (via the menu, the editor or another path) with its chat open: closes the chat too.
   useEffect(() => { if (chatCard && !board.cards.some((item) => item.id === chatCard.id)) setChatCardState(undefined) }, [board.cards, chatCard])
-  // Planejamento aberto sem card: o card só é criado na primeira mensagem (ensureCard); fechar sem escrever não cria nada.
+  // Planning opened without a card: the card is only created on the first message (ensureCard); closing without writing creates nothing.
   const [draftPlan, setDraftPlan] = useState<{ columnId: string }>(), [chatInstance, setChatInstance] = useState(0)
   const [freeChat, setFreeChat] = useState<{ chat?: Chat; key: number; mode?: 'free' | 'constitution'; prompt?: string }>(), [openAfterRefresh, setOpenAfterRefresh] = useState<string>()
   const setChatCard = (card: Card | undefined, purpose?: AgentPurpose): void => {
     const open = (next: AgentPurpose): void => { setChatCardState(card); setDraftPlan(undefined); setFreeChat(undefined); setChatPurpose(next); setChatInstance((value) => value + 1) }
     if (!card) { setChatCardState(undefined); setDraftPlan(undefined); return }
-    // Fluxo curto tem um chat só: abre o que existe (o do planejamento, se foi ele que trabalhou), não uma etapa que nunca teve conversa.
+    // A short flow has a single chat: opens the one that exists (the planning one, if it did the work), not a stage that never had a conversation.
     if (card.workflow === 'light' && card.id) { const fallback = purpose ?? chatMode(board, card); void window.gearmod.invoke('chats:list', { projectId: board.project.id, cardId: card.id }).then((items) => { const steps = items.map((item) => item.purpose).filter((value): value is AgentPurpose => value === 'planning' || value === 'execution' || value === 'test'); open(steps.find((value) => value === 'execution') ?? steps[0] ?? fallback) }).catch(() => open(fallback)); return }
     open(purpose ?? chatMode(board, card))
   }
   const openFree = (chat?: Chat): void => { setChatCardState(undefined); setFreeChat({ chat, key: Date.now(), mode: chat?.purpose === 'constitution' ? 'constitution' : 'free' }) }
-  // "+" do projeto na barra lateral: abre um chat livre novo neste projeto assim que o quadro dele carrega.
+  // Project "+" in the sidebar: opens a new free chat in this project as soon as its board loads.
   useEffect(() => {
     if (!freeRequest || freeRequest.projectId !== board.project.id) return
     freeHandled(); setChatCardState(undefined); setFreeChat({ key: Date.now() })
   }, [freeRequest, board.project.id, freeHandled])
-  // Aba Constituição do projeto: abre o chat dela (continua o último, se houver), opcionalmente já com um pedido.
+  // Project Constitution tab: opens its chat (continues the last one, if any), optionally already with a request.
   useEffect(() => {
     if (!constitutionRequest || constitutionRequest.projectId !== board.project.id) return
     const { prompt } = constitutionRequest
@@ -221,7 +221,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
       setFreeChat({ chat: items.find((item) => item.purpose === 'constitution'), key: Date.now(), mode: 'constitution', prompt })
     })
   }, [constitutionRequest, board.project.id, constitutionHandled])
-  // Clique numa notificação do sistema: abre o chat do card (na etapa certa) ou o chat livre.
+  // Click on a system notification: opens the card's chat (at the right stage) or the free chat.
   useEffect(() => {
     if (!openTarget || openTarget.projectId !== board.project.id) return
     if (openTarget.cardId) {
@@ -233,18 +233,18 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
       targetHandled(); void window.gearmod.invoke('chats:list', { projectId: board.project.id }).then((items) => { const chat = items.find((item) => item.id === chatId); if (chat) { setChatsOpen(false); openFree(chat) } })
     }
   }, [openTarget, board.project.id, board.cards])
-  // O chat livre virou planejamento de um card novo: espera o quadro atualizar e abre o chat do card (o mesmo chat, agora de planejamento).
+  // The free chat became planning for a new card: waits for the board to update and opens the card's chat (the same chat, now planning).
   useEffect(() => {
     if (!openAfterRefresh) return
     const card = board.cards.find((item) => item.id === openAfterRefresh)
     if (card) { setOpenAfterRefresh(undefined); setChatCard(card, 'planning') }
   }, [openAfterRefresh, board.cards])
-  // Painel Git do card: abre o chat da etapa atual (implementação ou teste) já na visão Git.
+  // Card Git panel: opens the chat of the current stage (implementation or test) already in the Git view.
   const openCardGit = (cardId: string): void => { const card = board.cards.find((item) => item.id === cardId); if (!card) return; const mode = chatMode(board, card); setGitCardId(cardId); setChatsOpen(false); setChatCard(card, mode === 'planning' ? 'execution' : mode) }
-  // Ações do usuário que deram certo ou erraram, e o que o agente fez sozinho (notificação).
+  // User actions that succeeded or failed, and what the agent did on its own (notification).
   const say = (text: string, kind: 'success' | 'error' | 'notify' = 'success'): void => { if (kind === 'error') toast.error(t.view.couldNotComplete, text); else if (kind === 'notify') toast.notify(text); else toast.success(text) }
   useEffect(() => { const again = (): void => void refresh(); window.addEventListener('gearmod:board-changed', again); return () => window.removeEventListener('gearmod:board-changed', again) }, [refresh])
-  // O agente mexeu na worktree de outro card: oferece usar a mesma (uma pergunta por card e dono, enquanto o app está aberto).
+  // The agent touched another card's worktree: offers to use the same one (one question per card and owner, while the app is open).
   const [foreign, setForeign] = useState<{ cardId: string; ownerCardId: string; ownerTitle: string }>(), asked = useRef(new Set<string>())
   useEffect(() => window.gearmod.onRunEvent((event) => {
     if (event.eventType !== 'gearmod/worktree-foreign') return
@@ -259,7 +259,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const move = async (cardId: string, columnId: string, beforeCardId: string | null, skipGate = false): Promise<void> => {
     const before = board.cards.find((card) => card.id === cardId)
     try {
-      // Indo para Done sem teste automatizado aprovado e revisão: pergunta antes, em vez de só dar erro.
+      // Moving to Done without an approved automated test and review: asks first, instead of just failing with an error.
       if (!skipGate && before && before.columnId !== columnId && board.columns.find((column) => column.id === columnId)?.semanticState === 'done') {
         const quality = await window.gearmod.invoke('quality:status', { cardId })
         const passed = quality.test?.status === 'passed', reviewed = quality.review?.state === 'approved' || quality.review?.state === 'merged'
@@ -271,7 +271,7 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
     await refresh()
   }
   const runGateTests = (card: Card): void => {
-    let command = ''; try { command = localStorage.getItem(`gearmod.testCommand.${board.project.id}`) ?? '' } catch { /* sem comando salvo */ }
+    let command = ''; try { command = localStorage.getItem(`gearmod.testCommand.${board.project.id}`) ?? '' } catch { /* no saved command */ }
     const parts = command.trim().split(/\s+/).filter(Boolean)
     if (!parts.length) { setChatCard(card, 'test'); say(t.view.setTestCommand, 'notify'); return }
     say(t.view.runningTests, 'notify')
@@ -282,11 +282,11 @@ export function Board({ board, profiles, history, refresh, onProjectConfig, open
   const clear = (): void => { setDragId(undefined); setDropOn(undefined); setOverColumn(undefined) }
   const fresh = (card: Card): Card => board.cards.find((item) => item.id === card.id) ?? card
   const columnLabel = (card: Card): string => board.columns.find((column) => column.id === fresh(card).columnId)?.label ?? ''
-  // Quadro/Chats/Git, o botão de janela e a engrenagem ficam na barra de título (portais nos espaços dela); sem os espaços, ficam aqui no cabeçalho.
+  // Board/Chats/Git, the window button and the gear sit in the title bar (portals into its slots); without the slots, they stay here in the header.
   const gearControl = <button type="button" className={slots?.gear ? 'ibtn tip tb-gearbtn' : 'iconbtn'} data-tip={t.view.configureProject} aria-label={t.view.configureProject} onClick={() => onProjectConfig()}>{toolsPending && <i className="gear-dot" aria-hidden="true" />}{slots?.gear ? <SettingsIcon /> : '⚙'}</button>
   const currentView: ProjectView = gitOpen ? 'git' : dbOpen ? 'db' : chatsOpen ? 'chats' : 'board'
   const selectView = (value: ProjectView): void => { setDraft(undefined); window.dispatchEvent(new Event('gearmod:select-view')); setChatsOpen(value === 'chats'); setGitOpen(value === 'git'); setDbOpen(value === 'db') }
-  // Atalhos das vistas (Ctrl+1..4, Ctrl+Tab/Ctrl+Shift+Tab) e da configuração do projeto (Ctrl+,).
+  // View shortcuts (Ctrl+1..4, Ctrl+Tab/Ctrl+Shift+Tab) and project settings (Ctrl+,).
   const viewKeys = useRef({ currentView, selectView, onProjectConfig, databaseEnabled }); viewKeys.current = { currentView, selectView, onProjectConfig, databaseEnabled }
   useEffect(() => {
     const direct: Partial<Record<string, ProjectView>> = { viewBoard: 'board', viewChats: 'chats', viewGit: 'git', viewDatabase: 'db' }

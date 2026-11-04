@@ -1,4 +1,4 @@
-// Separa o tempo de parse do tempo das consultas, por padrão, em arquivos C# (ou outra linguagem).
+// Separates parse time from query time, by default, on C# files (or another language).
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'

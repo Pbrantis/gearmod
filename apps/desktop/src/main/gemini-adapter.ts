@@ -13,10 +13,10 @@ import { tm } from './i18n'
 
 type JsonObject = Record<string, unknown>
 
-/** Modos do GearMod → `--approval-mode` do Gemini CLI. O modo não interativo não tem aprovação por ação: o que pediria confirmação é negado. */
+/** GearMod modes → Gemini CLI `--approval-mode`. Non-interactive mode has no per-action approval: whatever would ask for confirmation is denied. */
 export const geminiApprovalMode: Partial<Record<PermissionMode, string>> = { plan: 'plan', manual: 'default', accept_edits: 'auto_edit', auto: 'yolo', bypass: 'yolo' }
 
-/** Uso do `result` do Gemini: `input` já exclui o cache; `cached` é a parte lida do cache. */
+/** Gemini `result` usage: `input` already excludes the cache; `cached` is the part read from the cache. */
 export function geminiUsage(stats: unknown): RunTokens | undefined {
   if (!stats || typeof stats !== 'object') return undefined
   const data = stats as Record<string, unknown>, count = (key: string): number => (typeof data[key] === 'number' && Number.isFinite(data[key]) ? Math.max(0, Math.round(data[key] as number)) : 0)
@@ -24,25 +24,25 @@ export function geminiUsage(stats: unknown): RunTokens | undefined {
   return { input, cached, output: count('output_tokens') }
 }
 
-/** Copia as skills do plugin do GearMod para a pasta de skills do perfil (o Gemini só descobre skills em pastas conhecidas). */
+/** Copies the GearMod plugin's skills to the profile's skills folder (Gemini only discovers skills in known folders). */
 export function syncGeminiSkills(pluginDir: string | null | undefined, configDir: string): void {
   if (!pluginDir || !configDir) return
   const from = join(pluginDir, 'skills'), to = join(configDir, '.gemini', 'skills')
-  try { if (existsSync(from)) { mkdirSync(to, { recursive: true }); cpSync(from, to, { recursive: true, force: true }) } } catch { /* sem as skills do plugin a execução ainda roda */ }
+  try { if (existsSync(from)) { mkdirSync(to, { recursive: true }); cpSync(from, to, { recursive: true, force: true }) } } catch { /* the run still works without the plugin skills */ }
 }
 
 /**
- * Gemini CLI em modo não interativo (`--output-format stream-json`: eventos init, message, tool_use, tool_result, error, result).
- * O prompt vai pela entrada padrão (evita limites de linha de comando no Windows); servidores MCP vão num settings de sistema
- * temporário (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`) apagado ao fim da execução; o login fica isolado por perfil (`GEMINI_CLI_HOME`).
+ * Gemini CLI in non-interactive mode (`--output-format stream-json`: init, message, tool_use, tool_result, error, result events).
+ * The prompt goes through stdin (avoids command-line limits on Windows); MCP servers go in a temporary system settings file
+ * (`GEMINI_CLI_SYSTEM_SETTINGS_PATH`) deleted when the run ends; the login is isolated per profile (`GEMINI_CLI_HOME`).
  */
 export class GeminiCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
-    // Modo Padrão (manual): protocolo ACP, para que cada ação pendente apareça na tela de permissões do GearMod.
+    // Default (manual) mode: ACP protocol, so that each pending action shows up on GearMod's permissions screen.
     if (!options.planning && options.mode === 'manual' && options.requestPermission) return runGeminiAcp(this.processes, options)
-    // Com as ferramentas do GearMod ligadas, o planejamento roda no modo padrão (leitura livre; escrita e shell negados) e confia só no servidor do GearMod.
+    // With GearMod's tools on, planning runs in default mode (free reads; writes and shell denied) and trusts only the GearMod server.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
     const approval = options.planning ? (readOnlyPlanning ? 'default' : 'plan') : geminiApprovalMode[options.mode ?? 'manual']
     if (!approval) throw new Error(tm().adapters.unsupportedGeminiMode(String(options.mode)))
@@ -60,7 +60,7 @@ export class GeminiCliAdapter implements AgentAdapter {
       env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = file
     }
     syncGeminiSkills(options.pluginDir, options.profile.configDir)
-    const cleanup = (): void => { if (settingsDir) { try { rmSync(settingsDir, { recursive: true, force: true }) } catch { /* temporário do sistema */ } settingsDir = null } }
+    const cleanup = (): void => { if (settingsDir) { try { rmSync(settingsDir, { recursive: true, force: true }) } catch { /* system temp */ } settingsDir = null } }
     const prompt = `${options.developerInstructions ? `${options.developerInstructions}\n\n` : ''}${options.prompt}`
     let child: ChildProcessWithoutNullStreams
     try { child = this.processes.start(options.profile.executablePath || 'gemini', args, { cwd: options.cwd, env }) } catch (error) { cleanup(); throw error }

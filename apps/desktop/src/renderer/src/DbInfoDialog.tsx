@@ -11,7 +11,7 @@ type HistoryEntry = IpcOutput<'db:history:list'>[number]
 const oneLine = (text: string): string => { const line = text.replace(/\s+/g, ' ').trim(); return line.length > 140 ? `${line.slice(0, 140)}…` : line }
 const when = (at: string): string => new Date(at).toLocaleString(dateLocale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 
-/** Uma consulta do histórico: linha resumida que, ao abrir, mostra o SQL inteiro. */
+/** One history query: summary line that, when opened, shows the whole SQL. */
 function HistoryRow({ entry }: { entry: HistoryEntry }): React.JSX.Element {
   const t = useT()
   const [open, setOpen] = useState(false), sql = entry.sql ?? ''
@@ -26,7 +26,7 @@ function HistoryRow({ entry }: { entry: HistoryEntry }): React.JSX.Element {
   </div>
 }
 
-/** Diálogo de informações da conexão: histórico, estrutura da tabela e aviso do modo somente leitura. */
+/** Connection info dialog: history, table structure and a read-only mode notice. */
 export function DbInfoDialog({ kind, connectionId, meta, name, close }: { kind: DbInfoKind; connectionId: string; meta?: IpcOutput<'db:describe'>; name?: string; close(): void }): React.JSX.Element {
   const t = useT(), titles = t.database.info.titles
   const [history, setHistory] = useState<IpcOutput<'db:history:list'>>([]), [error, setError] = useState('')

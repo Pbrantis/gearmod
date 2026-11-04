@@ -8,9 +8,9 @@ const viewerState = { width: stored() }
 const clampViewer = (value: number, chatWidth: number): number => Math.max(viewerMin, Math.min(window.innerWidth - chatWidth - 260, value))
 
 /**
- * Painel de arquivo ao lado do chat: abre o que o agente citou (caminho ou link) sem sair da conversa. Aqui fica só o pedido de abertura
- * e a largura; o arquivo em si é o `FocusedFile`. O divisor do meio redistribui o espaço entre o chat e o arquivo; `chatWidth` é a
- * largura atual do chat, que o divisor também ajusta.
+ * File panel beside the chat: opens what the agent cited (path or link) without leaving the conversation. Here lives only the open request
+ * and the width; the file itself is the `FocusedFile`. The middle divider redistributes the space between the chat and the file; `chatWidth` is the
+ * chat's current width, which the divider also adjusts.
  */
 export function useFileViewer(chatWidth: number, setChatWidth: (value: number) => void): {
   request: { path: string; at: number } | null; requested: string | null; dialog: React.ReactNode; open(path: string): void; close(): void; setDirty(value: boolean): void
@@ -31,8 +31,8 @@ export function useFileViewer(chatWidth: number, setChatWidth: (value: number) =
     const up = (): void => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); setDragging(false); finish?.() }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  const remember = (): void => { try { localStorage.setItem('gearmod.viewerWidth', String(viewerState.width)) } catch { /* só vale nesta sessão */ } }
-  // Borda de fora: muda só a largura do arquivo. Divisor do meio: troca espaço entre o chat e o arquivo, mantendo o total.
+  const remember = (): void => { try { localStorage.setItem('gearmod.viewerWidth', String(viewerState.width)) } catch { /* only valid for this session */ } }
+  // Outer edge: changes only the file's width. Middle divider: trades space between the chat and the file, keeping the total.
   const startResize = drag((x) => { const next = clampViewer(window.innerWidth - x - chatWidth, chatWidth); viewerState.width = next; setWidthState(next) }, remember)
   const startSplit = drag((x) => {
     const total = viewerState.width + chatWidth, nextChat = Math.max(440, Math.min(total - viewerMin, window.innerWidth - x))
@@ -44,7 +44,7 @@ export function useFileViewer(chatWidth: number, setChatWidth: (value: number) =
   return { request, requested: request?.path ?? null, dialog, open, close, setDirty, width, dragging, startResize, startSplit, expand, restore }
 }
 
-/** Divisor entre o chat e o painel ao lado (arquivo ou diff): alça larga para arrastar e botões de expandir/restaurar. */
+/** Divider between the chat and the side panel (file or diff): wide handle to drag and expand/restore buttons. */
 export function ViewGrip({ viewer }: { viewer: ReturnType<typeof useFileViewer> }): React.JSX.Element {
   const t = useT(), stop = (event: React.PointerEvent): void => event.stopPropagation()
   return <div className="viewgrip" role="separator" aria-orientation="vertical" aria-label={t.files.viewer.gripLabel} onPointerDown={viewer.startSplit} onDoubleClick={viewer.restore}>

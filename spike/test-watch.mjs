@@ -1,4 +1,4 @@
-// Testa o watcher: cria função nova num arquivo, espera o índice atualizar, consulta; depois desfaz.
+// Tests the watcher: creates a new function in a file, waits for the index to update, queries; then undoes.
 import { CodeIndex } from './graph/index.mjs'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'

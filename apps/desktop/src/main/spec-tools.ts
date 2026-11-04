@@ -5,10 +5,10 @@ import type { AppDatabase } from './database'
 import { nativeCommands, type CommandRunner } from './playwright-cli'
 import { tm } from './i18n'
 
-/** Primeira versão `x.y.z` de uma saída de `--version`; `null` se não houver. */
+/** First `x.y.z` version in a `--version` output; `null` if there is none. */
 const versionOf = (output: string): string | null => /(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]+)?)/.exec(output)?.[1] ?? null
 
-/** Pastas (e padrão de nome) que o `specify init` cria para cada integração; é só um indício de qual agente foi configurado. */
+/** Folders (and name pattern) that `specify init` creates for each integration; just a hint of which agent was configured. */
 const integrationTraces: Array<{ id: string; folder: string; pattern: RegExp }> = [
   { id: 'claude', folder: join('.claude', 'commands'), pattern: /^speckit/i }, { id: 'claude', folder: join('.claude', 'skills'), pattern: /^speckit/i },
   { id: 'codex', folder: join('.codex', 'prompts'), pattern: /^speckit/i }, { id: 'codex', folder: join('.agents', 'skills'), pattern: /^speckit/i },
@@ -17,32 +17,32 @@ const integrationTraces: Array<{ id: string; folder: string; pattern: RegExp }> 
   { id: 'opencode', folder: join('.opencode', 'command'), pattern: /^speckit/i }, { id: 'qwen', folder: join('.qwen', 'commands'), pattern: /^speckit/i }
 ]
 
-/** Integrações do Spec Kit num repositório: `.specify/integration.json` (quando a CLI grava) ou os arquivos de comando que ela deixa. */
+/** Spec Kit integrations in a repository: `.specify/integration.json` (when the CLI writes it) or the command files it leaves behind. */
 export function specKitIntegrations(repo: string): string[] {
   const found = new Set<string>()
   try {
     const saved = JSON.parse(readFileSync(join(repo, '.specify', 'integration.json'), 'utf8')) as { integration?: unknown; integrations?: unknown }
     for (const item of [saved.integration, ...(Array.isArray(saved.integrations) ? saved.integrations : [])]) if (typeof item === 'string' && item) found.add(item)
-  } catch { /* sem o arquivo: cai para os rastros */ }
-  for (const trace of integrationTraces) { try { if (readdirSync(join(repo, trace.folder)).some((name) => trace.pattern.test(name))) found.add(trace.id) } catch { /* pasta ausente */ } }
+  } catch { /* no file: falls back to the traces */ }
+  for (const trace of integrationTraces) { try { if (readdirSync(join(repo, trace.folder)).some((name) => trace.pattern.test(name))) found.add(trace.id) } catch { /* folder absent */ } }
   return [...found]
 }
 
 export type SpecKitStage = 'specify' | 'clarify' | 'plan' | 'checklist' | 'tasks' | 'analyze' | 'implement'
 
-/** Pedido de `speckit-implement` no chat de planejamento: o controle de execução recusa e a tela oferece mover o card. */
+/** `speckit-implement` request in the planning chat: run control refuses and the screen offers to move the card. */
 export class SpecKitImplementBlocked extends Error {
   constructor() { super(tm().speckit.implementBlocked) }
 }
 
-/** Bloqueia a invocação explícita da skill de implementação no planejamento.
- * Isto não restringe outras ferramentas nem impede outras edições de arquivos. */
+/** Blocks the explicit invocation of the implementation skill in planning.
+ * This does not restrict other tools or prevent other file edits. */
 export function isSpecKitImplementRequest(prompt: string, skill?: { name: string; path: string } | null): boolean {
   return /(?:^|[\s/\\$])speckit[-.]implement(?:\b|$)/i.test(prompt) ||
     Boolean(skill && /(?:^|[\s/\\$])speckit[-.]implement(?:\b|$)/i.test(`${skill.name} ${skill.path}`))
 }
 
-/** Confere a skill concreta, não apenas os rastros ou o manifesto de integração. Não instala nem altera arquivos. */
+/** Checks the concrete skill, not just the traces or the integration manifest. Does not install or change files. */
 export function specKitSkill(repo: string, provider: 'codex' | 'claude' | 'gemini', stage: SpecKitStage): string | null {
   if (!existsSync(join(repo, '.specify'))) return null
   const folder = provider === 'codex' ? join('.agents', 'skills') : join('.claude', 'skills')
@@ -51,8 +51,8 @@ export function specKitSkill(repo: string, provider: 'codex' | 'claude' | 'gemin
 }
 
 /**
- * Só detecta Spec Kit e OpenSpec (o que está instalado e quais repositórios foram iniciados). Quem instala e atualiza é o terminal do app,
- * com comandos fixos; aqui nunca se instala nada. Cada comando tem tempo máximo curto e comando ausente vira `null`, não erro.
+ * Only detects Spec Kit and OpenSpec (what is installed and which repositories were initialized). Whoever installs and updates is the app's terminal,
+ * with fixed commands; nothing is ever installed here. Each command has a short maximum time and a missing command becomes `null`, not an error.
  */
 export class SpecToolsService {
   constructor(private readonly database: AppDatabase, private readonly commands: CommandRunner = nativeCommands) {}

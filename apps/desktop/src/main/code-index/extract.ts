@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import type { Node, Language as TsLanguage, Parser as TsParser, Query as TsQuery } from '@vscode/tree-sitter-wasm'
 import { LANGUAGES, kids, queriesOf, type ImportRecord, type LanguageConfig } from './languages'
 
-/** Suba quando a extração mudar: a análise guardada no banco é descartada e refeita. */
+/** Bump when the extraction changes: the analysis stored in the database is discarded and redone. */
 export const EXTRACTOR_VERSION = 12
 
 export interface ExtractedSymbol { name: string; qname: string; kind: string; parent: number; line: number; end: number; signature: string; doc: string | null; exported: boolean; owner: string | null }
@@ -27,10 +27,10 @@ let ts: TreeSitter | undefined
 let wasmDir: string | undefined
 let initPromise: Promise<void> | undefined
 const compiled = new Map<string, Promise<Compiled>>()
-/** Padrões que a gramática recusou (para depurar as consultas). */
+/** Patterns the grammar rejected (to debug the queries). */
 export const rejectedPatterns: Record<string, string[]> = {}
 
-/** Pasta dos .wasm; o padrão é o pacote @vscode/tree-sitter-wasm resolvido a partir deste módulo. */
+/** Folder of the .wasm files; the default is the @vscode/tree-sitter-wasm package resolved from this module. */
 export function setWasmDir(dir: string): void { wasmDir = dir }
 
 function treeSitter(): TreeSitter {
@@ -56,7 +56,7 @@ function language(lang: string): Promise<Compiled> {
     parser.setLanguage(grammar)
     const patterns = (queriesOf(lang) + (config.family === 'js' ? JS_EXTRA : '')).split('\n').map((line) => line.trim()).filter(Boolean)
     const accepted: string[] = []
-    // cada padrão sozinho: um nó que não existe na gramática derruba só ele, não a consulta inteira
+    // each pattern on its own: a node that does not exist in the grammar brings down only it, not the whole query
     for (const pattern of patterns) {
       try { new lib.Query(grammar, pattern).delete(); accepted.push(pattern) } catch { (rejectedPatterns[lang] ??= []).push(pattern) }
     }
@@ -81,7 +81,7 @@ function findBody(node: Node, depth = 0): Node | null {
 const squash = (text: string, max: number): string => text.replace(/\s+/g, ' ').trim().slice(0, max)
 
 function docOf(holder: Node, def: Node, lang: string): string | null {
-  // docstring do Python ou comentários logo acima (//, /** */, #, ///)
+  // Python docstring or comments right above (//, /** */, #, ///)
   if (lang === 'python') {
     const first = kids(def.childForFieldName('body'))[0]
     if (first?.type === 'expression_statement' && kids(first)[0]?.type === 'string') return squash(first.text.replace(/^[rubf]*("""|'''|"|')|("""|'''|"|')$/g, ''), 240)
@@ -168,10 +168,10 @@ export async function extract(lang: string, src: string): Promise<Extraction> {
       else if (valueRef) refs.push({ pos: valueRef.startIndex, name: valueRef.text, receiver: null, kind: 'ref', line: valueRef.startPosition.row + 1 })
     }
 
-    // ---- símbolos em ordem de posição; o índice 0 é o próprio arquivo
+    // ---- symbols in position order; index 0 is the file itself
     const lines = src.split('\n').length
     const symbols: Sym[] = [{ name: '', qname: '', kind: 'file', parent: -1, line: 1, end: lines, sb: 0, eb: src.length, signature: '', doc: null, exported: true, owner: null }]
-    // `namespace X;` (C#) vale até o fim do arquivo
+    // `namespace X;` (C#) lasts until the end of the file
     for (const def of defsByNode.values()) if (def.node.type === 'file_scoped_namespace_declaration') def.eb = src.length
     const defs = [...defsByNode.values()].sort((a, b) => a.node.startIndex - b.node.startIndex || b.eb - a.eb)
     const stack: Array<{ eb: number; idx: number }> = []
@@ -186,7 +186,7 @@ export async function extract(lang: string, src: string): Promise<Extraction> {
       const parentIdx = stack.at(-1)?.idx ?? 0
       const parent = symbols[parentIdx]!
       let kind = def.kind
-      // consts e propriedades só no topo do arquivo / da classe
+      // consts and properties only at the top of the file / of the class
       if (kind === 'const' && parent.kind !== 'file' && parent.kind !== 'module') continue
       if (kind === 'property' && !CLASSY.has(parent.kind)) continue
       if (kind === 'function' && CLASSY.has(parent.kind) && parent.kind !== 'module') kind = 'method'
@@ -194,7 +194,7 @@ export async function extract(lang: string, src: string): Promise<Extraction> {
       if (!owner && parent.kind === 'file') { const container = containerOf(sb); if (container) { owner = container.owner; if (kind === 'function') kind = 'method' } }
       const name = def.nameNode.text
       const qname = owner ? `${owner}.${name}` : parent.kind === 'file' ? name : `${parent.qname}.${name}`
-      // o comentário de documentação fica antes da declaração inteira (export const x = …), não do declarador
+      // the documentation comment sits before the whole declaration (export const x = …), not the declarator
       let holder = def.node
       while (holder.parent && HOLDERS.has(holder.parent.type)) {
         const declarators = kids(holder.parent).filter((child) => child.type === 'variable_declarator')
@@ -214,7 +214,7 @@ export async function extract(lang: string, src: string): Promise<Extraction> {
     }
     for (const name of exportNames) for (const symbol of symbols) if (symbol.name === name && symbol.parent === 0) symbol.exported = true
 
-    // ---- símbolo que envolve cada posição (varredura com pilha)
+    // ---- symbol that wraps each position (stack sweep)
     const scopes = symbols.map((symbol, idx) => ({ sb: symbol.sb, eb: symbol.eb, idx })).filter((symbol) => symbol.idx > 0).sort((a, b) => a.sb - b.sb || b.eb - a.eb)
     const enclosing = (items: Positioned[]): number[] => {
       const order = items.map((item, i) => [item.pos, i] as const).sort((a, b) => a[0] - b[0])
@@ -240,11 +240,11 @@ export async function extract(lang: string, src: string): Promise<Extraction> {
       const key = `${ref.pos}${ref.kind}`
       if (seen.has(key)) return false
       seen.add(key)
-      // referência de tipo no mesmo ponto de uma chamada/instanciação
+      // type reference at the same point as a call/instantiation
       return !(ref.kind === 'type' && (seen.has(`${ref.pos}new`) || seen.has(`${ref.pos}call`)))
     })
     const refScopes = enclosing(refsKept)
-    // a variável pertence ao escopo onde é declarada, não ao const que ela própria define
+    // the variable belongs to the scope where it is declared, not to the const it itself defines
     const bindScopes = enclosing(binds).map((idx) => (symbols[idx]?.kind === 'const' ? symbols[idx]!.parent : idx))
     const bindSeen = new Set<string>()
     const bindsKept = binds.map((item, i) => ({ scope: item.kind === 'field' ? classOf(bindScopes[i]!) || bindScopes[i]! : bindScopes[i]!, name: item.name, type: item.type.replace(/\s+/g, ' ').slice(0, 2000), kind: item.kind }))

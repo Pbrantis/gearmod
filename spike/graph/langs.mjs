@@ -1,20 +1,20 @@
-// Linguagens suportadas: gramática WASM, extensões e consultas tree-sitter.
+// Supported languages: WASM grammar, extensions and tree-sitter queries.
 //
-// Convenção das capturas (o extrator é genérico e só entende estas):
-//   @def.<tipo> + @name        definição (function, method, class, interface, type, enum, struct, trait, const, property, module)
-//   @owner                     dentro de uma @def.method: nome do tipo dono (receptor do Go)
-//   @container + @owner        bloco que dá dono aos métodos de dentro sem ser símbolo (impl do Rust)
-//   @import                    nó de import; o texto é interpretado por `imports(node)` da linguagem
-//   @call + @callee [+ @receiver]   chamada
-//   @new + @callee [+ @receiver]    instanciação
-//   @jsx + @callee             componente JSX usado
-//   @type                      referência a tipo
-//   @ref                       identificador passado como valor (callback, prop)
-//   @extends / @implements     herança da classe que envolve o nó (ou de @owner, se houver)
-//   @bind.name + @bind.type    variável/parâmetro com tipo conhecido (escopo: função que envolve)
-//   @field.name + @field.type  campo da classe com tipo conhecido (acessado por this./self.)
-//   @bindcall.name + @bindcall.callee   variável que recebe o retorno de uma chamada (tipo vem da assinatura)
-//   @export.default            identificador exportado como default
+// Capture convention (the extractor is generic and only understands these):
+//   @def.<kind> + @name        definition (function, method, class, interface, type, enum, struct, trait, const, property, module)
+//   @owner                     inside a @def.method: name of the owning type (Go receiver)
+//   @container + @owner        block that gives owners to the methods inside without being a symbol (Rust impl)
+//   @import                    import node; the text is interpreted by the language's `imports(node)`
+//   @call + @callee [+ @receiver]   call
+//   @new + @callee [+ @receiver]    instantiation
+//   @jsx + @callee             JSX component used
+//   @type                      type reference
+//   @ref                       identifier passed as a value (callback, prop)
+//   @extends / @implements     inheritance of the class enclosing the node (or of @owner, if any)
+//   @bind.name + @bind.type    variable/parameter with known type (scope: enclosing function)
+//   @field.name + @field.type  class field with known type (accessed via this./self.)
+//   @bindcall.name + @bindcall.callee   variable that receives a call's return (type comes from the signature)
+//   @export.default            identifier exported as default
 
 const JS_COMMON = `
 (function_declaration name: (identifier) @name) @def.function
@@ -103,7 +103,7 @@ const JSX = `
 (jsx_expression (identifier) @ref)
 `
 
-// ---- interpretação dos imports por linguagem ----------------------------------------------------------------------
+// ---- import interpretation per language ----------------------------------------------------------------------
 
 const str = (n) => n?.text.replace(/^['"`]|['"`]$/g, '')
 
@@ -160,7 +160,7 @@ function pyImports(node) {
   const modNode = node.childForFieldName('module_name')
   const mod = modNode?.text ?? ''
   for (const n of node.namedChildren) {
-    // (nós do web-tree-sitter não são o mesmo objeto a cada chamada: compara pela posição)
+    // (web-tree-sitter nodes are not the same object on every call: compare by position)
     if (modNode && n.startIndex === modNode.startIndex) continue
     if (n.type === 'wildcard_import') out.push({ spec: mod, local: '*', imported: '*', reexport: 1 })
     else if (n.type === 'dotted_name' || n.type === 'aliased_import') { const it = item(n, mod); out.push({ ...it, imported: it.imported.split('.').at(-1) }) }
@@ -191,7 +191,7 @@ function csImports(node) {
 }
 
 function rustImports(node) {
-  // use crate::a::b::{C, d::E as F};  -> uma linha por nome
+  // use crate::a::b::{C, d::E as F};  -> one line per name
   const out = []
   const walk = (n, prefix) => {
     if (n.type === 'use_as_clause') { const p = n.childForFieldName('path').text; out.push({ spec: prefix + p, local: n.childForFieldName('alias').text, imported: p.split('::').at(-1) }) }
@@ -229,7 +229,7 @@ function cImports(node) {
   return [{ spec: p.type === 'system_lib_string' ? spec : './' + spec, local: '*', imported: '*', reexport: 1 }]
 }
 
-// ---- tabela de linguagens -----------------------------------------------------------------------------------------
+// ---- language table -----------------------------------------------------------------------------------------
 
 export const LANGUAGES = {
   typescript: { wasm: 'typescript', exts: ['.ts', '.mts', '.cts'], queries: JS_COMMON + TS_ONLY, imports: jsImports, family: 'js' },
@@ -381,7 +381,7 @@ export const LANGUAGES = {
 (let_declaration pattern: (identifier) @bindcall.name value: (call_expression function: (_) @bindcall.callee))
 (field_declaration name: (field_identifier) @field.name type: (_) @field.type)
 `,
-    exported: null // usa visibilidade (pub) — ver extract
+    exported: null // uses visibility (pub) — see extract
   },
   php: {
     wasm: 'php', exts: ['.php'], imports: phpImports, family: 'php',

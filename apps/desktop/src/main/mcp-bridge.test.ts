@@ -39,7 +39,7 @@ async function setup() {
   return { board, bridge, card, columns, project, database, projects, root }
 }
 
-/** Cliente MCP mínimo que fala com o servidor stdio real, como o Claude e o Codex fazem. */
+/** Minimal MCP client that talks to the real stdio server, like Claude and Codex do. */
 function mcpClient(endpoint: { command: string; args: string[]; env: Record<string, string> }) {
   const child = spawn(endpoint.command, endpoint.args, { env: { ...process.env, ...endpoint.env, ELECTRON_RUN_AS_NODE: '' }, stdio: ['pipe', 'pipe', 'pipe'] })
   closers.push(async () => { child.kill() })
@@ -86,8 +86,8 @@ describe('GearMod MCP server', () => {
     const init = await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('gearmod')
     const listed = await client.request('tools/list')
-    // Sem índice de código no bridge, as ferramentas gearmod_code_* não aparecem (ver code-index/mcp-code-tools.test.ts).
-    // S14: run-1 é 'execution' (padrão de register()); tools/list devolve só as ferramentas desse papel, não as 23 do catálogo inteiro.
+    // Without a code index in the bridge, the gearmod_code_* tools do not appear (see code-index/mcp-code-tools.test.ts).
+    // S14: run-1 is 'execution' (register() default); tools/list returns only that role's tools, not the 23 of the whole catalog.
     expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(['gearmod_read_skill', 'gearmod_card_context', 'gearmod_write_document', 'gearmod_mark_task', 'gearmod_update_card', 'gearmod_propose_change', 'gearmod_ask_planner', 'gearmod_read_constitution', 'gearmod_propose_constitution', 'gearmod_move_card', 'gearmod_request_commit', 'gearmod_record_understanding', 'gearmod_record_exploration', 'gearmod_assess_complexity', 'gearmod_choose_workflow', 'gearmod_set_repositories', 'gearmod_record_decision'])
 
     expect((await client.call('gearmod_card_context', {})).content[0]!.text).toContain('"titulo": "MCP"')
@@ -100,7 +100,7 @@ describe('GearMod MCP server', () => {
     expect((await client.call('gearmod_update_card', { titulo: 'Novo título', prioridade: 'urgent' })).isError).toBe(false)
     expect(board.card(card.id)).toMatchObject({ title: 'Novo título', priority: 'urgent', type: 'task', description: 'Resumo' })
     expect((await client.call('gearmod_update_card', { tipo: 'invalido' })).isError).toBe(true)
-    // Tipo vem da lista do projeto (id ou nome); o erro lista os válidos e lembra que o fluxo curto não é tipo.
+    // Type comes from the project's list (id or name); the error lists the valid ones and reminds that the short flow is not a type.
     const minor = await client.call('gearmod_update_card', { tipo: 'minor' })
     expect(minor.isError).toBe(true); expect(JSON.stringify(minor.content)).toContain('feature (Feature), bug (Bug), improvement (Improvement)'); expect(JSON.stringify(minor.content)).toContain('fluxo light')
     expect((await client.call('gearmod_update_card', { tipo: 'Improvement' })).isError).toBe(false)
@@ -131,7 +131,7 @@ describe('GearMod MCP server', () => {
     expect(names).toContain('gearmod_finish_planning'); expect(names).toContain('gearmod_answer_question')
     expect(names).not.toContain('gearmod_request_commit'); expect(names).not.toContain('gearmod_test_checklist'); expect(names).not.toContain('gearmod_create_card')
     expect(names.length).toBeLessThan(23)
-    // A lista não é a única barreira: mesmo fora dela, o handle() do app recusa com o aviso certo (é ele quem decide, não o filtro).
+    // The list is not the only barrier: even outside it, the app's handle() refuses with the right notice (it decides, not the filter).
     const refused = await client.call('gearmod_request_commit', { mensagem: 'x' })
     expect(refused.isError).toBe(true)
   })
@@ -153,7 +153,7 @@ describe('GearMod MCP server', () => {
     await client.request('initialize', { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1' } })
     const moved = await client.call('gearmod_move_card', { coluna: 'Doing', quando: 'agora' })
     expect(moved.isError).toBe(true); expect(moved.content[0]!.text).toContain('policy')
-    // B9: "ao terminar" também respeita a política
+    // B9: "when finishing" also respects the policy
     const later = await client.call('gearmod_move_card', { coluna: 'Doing', quando: 'ao_terminar' })
     expect(later.isError).toBe(true); expect(later.content[0]!.text).toContain('policy')
     expect(board.card(card.id).columnId).toBe(columns[1]!.id)

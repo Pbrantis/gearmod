@@ -12,13 +12,13 @@ interface Task { key: string; line: number; text: string; done: boolean; criteri
 
 const topItem = /^[-*+]\s+\[( |x|X)\]\s+(.*)$/, subItem = /^\s+[-*+]\s+\[( |x|X)\]\s+(.*)$/, heading = /^#{1,6}\s+(.*)$/
 
-/** Tasks (itens de primeiro nível) com os critérios recuados dentro de cada uma; títulos `###` viram o grupo (fase) das tasks seguintes. */
+/** Tasks (first-level items) with the criteria indented inside each one; `###` headings become the group (phase) of the following tasks. */
 export function parseTasks(markdown: string): Task[] {
   const tasks: Task[] = []
   let group: string | null = null
   markdown.split(/\r?\n/).forEach((line, index) => {
     const title = heading.exec(line)
-    // O título do próprio documento ("## Tasks") não é uma fase.
+    // The document's own title ("## Tasks") is not a phase.
     if (title) { group = /^tasks$/i.test(title[1]!.trim()) ? null : title[1]!.trim(); return }
     const top = topItem.exec(line)
     if (top) { tasks.push({ key: `${index}`, line: index, text: top[2]!.trim(), done: top[1] !== ' ', criteria: [], group }); return }
@@ -31,9 +31,9 @@ export function parseTasks(markdown: string): Task[] {
 const CheckMark = (): React.JSX.Element => <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2 5 8.6l4.5-5" /></svg>
 
 /**
- * Progresso ao lado do chat: na implementação, as Tasks do card (o agente marca tasks e critérios conforme termina);
- * no teste, o checklist que o testador monta e vai marcando. Cada task é um mini card; ao expandir, mostra os critérios.
- * Atualiza sozinho quando o agente grava.
+ * Progress beside the chat: in implementation, the card's Tasks (the agent checks off tasks and criteria as it finishes);
+ * in test, the checklist the tester builds and checks off. Each task is a mini card; when expanded, it shows the criteria.
+ * Refreshes on its own when the agent writes.
  */
 export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'execution' | 'test' }): React.JSX.Element | null {
   const t = useT().board
@@ -42,10 +42,10 @@ export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'ex
     try {
       if (purpose === 'test') { const checklist = await window.gearmod.invoke('cards:checklist', { cardId }); setSource(checklist.contentMd); setMarks(checklist.marks) }
       else setSource((await window.gearmod.invoke('cards:documents', { cardId })).tasks.contentMd)
-    } catch { /* painel é informativo */ }
+    } catch { /* the panel is informational */ }
   }, [cardId, purpose])
   useEffect(() => { const received = (event: Event): void => { const next = (event as CustomEvent<CardChecklist>).detail; if (next.cardId === cardId && purpose === 'test') { setSource(next.contentMd); setMarks(next.marks) } }; window.addEventListener(checklistEvent, received); return () => window.removeEventListener(checklistEvent, received) }, [cardId, purpose])
-  // Só o checklist do teste é clicável; as Tasks da implementação continuam sendo marcadas pelo agente.
+  // Only the test checklist is clickable; implementation Tasks are still checked off by the agent.
   const interactive = purpose === 'test'
   const flip = (line: number, text: string, checked: boolean): void => { setProblem(''); void toggleChecklist(cardId, line, text, checked).catch((reason: unknown) => { setProblem(plainError(reason)); void load() }) }
   const by = (text: string, done: boolean): React.ReactNode => (interactive ? <MarkBadges mark={marks[checklistKey(text)]} checked={done} /> : null)
@@ -54,7 +54,7 @@ export function ProgressCard({ cardId, purpose }: { cardId: string; purpose: 'ex
   if (source === undefined) return null
   const tasks = parseTasks(source), done = tasks.filter((task) => task.done).length, title = purpose === 'test' ? t.progress.testChecklist : t.progress.tasks
   if (!tasks.length && purpose === 'execution') return null
-  // A task em andamento (a primeira não concluída) começa aberta; as outras, fechadas. O clique do usuário vence.
+  // The task in progress (the first one not done) starts open; the others, closed. The user's click wins.
   const current = tasks.find((task) => !task.done)?.key
   const expanded = (task: Task): boolean => toggled[task.key] ?? task.key === current
   return <aside className={`progress ${open ? 'open' : ''}`} aria-label={title}>

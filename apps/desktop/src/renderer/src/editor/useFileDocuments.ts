@@ -7,8 +7,8 @@ import { withEol } from './position'
 import { tr } from '../i18n'
 
 /**
- * Documentos abertos de um projeto/card: ler (`workspace:read`), salvar com `expected`, recarregar, o "antes" do diff e salvamento automático.
- * O modo Arquivos mantém vários (abas); o painel do chat mantém um só.
+ * Open documents of a project/card: read (`workspace:read`), save with `expected`, reload, the diff's "before" and autosave.
+ * Files mode keeps several (tabs); the chat panel keeps just one.
  */
 export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readOnlyChatId }: { projectId: string; cardId: string | null; autosave: boolean; diffFirst(path: string): boolean; readOnlyChatId?: string | undefined }): {
   documents: Document[]; setDocuments: React.Dispatch<React.SetStateAction<Document[]>>; latest: React.MutableRefObject<Document[]>; active: string; setActive(path: string): void; current: Document | undefined
@@ -20,7 +20,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
   const latest = useRef(documents), loadingId = useRef(0), pending = useRef(new Set<string>()), diff = useRef(diffFirst)
   latest.current = documents; diff.current = diffFirst
   const current = documents.find((item) => item.path === active)
-  /** Editar o texto (sem vir junto com um `saved` novo, que é recarga do disco) fixa a aba temporária. */
+  /** Editing the text (without a new `saved` coming along, which is a reload from disk) pins the temporary tab. */
   const update = useCallback((path: string, patch: Partial<Document>): void => { const pins = 'content' in patch && !('saved' in patch) && !('transient' in patch); setDocuments((all) => all.map((item) => item.path === path ? { ...item, ...patch, ...(pins ? { transient: false } : {}) } : item)) }, [])
   const save = useCallback(async (path: string): Promise<boolean> => {
     const file = latest.current.find((item) => item.path === path)
@@ -43,17 +43,17 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     try {
       const file = await window.gearmod.invoke('workspace:read', { projectId, cardId, path })
       const opened: Document = { ...fromDisk(file), preview: isMarkdown(file.path) || fileKind(file.path) === 'image', error: '', diffView: diff.current(file.path), transient }
-      // Aba temporária: a anterior (se ainda não foi mexida) dá lugar à nova, na mesma posição.
+      // Temporary tab: the previous one (if untouched) gives way to the new one, in the same position.
       setDocuments((all) => { if (all.some((item) => item.path === file.path)) return all; const at = transient ? all.findIndex((item) => item.transient && item.content === item.saved) : -1; return at < 0 ? [...all, opened] : all.map((item, index) => index === at ? opened : item) }); if (id === loadingId.current) setActive(file.path)
       return file.path
     } catch (reason) {
-      // Caminho que o agente citou e que está fora das raízes do projeto: se o chat consegue ler, abre só para leitura.
+      // Path the agent cited that is outside the project roots: if the chat can read it, opens it read-only.
       if (readOnlyChatId) {
         try {
           const file = await window.gearmod.invoke('files:read', { chatId: readOnlyChatId, path })
           setDocuments((all) => all.some((item) => item.path === file.path) ? all : [...all, { ...fromDisk(file), preview: isMarkdown(file.path), error: '', locked: true }]); if (id === loadingId.current) setActive(file.path)
           return file.path
-        } catch { /* mantém o erro original */ }
+        } catch { /* keeps the original error */ }
       }
       if (id === loadingId.current) setError(plainError(reason))
     }
@@ -67,7 +67,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     setLoading(true)
     try { const file = await window.gearmod.invoke('workspace:read', { projectId, cardId, path }); if (document) update(path, { ...fromDisk(file), error: '' }); else await open(path) } catch (reason) { setError(plainError(reason)) } finally { setLoading(false) }
   }, [projectId, cardId, update, open, ask])
-  // O "antes" do diff vem do Git uma vez por arquivo aberto.
+  // The diff's "before" comes from Git once per open file.
   useEffect(() => {
     if (!current?.diffView || current.versions) return
     const path = current.path; let alive = true
@@ -83,7 +83,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     const unload = (event: BeforeUnloadEvent): void => { if (latest.current.some((item) => item.content !== item.saved)) { event.preventDefault(); event.returnValue = '' } }
     window.addEventListener('beforeunload', unload); return () => window.removeEventListener('beforeunload', unload)
   }, [])
-  // Arquivos abertos são vigiados: o que o agente (ou outro programa) grava aparece aqui sem precisar recarregar.
+  // Open files are watched: what the agent (or another program) writes shows up here without needing a reload.
   const watchId = useRef(crypto.randomUUID()), noticeTimers = useRef(new Map<string, number>())
   const paths = documents.filter((item) => !item.locked).map((item) => item.path).join('\n')
   useEffect(() => { void window.gearmod.invoke('workspace:watch', { projectId, cardId, watchId: watchId.current, paths: paths ? paths.split('\n') : [] }).catch(() => undefined) }, [paths, projectId, cardId])
@@ -109,7 +109,7 @@ export function useFileDocuments({ projectId, cardId, autosave, diffFirst, readO
     if (event.eventType === 'gearmod/file-changed') { const payload = event.payload as { path: string; deleted?: boolean }; const match = latest.current.find((item) => slashed(item.path) === slashed(payload.path)); if (match) void sync(match.path, Boolean(payload.deleted)) }
     else if (event.eventType === 'gearmod/run-completed') syncAll()
   }), [sync, syncAll])
-  // O `fs.watch` perde eventos às vezes (no Windows, principalmente): voltar à janela confere tudo de novo.
+  // `fs.watch` sometimes misses events (on Windows, mostly): returning to the window checks everything again.
   useEffect(() => { window.addEventListener('focus', syncAll); return () => window.removeEventListener('focus', syncAll) }, [syncAll])
   return { documents, setDocuments, latest, active, setActive, current, loading, setLoading, error, setError, update, save, open, reload, dialog }
 }

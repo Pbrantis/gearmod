@@ -5,7 +5,7 @@ export type Cell = { t: string | null; big?: true }
 export type GridColumn = { name: string; type: string }
 export type GridMode = 'cell' | 'row' | 'col'
 type Mode = GridMode
-/** Edição de linhas (só na grade de tabela): o pai guarda as alterações e informa o estado visual de cada célula. */
+/** Row editing (table grid only): the parent keeps the changes and reports each cell's visual state. */
 export interface GridEdit { status(row: number, col: number): 'new' | 'edited' | undefined; rowStatus(row: number): 'new' | 'deleted' | undefined; editable(row: number, col: number): boolean; commit(row: number, col: number, value: string | null): void }
 const MIN_WIDTH = 70, DEFAULT_WIDTH = 180
 type TypeKind = 'number' | 'text' | 'date' | 'bool' | 'json' | 'uuid' | 'binary' | 'other'
@@ -33,7 +33,7 @@ const typeShapes: Record<TypeKind, React.ReactNode> = {
 const TypeIcon = ({ type }: { type: string }): React.JSX.Element => <svg className="db-tico" viewBox="0 0 16 16" aria-hidden="true">{typeShapes[typeKind(type)]}</svg>
 const text = (cell: Cell | undefined): string => (cell?.t ?? 'NULL').replace(/[\t\r\n]+/g, ' ')
 
-/** Grade de resultados: seleciona célula, linha (pelo número) ou coluna (pelo cabeçalho) e redimensiona colunas na linha divisória. */
+/** Results grid: selects a cell, row (by number) or column (by header) and resizes columns on the divider line. */
 export function DbGrid({ columns, rows, order, sorted, toolbar, edit, onSelect }: { columns: GridColumn[]; rows: Cell[][]; order?(index: number): void; sorted?: { index: number; dir: 'asc' | 'desc' } | null; toolbar?: React.ReactNode; edit?: GridEdit; onSelect?(row: number, col: number, mode: GridMode): void }): React.JSX.Element {
   const t = useT()
   const [selected, setSelected] = useState<[number, number]>([0, 0]), [mode, setMode] = useState<Mode>('cell'), [tip, setTip] = useState<{ x: number; y: number; name: string; type: string }>(), [editing, setEditing] = useState<{ r: number; c: number }>(), editRef = useRef(editing)

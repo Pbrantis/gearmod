@@ -10,12 +10,12 @@ const extensions: Record<string, string> = {
   md: 'md', markdown: 'md', py: 'py', python: 'py', sql: 'sql', yaml: 'yaml', yml: 'yml', sh: 'sh', bash: 'sh', shell: 'sh', zsh: 'sh', powershell: 'ps1', pwsh: 'ps1', ps1: 'ps1',
   toml: 'toml', ini: 'ini', go: 'go', rust: 'rs', rs: 'rs', java: 'java', cs: 'cs', csharp: 'cs', cpp: 'cpp', c: 'h'
 }
-/** Extensão de arquivo equivalente ao nome da linguagem de um bloco cercado (` ```ts `); `null` se não conhecemos. */
+/** File extension equivalent to the language name of a fenced block (` ```ts `); `null` if we do not know it. */
 export const extensionForFence = (lang: string): string | null => extensions[lang.trim().toLowerCase()] ?? null
 
 const diffClass = (line: string): string => line.startsWith('+') && !line.startsWith('+++') ? 'cb-add' : line.startsWith('-') && !line.startsWith('---') ? 'cb-del' : line.startsWith('@@') ? 'cb-hunk' : ''
 
-/** Pedaços do bloco com a classe `tok-*` de cada um (as mesmas cores do editor); `[]` quando não há o que colorir. Bloco `diff` colore por linha. */
+/** Pieces of the block with each one's `tok-*` class (the same colors as the editor); `[]` when there is nothing to color. A `diff` block is colored per line. */
 export async function highlightCode(code: string, lang: string): Promise<Piece[]> {
   if (!code || code.length > maxChars) return []
   if (lang.trim().toLowerCase() === 'diff' || lang.trim().toLowerCase() === 'patch') return code.split('\n').flatMap((line, index, all): Piece[] => [{ text: index < all.length - 1 ? `${line}\n` : line, cls: diffClass(line) }])

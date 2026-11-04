@@ -5,15 +5,15 @@ import { TokenIcon } from './icons'
 import { useEscape } from './useEscape'
 import { dateLocale, tr, useT } from './i18n'
 
-/** 950 · 9,5k · 212k · 2,6 mi (pt-BR) ou 9.5k · 2.6M (en): milhar vira "k" e milhão vira "mi"/"M". */
+/** 950 · 9,5k · 212k · 2,6 mi (pt-BR) or 9.5k · 2.6M (en): thousands become "k" and millions become "mi"/"M". */
 export const short = (value: number): string => (value < 1000 ? String(value) : value < 999_500 ? `${(value / 1000).toFixed(value < 10_000 ? 1 : 0).replace(/[.,]0$/, '')}k` : `${(value / 1_000_000).toFixed(1).replace(/[.,]0$/, '')}${tr().chat.tokens.million}`).replace('.', (0.5).toLocaleString(dateLocale()).charAt(1))
 const stepKeys = ['planning', 'execution', 'test'] as const
 const spent = (count: TokenCount): number => count.input + count.output
 const detail = (count: TokenCount): string => tr().chat.tokens.detail(count.input.toLocaleString(dateLocale()), count.output.toLocaleString(dateLocale()), count.cached.toLocaleString(dateLocale()), count.runs)
 
 /**
- * Tokens do card. No quadro (`compact`): só o ícone, com o detalhe ao passar o mouse. No editor: um botão com o total em destaque e o
- * cache embaixo; clicar abre a divisão por etapa, com cada agente num chip. O cache (leitura barata) fica sempre separado do total.
+ * Card tokens. On the board (`compact`): only the icon, with details on hover. In the editor: a button with the total highlighted and the
+ * cache below; clicking opens the breakdown by step, with each agent in a chip. The cache (cheap read) is always kept separate from the total.
  */
 export function TokenUsage({ cardId, small = false, compact = false, onOpenDetails }: { cardId: string; small?: boolean; compact?: boolean; onOpenDetails?(): void }): React.JSX.Element {
   const all = useT().chat, t = all.tokens
@@ -21,7 +21,7 @@ export function TokenUsage({ cardId, small = false, compact = false, onOpenDetai
   const [usage, setUsage] = useState<CardUsage>(), [profiles, setProfiles] = useState<AgentProfile[]>([]), [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; up: boolean } | null>(null), button = useRef<HTMLButtonElement>(null), box = useRef<HTMLDivElement>(null)
   useEffect(() => { void window.gearmod.invoke('cards:usage', { cardId }).then(setUsage).catch(() => undefined) }, [cardId])
   useEffect(() => { if (!compact) void window.gearmod.invoke('profiles:list', undefined).then(setProfiles).catch(() => undefined) }, [compact])
-  // Com `onOpenDetails` o resumo abre ao passar o mouse e o clique leva aos detalhes; sem ele, o resumo abre por clique (fecha ao clicar fora ou com Esc).
+  // With `onOpenDetails` the summary opens on hover and a click goes to the details; without it, the summary opens on click (closes on outside click or Esc).
   useEffect(() => {
     if (compact || onOpenDetails || !pos) return
     const outside = (event: MouseEvent): void => { if (!box.current?.contains(event.target as Node)) setPos(null) }
@@ -30,18 +30,18 @@ export function TokenUsage({ cardId, small = false, compact = false, onOpenDetai
   }, [compact, pos, onOpenDetails])
   useEscape(() => setPos(null), !compact && !onOpenDetails && Boolean(pos))
   const show = (): void => { const rect = button.current?.getBoundingClientRect(); if (!rect) return
-    // Sem espaço embaixo, abre para cima; o total continua colado no botão.
+    // With no room below, it opens upward; the total stays attached to the button.
     const up = window.innerHeight - rect.bottom < 320 && rect.top > window.innerHeight - rect.bottom, left = Math.max(8, Math.min(rect.left, window.innerWidth - 300))
     setPos(up ? { left, bottom: window.innerHeight - rect.top + 8, up } : { left, top: rect.bottom + 8, up }) }
   const shown = steps.filter((step) => !(small && step.key === 'test')).map((step) => ({ ...step, count: usage?.[step.key] })).filter((step) => step.count && step.count.runs > 0)
   const total = shown.reduce((sum, step) => sum + spent(step.count!), 0), cached = shown.reduce((sum, step) => sum + step.count!.cached, 0)
-  // No quadro: só aparece quando o card já gastou tokens.
+  // On the board: only shown once the card has spent tokens.
   if (compact && !shown.length) return <></>
   const profileOf = (agent: CardUsage['agents'][number]): Pick<AgentProfile, 'provider' | 'label' | 'color'> => profiles.find((item) => item.id === agent.profileId) ?? { provider: agent.provider, label: agent.label, color: defaultAgentColor(agent.provider) }
   const popover = pos && <div className={`tokpop ${pos.up ? 'up' : ''} ${compact ? '' : 'open'}`} role={compact || onOpenDetails ? 'tooltip' : 'dialog'} aria-label={t.perStep} style={{ left: pos.left, top: pos.top, bottom: pos.bottom, maxHeight: 'calc(100vh - 24px)' }}>
     <div className="tokhead"><span>{t.used}</span><b>{shown.length ? short(total) : '—'}</b>{cached > 0 && <small>{t.plusCache(short(cached))}</small>}</div>
     {!shown.length ? <small className="hint">{usage ? t.noUseYet : t.loading}</small> : shown.map(({ key, label, count }) => { const agents = (usage?.agents ?? []).filter((agent) => agent.purpose === key), single = agents.length === 1
-      // Um agente só: o número dele é o da etapa, então o chip (com o número dentro) fica alinhado à direita da própria linha da etapa.
+      // A single agent: its number is the step's number, so the chip (with the number inside) is right-aligned on the step's own row.
       const chip = (agent: CardUsage['agents'][number], withNumber: boolean): React.JSX.Element => <span className="tokchip" key={agent.profileId} data-tip={detail(agent)}><AgentIcon profile={profileOf(agent)} size="sm" tip={false} /><span>{agent.label}</span>{withNumber && <b>{short(spent(agent))}</b>}</span>
       return <div className="tokstep" key={key}>
         <div className="tokrow" data-tip={detail(count!)}><span className="toklabel">{small && key === 'execution' ? t.task : label}</span>{single ? chip(agents[0]!, true) : <b>{short(spent(count!))}</b>}<small>{count!.cached ? t.plusCache(short(count!.cached)) : ''}</small></div>

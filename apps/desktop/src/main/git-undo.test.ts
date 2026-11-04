@@ -19,7 +19,7 @@ const head = (dir: string): Promise<string> => out(dir, 'rev-parse', 'HEAD')
 const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false)
 const refs = async (dir: string): Promise<string[]> => (await out(dir, 'for-each-ref', '--format=%(refname)', 'refs/gearmod/undo')).split(/\r?\n/).filter(Boolean)
 
-/** Repositório temporário registrado num projeto; `remote` liga um bare como origin, `empty` deixa o repositório sem commit. */
+/** Temporary repository registered in a project; `remote` attaches a bare repo as origin, `empty` leaves the repository with no commit. */
 async function setup(options: { remote?: boolean; empty?: boolean } = {}): Promise<{ root: string; repo: string; remote: string; backup: string; database: AppDatabase; manager: GitManager; projectId: string; sourceId: string }> {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-undo-')); roots.push(root)
   const repo = join(root, 'repo'), remote = join(root, 'remote.git'), backup = join(root, 'backup'), trash = join(root, 'trash')

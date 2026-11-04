@@ -2,20 +2,20 @@ import { copyFile, mkdir, readFile, stat, unlink, writeFile } from 'node:fs/prom
 import { dirname, join } from 'node:path'
 import { tm } from './i18n'
 
-/** Onde a pasta está: commit do HEAD (null em repositório sem commit) e branch (null com HEAD solto). */
+/** Where the folder is: HEAD commit (null in a repository with no commit) and branch (null with a detached HEAD). */
 export interface GitState { head: string | null; branch: string | null }
 export type UndoKind = 'commit' | 'checkout' | 'create-branch' | 'delete-branch' | 'tag' | 'reset' | 'reset-hard-dirty' | 'discard' | 'stash' | 'stash-drop' | 'ignore'
-/** Uma ação da tela de Git que dá para desfazer. `dir` é a pasta onde ela rodou; `pins` são as refs `refs/gearmod/undo/*` que seguram os hashes dela. */
+/** A Git-screen action that can be undone. `dir` is the folder where it ran; `pins` are the `refs/gearmod/undo/*` refs that hold its hashes. */
 export interface UndoEntry { id: string; kind: UndoKind; at: string; before: GitState; after: GitState; dir: string; pins: string[]; data: Record<string, unknown> }
 
-/** Quantas ações ficam na pilha de cada pasta; a mais antiga sai. */
+/** How many actions stay in each folder's stack; the oldest drops out. */
 export const undoLimit = 20
 export const sameState = (a: GitState, b: GitState): boolean => a.head === b.head && a.branch === b.branch
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '')
 const short = (hash: string | null | undefined): string => (hash ?? '').slice(0, 7)
 
-/** Texto da ação na tela ("commit "Corrige filtro"", "checkout de dev"…), no idioma de agora. */
+/** Action text on screen ("commit "Corrige filtro"", "checkout de dev"…), in the current language. */
 export function entryLabel(kind: UndoKind, data: Record<string, unknown>): string {
   const g = tm().git
   switch (kind) {
@@ -34,7 +34,7 @@ export function entryLabel(kind: UndoKind, data: Record<string, unknown>): strin
 
 interface Stack { done: UndoEntry[]; undone: UndoEntry[] }
 
-/** Pilha de desfazer/refazer por pasta (chave `${sourceId}:${cardId ?? ''}`). Só em memória. */
+/** Undo/redo stack per folder (key `${sourceId}:${cardId ?? ''}`). In memory only. */
 export class UndoJournal {
   private readonly stacks = new Map<string, Stack>()
   private stack(key: string): Stack {
@@ -42,7 +42,7 @@ export class UndoJournal {
     if (!found) { found = { done: [], undone: [] }; this.stacks.set(key, found) }
     return found
   }
-  /** Empilha uma ação nova: o refazer some e a mais antiga sai se passar do limite. Devolve as entradas que saíram. */
+  /** Pushes a new action: redo disappears and the oldest drops out if over the limit. Returns the entries that dropped out. */
   push(key: string, entry: UndoEntry): UndoEntry[] {
     const stack = this.stack(key), gone = stack.undone.splice(0)
     stack.done.push(entry)
@@ -53,7 +53,7 @@ export class UndoJournal {
   peekRedo(key: string): UndoEntry | undefined { return this.stacks.get(key)?.undone.at(-1) }
   moveToUndone(key: string): void { const stack = this.stack(key), entry = stack.done.pop(); if (entry) stack.undone.push(entry) }
   moveToDone(key: string): void { const stack = this.stack(key), entry = stack.undone.pop(); if (entry) stack.done.push(entry) }
-  /** Tira uma entrada (das duas listas) e a devolve. */
+  /** Removes an entry (from both lists) and returns it. */
   drop(key: string, id: string): UndoEntry[] {
     const stack = this.stacks.get(key)
     if (!stack) return []
@@ -61,29 +61,29 @@ export class UndoJournal {
     stack.done = stack.done.filter((entry) => entry.id !== id); stack.undone = stack.undone.filter((entry) => entry.id !== id)
     return gone
   }
-  /** Esvazia a pilha da pasta e devolve tudo que saiu. */
+  /** Empties the folder's stack and returns everything that came out. */
   clear(key: string): UndoEntry[] {
     const stack = this.stacks.get(key)
     this.stacks.delete(key)
     return stack ? [...stack.done, ...stack.undone] : []
   }
   clearWhere(match: (key: string) => boolean): UndoEntry[] { return [...this.stacks.keys()].filter(match).flatMap((key) => this.clear(key)) }
-  /** Todas as entradas vivas (para saber o que a limpeza da abertura não pode apagar). */
+  /** All live entries (to know what the cleanup on open must not delete). */
   all(): UndoEntry[] { return [...this.stacks.values()].flatMap((stack) => [...stack.done, ...stack.undone]) }
 }
 
-/** O que cada desfazer/refazer precisa do mundo: o git na pasta, a pasta de cópias e o caminho seguro dentro da pasta. */
+/** What each undo/redo needs from the world: git in the folder, the copies folder and the safe path inside the folder. */
 export interface UndoCtx {
   dir: string; entry: UndoEntry
   run(args: string[]): Promise<string>
   tryRun(args: string[]): Promise<string | null>
   backupDir?: string | undefined
-  /** Caminho absoluto de um arquivo da pasta de trabalho; recusa o que fica fora dela. */
+  /** Absolute path of a working-folder file; refuses what falls outside it. */
   inside(path: string): Promise<string>
-  /** Descarta de novo os caminhos (mesma lógica do descarte da tela, sem gravar entrada). */
+  /** Discards the paths again (same logic as the screen's discard, without recording an entry). */
   discard(paths: string[]): Promise<void>
 }
-/** Pode devolver um aviso, que vai junto da mensagem "Desfeito: …". */
+/** May return a warning, which goes along with the "Desfeito: …" message. */
 type Step = (ctx: UndoCtx) => Promise<string | void>
 interface Action { undo: Step; redo: Step }
 
@@ -92,21 +92,21 @@ const trackedClean = async (ctx: UndoCtx): Promise<boolean> => !(await ctx.run([
 const requireClean = async (ctx: UndoCtx): Promise<void> => { if (!await trackedClean(ctx)) throw new Error(tm().git.undoDirty) }
 const exists = (path: string): Promise<boolean> => stat(path).then(() => true, () => false)
 
-/** Volta ao lugar de antes da ação (branch, ou o commit solto). */
+/** Goes back to where things were before the action (branch, or the detached commit). */
 async function goBack(ctx: UndoCtx): Promise<void> {
   const { before } = ctx.entry
   if (before.branch) await ctx.run(['checkout', before.branch, '--'])
   else if (before.head) await ctx.run(['checkout', '--detach', before.head])
 }
 
-/** Marca da pasta (árvore da cópia do `stash create`, com índice), ou '' se não há alteração em arquivo rastreado. */
+/** Folder marker (tree of the `stash create` copy, with index), or '' if there is no change in tracked files. */
 async function snapshotKey(ctx: UndoCtx): Promise<string> {
   const snapshot = (await ctx.tryRun(['stash', 'create']))?.trim()
   if (!snapshot) return ''
   return `${await rev(ctx, `${snapshot}^{tree}`)}:${await rev(ctx, `${snapshot}^2^{tree}`)}`
 }
 
-/** Um arquivo de um descarte: `backup` = cópia relativa à pasta da entrada (null se não existia), `afterHash` = blob que ele deve ter depois do descarte (null = ausente). */
+/** A file of a discard: `backup` = copy relative to the entry's folder (null if it did not exist), `afterHash` = blob it must have after the discard (null = absent). */
 export interface DiscardFile { path: string; tracked: boolean; backup: string | null; afterHash: string | null }
 const discardFiles = (ctx: UndoCtx): DiscardFile[] => (Array.isArray(ctx.entry.data.files) ? ctx.entry.data.files as DiscardFile[] : [])
 const hashOfFile = async (ctx: UndoCtx, full: string): Promise<string | null> => (await exists(full) ? (await ctx.tryRun(['hash-object', '--', full]))?.trim() ?? null : null)
@@ -121,7 +121,7 @@ async function stashPush(ctx: UndoCtx): Promise<string> {
   return hash
 }
 
-/** Posição do stash (`stash@{n}`) com esse hash na lista de agora, ou -1. */
+/** Position of the stash (`stash@{n}`) with that hash in the current list, or -1. */
 const stashAt = async (ctx: UndoCtx, hash: string): Promise<number> => (await ctx.run(['stash', 'list', '--format=%H'])).split(/\r?\n/).filter(Boolean).indexOf(hash)
 
 const readIgnore = (path: string): Promise<string | null> => readFile(path, 'utf8').catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return null; throw error })
@@ -131,7 +131,7 @@ export const undoActions: Record<UndoKind, Action> = {
     async undo(ctx) {
       const { before, after } = ctx.entry
       if (!before.head) { await ctx.run(['update-ref', '-d', 'HEAD']); return }
-      // Já publicado: reescrever o histórico do remoto não é com este botão.
+      // Already published: rewriting the remote history is not for this button.
       const upstream = (await ctx.tryRun(['rev-parse', '--abbrev-ref', '@{upstream}']))?.trim()
       if (upstream && after.head && await ctx.tryRun(['merge-base', '--is-ancestor', after.head, upstream]) !== null) throw new Error(tm().git.undoCommitPublished)
       await ctx.run(['reset', '--soft', before.head])
@@ -139,7 +139,7 @@ export const undoActions: Record<UndoKind, Action> = {
     async redo(ctx) {
       const { after } = ctx.entry
       if (!after.head) return
-      // Renomear não mexe nos arquivos (a árvore é a mesma); commit e amend só refazem se o preparado ainda é o do commit.
+      // Renaming does not touch files (the tree is the same); commit and amend only redo if the staged state is still the commit's.
       if (!ctx.entry.data.rename && (await ctx.tryRun(['write-tree']))?.trim() !== await rev(ctx, `${after.head}^{tree}`)) throw new Error(tm().git.redoIndexChanged)
       if (await rev(ctx, 'HEAD')) await ctx.run(['reset', '--soft', after.head]); else await ctx.run(['update-ref', 'HEAD', after.head])
     }
@@ -209,7 +209,7 @@ export const undoActions: Record<UndoKind, Action> = {
       ctx.entry.data.restored = await snapshotKey(ctx)
     },
     async redo(ctx) {
-      // A pasta tem que estar como o desfazer deixou; senão o reset jogaria fora alterações novas.
+      // The folder must be as the undo left it; otherwise the reset would throw away new changes.
       if (await snapshotKey(ctx) !== text(ctx.entry.data.restored)) throw new Error(tm().git.redoFolderChanged)
       if (ctx.entry.after.head) await ctx.run(['reset', '--hard', ctx.entry.after.head])
     }
@@ -218,7 +218,7 @@ export const undoActions: Record<UndoKind, Action> = {
     async undo(ctx) {
       const files = discardFiles(ctx), root = backupFolder(ctx)
       const fulls = await Promise.all(files.map((file) => ctx.inside(file.path)))
-      // Confere todos antes de mexer em qualquer um.
+      // Checks all of them before touching any.
       for (const [index, file] of files.entries()) {
         if (await hashOfFile(ctx, fulls[index]!) !== file.afterHash) throw new Error(tm().git.undoFileChanged(file.path))
         if (file.backup && !await exists(join(root, file.backup))) throw new Error(tm().git.undoBackupMissing(file.path))
@@ -232,7 +232,7 @@ export const undoActions: Record<UndoKind, Action> = {
       const files = discardFiles(ctx), root = backupFolder(ctx)
       for (const file of files) {
         const full = await ctx.inside(file.path)
-        // O arquivo tem que estar igual à cópia (o que o desfazer devolveu); arquivo apagado no descarte, tem que continuar ausente.
+        // The file must equal the copy (what the undo returned); a file deleted by the discard must remain absent.
         const saved = file.backup ? await readFile(join(root, file.backup)).catch(() => null) : null
         const same = file.backup ? saved !== null && await exists(full) && (await readFile(full)).equals(saved) : !await exists(full)
         if (!same) throw new Error(tm().git.undoFileChanged(file.path))
@@ -243,7 +243,7 @@ export const undoActions: Record<UndoKind, Action> = {
   stash: {
     async undo(ctx) {
       if (await rev(ctx, 'stash@{0}') !== text(ctx.entry.data.hash)) throw new Error(tm().git.undoStashNotTop)
-      // Com --index o que estava preparado volta preparado; se o Git não conseguir, volta sem.
+      // With --index, what was staged comes back staged; if Git cannot, it comes back without.
       if (await ctx.tryRun(['stash', 'pop', '--index']) === null) await ctx.run(['stash', 'pop'])
     },
     async redo(ctx) { ctx.entry.data.hash = await stashPush(ctx) }

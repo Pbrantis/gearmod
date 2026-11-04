@@ -5,12 +5,12 @@ import type { SymbolHit } from './query'
 import type { RootStatus } from './code-index'
 import { codeToolNames } from './tools'
 
-/** O pedaço do `utilityProcess` do Electron que o serviço usa (permite trocar nos testes). */
+/** The part of Electron's `utilityProcess` the service uses (lets tests swap it). */
 export interface HostProcess { postMessage(message: unknown): void; on(event: 'message', listener: (message: HostMessage) => void): unknown; on(event: 'exit', listener: (code: number) => void): unknown; kill(): boolean }
 
 /**
- * Lado do main do índice de código. Abre o processo utilitário no primeiro uso, indexa cada pasta uma vez por sessão
- * (depois o watcher mantém em dia) e responde às ferramentas dos agentes e às consultas do editor.
+ * Main-side of the code index. Opens the utility process on first use, indexes each folder once per session
+ * (afterwards the watcher keeps it up to date) and answers the agents' tools and the editor's queries.
  */
 export class CodeIndexService {
   private child?: HostProcess
@@ -38,7 +38,7 @@ export class CodeIndexService {
       if (message.ok) pending.resolve(message.value); else pending.reject(new Error(message.error))
     })
     child.on('exit', () => {
-      // caiu: quem esperava recebe erro e o próximo uso abre outro processo e indexa de novo
+      // it crashed: whoever was waiting gets an error and the next use opens another process and indexes again
       if (this.child === child) { this.child = undefined; this.ready.clear() }
       for (const pending of this.waiting.values()) pending.reject(new Error('The code index process stopped'))
       this.waiting.clear()
@@ -57,7 +57,7 @@ export class CodeIndexService {
     })
   }
 
-  /** Garante a pasta indexada e observada; a primeira vez numa sessão indexa (rápido quando nada mudou). */
+  /** Ensures the folder is indexed and watched; the first time in a session it indexes (fast when nothing changed). */
   ensure(root: string): Promise<void> {
     let ready = this.ready.get(root)
     if (!ready) {
@@ -68,10 +68,10 @@ export class CodeIndexService {
     return ready
   }
 
-  /** Começa a indexar em segundo plano (ao abrir o projeto, ao criar a worktree do card). */
+  /** Starts indexing in the background (when opening the project, when creating the card's worktree). */
   prewarm(roots: string[]): void { if (this.enabled) for (const root of roots) if (existsSync(root)) void this.ensure(root).catch(() => undefined) }
 
-  /** Ferramenta MCP (gearmod_code_*) sobre as pastas da execução; com várias pastas, uma seção por pasta. */
+  /** MCP tool (gearmod_code_*) over the run's folders; with several folders, one section per folder. */
   async tool(name: string, args: Record<string, unknown>, roots: string[]): Promise<string> {
     const tool = codeToolNames[name]
     if (!tool) throw new Error(`Unknown code tool: ${name}`)
@@ -93,14 +93,14 @@ export class CodeIndexService {
   async definitions(root: string, name: string, from?: string): Promise<SymbolHit[]> { await this.ensure(root); return this.send({ op: 'definitions', root, name, from }) }
   async references(root: string, name: string, from?: string): Promise<Array<{ path: string; line: number; caller: string }>> { await this.ensure(root); return this.send({ op: 'references', root, name, from }) }
 
-  /** Indexa de novo agora (botão da tela do projeto); aproveita o que não mudou, então costuma ser rápido. */
+  /** Indexes again now (project screen button); reuses what did not change, so it is usually fast. */
   async reindex(root: string): Promise<RootStatus> {
     this.ready.delete(root)
     await this.ensure(root)
     return this.status(root)
   }
 
-  /** A pasta saiu (worktree removida): para de observar e apaga o que só ela usava. */
+  /** The folder left (worktree removed): stops watching and deletes what only it used. */
   async forget(root: string): Promise<void> {
     this.ready.delete(root)
     if (this.child) await this.send({ op: 'forget', root })

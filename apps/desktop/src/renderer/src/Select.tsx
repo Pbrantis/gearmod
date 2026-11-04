@@ -6,7 +6,7 @@ import { useT } from './i18n'
 
 export interface SelectOption { value: string; label: string; color?: string; icon?: React.ReactNode; sub?: string; disabled?: boolean }
 
-/** Seleção customizada do protótipo (`.sel`): lista flutuante fixa que não empurra o layout. */
+/** Custom select from the prototype (`.sel`): fixed floating list that does not push the layout. */
 export function Select({ options, value, onChange, up = false, label, className = '', disabled = false }: { options: SelectOption[]; value: string; onChange(value: string): void; up?: boolean; label: string; className?: string; disabled?: boolean }): React.JSX.Element {
   const t = useT(), [open, setOpen] = useState(false)
   const button = useRef<HTMLButtonElement>(null), root = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null)

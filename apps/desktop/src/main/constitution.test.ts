@@ -28,8 +28,8 @@ async function setup() {
   const card = board.create({ projectId: project.id, columnId: board.get(project.id).columns[0]!.id, title: 'Card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
   const conversations = new ConversationRepository(database), constitution = new ConstitutionRepository(database), checklists = new ChecklistRepository(database)
   const context = new AgentContextService(board, new SettingsRepository(database), null, constitution)
-  // G09: sem SddResolver/SddWriter de verdade (este teste não monta Git/worktree), a leitura cai no legado SQLite e a
-  // escrita fica fingida — o que importa aqui é a decisão de ROTA (precisa de card, não de propósito) e o aviso certo.
+  // G09: without a real SddResolver/SddWriter (this test does not set up Git/worktree), the read falls back to legacy SQLite and the
+  // write is faked — what matters here is the ROUTE decision (needs a card, not a purpose) and the right warning.
   const writes: Array<{ cardId: string; sourceId: string; relPath: string; content: string }> = []
   const sddResolver = { constitution: async () => ({ path: 'constitution.md', content: null, blobSha: null, baseBlobSha: null, headBlobSha: null, state: 'missing' as const, method: 'native' as const, via: 'ref' as const }), locate: async () => ({ repo: root, rootAbs: root, ref: 'dev', via: 'ref' as const, sourceId: 'source-1', method: 'native' as const, worktreeBranch: null }) }
   const sddWriter = { write: async (cardId: string, sourceId: string, relPath: string, content: string) => { writes.push({ cardId, sourceId, relPath, content }); return { blobSha: 'fakehash', path: relPath } } }
@@ -51,7 +51,7 @@ describe('Constituição do projeto', () => {
     expect(await context.block(card.id)).toContain('has no Constitution yet')
 
     const law = open('constitution')
-    // Sem card ainda: a ferramenta recusa e orienta a criar um, em vez de gravar direto no SQLite como antes.
+    // No card yet: the tool refuses and guides to create one, instead of writing straight to SQLite as before.
     expect(await call(law.token, 'gearmod_write_constitution', { markdown: 'x' })).toMatchObject({ ok: false, error: expect.stringContaining('Create a card') })
     const created = await call(law.token, 'gearmod_create_card', { titulo: 'Atualizar a Constituição' })
     expect(created).toMatchObject({ ok: true })
@@ -59,7 +59,7 @@ describe('Constituição do projeto', () => {
     expect(writes).toHaveLength(0); expect(approvals.list().find((item) => item.kind === 'constitution-apply')?.payload.content).toContain('Testes primeiro')
     expect(law.changes.map((item) => (item as { type: string }).type)).toContain('constitution')
 
-    // Chat de execução de um card já existente: também exige card (já tem) — o SddResolver fake devolve content:null, então cai no legado.
+    // Execution chat of an already existing card: also requires a card (it has one) — the fake SddResolver returns content:null, so it falls back to legacy.
     const dev = open('execution')
     expect(await call(dev.token, 'gearmod_read_constitution')).toMatchObject({ ok: true })
     expect(await call(dev.token, 'gearmod_propose_constitution', { titulo: 'Sem any', o_que_muda: 'Proibir any no TypeScript', motivo: 'Apareceu duas vezes' })).toMatchObject({ ok: true, text: expect.stringContaining('C001') })
@@ -79,7 +79,7 @@ describe('Constituição do projeto', () => {
     expect(constitution.state(project.id).importable).toContain('constitution.md')
     expect(constitution.importSpecKit(project.id).constitution).toMatchObject({ version: 2, updatedBy: 'user' })
     expect(constitutionIndex(long)).toBe('# Constituição\n### I. Primeiro\n### II. Segundo')
-    // O contexto do agente lê o arquivo (pelo resolver), não o SQLite.
+    // The agent's context reads the file (through the resolver), not SQLite.
     const fromFile = { constitution: async () => ({ path: 'constitution.md', content: long, blobSha: 'sha', baseBlobSha: 'sha', headBlobSha: 'sha', state: 'in-sync' as const, method: 'native' as const, via: 'ref' as const }) }
     const fileContext = new AgentContextService(context['board'], new SettingsRepository(database), null, constitution, undefined, undefined, undefined, fromFile)
     const block = await fileContext.block(card.id)

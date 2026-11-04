@@ -14,7 +14,7 @@ import { Select } from './Select'
 import { useAsk } from './useAsk'
 import { dateLocale, useT } from './i18n'
 
-/** Janela de consulta SQL: editor em cima, resultado embaixo, com estado próprio. */
+/** SQL query window: editor on top, result below, with its own state. */
 export function DbSqlView({ connectionId, databases, setConnection, allowWrite, production = false, database = '', sql, setSql }: { connectionId: string; databases: Array<{ value: string; label: string }>; setConnection(id: string): void; allowWrite: boolean; production?: boolean; database?: string; sql: string; setSql(value: string): void }): React.JSX.Element {
   const t = useT()
   const req = useDbRequest(connectionId), [result, setResult] = useState<IpcOutput<'db:query:run'>>(), [dialog, setDialog] = useState<DbInfoKind>(), [ran, setRan] = useState(''), [sort, setSort] = useState<{ index: number; dir: 'asc' | 'desc' } | null>(null)
@@ -23,7 +23,7 @@ export function DbSqlView({ connectionId, databases, setConnection, allowWrite, 
   const keys = useMemo(() => [Prec.high(keymap.of([{ key: 'Mod-Enter', run: () => { execute.current(); return true } }, { key: 'Escape', run: () => { cancel.current(); return true } }]))], [])
   const [danger, setDanger] = useState<{ text: string; found: DestructiveStatement[] }>(), [typed, setTyped] = useState('')
   const execSql = async (text: string, confirmDestructive?: string): Promise<void> => { const id = req.start(); try { const output = await window.gearmod.invoke('db:query:run', { connectionId, requestId: id, sql: text, limit: 1000, ...(confirmDestructive ? { confirmDestructive } : {}) }); if (req.current(id)) { setResult(output); setRan(text); setSort(null) } } catch (reason) { if (req.current(id)) req.setError(plainError(reason)) } finally { req.finish(id) } }
-  // Com escrita liberada, DROP/TRUNCATE/ALTER ... DROP e DELETE/UPDATE sem WHERE pedem confirmação; em produção, digitando o nome do banco.
+  // With writing enabled, DROP/TRUNCATE/ALTER ... DROP and DELETE/UPDATE without WHERE ask for confirmation; in production, by typing the database name.
   const run = async (text = sql): Promise<void> => {
     const found = allowWrite ? destructiveStatements(text) : []
     if (found.length) { setTyped(''); setDanger({ text, found }); return }
@@ -35,14 +35,14 @@ export function DbSqlView({ connectionId, databases, setConnection, allowWrite, 
   const startDrag = (event: React.PointerEvent): void => {
     event.preventDefault(); const startY = event.clientY, start = height, limit = Math.max(120, (box.current?.clientHeight ?? 600) - 120); let last = start
     const move = (item: PointerEvent): void => { last = Math.max(90, Math.min(limit, start + item.clientY - startY)); setHeight(last) }
-    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); try { localStorage.setItem('gearmod.db.sqlHeight', String(last)) } catch { /* preferência local */ } }
+    const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); try { localStorage.setItem('gearmod.db.sqlHeight', String(last)) } catch { /* local preference */ } }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }
-  // Cada aba executa no banco escolhido nela; ao trocar de banco o resultado anterior deixa de valer.
+  // Each tab runs on the database chosen in it; when switching database the previous result stops being valid.
   useEffect(() => { setResult(undefined); setRan(''); setSort(null); req.setError(''); setDanger(undefined) }, [connectionId])
   const shown = Boolean(result || req.error)
   const readOnlySql = (text: string): boolean => /^\s*(select|table|values|show|explain)\b/i.test(text) || (/^\s*with\b/i.test(text) && !/\b(insert|update|delete|merge)\b/i.test(text))
-  // Mesma ordenação da grade de tabela, feita no navegador sobre as linhas já trazidas (o SQL do usuário não é reescrito).
+  // Same sorting as the table grid, done in the browser over the rows already fetched (the user's SQL is not rewritten).
   const rows = result ? (sort ? [...result.rows].sort((x, y) => {
     const a = x[sort.index]?.t ?? null, b = y[sort.index]?.t ?? null
     if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1
@@ -61,7 +61,7 @@ export function DbSqlView({ connectionId, databases, setConnection, allowWrite, 
   const dangerDialog = danger && <ConfirmDialog eyebrow={t.database.sql.runSql} title={t.database.sql.destructiveTitle} text={production ? `${t.database.sql.destructiveText} ${t.database.sql.destructiveProd(database)}` : t.database.sql.destructiveText} ok={t.database.sql.runAnyway} danger okDisabled={production && typed !== database}
     extra={<><pre className="qpre">{danger.found.map((item) => `-- ${t.database.sql.destructiveKinds[item.kind]}\n${item.sql}`).join('\n\n')}</pre>{production && <label className="f">{t.database.sql.databaseName}<input className="in" autoFocus value={typed} onChange={(event) => setTyped(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && typed === database) confirmDanger() }} /></label>}</>}
     cancel={() => setDanger(undefined)} confirm={confirmDanger} />
-  // Ctrl+F2 cancela de qualquer lugar do console (editor, botões ou resultado).
+  // Ctrl+F2 cancels from anywhere in the console (editor, buttons or result).
   return <div className="db-split" ref={box} onKeyDown={(event) => { if (event.ctrlKey && event.key === 'F2') { event.preventDefault(); req.cancel() } }}>{askDialog}{dangerDialog}{dialog && <DbInfoDialog kind={dialog} connectionId={connectionId} close={() => setDialog(undefined)} />}
     <div className="db-sql-panel" style={shown ? { flexBasis: height } : { flex: '1 1 auto' }}><div className="db-sql-bar"><button type="button" className="db-run" disabled={req.busy || !sql.trim()} onClick={() => void run()}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z" /></svg>{t.database.sql.runSql}</button>{databases.length > 0 && <Select label={t.database.sql.queryDatabase} className="db-sql-db" value={connectionId} options={databases} onChange={setConnection} />}<span className="db-sql-mode">{allowWrite ? t.database.sql.writeEnabled : t.database.sql.readOnlyMode}</span><kbd>Ctrl+Enter</kbd><span className="db-sqs"><SqBtn label={t.database.queryHistory} onClick={() => setDialog('history')}><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3.2l2 1.3" /></SqBtn>{!allowWrite && <SqBtn label={t.database.readOnlyAbout} onClick={() => setDialog('readonly')}><circle cx="8" cy="8" r="5.5" /><path d="M8 7.2v3.6M8 5.2v.1" /></SqBtn>}</span></div>
       <div className="db-sql-editor"><CodeEditor path="consulta.sql" ariaLabel={t.database.sql.editorAria} value={sql} onChange={setSql} options={{ wrap: false, tabSize: 2, indentWithTab: false, whitespace: false, guides: false, scrollPastEnd: false }} extensions={keys} /></div></div>

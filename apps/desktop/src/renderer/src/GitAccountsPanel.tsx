@@ -13,14 +13,14 @@ type Host = GitAccountsState['hosts'][number]
 type Target = { host: string; sourceId?: string; provider: 'github' | 'gitlab' }
 export const gitAccountsChangedEvent = 'gearmod:git-accounts-changed'
 
-/** Quem é a conta do token: nome, usuário e e-mail, mais as 4 últimas letras. O token em si nunca volta para a tela. */
+/** Who the token's account is: name, user and email, plus the last 4 letters. The token itself never comes back to the screen. */
 function Who({ info }: { info: GitAccountInfo }): React.JSX.Element {
   const t = useT().git.accounts
   return <span className="gacc-who">{info.invalid && <i className="gacc-dot" aria-hidden="true" />}<b>{info.name}</b> <span className="cx-muted">@{info.login}{info.email ? ` · ${info.email}` : ''} · {info.hint}</span>{info.invalid && <small className="cx-warn"> {t.invalid}</small>}</span>
 }
 
-/** Repositórios e contas Git do projeto: um token por servidor (vale para todos os repositórios dele) e, se quiser, um token próprio por repositório.
- * Cada repositório aparece uma vez, com a branch atual; os que não têm remoto ficam num bloco à parte. */
+/** Project Git repositories and accounts: one token per server (applies to all its repositories) and, if wanted, a token of its own per repository.
+ * Each repository appears once, with the current branch; those without a remote go in a separate block. */
 export function GitAccountsPanel({ projectId, openFirst = false }: { projectId: string; openFirst?: boolean }): React.JSX.Element {
   const { git: { accounts: t, policy: tp }, common } = useT()
   const [repos, setRepos] = useState<GitRepo[]>(cachedGit(projectId).repos ?? [])
@@ -34,7 +34,7 @@ export function GitAccountsPanel({ projectId, openFirst = false }: { projectId: 
   const [state, setState] = useState<GitAccountsState>(), [error, setError] = useState(''), [edit, setEdit] = useState<Target | null>(null), [token, setToken] = useState(''), [busy, setBusy] = useState(false), [removing, setRemoving] = useState<{ host: string; sourceId?: string; label: string } | null>(null)
   const load = useCallback(async (): Promise<void> => { try { setState(await window.gearmod.invoke('git-accounts:state', { projectId })); setError('') } catch (reason) { setError(plainError(reason)) } }, [projectId])
   useEffect(() => { void load() }, [load])
-  // Aberto pelo "Adicionar token" da página Git: com um servidor só e sem token, o diálogo já abre.
+  // Opened by "Add token" on the Git page: with a single server and no token, the dialog opens right away.
   const autoOpened = useRef(false)
   useEffect(() => {
     if (!openFirst || autoOpened.current || !state) return

@@ -1,4 +1,4 @@
-// Números finais do protótipo v2: indexação do zero, sem mudanças, outra worktree, consultas e tamanho das respostas.
+// Final numbers of prototype v2: indexing from scratch, no changes, another worktree, queries and response sizes.
 import { CodeIndex } from './graph/index.mjs'
 import { rmSync, existsSync, statSync } from 'node:fs'
 

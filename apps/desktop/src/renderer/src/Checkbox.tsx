@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 
-/** Checkbox quadrado padrão do app. O label externo continua responsável pelo texto e pela área clicável. `indeterminate` mostra o traço de "alguns marcados". */
+/** The app's standard square checkbox. The outer label remains responsible for the text and the clickable area. `indeterminate` shows the "some checked" dash. */
 export function Checkbox({ checked, onChange, disabled = false, label, indeterminate = false }: { checked: boolean; onChange(value: boolean): void; disabled?: boolean; label?: string; indeterminate?: boolean }): React.JSX.Element {
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => { if (input.current) input.current.indeterminate = indeterminate }, [indeterminate])

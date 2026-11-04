@@ -3,14 +3,14 @@ import type { CodeSymbol } from '@gearmod/contracts'
 import { kindMark } from './codeNavigation'
 import { useT } from '../i18n'
 
-/** Linha de resultado das listas do índice de código: tipo, nome e onde está. */
+/** Result row of the code index lists: kind, name and where it is. */
 export interface NavItem { path: string; relative: string; line: number; title: string; detail?: string | undefined; kind?: string | undefined }
 
 export function KindMark({ kind }: { kind?: string | undefined }): React.JSX.Element {
   return <span className="cnav-kind" data-kind={kind ?? ''} aria-hidden="true">{kindMark(kind)}</span>
 }
 
-/** Lista navegável por teclado (↑ ↓ Enter); o foco fica no campo ou no próprio diálogo. */
+/** Keyboard-navigable list (↑ ↓ Enter); focus stays on the field or on the dialog itself. */
 function useListKeys(count: number, choose: (index: number) => void): { selected: number; setSelected(index: number): void; keyDown(event: React.KeyboardEvent): void; list: React.RefObject<HTMLDivElement | null> } {
   const [selected, setSelected] = useState(0), list = useRef<HTMLDivElement>(null)
   useEffect(() => { setSelected((value) => Math.min(value, Math.max(0, count - 1))) }, [count])
@@ -31,7 +31,7 @@ function Items({ items, selected, setSelected, choose, list }: { items: NavItem[
   </div>
 }
 
-/** Modo "Símbolos" do Ctrl+P (Ctrl+T): busca funções, classes e tipos no índice de código do projeto. */
+/** Ctrl+P "Symbols" mode (Ctrl+T): searches functions, classes and types in the project's code index. */
 export function SymbolSearch({ context, text, setText, open }: { context: { projectId: string; cardId: string | null }; text: string; setText(value: string): void; open(path: string, line: number): void }): React.JSX.Element {
   const t = useT(), [found, setFound] = useState<CodeSymbol[] | null>(null), [error, setError] = useState(''), query = text.trim()
   useEffect(() => {
@@ -51,7 +51,7 @@ export function SymbolSearch({ context, text, setText, open }: { context: { proj
   </>
 }
 
-/** Resultado do F12 (várias definições) e do Shift+F12 (quem usa), no mesmo formato do Ctrl+P. */
+/** Result of F12 (multiple definitions) and Shift+F12 (who uses it), in the same format as Ctrl+P. */
 export function CodeNavDialog({ title, items, note, open, close }: { title: string; items: NavItem[]; note?: string | undefined; open(item: NavItem): void; close(): void }): React.JSX.Element {
   const t = useT(), box = useRef<HTMLDivElement>(null)
   const choose = (index: number): void => { const item = items[index]; if (item) { close(); open(item) } }

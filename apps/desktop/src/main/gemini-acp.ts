@@ -8,15 +8,15 @@ import type { AgentRunOptions, AgentRunResult, ProcessFactory } from './adapters
 import { tm } from './i18n'
 
 /**
- * Gemini CLI em modo ACP (Agent Client Protocol, JSON-RPC 2.0 em linhas por stdio), usado no modo "Padrão" para que cada ação
- * pendente apareça na tela de permissões do GearMod. Formatos: docs/GEMINI-ACP.md (esquema v1 do protocolo).
- * Fluxo: initialize → (authenticate se pedir) → session/new ou session/load → session/prompt; o agente manda `session/update`
- * (notificação) e `session/request_permission` (requisição que o app responde com a opção escolhida pelo usuário).
+ * Gemini CLI in ACP mode (Agent Client Protocol, JSON-RPC 2.0 as lines over stdio), used in "Default" mode so that each pending
+ * action shows up on GearMod's permissions screen. Formats: docs/GEMINI-ACP.md (protocol schema v1).
+ * Flow: initialize → (authenticate if asked) → session/new or session/load → session/prompt; the agent sends `session/update`
+ * (notification) and `session/request_permission` (request that the app answers with the option the user chose).
  */
 type Json = Record<string, unknown>
 const asObject = (value: unknown): Json => (value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {})
 
-/** Servidores MCP no formato do `session/new`: stdio não tem `type`; http leva `type: "http"`; env e cabeçalhos são listas nome/valor. */
+/** MCP servers in the `session/new` format: stdio has no `type`; http carries `type: "http"`; env and headers are name/value lists. */
 export function acpMcpServers(servers: McpRunServer[], gearmod?: { command: string; args: string[]; env: Record<string, string> }): Json[] {
   const pairs = (record: Record<string, string>): Array<{ name: string; value: string }> => Object.entries(record).map(([name, value]) => ({ name, value }))
   const all: Json[] = servers.map((server) => server.transport === 'stdio'
@@ -26,7 +26,7 @@ export function acpMcpServers(servers: McpRunServer[], gearmod?: { command: stri
   return all
 }
 
-/** Escolhe a opção do pedido: aprovar usa "uma vez" (nunca "sempre"); negar usa "rejeitar uma vez". Sem opção compatível, cancela. */
+/** Picks the option for the request: approve uses "once" (never "always"); deny uses "reject once". With no matching option, it cancels. */
 export function acpPermissionOutcome(options: unknown, allow: boolean): Json {
   const list = (Array.isArray(options) ? options : []).map(asObject)
   const pick = (...kinds: string[]): Json | undefined => kinds.map((kind) => list.find((item) => item.kind === kind)).find(Boolean)
@@ -34,7 +34,7 @@ export function acpPermissionOutcome(options: unknown, allow: boolean): Json {
   return chosen && typeof chosen.optionId === 'string' ? { outcome: 'selected', optionId: chosen.optionId } : { outcome: 'cancelled' }
 }
 
-/** Detalhes do pedido no formato que a tela de permissões já entende (comando, descrição, arquivos). */
+/** Request details in the format the permissions screen already understands (command, description, files). */
 export function acpPermissionDetails(params: Json): Json {
   const call = asObject(params.toolCall), input = asObject(call.rawInput)
   const locations = (Array.isArray(call.locations) ? call.locations : []).map(asObject).map((item) => item.path).filter((value): value is string => typeof value === 'string')
@@ -56,7 +56,7 @@ export async function runGeminiAcp(processes: ProcessFactory, options: AgentRunO
   child.stdin.on('error', () => undefined)
   child.on('error', (error) => failAll(error))
   child.on('exit', (code) => { if (!ended) failAll(new Error(tm().adapters.geminiExited(code, redact(stderr)))) })
-  // Pedidos de permissão em andamento: ao cancelar, todos são respondidos como "cancelled" (exigência do protocolo).
+  // Permission requests in flight: on cancel, all of them are answered as "cancelled" (protocol requirement).
   const open = new Map<number, AbortController>()
   const abort = (): void => { for (const control of open.values()) control.abort(); if (sessionId) write({ method: 'session/cancel', params: { sessionId } }) }
   options.signal?.addEventListener('abort', abort, { once: true })
@@ -94,11 +94,11 @@ export async function runGeminiAcp(processes: ProcessFactory, options: AgentRunO
         .finally(() => open.delete(key))
       return
     }
-    // Qualquer outro pedido do agente (sistema de arquivos, terminal…) não foi anunciado nas capacidades: recusa clara.
+    // Any other agent request (file system, terminal…) was not announced in the capabilities: clear refusal.
     if (id !== undefined) write({ id, error: { code: -32601, message: 'Method not supported by GearMod' } })
   })
 
-  const finish = (result: AgentRunResult): AgentRunResult => { ended = true; options.signal?.removeEventListener('abort', abort); try { child.stdin.end() } catch { /* já fechado */ } if (!child.killed) child.kill(); return result }
+  const finish = (result: AgentRunResult): AgentRunResult => { ended = true; options.signal?.removeEventListener('abort', abort); try { child.stdin.end() } catch { /* already closed */ } if (!child.killed) child.kill(); return result }
   const servers = acpMcpServers(options.mcpServers ?? [], options.mcp)
   try {
     if (options.signal?.aborted) return finish({ sessionId, turnId: null, text, status: 'interrupted', error: 'Interrompido pelo usuário' })
@@ -111,7 +111,7 @@ export async function runGeminiAcp(processes: ProcessFactory, options: AgentRunO
       sessionId = String(created.sessionId ?? '')
     }
     try { await open_() } catch (error) {
-      // Sem login ativo o Gemini pede `authenticate`; usa o primeiro método que ele anunciou (o login em si é feito pelo usuário no CLI).
+      // With no active login Gemini asks for `authenticate`; use the first method it announced (the login itself is done by the user in the CLI).
       if (typeof authMethod === 'string' && /auth|login|credential/i.test(error instanceof Error ? error.message : '')) { await request('authenticate', { methodId: authMethod }); await open_() } else throw error
     }
     options.onEvent({ type: 'gemini/init', payload: { session_id: sessionId } })

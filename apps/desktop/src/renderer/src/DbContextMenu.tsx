@@ -4,7 +4,7 @@ import { useT } from './i18n'
 
 export type DbMenuItem = { label: string; run(): void; danger?: boolean }
 
-/** Menu de contexto das conexões do banco de dados (clique direito ou botão ⋯). */
+/** Context menu for database connections (right-click or ⋯ button). */
 export function DbContextMenu({ x, y, title, items, close }: { x: number; y: number; title: string; items: DbMenuItem[]; close(): void }): React.JSX.Element {
   const t = useT()
   const root = useRef<HTMLDivElement>(null), [pos, setPos] = useState({ left: x, top: y }), [index, setIndex] = useState(0)

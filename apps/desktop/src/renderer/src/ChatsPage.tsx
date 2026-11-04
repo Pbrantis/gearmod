@@ -19,13 +19,13 @@ const ago = (iso: string): string => {
   return days === 1 ? t.yesterday : t.daysAgo(days)
 }
 
-/** Página de chats do projeto (no lugar do quadro): busca, novo chat e a lista de todos os chats, livres e de cada card. */
+/** Project chats page (in place of the board): search, new chat and the list of all chats, free ones and each card's. */
 export function ChatsPage({ board, openCard, openCardEditor, openFree, deleted, current, changed }: { board: ProjectBoard; openCard(card: Card, purpose: AgentPurpose): void; openCardEditor(card: Card): void; openFree(chat?: Chat): void; deleted(chatId: string): void; current?: string; changed(): void }): React.JSX.Element {
   const t = useT(), p = t.chat.chatsPage
   const archived = board.cards.filter((card) => card.archivedAt), [restoring, setRestoring] = useState<string>()
   const [chats, setChats] = useState<Chat[]>([]), [query, setQuery] = useState(''), [filter, setFilter] = useState<'all' | 'free' | 'card' | 'archived'>('all'), [loaded, setLoaded] = useState(false)
   const [menu, setMenu] = useState<{ chat: Chat; x: number; y: number }>(), [deleting, setDeleting] = useState<Chat>(), [error, setError] = useState('')
-  const load = useCallback(async () => { try { setChats(await window.gearmod.invoke('chats:list', { projectId: board.project.id })) } catch { /* lista é informativa */ } finally { setLoaded(true) } }, [board.project.id])
+  const load = useCallback(async () => { try { setChats(await window.gearmod.invoke('chats:list', { projectId: board.project.id })) } catch { /* the list is informational */ } finally { setLoaded(true) } }, [board.project.id])
   useEffect(() => { void load() }, [load])
   useEffect(() => window.gearmod.onRunEvent((event) => { if (['gearmod/run-started', 'gearmod/run-completed', 'gearmod/tool-activity'].includes(event.eventType)) void load() }), [load])
   const rows = useMemo(() => chats.map((chat) => ({ chat, card: chat.cardId ? board.cards.find((item) => item.id === chat.cardId) : undefined }))

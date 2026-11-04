@@ -5,8 +5,8 @@ import { readManifest, type CardHistoryService } from './history'
 import type { BoardRepository } from './projects'
 
 /**
- * Pasta do SDD central: prefere a localização nova (`sdd.sourceId` + `sdd.root`, aba SDD do projeto); sem isso configurado,
- * cai no `sddRoot` legado (`sddPath` ou detecção automática). Evita duplicar a mesma escolha em dois lugares da UI.
+ * Central SDD folder: prefers the new location (`sdd.sourceId` + `sdd.root`, the project's SDD tab); without that configured,
+ * falls back to the legacy `sddRoot` (`sddPath` or automatic detection). Avoids duplicating the same choice in two places of the UI.
  */
 export function resolvedSddRoot(history: CardHistoryService, board: Pick<BoardRepository, 'get'>, projectId: string, method?: 'native' | 'speckit' | null): string | null {
   const config = history.config(projectId)
@@ -19,15 +19,15 @@ export function resolvedSddRoot(history: CardHistoryService, board: Pick<BoardRe
 }
 
 /**
- * Workflow Adapters (docs/09). O planejador do GearMod continua só lendo o projeto; quem grava os arquivos no formato nativo de
- * cada método é o app, ao concluir o planejamento, na pasta central do SDD do projeto (uma só, mesmo com vários repositórios).
+ * Workflow Adapters (docs/09). GearMod's planner still only reads the project; what writes the files in each method's native
+ * format is the app, when planning concludes, in the project's central SDD folder (just one, even with several repositories).
  */
 export interface MethodAdapter {
   method: SddMethod
   label: string
-  /** Instruções do método para o planejador, com a pasta central quando houver. */
+  /** Method instructions for the planner, with the central folder when there is one. */
   instructions(config: WorkflowConfig, sddPath: string | null): string
-  /** Pasta e arquivos nativos onde o plano aprovado do card é gravado; `null` = o método não grava fora da pasta de artefatos. */
+  /** Folder and native files where the card's approved plan is written; `null` = the method does not write outside the artifacts folder. */
   target?(sddPath: string, folder: string): { dir: string; files: Record<string, Array<'resumo' | 'especificacao' | 'plano' | 'tasks'>> }
 }
 
@@ -56,9 +56,9 @@ export const methodAdapters: Record<SddMethod, MethodAdapter> = {
   }
 }
 
-/** O que vai no contexto do planejador para o fluxo do card. */
+/** What goes into the planner's context for the card's flow. */
 export function workflowInstructions(config: WorkflowConfig, sddPath: string | null, workflow: WorkflowKind | null, planning = true): string | null {
-  // Fora do planejamento (implementação e teste) a skill speckit-implement é o trabalho do chat: a proibição vale só no planejamento.
+  // Outside planning (implementation and test) the speckit-implement skill is the chat's job: the prohibition applies only in planning.
   if (!planning && workflow === 'sdd' && config.complexMethod === 'speckit') return 'Native GitHub Spec Kit: the specification, plan and tasks of the card feature are already in the worktree. This is the implementation chat: the speckit-implement skill is allowed and is what must be run to implement the tasks (spec.md, plan.md and tasks.md of the card feature). Do not imitate the templates or use the GearMod document tools to write these artifacts.'
   if (workflow === 'light') return 'Short workflow: no Specification, Plan or Tasks. The card is a small task: a description of what to do, implement and validate.'
   if (workflow === 'spec') return 'Light spec: an objective Specification with acceptance criteria, a short technical Plan and Tasks only when they help. No empty sections.'
@@ -66,7 +66,7 @@ export function workflowInstructions(config: WorkflowConfig, sddPath: string | n
   return null
 }
 
-/** Pasta do SDD central: a configurada ou, sem configuração, a primeira instalação detectada do método escolhido. */
+/** Central SDD folder: the configured one or, with no configuration, the first detected installation of the chosen method. */
 export function sddRoot(history: CardHistoryService, projectId: string): string | null {
   const config = history.config(projectId)
   if (config.sddPath) return config.sddPath
@@ -77,8 +77,8 @@ export function sddRoot(history: CardHistoryService, projectId: string): string 
 type DocName = 'resumo' | 'especificacao' | 'plano' | 'tasks'
 
 /**
- * Plano concluído: grava Especificação, Plano e Tasks como arquivos na pasta de artefatos do card e, no fluxo SDD com Spec Kit ou
- * OpenSpec, também no formato nativo na pasta central. Nunca sobrescreve uma pasta que não foi criada pelo GearMod para este card.
+ * Plan concluded: writes Specification, Plan and Tasks as files in the card's artifacts folder and, in the SDD flow with Spec Kit or
+ * OpenSpec, also in the native format in the central folder. Never overwrites a folder that was not created by GearMod for this card.
  */
 export function exportPlanArtifacts(history: CardHistoryService, board: BoardRepository, cardId: string): { written: string[]; notices: string[] } {
   const card = board.card(cardId), documents = board.documents.get(cardId), written: string[] = [], notices: string[] = []
@@ -86,7 +86,7 @@ export function exportPlanArtifacts(history: CardHistoryService, board: BoardRep
     return { written, notices: ['Spec Kit: os artefatos são os das skills nativas na worktree do card; nenhum artefato paralelo foi gerado.'] }
   }
   const content = (kinds: Array<DocName>): string => kinds.map((kind) => documents[kind].contentMd.trim()).filter(Boolean).join('\n\n')
-  // `shared`: pasta central do SDD, que pode ter conteúdo de outras pessoas; só grava onde o próprio card marcou como sua.
+  // `shared`: central SDD folder, which may have other people's content; only writes where the card itself marked as its own.
   const write = (dir: string, files: Record<string, Array<DocName>>, shared: boolean): void => {
     const marker = join(dir, '.gearmod-card')
     if (shared && existsSync(dir) && (!existsSync(marker) || readFileSync(marker, 'utf8').trim() !== cardId)) { notices.push(`A pasta ${dir} já existe e não foi criada pelo GearMod para este card; nada foi gravado nela.`); return }
@@ -108,8 +108,8 @@ export function exportPlanArtifacts(history: CardHistoryService, board: BoardRep
 }
 
 /**
- * Mantém as cópias que já existem (spec.md, plan.md, tasks.md) iguais aos documentos do card: marcar uma task, ajustar o plano etc. regrava o arquivo.
- * Só atualiza arquivos já criados na conclusão do planejamento; no Spec Kit os arquivos reais são outros e não passam por aqui.
+ * Keeps the existing copies (spec.md, plan.md, tasks.md) equal to the card's documents: checking a task, adjusting the plan etc. rewrites the file.
+ * Only updates files already created when planning concluded; in Spec Kit the real files are others and do not pass through here.
  */
 export function refreshArtifactCopies(history: CardHistoryService, board: BoardRepository, cardId: string): void {
   const card = board.card(cardId)

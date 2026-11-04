@@ -1,7 +1,7 @@
 import React from 'react'
 import { useT } from './i18n'
 
-/** Os cinco tipos de aviso do app. Todo aviso passa por `toast.<tipo>(...)` e é desenhado por este componente. */
+/** The five toast types in the app. Every toast goes through `toast.<type>(...)` and is drawn by this component. */
 export type ToastKind = 'success' | 'error' | 'info' | 'warning' | 'notify'
 
 const icons: Record<ToastKind, React.JSX.Element> = {
@@ -14,17 +14,17 @@ const icons: Record<ToastKind, React.JSX.Element> = {
 
 export interface ToastCardProps {
   kind: ToastKind; title: string; message?: string
-  /** De onde veio (ex.: repositório · branch), em letra pequena embaixo. */
+  /** Where it came from (e.g. repository · branch), in small text below. */
   meta?: string
-  /** Tempo, em ms, até sumir sozinho: mostra a barra de tempo. 0 ou vazio: fica até ser fechado. */
+  /** Time in ms until it disappears on its own: shows the timer bar. 0 or empty: stays until closed. */
   duration?: number
-  /** Pausa a barra de tempo (mouse em cima). */
+  /** Pauses the timer bar (mouse over). */
   paused?: boolean
   onClose?(): void
   onHover?(inside: boolean): void
 }
 
-/** Cartão padrão de aviso (sucesso, erro, informação, atenção ou notificação). É o único visual de aviso do app. */
+/** Standard toast card (success, error, info, warning or notification). It is the only toast visual in the app. */
 export function ToastCard({ kind, title, message, meta, duration = 0, paused = false, onClose, onHover }: ToastCardProps): React.JSX.Element {
   const t = useT()
   return <div className={`ntoast ${kind} ${paused ? 'paused' : ''}`} role={kind === 'error' || kind === 'warning' ? 'alert' : 'status'} aria-label={`${t.shell.toast.kinds[kind]}: ${title}`} onMouseEnter={onHover ? () => onHover(true) : undefined} onMouseLeave={onHover ? () => onHover(false) : undefined}>

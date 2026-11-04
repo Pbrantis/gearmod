@@ -1,5 +1,5 @@
 import React from 'react'
-/** Extensão em minúsculas, sem o ponto (`.env` puro vira `env`); base única para tipo de arquivo e linguagem do editor. */
+/** Lowercase extension, without the dot (a bare `.env` becomes `env`); single basis for file type and editor language. */
 export const extensionOf = (path: string): string => { const name = path.split(/[\\/]/).at(-1) ?? ''; const dot = name.lastIndexOf('.'); return dot < 0 ? '' : name.slice(dot + 1).toLowerCase() }
 export function fileKind(path: string): string {
   if (/\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(path)) return 'image'

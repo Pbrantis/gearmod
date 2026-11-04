@@ -3,7 +3,7 @@ import { ConfirmDialog } from './ConfirmDialog'
 
 export interface AskOptions { eyebrow: string; title: string; text: string; ok: string; danger?: boolean }
 
-/** Confirmação assíncrona com o `ConfirmDialog` do app: `if (!(await ask({...}))) return`. Renderize `dialog` em algum lugar do componente. */
+/** Async confirmation with the app's `ConfirmDialog`: `if (!(await ask({...}))) return`. Render `dialog` somewhere in the component. */
 export function useAsk(): { ask(options: AskOptions): Promise<boolean>; dialog: React.ReactNode } {
   const [pending, setPending] = useState<AskOptions & { resolve(value: boolean): void }>()
   const current = useRef<typeof pending>(undefined)

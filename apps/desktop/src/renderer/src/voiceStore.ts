@@ -8,7 +8,7 @@ const listeners = new Set<() => void>()
 let listening = false
 const set = (patch: Partial<VoiceInstall>): void => { state = { ...state, ...patch }; listeners.forEach((listener) => listener()) }
 
-/** O download continua no main mesmo se o chat fechar; este estado é do app inteiro e alimenta a barra da barra lateral. */
+/** The download continues in main even if the chat closes; this state is app-wide and feeds the sidebar bar. */
 function listen(): void {
   if (listening) return
   listening = true
@@ -27,7 +27,7 @@ export async function startVoiceInstall(): Promise<void> {
   catch (reason) { set({ installing: false, error: plainError(reason) }) }
 }
 
-/** Avisa os chats abertos que o modo de ditado ou a chave mudou, para não ficarem com o status antigo. */
+/** Notifies open chats that the dictation mode or the key changed, so they do not keep the old status. */
 export const notifyVoiceChanged = (): void => { window.dispatchEvent(new Event('gearmod:voice-changed')) }
 
 export const dismissVoiceInstall = (): void => set({ done: false, error: '' })

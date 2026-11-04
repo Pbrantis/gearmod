@@ -70,7 +70,7 @@ export class BackupService {
     const oldDb = `${databasePath}.before-restore`
     await rm(restoreDb, { force: true })
     await cp(backupDb, restoreDb, { force: false })
-    // Anexos: a cópia nova é preparada ao lado; os atuais só saem do lugar depois que ela está inteira, e voltam se algo falhar.
+    // Attachments: the new copy is prepared alongside; the current ones only leave their place once it is complete, and are put back if something fails.
     const newAttachments = `${this.attachmentsDir}.restore`, oldAttachments = `${this.attachmentsDir}.before-restore`
     await rm(newAttachments, { recursive: true, force: true })
     await rm(oldAttachments, { recursive: true, force: true })

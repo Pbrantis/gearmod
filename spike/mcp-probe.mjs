@@ -1,4 +1,4 @@
-// Liga um servidor MCP por stdio, pede tools/list e mede o tamanho das definições (custo fixo no contexto do agente).
+// Starts an MCP server over stdio, asks for tools/list and measures the size of the definitions (fixed cost in the agent's context).
 import { spawn } from 'node:child_process'
 
 const [cmd, ...args] = process.argv.slice(2)
@@ -16,7 +16,7 @@ p.stdout.on('data', (d) => {
         const tools = m.result.tools
         console.log('ferramentas', tools.length, '-', tools.map((t) => t.name).join(', '))
         console.log('definições ≈ tokens', Math.round(JSON.stringify(tools).length / 4))
-        // PROBE_CALL='nome {json}' faz uma chamada de teste
+        // PROBE_CALL='name {json}' makes a test call
         if (process.env.PROBE_CALL) { const i = process.env.PROBE_CALL.indexOf(' '); send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: process.env.PROBE_CALL.slice(0, i), arguments: JSON.parse(process.env.PROBE_CALL.slice(i + 1)) } }); continue }
         p.kill()
         process.exit(0)
@@ -28,7 +28,7 @@ p.stdout.on('data', (d) => {
         p.kill()
         process.exit(0)
       }
-    } catch { /* linha não-JSON */ }
+    } catch { /* non-JSON line */ }
   }
 })
 const send = (m) => p.stdin.write(JSON.stringify(m) + NL)

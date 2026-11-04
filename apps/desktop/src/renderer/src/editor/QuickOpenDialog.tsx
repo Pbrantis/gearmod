@@ -12,8 +12,8 @@ import { useT } from '../i18n'
 export type QuickMode = 'files' | 'content' | 'symbols'
 
 /**
- * Caixa do Ctrl+P: sem texto lista os arquivos recentes; com texto busca no projeto (aproximada) e ordena no renderer.
- * `nome:42` abre já na linha 42. O modo Símbolos (Ctrl+T) busca no índice de código.
+ * Ctrl+P box: with no text it lists recent files; with text it searches the project (fuzzy) and sorts in the renderer.
+ * `name:42` opens directly at line 42. Symbols mode (Ctrl+T) searches the code index.
  */
 export function QuickOpen({ context, roots, recents, open, close, initialMode = 'files', initialText = '' }: {
   context: { projectId: string; cardId: string | null }; roots: ChangeRoot[]; recents: string[]; open(path: string, line?: number, column?: number, length?: number): void; close(): void; initialMode?: QuickMode; initialText?: string
@@ -26,7 +26,7 @@ export function QuickOpen({ context, roots, recents, open, close, initialMode = 
     const timer = window.setTimeout(() => { void window.gearmod.invoke('workspace:search', { ...context, query: target.path, fuzzy: true }).then((result) => { if (alive) { setFound(result.paths); setError('') } }).catch(() => { if (alive) setError(t.files.editor.quickOpen.searchFailed) }) }, 120)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [target.path, mode, context.projectId, context.cardId])
-  // Recentes conferidos no disco (uma listagem por pasta) antes de aparecer: apagados ou renomeados somem.
+  // Recents checked on disk (one listing per folder) before showing: deleted or renamed ones disappear.
   const [existing, setExisting] = useState<string[] | null>(null), recentKey = recents.join('\n')
   useEffect(() => {
     let current = true
@@ -62,8 +62,8 @@ export function QuickOpen({ context, roots, recents, open, close, initialMode = 
 }
 
 /**
- * Separa os recentes que ainda existem. Pasta listada sem o arquivo = apagado (sai do armazenamento);
- * pasta que não lista (sumiu ou está fora das raízes deste contexto) só esconde, sem apagar do armazenamento.
+ * Separates the recents that still exist. Folder listed without the file = deleted (removed from storage);
+ * folder that cannot be listed (gone or outside this context's roots) only hides it, without removing it from storage.
  */
 async function existingRecents(context: { projectId: string; cardId: string | null }, recents: string[]): Promise<{ keep: string[]; gone: string[] }> {
   const split = (path: string): [string, string] => { const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')); return [path.slice(0, at), path.slice(at + 1).toLowerCase()] }

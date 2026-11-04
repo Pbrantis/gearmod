@@ -2,7 +2,7 @@ import React from 'react'
 import type { CardChecklist } from '@gearmod/contracts'
 import { markBadges } from './checklistToggle'
 
-/** Etiquetas de um item do checklist: "agente" (o OK dele) e "você" (a sua confirmação). Item desmarcado com OK do agente mostra "OK do agente" apagado. */
+/** Tags for a checklist item: "agent" (its OK) and "you" (your confirmation). An unchecked item with the agent's OK shows a dimmed "Agent OK". */
 export function MarkBadges({ mark, checked }: { mark: CardChecklist['marks'][string] | undefined; checked: boolean }): React.JSX.Element | null {
   const badges = markBadges(mark, checked)
   if (!badges.length) return null

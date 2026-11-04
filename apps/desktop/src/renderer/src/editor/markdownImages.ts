@@ -10,8 +10,8 @@ const toBase64 = (file: File): Promise<string> => new Promise((resolve, reject) 
 let counter = 0
 
 /**
- * Colar ou soltar imagem num Markdown: a imagem vai para `imagens/` ao lado do `.md` e o link é inserido na posição do cursor.
- * Enquanto grava aparece um texto provisório; em erro ele some e o erro vai para `fail`. Imagem solta que já está no projeto só vira link.
+ * Pasting or dropping an image into a Markdown file: the image goes to `imagens/` next to the `.md` and the link is inserted at the cursor position.
+ * While saving, a placeholder text is shown; on error it disappears and the error goes to `fail`. A dropped image that is already in the project just becomes a link.
  */
 export function markdownImages({ markdownPath, save, inProject, droppedPath, fail }: {
   markdownPath: string

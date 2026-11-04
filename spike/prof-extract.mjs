@@ -1,4 +1,4 @@
-// Mede o tempo de extração por linguagem (uma thread) numa amostra de arquivos.
+// Measures extraction time per language (one thread) on a sample of files.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from './graph/indexer.mjs'

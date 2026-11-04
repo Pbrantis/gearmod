@@ -21,7 +21,7 @@ import { tm } from './i18n'
 
 export type AgentEvent = { type: string; payload: Record<string, unknown> }
 export type AgentRunOptions = { cwd: string; addDirs?: string[]; prompt: string; sessionId: string | null; planning: boolean; profile: AgentProfile; pluginDir?: string | null; env?: Record<string, string>; mcpServers?: McpRunServer[]; mcp?: McpEndpoint; model?: string | null; effort?: Effort | null; mode?: PermissionMode; developerInstructions?: string; attachments?: string[]; signal?: AbortSignal; requestPermission?(kind: string, details: Record<string, unknown>, signal?: AbortSignal): Promise<boolean>; onEvent(event: AgentEvent): void }
-/** `costUsd`: só quando o próprio agente informa (Claude: `total_cost_usd` do result); nunca estimado aqui. */
+/** `costUsd`: only when the agent itself reports it (Claude: `total_cost_usd` from the result); never estimated here. */
 export type RunTokens = { input: number; cached: number; output: number; costUsd?: number }
 export type AgentRunResult = { sessionId: string; turnId: string | null; text: string; status: 'completed' | 'failed' | 'interrupted'; error: string | null; usage?: RunTokens; modelEffective?: string; apiKeySource?: string }
 export interface AgentAdapter { run(options: AgentRunOptions): Promise<AgentRunResult> }
@@ -76,17 +76,17 @@ class JsonLineRpc {
 }
 
 const codexEfforts = new Set<string>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
-/** Anexos que vão para o Codex como imagem (ele vê o conteúdo), além do caminho no texto. */
+/** Attachments that go to Codex as an image (it sees the content), besides the path in the text. */
 const imageExtensions = /\.(png|jpe?g|gif|webp|bmp)$/i
-/** Esforços que o GearMod conhece; um nível novo do provedor é ignorado em vez de invalidar a lista de modelos inteira. */
+/** Efforts GearMod knows; a new level from the provider is ignored instead of invalidating the whole model list. */
 const knownEffort = (value: unknown): value is Effort => effortSchema.safeParse(value).success
 /**
- * As ferramentas do GearMod já checam quem pode chamar o quê (ex.: só o chat da Constituição a grava). Sem isto, no modo só leitura
- * (aprovação "never") o Codex recusa toda ferramenta que escreve, e o planejamento e o chat da Constituição não conseguiam gravar.
+ * GearMod's tools already check who may call what (e.g. only the Constitution chat writes it). Without this, in read-only mode
+ * (approval "never") Codex refuses every tool that writes, and the planning and Constitution chats could not save.
  */
 export const gearmodToolApproval = { default_tools_approval_mode: 'approve' } as const
 
-/** Modos de permissão do GearMod → sandbox, política de aprovação e revisor do Codex (plano 08, seção 6). */
+/** GearMod permission modes → Codex sandbox, approval policy and reviewer (plan 08, section 6). */
 export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; approvalPolicy: AskForApproval; approvalsReviewer?: ApprovalsReviewer } {
   switch (mode) {
     case 'plan': return { sandbox: 'read-only', approvalPolicy: 'never' }
@@ -98,7 +98,7 @@ export function codexAccess(mode: PermissionMode): { sandbox: SandboxMode; appro
   }
 }
 
-/** Modos do GearMod → `--permission-mode` do Claude. */
+/** GearMod modes → Claude's `--permission-mode`. */
 export const claudePermissionMode: Record<PermissionMode, string | null> = { plan: 'plan', auto: 'auto', accept_edits: 'acceptEdits', manual: 'manual', on_request: null, read_only: null, bypass: 'bypassPermissions' }
 
 export class CodexAppServerAdapter implements AgentAdapter {
@@ -112,7 +112,7 @@ export class CodexAppServerAdapter implements AgentAdapter {
     let text = '', turnId: string | null = null, modelEffective: string | undefined
     let turnAbort: (() => void) | undefined
     const items = new Map<string, JsonObject>()
-    // O Codex avisa o uso a cada chamada ao modelo (`last`); soma só quando o total do thread muda, para não contar aviso repetido.
+    // Codex reports usage on every model call (`last`); sum only when the thread total changes, so a repeated report is not counted twice.
     const usage: RunTokens = { input: 0, cached: 0, output: 0 }; let lastTotal = -1
     try {
       await rpc.request('initialize', { clientInfo: { name: 'gearmod', title: 'GearMod', version: '0.1.0' }, capabilities: null })
@@ -178,7 +178,7 @@ export class CodexAppServerAdapter implements AgentAdapter {
   }
 }
 
-/** Lista os modelos do Codex pelo app-server (`model/list`); falha ou demora devolvem lista vazia. */
+/** Lists Codex models through the app-server (`model/list`); a failure or timeout returns an empty list. */
 export async function listCodexModels(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 30_000): Promise<ModelOption[]> {
   try {
     const live = await listCodexModelsLive(profile, processes, timeoutMs)
@@ -193,7 +193,7 @@ export async function listCodexModels(profile: AgentProfile, processes: ProcessF
   throw new Error(tm().adapters.noCodexModels)
 }
 
-/** Leitura oficial de quota do App Server; o chamador mantém fallback nos arquivos de sessão. */
+/** Official quota reading from the App Server; the caller keeps a fallback on the session files. */
 export async function readCodexQuota(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 15_000): Promise<Record<string, unknown> | null> {
   const child = processes.start(profile.executablePath || 'codex', ['app-server', '--listen', 'stdio://'], { cwd: process.cwd(), env: { ...applyEnvPolicy(profile, process.env), CODEX_HOME: profile.configDir } })
   const rpc = new JsonLineRpc(child); let timedOut = false
@@ -205,7 +205,7 @@ export async function readCodexQuota(profile: AgentProfile, processes: ProcessFa
   } catch (error) { if (timedOut) return null; throw error } finally { clearTimeout(timer); rpc.stop() }
 }
 
-/** Plano B: o Codex guarda o último catálogo em `models_cache.json` dentro do CODEX_HOME. */
+/** Plan B: Codex keeps the last catalog in `models_cache.json` inside CODEX_HOME. */
 export function readCodexModelsCache(profile: AgentProfile): ModelOption[] {
   try {
     const raw = JSON.parse(readFileSync(join(profile.configDir || join(homedir(), '.codex'), 'models_cache.json'), 'utf8')) as { models?: Array<Record<string, unknown>> }
@@ -232,7 +232,7 @@ async function listCodexModelsLive(profile: AgentProfile, processes: ProcessFact
   } finally { clearTimeout(timer); rpc.stop() }
 }
 
-/** Chamada mínima ao Claude só para ler o `rate_limit_event` (limite de uso); encerra o processo assim que o evento chega. */
+/** Minimal call to Claude just to read the `rate_limit_event` (usage limit); ends the process as soon as the event arrives. */
 export async function probeClaudeLimits(profile: AgentProfile, processes: ProcessFactory = nodeProcesses, timeoutMs = 90_000): Promise<Record<string, unknown> | null> {
   const child = processes.start(profile.executablePath || 'claude', ['--print', '--output-format', 'stream-json', '--verbose', '--model', 'haiku', '--no-session-persistence', '--', 'responda apenas: ok'], { cwd: tmpdir(), env: { ...applyEnvPolicy(profile, process.env), CLAUDE_CONFIG_DIR: profile.configDir } })
   child.stdin.end()
@@ -241,13 +241,13 @@ export async function probeClaudeLimits(profile: AgentProfile, processes: Proces
     const finish = (value: Record<string, unknown> | null): void => { if (done) return; done = true; clearTimeout(timer); if (!child.killed) child.kill(); resolve(value) }
     const timer = setTimeout(() => finish(null), timeoutMs)
     createInterface({ input: child.stdout }).on('line', (line) => {
-      try { const message = JSON.parse(line) as Record<string, unknown>; if (message.type === 'rate_limit_event') finish(message) } catch { /* linha que não é JSON */ }
+      try { const message = JSON.parse(line) as Record<string, unknown>; if (message.type === 'rate_limit_event') finish(message) } catch { /* line that is not JSON */ }
     })
     child.on('error', () => finish(null)); child.on('exit', () => finish(null))
   })
 }
 
-/** Pede ao Haiku (modelo barato) uma mensagem de commit para as alterações; devolve só o resumo de uma linha. */
+/** Asks Haiku (a cheap model) for a commit message for the changes; returns only the one-line summary. */
 export async function suggestCommitMessage(profile: AgentProfile, context: string, processes: ProcessFactory = nodeProcesses, timeoutMs = 60_000): Promise<string> {
   const child = processes.start(profile.executablePath || 'claude', ['--print', '--output-format', 'text', '--model', 'haiku', '--no-session-persistence'], { cwd: tmpdir(), env: { ...applyEnvPolicy(profile, process.env), CLAUDE_CONFIG_DIR: profile.configDir } })
   child.stdin.end(`Escreva a mensagem de commit destas alterações. Responda só com UMA linha (até 72 caracteres), sem aspas, sem ponto final, sem explicação, no mesmo idioma e estilo dos commits recentes.
@@ -266,8 +266,8 @@ export class ClaudeCliAdapter implements AgentAdapter {
   constructor(private readonly processes: ProcessFactory = nodeProcesses, private readonly timing = { graceMs: 60_000, pendingIdleMs: 10 * 60_000 }) {}
   async run(options: AgentRunOptions): Promise<AgentRunResult> {
     if (options.signal?.aborted) throw new Error(tm().common.executionCancelled)
-    // Em `plan` o Claude se recusa a chamar ferramentas que gravam (inclusive as do GearMod; confirmado em teste real).
-    // Com o MCP ligado, o planejamento usa o modo padrão só com ferramentas de leitura + as do GearMod; sem MCP, `plan` e documentos por marcadores.
+    // In `plan` mode Claude refuses to call tools that write (including GearMod's; confirmed in a real test).
+    // With MCP on, planning uses the default mode with read-only tools plus GearMod's; without MCP, `plan` and documents via markers.
     const readOnlyPlanning = options.planning && Boolean(options.mcp)
     const executionMode = claudePermissionMode[options.mode ?? 'accept_edits']
     if (!options.planning && !executionMode) throw new Error(tm().adapters.unsupportedClaudeMode(String(options.mode)))
@@ -276,7 +276,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
     if (options.effort) args.push('--effort', options.effort)
     if (readOnlyPlanning) args.push('--tools', 'Read,Grep,Glob,WebSearch,WebFetch')
     if (options.pluginDir) args.push('--plugin-dir', options.pluginDir)
-    // A config do MCP leva env e headers (segredos): vai por arquivo temporário e não pela linha de comando, que aparece na lista de processos.
+    // The MCP config carries env and headers (secrets): it goes through a temporary file, not the command line, which shows up in the process list.
     let mcpConfigDir: string | null = null
     if (options.mcp || options.mcpServers?.length) {
       mcpConfigDir = mkdtempSync(join(tmpdir(), 'gearmod-mcp-'))
@@ -286,7 +286,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
     }
     if (options.mcp) args.push('--allowedTools', 'mcp__gearmod')
     if (options.sessionId) args.push('--resume', options.sessionId)
-    // Anexos fora da pasta do projeto: libera a leitura da pasta de cada um.
+    // Attachments outside the project folder: allow reading each one's folder.
     for (const dir of new Set([...(options.attachments ?? []).map((path) => dirname(path)), ...(options.addDirs ?? [])])) args.push('--add-dir', dir)
     const interactive = Boolean(options.requestPermission)
     if (interactive) args.push('--input-format', 'stream-json', '--permission-prompt-tool', 'stdio')
@@ -298,12 +298,12 @@ export class ClaudeCliAdapter implements AgentAdapter {
     const abort = () => { approvals.close(); child.kill() }; options.signal?.addEventListener('abort', abort, { once: true })
     child.stderr.on('data', (chunk: Buffer) => { stderr = `${stderr}${chunk.toString()}`.slice(-4000) })
     return new Promise<AgentRunResult>((resolve, reject) => {
-      // Tarefas em segundo plano (subagentes e comandos): o `result` do turno chega com elas ainda rodando. O processo só pode sair quando todas
-      // terminarem e o Claude responder à notificação delas (outro `result`); se não responder, vale o último resultado depois de uma folga.
+      // Background tasks (subagents and commands): the turn's `result` arrives while they are still running. The process can only exit when all of them
+      // finish and Claude answers their notification (another `result`); if it does not answer, the last result counts after a grace period.
       const pending = new Set<string>(), { graceMs: grace, pendingIdleMs } = this.timing
       let deferred: AgentRunResult | null = null, graceTimer: NodeJS.Timeout | undefined, idleTimer: NodeJS.Timeout | undefined
       const finish = (result: AgentRunResult): void => { if (graceTimer) clearTimeout(graceTimer); if (idleTimer) clearTimeout(idleTimer); resolve(result) }
-      // Tarefa em segundo plano que nunca avisa que terminou (task_started sem task_notification): sem nenhuma atividade por `pendingIdleMs`, vale o resultado do turno.
+      // Background task that never reports it finished (task_started without task_notification): with no activity for `pendingIdleMs`, the turn's result counts.
       const armIdle = (): void => { if (!deferred) return; if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => { if (deferred) { const last = deferred; child.kill(); finish(last) } }, pendingIdleMs) }
       const settle = (): void => { if (deferred && !pending.size && !graceTimer) { const last = deferred; graceTimer = setTimeout(() => finish(last), grace) } }
       createInterface({ input: child.stdout }).on('line', (line) => {
@@ -344,7 +344,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
   }
 }
 
-/** Uso informado no `result` do Claude: o que foi criado no cache conta como leitura nova; a leitura do cache fica à parte. */
+/** Usage reported in Claude's `result`: what was created in the cache counts as new reads; cache reads are kept separate. */
 function claudeUsage(value: unknown, cost?: unknown): RunTokens | undefined {
   if (!value || typeof value !== 'object') return undefined
   const usage = value as Record<string, unknown>, count = (key: string): number => (typeof usage[key] === 'number' && Number.isFinite(usage[key]) ? Math.max(0, Math.round(usage[key] as number)) : 0)

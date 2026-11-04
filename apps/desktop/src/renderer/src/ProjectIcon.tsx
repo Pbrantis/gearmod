@@ -3,10 +3,10 @@ import { tr, useT } from './i18n'
 
 const size = 96
 
-/** Reduz a imagem escolhida para um quadrado de 96px (recorte central) e devolve um PNG em data URL: leve para guardar no banco. */
+/** Shrinks the chosen image to a 96px square (center crop) and returns a PNG as a data URL: light to store in the database. */
 async function shrink(file: File): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error(tr().settings.icon.notImage)
-  // Lê como data URL: a política de segurança da página só aceita imagens `data:` (uma URL `blob:` era bloqueada).
+  // Reads as a data URL: the page's security policy only accepts `data:` images (a `blob:` URL was blocked).
   const url = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error(tr().settings.icon.cannotRead)); reader.readAsDataURL(file) })
   const image = await new Promise<HTMLImageElement>((resolve, reject) => { const item = new Image(); item.onload = () => resolve(item); item.onerror = () => reject(new Error(tr().settings.icon.cannotOpen)); item.src = url })
   const side = Math.min(image.naturalWidth, image.naturalHeight)
@@ -18,12 +18,12 @@ async function shrink(file: File): Promise<string> {
   return canvas.toDataURL('image/png')
 }
 
-/** Ícone do projeto na barra lateral: a imagem escolhida ou, sem ela, a inicial do nome. */
+/** Project icon in the sidebar: the chosen image or, without one, the name's initial. */
 export function ProjectAvatar({ name, icon }: { name: string; icon: string | null | undefined }): React.JSX.Element {
   return <i className={icon ? 'img' : undefined}>{icon ? <img src={icon} alt="" draggable={false} /> : name.trim()[0]?.toUpperCase() ?? '·'}</i>
 }
 
-/** Escolher, trocar ou remover o ícone do projeto (criar projeto e configurações). */
+/** Choose, change or remove the project icon (create project and settings). */
 export function ProjectIconPicker({ name, icon, onChange, compact = false }: { name: string; icon: string | null; onChange(icon: string | null): void; compact?: boolean }): React.JSX.Element {
   const t = useT(), ti = t.settings.icon
   const input = useRef<HTMLInputElement>(null), [error, setError] = useState('')

@@ -9,7 +9,7 @@ import { tr } from '../i18n'
 
 export interface EditorOptions { tabs?: boolean; wrap: boolean; tabSize: number; indentWithTab: boolean; whitespace: boolean; guides: boolean; scrollPastEnd: boolean }
 export const none: Extension = []
-/** Extensões fixas, comuns ao editor e ao diff: calha, histórico, pares, destaques, atalhos padrão, tema e cores de sintaxe. */
+/** Fixed extensions, shared by the editor and the diff: gutter, history, bracket pairs, highlights, default keymap, theme and syntax colors. */
 export const baseExtensions = (variant: 'code' | 'prose' = 'code'): Extension[] => [
   ...(variant === 'code' ? [lineNumbers(), highlightActiveLineGutter(), highlightActiveLine(), rectangularSelection(), crosshairCursor(), foldGutter(), closeBrackets()] : []),
   history(), drawSelection(), dropCursor(), indentOnInput(), bracketMatching(), highlightSelectionMatches({ minSelectionLength: 2, wholeWords: true }),
@@ -18,7 +18,7 @@ export const baseExtensions = (variant: 'code' | 'prose' = 'code'): Extension[] 
   keymap.of([...(variant === 'prose' ? [{ key: 'Mod-h', run: openSearchPanel, preventDefault: true }] : []), ...(variant === 'code' ? closeBracketsKeymap : []), ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...(variant === 'code' ? foldKeymap : [])]),
   editorTheme, highlight
 ]
-/** Opções que o usuário muda na hora (quebra de linha, recuo, espaços visíveis...); entram por compartimento. */
+/** Options the user changes on the fly (line wrapping, indentation, visible whitespace...); they go in through a compartment. */
 export const optionExtensions = (options: EditorOptions): Extension[] => [
   options.wrap ? EditorView.lineWrapping : none,
   EditorState.tabSize.of(options.tabSize), indentUnit.of(options.tabs ? '\t' : ' '.repeat(options.tabSize)),

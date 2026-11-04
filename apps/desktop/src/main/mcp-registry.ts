@@ -6,10 +6,10 @@ import { SecretStore, type SecureStorage } from './secrets'
 import { tm } from './i18n'
 
 export type McpProvider = 'claude' | 'codex' | 'gemini'
-/** O que o adaptador recebe para injetar na execução; contém segredos, nunca vai ao renderer. */
+/** What the adapter receives to inject into the run; contains secrets, never goes to the renderer. */
 export type McpRunServer = { name: string } & ({ transport: 'stdio'; command: string; args: string[]; env: Record<string, string> } | { transport: 'http'; url: string; headers: Record<string, string> })
 
-/** Servidores mais usados para começar. Só preenchem o formulário: nada é instalado nem executado ao escolher. */
+/** Most-used servers to get started. They only fill in the form: nothing is installed or run when one is chosen. */
 export const mcpPresets: McpPreset[] = [
   { id: 'filesystem', label: 'Filesystem', get description() { return tm().mcpPresets.filesystemDescription }, transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '<pasta permitida>'], env: [], headers: [], get note() { return tm().mcpPresets.filesystemNote } },
   { id: 'github', label: 'GitHub', get description() { return tm().mcpPresets.githubDescription }, transport: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'], env: ['GITHUB_PERSONAL_ACCESS_TOKEN'], headers: [], get note() { return tm().mcpPresets.githubNote } },
@@ -28,9 +28,9 @@ type Secrets = { env: Record<string, string>; headers: Record<string, string> }
 type Row = { id: string; scope: 'global' | 'project'; projectId: string | null; name: string; presetId: string | null; transport: 'stdio' | 'http'; command: string | null; argsJson: string; url: string | null; envKeysJson: string; headerKeysJson: string; providersJson: string; enabled: number }
 
 /**
- * Cadastro de servidores MCP do GearMod: uma lista global e uma por projeto, com liga/desliga por agente.
- * Os servidores são injetados na hora de rodar cada agente; os arquivos de configuração do Claude/Codex não são tocados.
- * Valores de env e cabeçalhos ficam no cofre do sistema, nunca no SQLite nem no renderer.
+ * GearMod MCP server registry: a global list and one per project, with an on/off switch per agent.
+ * Servers are injected when each agent runs; the Claude/Codex configuration files are not touched.
+ * Env and header values live in the system vault, never in SQLite or the renderer.
  */
 export class McpRegistry {
   constructor(private readonly database: AppDatabase, private readonly secretDir: string, private readonly storage: SecureStorage) {}
@@ -48,7 +48,7 @@ export class McpRegistry {
     return { id: row.id, scope: row.scope, projectId: row.projectId, name: row.name, presetId: row.presetId, transport: row.transport, command: row.command ?? '', args: JSON.parse(row.argsJson) as string[], url: row.url ?? '', env: keys(row.envKeysJson).map((key) => ({ key, set: Boolean(secrets.env[key]) })), headers: keys(row.headerKeysJson).map((key) => ({ key, set: Boolean(secrets.headers[key]) })), providers: JSON.parse(row.providersJson) as McpProvider[], enabled: Boolean(row.enabled), disabledHere: disabled.has(row.id) }
   }
 
-  /** Globais e, com `projectId`, também os do projeto. Valores secretos aparecem só como "definido ou não". */
+  /** Global ones and, with `projectId`, the project's too. Secret values appear only as "set or not". */
   async list(projectId?: string): Promise<McpServer[]> {
     const disabled = projectId ? this.disabledHere(projectId) : new Set<string>()
     return Promise.all(this.rows(projectId).map((row) => this.view(row, disabled)))
@@ -67,7 +67,7 @@ export class McpRegistry {
     if (duplicate) throw new Error(tm().mcpRegistry.serverNameExists(name))
     const id = input.id ?? randomUUID(), now = new Date().toISOString()
     const previous = input.id ? await this.secrets(id) : { env: {}, headers: {} }
-    // Valor vazio mantém o segredo já guardado; chave removida some. Só o que foi digitado substitui.
+    // An empty value keeps the secret already stored; a removed key disappears. Only what was typed replaces.
     const merge = (keys: Array<{ key: string; value?: string }>, old: Record<string, string>): Record<string, string> => Object.fromEntries(keys.filter((item) => item.key.trim()).map((item) => [item.key.trim(), item.value ? item.value : old[item.key.trim()] ?? '']))
     const env = merge(input.env, previous.env), headers = merge(input.headers, previous.headers)
     const row = { id, scope: input.scope, projectId: input.scope === 'project' ? input.projectId : null, name, presetId: input.presetId ?? null, transport: input.transport, command: input.transport === 'stdio' ? input.command.trim() : null, argsJson: JSON.stringify(input.transport === 'stdio' ? input.args.filter((arg) => arg !== '') : []), url: input.transport === 'http' ? input.url.trim() : null, envKeys: JSON.stringify(input.transport === 'stdio' ? Object.keys(env) : []), headerKeys: JSON.stringify(input.transport === 'http' ? Object.keys(headers) : []), providers: JSON.stringify([...new Set(input.providers)]), enabled: input.enabled ? 1 : 0, now }
@@ -83,14 +83,14 @@ export class McpRegistry {
     await this.store(id).write(null)
   }
 
-  /** Servidor global ligado/desligado só para este projeto. */
+  /** Global server turned on/off for this project only. */
   setProjectEnabled(projectId: string, serverId: string, enabled: boolean): void {
     if (!this.database.db.prepare("SELECT 1 FROM mcp_servers WHERE id = ? AND scope = 'global'").get(serverId)) throw new Error(tm().mcpRegistry.onlyGlobalCanBeDisabled)
     if (enabled) this.database.db.prepare('DELETE FROM mcp_project_disabled WHERE project_id = ? AND server_id = ?').run(projectId, serverId)
     else this.database.db.prepare('INSERT OR IGNORE INTO mcp_project_disabled(project_id, server_id) VALUES (?, ?)').run(projectId, serverId)
   }
 
-  /** O que de fato roda neste projeto com este agente: ligado, do agente, e não desligado no projeto. */
+  /** What actually runs in this project with this agent: enabled, belonging to the agent, and not turned off in the project. */
   async effective(projectId: string, provider: McpProvider): Promise<McpRunServer[]> {
     const disabled = this.disabledHere(projectId), result: McpRunServer[] = []
     for (const row of this.rows(projectId)) {
@@ -100,27 +100,27 @@ export class McpRegistry {
         ? { name: row.name, transport: 'stdio', command: row.command ?? '', args: JSON.parse(row.argsJson) as string[], env: secrets.env }
         : { name: row.name, transport: 'http', url: row.url ?? '', headers: secrets.headers })
     }
-    // Projeto vence global quando têm o mesmo nome.
+    // Project wins over global when they have the same name.
     const byName = new Map<string, McpRunServer>(); for (const server of result) byName.set(server.name.toLowerCase(), server)
     return [...byName.values()]
   }
 }
 
-/** Servidores extras no formato `mcp_servers` do Codex (config do thread). */
+/** Extra servers in Codex's `mcp_servers` format (thread config). */
 export function codexMcpServers(servers: McpRunServer[]): Record<string, Record<string, unknown>> {
   return Object.fromEntries(servers.map((server) => [server.name, server.transport === 'stdio'
     ? { command: server.command, args: server.args, env: server.env }
     : { url: server.url, ...(Object.keys(server.headers).length ? { http_headers: server.headers } : {}) }]))
 }
 
-/** Servidores extras no formato `--mcp-config` do Claude Code. */
+/** Extra servers in Claude Code's `--mcp-config` format. */
 export function claudeMcpServers(servers: McpRunServer[]): Record<string, Record<string, unknown>> {
   return Object.fromEntries(servers.map((server) => [server.name, server.transport === 'stdio'
     ? { command: server.command, args: server.args, env: server.env }
     : { type: 'http', url: server.url, ...(Object.keys(server.headers).length ? { headers: server.headers } : {}) }]))
 }
 
-/** Servidores extras no formato `mcpServers` do settings.json do Gemini CLI. */
+/** Extra servers in the `mcpServers` format of the Gemini CLI's settings.json. */
 export function geminiMcpServers(servers: McpRunServer[]): Record<string, Record<string, unknown>> {
   return Object.fromEntries(servers.map((server) => [server.name, server.transport === 'stdio'
     ? { command: server.command, args: server.args, env: server.env }

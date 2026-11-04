@@ -4,20 +4,20 @@ import { LANGUAGES, familyOf, type Family } from './languages'
 import type { Db } from './store'
 
 /**
- * Liga referências a definições (arestas) numa pasta. Depende da árvore inteira (imports, tipos), por isso é por pasta,
- * ao contrário da extração. Pode refazer só os arquivos afetados por uma mudança.
+ * Links references to definitions (edges) in a folder. It depends on the whole tree (imports, types), so it is per folder,
+ * unlike extraction. It can redo only the files affected by a change.
  */
-export const LINKER_VERSION = 6 // suba quando a regra mudar: as pastas são religadas mesmo sem arquivo alterado
+export const LINKER_VERSION = 6 // bump when the rule changes: folders are relinked even with no changed file
 
 const CLASSY = new Set(['class', 'interface', 'struct', 'trait', 'enum', 'type', 'module'])
 const SELF = new Set(['this', 'self', 'cls', 'Self', '$this'])
 const EDGE_KIND: Record<string, string> = { call: 'calls', new: 'instantiates', render: 'renders', type: 'references', ref: 'references' }
-// genéricos demais para ligar só pelo nome quando não se sabe o tipo do receptor (JS, Python, C#, Java, Unity)
+// too generic to link by name alone when the receiver's type is unknown (JS, Python, C#, Java, Unity)
 const STOP = new Set(('get set has add delete push pop shift unshift map filter forEach reduce find findIndex some every join split slice splice replace replaceAll trim then catch finally toString valueOf keys values entries includes indexOf lastIndexOf run all exec prepare close open on off once emit send write read start stop parse stringify log error warn info debug test match assign from of call apply bind resolve reject next length size clear sort concat flat flatMap at fill startsWith endsWith padStart padEnd toLowerCase toUpperCase dispose update create list remove invoke handle listen format load save init render setState append insert pipe subscribe unsubscribe dispatch query execute fetch post put patch request response json text status sync reset destroy kill spawn exit wait sleep print println printf len cap make new copy String Error ' +
   'Add AddRange Remove RemoveAt RemoveAll Contains ContainsKey TryGetValue Find FindAll FindIndex Exists Where Select SelectMany Any All First FirstOrDefault Last LastOrDefault Single ToList ToArray ToDictionary Count Sum Min Max Average OrderBy OrderByDescending ThenBy GroupBy Distinct Skip Take Reverse Insert IndexOf Sort Clear Equals GetHashCode ToString Dispose Invoke GetComponent GetComponents GetComponentInChildren AddComponent Destroy Instantiate SetActive Log LogWarning LogError Format Substring Trim Split Replace StartsWith EndsWith Parse TryParse Lerp Clamp Abs Range Play Pause Stop Start Update Awake Enable Disable Show Hide Move Rotate Translate Load Save Init Initialize Reset Close Open Read Write Send Get Set Put Peek Push Pop Enqueue Dequeue CopyTo stream collect equals hashCode size isEmpty contains').split(' '))
-// globais do ambiente: chamadas neles nunca são do projeto
+// environment globals: calls on them are never the project's
 const GLOBALS = new Set('window document console Math JSON process navigator localStorage sessionStorage Object Array Promise Date Number String Boolean Symbol Reflect Proxy globalThis require module exports Buffer URL URLSearchParams Intl RegExp Error Map Set WeakMap WeakSet crypto performance fetch setTimeout setInterval clearTimeout clearInterval queueMicrotask structuredClone describe it test expect beforeEach afterEach beforeAll afterAll vi jest os sys print len str int dict list fmt'.split(' '))
-// linguagens com tipos declarados: quando a cadeia de tipos falha, é biblioteca/coleção, não vale chutar pelo nome
+// languages with declared types: when the type chain fails, it is a library/collection, not worth guessing by name
 const TYPED = new Set<Family>(['csharp', 'java', 'go', 'rust'])
 
 export interface Sym { id: number; sha: string; idx: number; name: string; qname: string; kind: string; parent: number; line: number; end_line: number; signature: string; exported: number; owner: string | null; path: string; family: Family | null }
@@ -46,7 +46,7 @@ function splitTopLevel(text: string, sep = ','): string[] {
   return out.map((part) => part.trim()).filter(Boolean)
 }
 
-/** Tipo "útil" de uma anotação: `Promise<Foo | null>` → Foo, `Pick<Bar, 'x'>` → Bar, `*Baz` → Baz. */
+/** "Useful" type of an annotation: `Promise<Foo | null>` → Foo, `Pick<Bar, 'x'>` → Bar, `*Baz` → Baz. */
 export function normType(input: string | null | undefined): string | null {
   if (!input) return null
   let text = input.trim()
@@ -63,7 +63,7 @@ export function normType(input: string | null | undefined): string | null {
   return /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(base) ? base : null
 }
 
-/** `{ a: Foo; b?: Bar<X> }` → Map(a → 'Foo', b → 'Bar<X>'): tipos de objeto escritos na própria anotação. */
+/** `{ a: Foo; b?: Bar<X> }` → Map(a → 'Foo', b → 'Bar<X>'): object types written in the annotation itself. */
 function objectMembers(text: string): Map<string, string> {
   const inner = text.trim().replace(/^\{/, '').replace(/\}$/, '')
   const out = new Map<string, string>()
@@ -88,7 +88,7 @@ function returnType(fn: Sym): string | null {
   return normType(found ?? '')
 }
 
-// ---- resolução de módulos ------------------------------------------------------------------------------------------
+// ---- module resolution ------------------------------------------------------------------------------------------
 
 type ModuleResolver = (family: Family | null, from: string, spec: string) => string[]
 
@@ -119,7 +119,7 @@ function moduleResolver(root: string, paths: Set<string>, manifests: string[]): 
         for (const [key, targets] of Object.entries(options.paths)) aliases.push({ dir, prefix: key.replace(/\*$/, ''), wild: key.endsWith('*'), targets: targets.map((target) => posix.join(baseUrl, target.replace(/\*$/, ''))) })
       } else if (options?.baseUrl) aliases.push({ dir, prefix: '', wild: true, targets: [posix.normalize(posix.join(dir, options.baseUrl))] })
     } else if (base === 'go.mod') {
-      try { const mod = readFileSync(join(root, manifest), 'utf8').match(/^module\s+(\S+)/m)?.[1]; if (mod) goModules.push({ dir, mod }) } catch { /* go.mod ilegível */ }
+      try { const mod = readFileSync(join(root, manifest), 'utf8').match(/^module\s+(\S+)/m)?.[1]; if (mod) goModules.push({ dir, mod }) } catch { /* unreadable go.mod */ }
     } else if (base === 'Cargo.toml') cargo.push(dir)
   }
   packages.sort((a, b) => b.name.length - a.name.length)
@@ -208,7 +208,7 @@ function moduleResolver(root: string, paths: Set<string>, manifests: string[]): 
   }
 }
 
-// ---- contexto da pasta ---------------------------------------------------------------------------------------------
+// ---- folder context ---------------------------------------------------------------------------------------------
 
 interface RootContext {
   paths: Set<string>; shaOf: Map<string, string>; pathOf: Map<string, string>; langOfSha: Map<string, string>
@@ -244,7 +244,7 @@ function loadContext(db: Db, root: string): RootContext {
     const parent = syms.get(symbol.sha)?.[symbol.parent]
     const owner = symbol.owner ?? (parent && (CLASSY.has(parent.kind) || parent.kind === 'const') ? parent.name : null)
     if (owner) addMember(members, owner, symbol)
-    // C#: namespace → nome → símbolos (os `using` apontam para namespaces, não para arquivos)
+    // C#: namespace → name → symbols (`using` points to namespaces, not files)
     if (symbol.family === 'csharp' && parent?.kind === 'module') addMember(nsMembers, parent.qname, symbol)
   }
   const manifests = db.prepare('select manifests from roots where root = ?').pluck().get(root) as string | undefined
@@ -258,7 +258,7 @@ function loadContext(db: Db, root: string): RootContext {
   }
 }
 
-// ---- ligação -------------------------------------------------------------------------------------------------------
+// ---- linking -------------------------------------------------------------------------------------------------------
 
 function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile(path: string): { edges: Array<{ src: number; dst: number; kind: string; line: number; n: number; conf: number; lines: number[] }>; fileEdges: Array<[string, number]> } } {
   const fileCache = new Map<string, FileCtx>()
@@ -276,7 +276,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
       targets.push(...found)
       if (imp.local === '*') { wild.push(...found); continue }
       if (!imp.local) continue
-      // Python: `from pacote import modulo` traz o módulo, não um símbolo
+      // Python: `from package import module` brings the module, not a symbol
       if (family === 'python' && imp.imported && imp.imported !== '*' && imp.imported !== 'pkg') {
         const sub = ctx.resolveModule(family, path, imp.spec.endsWith('.') ? imp.spec + imp.imported : `${imp.spec}.${imp.imported}`)
         if (sub.length) { scope.set(imp.local, { paths: sub, imported: '*' }); targets.push(...sub); continue }
@@ -284,20 +284,20 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
       scope.set(imp.local, { paths: found, imported: imp.imported })
     }
     const syms = ctx.syms.get(sha) ?? []
-    // C#: namespaces visíveis = os do arquivo (A.B também vê A) + os `using`
+    // C#: visible namespaces = the file's (A.B also sees A) + the `using`s
     const namespaces: string[] = []
     if (family === 'csharp') {
       for (const symbol of syms) if (symbol?.kind === 'module') { const parts = symbol.qname.split('.'); for (let i = parts.length; i > 0; i--) namespaces.push(parts.slice(0, i).join('.')) }
       for (const imp of imports) namespaces.push(imp.spec.replace(/^static\s+|^global::/g, ''))
     }
-    // nomes importados, inclusive de pacotes externos: nunca caem no "nome único do projeto"
+    // imported names, including from external packages: never fall into the "unique project name"
     const bound = new Set(imports.map((imp) => imp.local).filter((local): local is string => !!local))
     const created: FileCtx = { path, sha, family, scope, wild, bound, namespaces: [...new Set(namespaces)], targets: [...new Set(targets)], syms }
     fileCache.set(path, created)
     return created
   }
 
-  // símbolo exportado `name` por um conjunto de arquivos, seguindo re-exports
+  // symbol exported as `name` by a set of files, following re-exports
   const exportCache = new Map<string, Sym[]>()
   function resolveExport(paths: string[] | undefined, name: string | null, depth = 0): Sym[] {
     if (!paths?.length || !name || depth > 6) return []
@@ -330,7 +330,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
   const chainOf = (fc: FileCtx, idx: number): Sym[] => { const out: Sym[] = []; for (let i = idx; i >= 0; ) { const symbol = fc.syms[i]; if (!symbol) break; out.push(symbol); if (i === 0) break; i = symbol.parent } return out }
   const classOf = (fc: FileCtx, idx: number): Sym | null => chainOf(fc, idx).find((symbol) => CLASSY.has(symbol.kind) && symbol.kind !== 'module') ?? null
 
-  // tipo (classe/interface/struct) pelo nome, no contexto de um arquivo
+  // type (class/interface/struct) by name, in the context of a file
   function resolveTypeName(fc: FileCtx, name: string | null, depth = 0): Sym | null {
     if (!name || depth > 4) return null
     if (name.includes('.')) {
@@ -361,12 +361,12 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
     const out: Sym[] = []
     const fc = fileCtx(type.path)
     for (const row of ctx.heritage.get(type.sha) ?? []) if (row.owner === type.idx || row.owner_name === type.name) { const parent = resolveTypeName(fc, row.target); if (parent && parent.id !== type.id) out.push(parent) }
-    // impl Trait for T / métodos com dono em outros arquivos (Go, Rust)
+    // impl Trait for T / methods with an owner in other files (Go, Rust)
     for (const [sha, list] of ctx.heritage) if (sha !== type.sha) for (const row of list) if (row.owner_name === type.name) { const parent = resolveTypeName(fileCtx(ctx.pathOf.get(sha) ?? ''), row.target); if (parent && parent.id !== type.id) out.push(parent) }
     parentCache.set(type.id, out)
     return out
   }
-  // a mesma classe em vários arquivos (partial do C#, classe reaberta do Ruby)
+  // the same class in several files (C# partial, reopened Ruby class)
   const partsCache = new Map<number, Sym[]>()
   function partsOf(type: Sym): Sym[] {
     const cached = partsCache.get(type.id)
@@ -391,7 +391,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
       if (bind) return typeFromBind(fileCtx(part.path), bind, part.idx, depth + 1)
     }
     for (const parent of parentsOf(type)) { const found = fieldType(parent, name, depth + 1); if (found) return found }
-    // getter/propriedade com tipo de retorno
+    // getter/property with a return type
     const member = memberLookup(type, name).find((symbol) => symbol.kind === 'method' || symbol.kind === 'property')
     const result = member ? returnType(member) : null
     const resolved = member && result ? resolveTypeName(fileCtx(member.path), result, depth + 1) : null
@@ -414,7 +414,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
     const resolved = resolveTypeName(fc, normType(bind.type), depth + 1)
     return resolved ? { type: resolved } : null
   }
-  // `foo` ou `a.b.foo` usado como chamada que inicializa uma variável
+  // `foo` or `a.b.foo` used as a call that initializes a variable
   function resolveCallee(fc: FileCtx, text: string, srcIdx: number | null, depth: number): Sym | null {
     const parts = text.replace(/\?\./g, '.').replace(/::/g, '.').replace(/->/g, '.').split('.')
     const name = parts.pop() ?? ''
@@ -480,10 +480,10 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
     return current
   }
 
-  // nome sem receptor: mesmo arquivo → import → função interna de hook → membro implícito → mesmo pacote → namespace → import * → nome único
+  // name without a receiver: same file → import → inner hook function → implicit member → same package → namespace → import * → unique name
   function bareLookup(fc: FileCtx, name: string, srcIdx: number | null, kind: string): Hit[] {
     const wantType = kind === 'type'
-    // `new X()` só pode ser classe (em JS, também função construtora)
+    // `new X()` can only be a class (in JS, also a constructor function)
     const ok = (symbol: Sym | undefined): symbol is Sym => !!symbol && symbol.idx > 0 && (wantType ? CLASSY.has(symbol.kind) : kind === 'new' ? CLASSY.has(symbol.kind) || (fc.family === 'js' && symbol.kind === 'function') : true)
     const chain = srcIdx !== null ? chainOf(fc, srcIdx) : fc.syms[0] ? [fc.syms[0]] : []
     const chainIdx = new Set(chain.map((symbol) => symbol.idx))
@@ -496,7 +496,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
     const binding = fc.scope.get(name)
     if (binding && binding.imported !== '*') { const hit = resolveExport(binding.paths, binding.imported).filter(ok); if (hit.length) return hit.map((s) => ({ s, conf: 1 })) }
     if (!wantType) {
-      // const { open } = useFileDocuments(): a função `open` de dentro do hook (ou membro do tipo de retorno)
+      // const { open } = useFileDocuments(): the `open` function inside the hook (or a member of the return type)
       const binds = ctx.binds.get(fc.sha) ?? []
       const destructured = chain.map((symbol) => binds.find((row) => row.scope === symbol.idx && row.name === name && row.kind === 'destrcall')).find(Boolean)
       const fn = destructured ? resolveCallee(fc, destructured.type, srcIdx, 1) : null
@@ -518,7 +518,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
     const wild = resolveExport(fc.wild, name).filter(ok)
     if (wild.length) return wild.slice(0, 3).map((s) => ({ s, conf: 0.8 }))
     if (kind === 'ref' || fc.bound.has(name) || GLOBALS.has(name)) return []
-    // em JS/TS, Python e Rust um nome solto sem import não pode vir de outro arquivo
+    // in JS/TS, Python and Rust a bare name without an import cannot come from another file
     if (fc.family === 'js' || fc.family === 'python' || fc.family === 'rust') return []
     const all = (ctx.byName.get(name) ?? []).filter((symbol) => ok(symbol) && symbol.family === fc.family && symbol.sha !== fc.sha && (symbol.parent === 0 || CLASSY.has(symbol.kind)) && !['method', 'const', 'property'].includes(symbol.kind))
     if (all.length === 1) return [{ s: all[0]!, conf: 0.5 }]
@@ -534,12 +534,12 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
       const current = chainType(fc, parts, ref.src)
       if (current && 'ns' in current) { const hit = resolveExport(current.ns, ref.name); if (hit.length) return hit.map((s) => ({ s, conf: 1 })) }
       if (current && 'type' in current) { const hit = memberLookup(current.type, ref.name); if (hit.length) return hit.map((s) => ({ s, conf: 1 })) }
-      // o começo do receptor é conhecido, mas o resto não (ex.: Data.actors.Find): é coleção/biblioteca
+      // the start of the receiver is known, but the rest is not (e.g. Data.actors.Find): it is a collection/library
       if (fc.family && TYPED.has(fc.family) && (current || (parts.length > 1 && headType(fc, parts[0] ?? '', ref.src)))) return []
     }
     const head = ref.receiver.split('.')[0] ?? ''
     if (STOP.has(ref.name) || ref.kind === 'type' || GLOBALS.has(head) || fc.bound.has(head)) return []
-    // receptor desconhecido: só liga se o método tiver um único dono, num arquivo importado ou na mesma pasta
+    // unknown receiver: only link if the method has a single owner, in an imported file or in the same folder
     const near = new Set(fc.targets)
     const candidates = (ctx.byName.get(ref.name) ?? []).filter((symbol) => (symbol.kind === 'method' || symbol.kind === 'property') && symbol.family === fc.family && (near.has(symbol.path) || dirOf(symbol.path) === dirOf(fc.path)))
     const owners = new Set(candidates.map((symbol) => symbol.owner ?? ctx.syms.get(symbol.sha)?.[symbol.parent]?.id))
@@ -573,7 +573,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
   }
 }
 
-/** Liga a pasta inteira, ou só o que uma mudança afeta (`changed` + nomes que existiam antes nesses arquivos). */
+/** Links the whole folder, or only what a change affects (`changed` + names that existed before in those files). */
 export function link(db: Db, root: string, { changed = null, oldNames = [] }: { changed?: string[] | null; oldNames?: string[] } = {}): { files: number; edges: number; ms: number } {
   const started = Date.now()
   const ctx = loadContext(db, root)
@@ -585,7 +585,7 @@ export function link(db: Db, root: string, { changed = null, oldNames = [] }: { 
     db.prepare('delete from file_edges where root = ?').run(root)
     targets = [...ctx.paths]
   } else {
-    // afetados: os mudados, quem os importa e quem cita nomes que eles definem (antes ou depois)
+    // affected: the changed ones, whoever imports them and whoever cites names they define (before or after)
     const set = new Set(changed.filter((path) => ctx.paths.has(path)))
     const names = new Set(oldNames)
     for (const path of set) for (const symbol of ctx.syms.get(ctx.shaOf.get(path) ?? '') ?? []) if (symbol && symbol.idx > 0) names.add(symbol.name)
@@ -602,7 +602,7 @@ export function link(db: Db, root: string, { changed = null, oldNames = [] }: { 
     const deleteFile = db.prepare('delete from file_edges where root = ? and src = ?')
     db.transaction(() => {
       for (const path of [...targets, ...changed]) { deleteFile.run(root, path); const sha = ctx.shaOf.get(path); if (sha) for (const id of ids.all(sha) as number[]) deleteFrom.run(root, id) }
-      // arestas para símbolos de blobs que saíram da pasta
+      // edges to symbols of blobs that left the folder
       db.prepare('delete from edges where root = ? and (src not in (select s.id from trees t join symbols s on s.sha = t.sha where t.root = ?) or dst not in (select s.id from trees t join symbols s on s.sha = t.sha where t.root = ?))').run(root, root, root)
     })()
   }

@@ -6,7 +6,7 @@ let pending: Promise<ToolVersions> | null = null
 const listeners = new Set<(value: ToolVersions) => void>()
 let last: ToolVersions | undefined
 
-/** Últimas versões publicadas (cache de 24 h no processo principal); nunca trava a tela e falha em silêncio quando não há internet. */
+/** Latest published versions (24 h cache in the main process); never blocks the screen and fails silently when there is no internet. */
 export function loadLatest(force = false): Promise<ToolVersions> {
   if (!force && pending) return pending
   const request = force ? window.gearmod.invoke('tools:latest', { force: true }) : window.gearmod.invoke('tools:cached', undefined)
@@ -19,7 +19,7 @@ export function useLatestVersions(): ToolVersions | undefined {
   useEffect(() => { listeners.add(setValue); void loadLatest().then(setValue).catch(() => undefined); return () => { listeners.delete(setValue) } }, [])
   return value
 }
-/** Texto "há 3 h" do último checagem (ISO), ou vazio. */
+/** Text like "3 h ago" for the last check (ISO), or empty. */
 export function checkedAgo(iso: string | null): string {
   if (!iso) return ''
   const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000))

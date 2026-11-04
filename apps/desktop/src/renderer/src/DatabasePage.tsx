@@ -18,7 +18,7 @@ import { useT } from './i18n'
 
 type Tree = { schemas: Array<{ oid: number; name: string; system?: boolean }>; tables: Record<number, Array<{ oid: number; name: string; kind: string }>>; expanded: number[] }
 const read = (key: string, fallback: string): string => { try { return localStorage.getItem(key) ?? fallback } catch { return fallback } }
-const write = (key: string, value: string): void => { try { localStorage.setItem(key, value) } catch { /* preferência local */ } }
+const write = (key: string, value: string): void => { try { localStorage.setItem(key, value) } catch { /* local preference */ } }
 
 export function DatabasePage({ projectId }: { projectId: string }): React.JSX.Element {
   const t = useT()
@@ -41,14 +41,14 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
   useEffect(() => { setLayout(loadLayout()); setFocus(''); setLayoutProject(projectId) }, [projectId])
   useEffect(() => { for (const [id, tree] of Object.entries(trees)) write(`gearmod.db.expanded.${projectId}.${id}`, JSON.stringify(tree.expanded)) }, [trees, projectId])
   useEffect(() => { if (!selected) return; const refresh = (): void => { void window.gearmod.invoke('db:state', { connectionId: selected }).then(setConnectionState).catch(() => setConnectionState('error')) }; refresh(); const timer = window.setInterval(refresh, 5000); return () => window.clearInterval(timer) }, [selected])
-  /** Um só espaço de abas por projeto: cada aba é ligada a um banco e abrir outro banco não fecha as abas dos demais. */
+  /** A single tab space per project: each tab is tied to a database and opening another database does not close the other databases' tabs. */
   const loadLayout = (): WsNode => {
-    try { const saved = parseLayout(JSON.parse(read(`gearmod.db.layout.${projectId}`, 'null'))); if (saved) return saved } catch { /* preferência local inválida */ }
+    try { const saved = parseLayout(JSON.parse(read(`gearmod.db.layout.${projectId}`, 'null'))); if (saved) return saved } catch { /* invalid local preference */ }
     return defaultLayout()
   }
   const closePassword = (): void => { setPasswordFor(undefined); setSessionPassword('') }
   useEscape(closePassword, Boolean(passwordFor))
-  const connect = async (id: string): Promise<void> => { setBusy(true); setError(''); setSelected(id); setConnectionState('connecting'); try { await window.gearmod.invoke('db:connect', { connectionId: id }); const parentId = connections.find((item) => item.id === id)?.parentId; if (parentId) void window.gearmod.invoke('db:databases', { connectionId: parentId }).then((list) => setTotals((current) => ({ ...current, [parentId]: list.length }))).catch(() => undefined); const list = await window.gearmod.invoke('db:schemas', { connectionId: id, all: true }); let open: number[] = trees[id]?.expanded ?? []; if (!trees[id]) { try { const expandedValue: unknown = JSON.parse(read(`gearmod.db.expanded.${projectId}.${id}`, '[]')); if (Array.isArray(expandedValue)) open = expandedValue.filter((item): item is number => Number.isSafeInteger(item)).slice(0, 100) } catch { /* preferência local inválida */ } } setTrees((current) => ({ ...current, [id]: { schemas: list, tables: {}, expanded: open } })); setOpenConns((current) => current.includes(id) ? current : [...current, id]); for (const oid of open) void listTables(id, oid); setConnectionState('ready'); } catch (reason) { setConnectionState('error'); setError(plainError(reason)); if (!connections.find((item) => item.id === id)?.hasSecret) { setSessionPassword(''); setPasswordFor(id) } } finally { setBusy(false) } }
+  const connect = async (id: string): Promise<void> => { setBusy(true); setError(''); setSelected(id); setConnectionState('connecting'); try { await window.gearmod.invoke('db:connect', { connectionId: id }); const parentId = connections.find((item) => item.id === id)?.parentId; if (parentId) void window.gearmod.invoke('db:databases', { connectionId: parentId }).then((list) => setTotals((current) => ({ ...current, [parentId]: list.length }))).catch(() => undefined); const list = await window.gearmod.invoke('db:schemas', { connectionId: id, all: true }); let open: number[] = trees[id]?.expanded ?? []; if (!trees[id]) { try { const expandedValue: unknown = JSON.parse(read(`gearmod.db.expanded.${projectId}.${id}`, '[]')); if (Array.isArray(expandedValue)) open = expandedValue.filter((item): item is number => Number.isSafeInteger(item)).slice(0, 100) } catch { /* invalid local preference */ } } setTrees((current) => ({ ...current, [id]: { schemas: list, tables: {}, expanded: open } })); setOpenConns((current) => current.includes(id) ? current : [...current, id]); for (const oid of open) void listTables(id, oid); setConnectionState('ready'); } catch (reason) { setConnectionState('error'); setError(plainError(reason)); if (!connections.find((item) => item.id === id)?.hasSecret) { setSessionPassword(''); setPasswordFor(id) } } finally { setBusy(false) } }
   const listTables = async (id: string, oid: number): Promise<void> => { try { const result = await window.gearmod.invoke('db:tables', { connectionId: id, schemaOid: oid }); patchTree(id, (tree) => ({ ...tree, tables: { ...tree.tables, [oid]: result } })) } catch (reason) { setError(plainError(reason)) } }
   const toggleSchema = (id: string, oid: number, opened: boolean): void => { patchTree(id, (tree) => ({ ...tree, expanded: opened ? [...new Set([...tree.expanded, oid])] : tree.expanded.filter((item) => item !== oid) })); if (opened && !trees[id]?.tables[oid]) void listTables(id, oid) }
   const openFrom = async (id: string, item: { oid: number; name: string }): Promise<void> => { if (id !== selected) await connect(id); setLayout((current) => openTab(current, tableTab(item.oid, item.name, id), focus)) }
@@ -62,10 +62,10 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
     ? [{ label: t.common.open, run: () => { setMenu(undefined); void connect(connection.id) } }, { label: t.database.page.menuEditDb, run: () => { setMenu(undefined); setNewDbFor(undefined); setEditing(connection); setShowNew(true) } }, { label: t.database.page.menuRemoveFromList, danger: true, run: () => { setMenu(undefined); void removeConnection(connection) } }]
     : [{ label: t.database.page.menuAddDb, run: () => { setMenu(undefined); setEditing(undefined); setNewDbFor(connection); setShowNew(true) } }, { label: t.database.page.menuEditServer, run: () => { setMenu(undefined); setNewDbFor(undefined); setEditing(connection); setShowNew(true) } }, { label: t.database.page.removeServer, danger: true, run: () => { setMenu(undefined); void removeConnection(connection) } }]
   const scopeKey = (id: string): string => `gearmod.db.scope.${projectId}.${id}`
-  /** Esquemas escolhidos no filtro do banco; sem escolha salva, mostra todos menos os de sistema. */
+  /** Schemas chosen in the database filter; with no saved choice, shows all but the system ones. */
   const savedScope = (id: string): string[] | undefined => {
     if (scopes[id]) return scopes[id]
-    try { const value: unknown = JSON.parse(read(scopeKey(id), 'null')); if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string').slice(0, 500) } catch { /* preferência local inválida */ }
+    try { const value: unknown = JSON.parse(read(scopeKey(id), 'null')); if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string').slice(0, 500) } catch { /* invalid local preference */ }
     return undefined
   }
   const visibleSchemas = (id: string, list: Tree['schemas']): Tree['schemas'] => { const saved = savedScope(id); return list.filter((item) => saved ? saved.includes(item.name) : !item.system) }
@@ -106,8 +106,8 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
   const databaseOptions = connections.filter((item) => item.parentId).map((item) => ({ value: item.id, label: connections.filter((other) => !other.parentId).length > 1 ? `${connections.find((other) => other.id === item.parentId)?.name ?? ''} · ${item.name}` : item.name }))
   const tabConnection = (tab: WsTab): string => tab.connectionId ?? selected
   const usedConnections = new Set(panesOf(layout).flatMap((pane) => pane.tabs).map(tabConnection))
-  // Com abas de mais de um banco aberto, cada aba mostra o nome do seu banco.
-  // Bolinha de conexão em cada aba: consulta o estado dos bancos usados sem conectar nenhum deles.
+  // With tabs from more than one open database, each tab shows its own database name.
+  // Connection dot on each tab: queries the state of the databases in use without connecting any of them.
   const usedKey = [...usedConnections].filter(Boolean).sort().join(',')
   useEffect(() => {
     const ids = usedKey ? usedKey.split(',') : []; if (!ids.length) return
@@ -123,7 +123,7 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
       ? <DbSqlView connectionId={id} databases={databaseOptions} setConnection={(value) => setLayout((current) => setTabConnection(current, tab.id, value))} allowWrite={writable} production={conn?.klass === 'prod' || conn?.klass === 'external'} database={conn?.database ?? ''} sql={tab.sql ?? ''} setSql={(value) => setLayout((current) => setTabSql(current, tab.id, value))} />
       : <DbTableView tabId={tab.id} connectionId={id} oid={tab.oid!} name={tab.name} allowWrite={writable} />
   }
-  // Largura da lateral: arrastar o divisor; o lado de encaixe muda arrastando o título para a esquerda ou direita.
+  // Sidebar width: drag the divider; the docking side changes by dragging the title left or right.
   const startWidth = (event: React.PointerEvent): void => {
     event.preventDefault(); const page = (event.currentTarget as HTMLElement).closest('.db-page') as HTMLElement, box = page.getBoundingClientRect(); let last = sideWidth
     const move = (item: PointerEvent): void => { last = Math.round(Math.max(200, Math.min(Math.min(640, box.width - 360), side === 'left' ? item.clientX - box.left : box.right - item.clientX))); setSideWidth(last) }
@@ -140,7 +140,7 @@ export function DatabasePage({ projectId }: { projectId: string }): React.JSX.El
   const renderConn = (connection: DbConnection): React.JSX.Element => {
     const kids = !connection.parentId
     const tree = trees[connection.id], open = kids ? !collapsed.includes(connection.id) : openConns.includes(connection.id)
-    // O servidor é só o contêiner dos bancos; cada banco expande a própria árvore logo abaixo.
+    // The server is just the container of the databases; each database expands its own tree right below.
     const toggleRow = (): void => { if (kids) setCollapsed((current) => open ? [...current, connection.id] : current.filter((item) => item !== connection.id)); else if (open && selected === connection.id) setOpenConns((current) => current.filter((item) => item !== connection.id)); else void connect(connection.id) }
     return <div key={connection.id} className="db-conn-wrap"><div className={`db-conn${connection.parentId ? ' child' : ' server'}${selected === connection.id ? ' on' : ''}`} onContextMenu={(event) => { event.preventDefault(); openMenu(connection, event.clientX, event.clientY) }}><button type="button" className="db-conn-name" aria-expanded={open} data-tip={connection.parentId ? `${connection.name} · ${connection.database}` : `${connection.host}:${connection.port} · ${connection.user}`} onClick={(event) => { if (viaChevron(event)) toggleRow(); else if (!kids && open && selected !== connection.id) void connect(connection.id) }}><span className={`wf-chevron ${open ? 'open' : ''}`} aria-hidden="true"><svg viewBox="0 0 12 12"><path d="m4.5 2.5 3.5 3.5-3.5 3.5" /></svg></span>{kids ? <ServerIcon state={kids ? (connections.some((item) => item.parentId === connection.id && (openConns.includes(item.id) || Boolean(trees[item.id]))) ? 'ready' : 'idle') : selected === connection.id ? connectionState : tree ? 'ready' : 'idle' as ConnState} /> : <DatabaseIcon state={kids ? (connections.some((item) => item.parentId === connection.id && (openConns.includes(item.id) || Boolean(trees[item.id]))) ? 'ready' : 'idle') : selected === connection.id ? connectionState : tree ? 'ready' : 'idle' as ConnState} />}{connection.name}{!connection.parentId && <small>{connection.host}:{connection.port}</small>}</button>{(kids || tree) && <button type="button" className="db-scope" data-tip={kids ? t.database.page.pickServerDbs : t.database.page.pickDbSchemas} aria-label={kids ? t.database.page.dbsOf(connection.name) : t.database.page.schemasOf(connection.name)} onClick={(event) => { const box = event.currentTarget.getBoundingClientRect(); void openScope(connection, box.left, box.bottom + 4) }}>{kids ? t.database.page.serverScopeCount(connections.filter((item) => item.parentId === connection.id).length, totals[connection.id] ?? 0) : t.database.page.schemaScopeCount(visibleSchemas(connection.id, tree!.schemas).length, tree!.schemas.length)}</button>}<button type="button" className="db-conn-more" aria-label={t.database.actionsOf(connection.name)} aria-haspopup="menu" onClick={(event) => { const box = event.currentTarget.getBoundingClientRect(); openMenu(connection, box.left, box.bottom + 4) }}>⋯</button></div>
       {!kids && open && tree && <DbTree connectionId={connection.id} schemas={visibleSchemas(connection.id, tree.schemas)} tables={tree.tables} expanded={tree.expanded} query={treeQuery} activeOid={activeConn === connection.id ? activeOid : 'sql'} open={(item) => void openFrom(connection.id, item)} fail={setError} toggleSchema={(oid, opened) => toggleSchema(connection.id, oid, opened)} />}</div>
@@ -163,7 +163,7 @@ function ConnectionForm({ projectId, initial, close, saved }: { projectId: strin
     setError('')
     void window.gearmod.invoke('db:connections:save', input()).then(async (server) => {
       const first = database.trim()
-      // O servidor é só o contêiner: o banco informado já entra dentro dele como o primeiro banco da lista.
+      // The server is just the container: the given database already goes inside it as the first database in the list.
       const child = initial || !first ? undefined : await window.gearmod.invoke('db:connections:save', { projectId, parentId: server.id, name: first, host, port, database: first, user, klass, sslMode, allowWrite, agentAccess: 'none' as const, ...(allowWrite && (klass === 'prod' || klass === 'external') ? { confirmWrite: first } : {}) }).catch(() => undefined)
       saved(child?.id)
     }).catch((reason) => setError(plainError(reason)))
@@ -204,7 +204,7 @@ function ConnectionForm({ projectId, initial, close, saved }: { projectId: strin
   </div></div>
 }
 
-/** Banco dentro de um servidor: host, usuário, SSL, ambiente e senha vêm do servidor. */
+/** Database inside a server: host, user, SSL, environment and password come from the server. */
 function DatabaseForm({ projectId, server, initial, close, saved }: { projectId: string; server: DbConnection; initial?: DbConnection; close(): void; saved(created?: string): void }): React.JSX.Element {
   const t = useT()
   const [database, setDatabase] = useState(initial?.database ?? ''), [name, setName] = useState(initial?.name ?? ''), [nameTouched, setNameTouched] = useState(Boolean(initial))

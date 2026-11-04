@@ -6,7 +6,7 @@ import { redact } from '../redaction'
 import { tm } from '../i18n'
 
 export type QueryAudit = { id: string; at: string; kind: 'table-page' | 'sql' | 'count'; sqlHash: string; durationMs: number; rows: number; status: 'ok' | 'error'; summary: string; sql?: string }
-/** Suprime literais e comentários por completo, inclusive strings incompletas e dollar-quoted. */
+/** Suppresses literals and comments entirely, including incomplete strings and dollar-quoted ones. */
 export function redactSql(sql: string): string {
   let out = '', i = 0
   while (i < sql.length) {
@@ -22,27 +22,27 @@ export function redactSql(sql: string): string {
     if (quote && /\d/.test(quote) && (i === 0 || !/[A-Za-z_0-9$]/.test(sql[i - 1]!))) { const number = sql.slice(i).match(/^\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/)?.[0]; if (number) { out += '[redacted]'; i += number.length; continue } }
     out += sql[i]; i++
   }
-  // Credenciais inválidas/não entre aspas ainda não devem aparecer no histórico.
+  // Invalid/unquoted credentials must not show up in the history either.
   return redact(out.replace(/\b(PASSWORD|SECRET|TOKEN)\s+(?!'\[redacted\]')\S+/gi, '$1 [redacted]'), 200_000)
 }
 const historyDays = 30, historyMax = 200, historySqlMax = 20_000
 const readOnlyCommands = new Set(['SELECT', 'WITH', 'EXPLAIN', 'SHOW', 'BEGIN', 'COMMIT', 'ROLLBACK'])
 /**
- * SQL guardado no histórico. Consultas de leitura ficam completas, para poder reutilizar; o valor logo depois de PASSWORD, SECRET ou
- * TOKEN fica oculto. Qualquer outro comando (INSERT, UPDATE, DDL...) perde literais e comentários, porque carrega dados do banco;
- * um `WITH` com escrita dentro também.
+ * SQL kept in the history. Read queries stay complete, so they can be reused; the value right after PASSWORD, SECRET or
+ * TOKEN is hidden. Any other command (INSERT, UPDATE, DDL...) loses literals and comments, because it carries database data;
+ * a `WITH` with a write inside too.
  */
 export function historySql(sql: string): string {
   const first = sql.trimStart().match(/^[A-Za-z]+/)?.[0]?.toUpperCase() ?? ''
   if (!readOnlyCommands.has(first) || /\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE)\b/i.test(redactSql(sql))) return redactSql(sql).slice(0, historySqlMax)
   return redact(sql.replace(/\b(PASSWORD|SECRET|TOKEN)\s+(?:E?'(?:[^'\\]|\\.|'')*'[^\s;,)]*|\S+)/gi, '$1 [redacted]'), historySqlMax)
 }
-/** Só consultas SQL, as últimas `historyMax` e as dos últimos `historyDays` dias: o histórico vai "morrendo" sozinho. */
+/** Only SQL queries, the last `historyMax` and those from the last `historyDays` days: the history "dies off" on its own. */
 export function retainHistory(entries: QueryAudit[], now = Date.now()): QueryAudit[] {
   const cutoff = now - historyDays * 86_400_000
   return entries.filter((entry) => entry.kind === 'sql' && Date.parse(entry.at) >= cutoff).slice(-historyMax)
 }
-/** Histórico separado da auditoria: literais e comentários não são armazenados; resultados nunca vão ao disco. */
+/** History separate from the audit: literals and comments are not stored; results never go to disk. */
 export class DbAudit {
   private readonly pending = new Map<string, Promise<void>>()
   constructor(private readonly database: AppDatabase, private readonly directory: string) {}
@@ -65,7 +65,7 @@ export class DbAudit {
   async list(id: string): Promise<QueryAudit[]> {
     const path = this.path(id)
     const previous = this.pending.get(id) ?? Promise.resolve()
-    // Leitura, poda e regravação na mesma fila das gravações, para não perder uma consulta que chega no meio.
+    // Read, prune and rewrite in the same queue as the writes, so a query arriving in between is not lost.
     const run = previous.catch(() => undefined).then(async () => {
       const content = await readFile(path, 'utf8').catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return ''; throw error })
       const entries = content.split('\n').filter(Boolean).flatMap((line) => { try { return [JSON.parse(line) as QueryAudit] } catch { return [] } })

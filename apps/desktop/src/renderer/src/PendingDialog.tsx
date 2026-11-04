@@ -37,7 +37,7 @@ function QuestionItem({ question, busy, answer }: { question: Question; busy: bo
   </div>
 }
 
-/** Pendências do card: mudanças propostas que esperam autorização (aceitar, recusar ou sugerir outra visão) e perguntas que só o usuário responde. */
+/** Card pending items: proposed changes waiting for authorization (accept, decline or suggest another view) and questions only the user answers. */
 export function PendingDialog({ card, close, changed }: { card: Card; close(): void; changed(): void }): React.JSX.Element {
   const t = useT(), [data, setData] = useState<Collaboration>(), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const load = useCallback(async () => { try { setData(await window.gearmod.invoke('collab:list', { cardId: card.id })) } catch (reason) { setError(plainError(reason)) } }, [card.id])

@@ -24,12 +24,12 @@ import { plainError } from './NoticeDialog'
 import { Switch } from './Switch'
 import { getLocale, tr, useT } from './i18n'
 
-/** `workflow`: fluxo já escolhido do card (só leitura aqui; vem do quadro para não esperar a consulta). */
+/** `workflow`: the card's already chosen flow (read-only here; comes from the board so it does not wait for the query). */
 export interface Draft { id?: string; columnId: string; sourceId?: string | null; title: string; type: Card['type']; priority: Card['priority']; workflow?: Card['workflow'] }
-/** Card novo começa com o primeiro tipo da lista do projeto. */
+/** A new card starts with the first type in the project's list. */
 export const blankDraft = (columnId: string, type: string): Draft => ({ columnId, title: '', type, priority: 'medium' })
 
-/** Opções do editor de texto corrido dos documentos: quebra de linha, Tab segue o foco (como o campo de texto de antes). */
+/** Options for the documents' running-text editor: line wrapping, Tab follows focus (like the previous text field). */
 const proseOptions = { wrap: true, tabSize: 2, indentWithTab: false, whitespace: false, guides: false, scrollPastEnd: false }
 const placeholderCache = new Map<string, Extension[]>()
 const placeholderFor = (kind: string): Extension[] => { const key = `${getLocale()}:${kind}`; let found = placeholderCache.get(key); if (!found) { found = [placeholder((tr().board.docPlaceholders as Record<string, string>)[kind] ?? '')]; placeholderCache.set(key, found) } return found }
@@ -41,16 +41,16 @@ const empty: Texts = { resumo: '', especificacao: '', plano: '', tasks: '', duvi
 const toTexts = (docs: CardDocuments): Texts => ({ resumo: docs.resumo.contentMd, especificacao: docs.especificacao.contentMd, plano: docs.plano.contentMd, tasks: docs.tasks.contentMd, duvidas: docs.duvidas.contentMd, mudancas: docs.mudancas.contentMd })
 const topLevel = (markdown: string): { done: number; total: number } => { const items = markdown.split('\n').filter((line) => /^[-*+]\s+\[( |x|X)\]/.test(line)); return { total: items.length, done: items.filter((line) => !/\[ \]/.test(line)).length } }
 
-/** Editor do card (protótipo): dados e agentes à esquerda, documento Markdown no meio e a lista dos 4 documentos à direita. */
+/** Card editor (prototype): data and agents on the left, Markdown document in the middle and the list of the 4 documents on the right. */
 export function CardEditor({ projectId, sources, profiles, cardTypes, draft: start, close, saved, openChat, onStart, pending, onPending }: { projectId: string; sources: ProjectSource[]; profiles: AgentProfile[]; cardTypes: CardTypeDef[]; pending?: { changes: number; questions: number; toSend?: number }; onPending?(): void; draft: Draft; close(): void; saved(): void; openChat?(purpose?: AgentPurpose): void; onStart?(purpose: 'execution' | 'test'): void }): React.JSX.Element {
   const { board: tb, common, git: tg } = useT(), t = tb.editor, labels = tb.docKinds, tw = tg.worktreeDelete
   const priorityOptions = priorities.map((item) => ({ ...item, label: tb.priority[item.value] }))
   const [workspace, setWorkspace] = useState<Card['workspace']>(null), [complexity, setComplexity] = useState<Card>(), [assessing, setAssessing] = useState(false), [assessTab, setAssessTab] = useState<'avaliacao' | 'metricas'>('avaliacao')
   useEffect(() => { if (start.id) void window.gearmod.invoke('cards:get', { cardId: start.id }).then((card) => { setWorkspace(card.workspace); setComplexity(card) }).catch(() => undefined) }, [start.id])
   const [d, set] = useState(start), [chosenKind, setKind] = useState<CardDocumentKind>('resumo'), [mode, setMode] = useState<Mode>(start.id ? 'prev' : 'write'), [texts, setTexts] = useState<Texts>(empty), [original, setOriginal] = useState<Texts>(empty)
-  // Fluxo curto só tem o Resumo, que aqui é o "O que fazer"; os outros documentos não existem nele.
+  // The short flow only has the Summary, which here is "What to do"; the other documents do not exist in it.
   const small = (complexity ? complexity.workflow : start.workflow) === 'light', kind: CardDocumentKind = small ? 'resumo' : chosenKind
-  // Documentos vazios ficam ocultos e aparecem quando alguém escreve; o Resumo e o aberto agora sempre aparecem. "+ Documento" abre um vazio para escrever à mão.
+  // Empty documents stay hidden and appear when someone writes; the Summary and the currently open one always appear. "+ Document" opens an empty one to write by hand.
   const [addingDoc, setAddingDoc] = useState(false)
   const waiting = (k: CardDocumentKind): number => k === 'mudancas' ? (pending?.changes ?? 0) + (pending?.toSend ?? 0) : k === 'duvidas' ? pending?.questions ?? 0 : 0
   const shownKinds = cardDocumentKinds.filter((k) => k === 'resumo' || k === kind || waiting(k) > 0 || texts[k].trim() || original[k].trim())
@@ -81,8 +81,8 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
   const dirty = (k: CardDocumentKind): boolean => texts[k] !== original[k]
   const [auto, setAuto] = useState(() => { try { return localStorage.getItem('gearmod.cardAutosave') === '1' } catch { return false } })
   const [autoState, setAutoState] = useState<'' | 'saving' | 'saved'>('')
-  const setAutoSave = (value: boolean): void => { setAuto(value); try { localStorage.setItem('gearmod.cardAutosave', value ? '1' : '0') } catch { /* sem armazenamento: vale só nesta abertura */ } }
-  // Salvar automaticamente: só em card que já existe; espera 1,2 s sem digitar e grava sem fechar o editor.
+  const setAutoSave = (value: boolean): void => { setAuto(value); try { localStorage.setItem('gearmod.cardAutosave', value ? '1' : '0') } catch { /* no storage: only valid for this opening */ } }
+  // Auto-save: only on a card that already exists; waits 1.2 s without typing and saves without closing the editor.
   useEffect(() => {
     if (!auto || !d.id || !loaded || !d.title.trim()) return
     const changed = cardDocumentKinds.some((k) => !systemKinds.includes(k) && texts[k] !== original[k]) || d.title !== start.title || d.type !== start.type || d.priority !== start.priority || d.sourceId !== start.sourceId
@@ -134,7 +134,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
   const [wsOpen, setWsOpen] = useState(false), [wsDeleteRepo, setWsDeleteRepo] = useState<string>(), [wide, setWide] = useState(false), [wsRepos, setWsRepos] = useState<GitCard['repos']>(), [openRepos, setOpenRepos] = useState<string[]>([]), [wsDelete, setWsDelete] = useState(false)
   const [openSec, setOpenSec] =useState<Partial<Record<AgentPurpose, boolean>>>({})
   const startLabel: Record<'execution' | 'test', string> = { execution: tb.start.startExecution, test: tb.start.startTest }
-  // Planejamento sempre aparece; execução e teste só depois de iniciados (antes disso é um botão que escolhe o agente e já começa).
+  // Planning always appears; execution and test only after they start (before that it is a button that picks the agent and starts right away).
   const section = (purpose: AgentPurpose, state: typeof planAgent, title?: string): React.JSX.Element | null => {
     const chat = chatOf(purpose), label = title ?? stepTitle[purpose], profile = profiles.find((item) => item.id === state.config?.profileId)
     const chatButton = d.id && openChat && <button type="button" className="ibtn tip" data-tip={chat ? t.openStepChat : t.openChatNoConversation} aria-label={t.openChatOf(label)} onClick={() => openChat(purpose)}><ChatIcon /></button>
@@ -147,7 +147,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
     const preview = [profile?.label, model?.label ?? state.config?.model ?? t.defaultModel, state.config?.effort ? effortLabel[state.config.effort] : ''].filter(Boolean).join(' · ')
     return <div className={`sep secfold ${expanded ? 'open' : ''}`}><div className="sechead"><button type="button" className="foldbtn" aria-expanded={expanded} onClick={() => setOpenSec({ ...openSec, [purpose]: !expanded })}><span className="chev" aria-hidden="true">›</span><span className="sectitle">{label}</span></button>{chatButton}</div>{!expanded && <button type="button" className="foldprev" onClick={() => setOpenSec({ ...openSec, [purpose]: true })}>{profile && <AgentIcon profile={profile} size="sm" tip={false} />}<span>{preview}</span></button>}{expanded && agentField(purpose, state)}</div>
   }
-  // Worktree por repositório: só busca ao expandir o bloco (o estado de cada repositório custa uma consulta ao Git).
+  // Worktree per repository: only fetches when the block is expanded (each repository's state costs a Git query).
   useEffect(() => { if (wsOpen && d.id) void window.gearmod.invoke('git:card', { cardId: d.id }).then((git) => setWsRepos(git.repos)).catch(() => setWsRepos([])) }, [wsOpen, d.id])
   const text = texts[kind]
   return <div className="overlay full card-editor-overlay"><div className="modal wide" role="dialog" aria-label={d.id ? t.editCard : tb.newCard}>
@@ -163,7 +163,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
           {!d.id && gitSources.length > 1 && <div className="f"><span>{t.repository}</span><Select label={t.repository} options={gitSources.map((source) => ({ value: source.id, label: source.name, sub: source.currentBranch ?? '' }))} value={d.sourceId ?? gitSources[0]!.id} onChange={(value) => set({ ...d, sourceId: value })} /></div>}
           {small && <p className="smallnote"><b>{t.smallTaskTitle}</b> {t.smallTaskNote}</p>}
           {profiles.length > 0 && (small && chatOf('planning') && !chatOf('execution')
-            // Tarefa pequena que o próprio planejador já tocou: é um agente só (planeja, executa e valida) e um chat só, então aparece como "Agente".
+            // Small task the planner itself already handled: it is a single agent (plans, executes and validates) and a single chat, so it appears as "Agent".
             ? section('planning', planAgent, common.agent)
             : <>{!small && section('planning', planAgent)}{section('execution', execAgent)}{!small && section('test', testAgent)}</>)}
           {d.id && workspace && <div className="f"><span>{t.branchAndWorktree}</span><div className="wsbox"><button type="button" className="wsfold" aria-expanded={wsOpen} onClick={() => setWsOpen(!wsOpen)}><BranchIcon /><b>{workspace.branch}</b><span className="chev" aria-hidden="true">›</span></button><div className="wsmeta"><small className="wsbase">{t.base(workspace.baseRef)}</small></div>{wsOpen && (wsRepos?.length ? <ul className="wsrepos">{wsRepos.map((repo) => { const shown = openRepos.includes(repo.sourceId), touched = repo.ahead > 0 || repo.files.length > 0
@@ -183,7 +183,7 @@ export function CardEditor({ projectId, sources, profiles, cardTypes, draft: sta
             <div className="tabs">{d.id && !systemKinds.includes(kind) && <button type="button" className={`ibtn tip ${versions ? 'on' : ''}`} data-tip={versions ? t.closeHistory : t.versionHistory} aria-label={t.versionHistory} aria-pressed={Boolean(versions)} onClick={() => (versions ? setVersions(undefined) : void showVersions())}><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></svg></button>}
               <button type="button" className={`ibtn tip ${wide ? 'on' : ''}`} data-tip={wide ? t.showSideColumns : t.expandHidesColumns} aria-label={wide ? t.collapseDocument : t.expandDocument} aria-pressed={wide} onClick={() => setWide(!wide)}>{wide ? <CollapseIcon /> : <ExpandIcon />}</button>
               {([['write', t.modeWrite, <PencilIcon key="w" />], ['split', t.modeSplit, <SplitIcon key="s" />], ['prev', t.modePreview, <EyeIcon key="p" />]] as const).map(([value, label, icon]) => <button type="button" key={value} className={`ibtn tip ${mode === value ? 'on' : ''}`} data-tip={label} aria-label={label} aria-pressed={mode === value} onClick={() => setMode(value)}>{icon}</button>)}</div></div>
-          {/* Card existente abre em Prévia (melhor de ler); dois cliques no texto passam para Escrever. */}
+          {/* An existing card opens in Preview (easier to read); double-clicking the text switches to Write. */}
           {versions ? <DocHistory title={labels[kind]} versions={versions} restore={(v) => { setTexts({ ...texts, [kind]: v.contentMd }); setVersions(undefined) }} /> : mode === 'prev' ? <div className="md descarea" data-tip={systemKinds.includes(kind) ? undefined : t.doubleClickToEdit} onDoubleClick={() => { if (!systemKinds.includes(kind)) setMode('write') }}>{text.trim() ? <Markdown source={text} onToggle={kind === 'tasks' || kind === 'plano' ? toggle : undefined} /> : <p className="hint">{loaded ? t.emptyDocument(labels[kind], !systemKinds.includes(kind)) : common.loading}</p>}</div>
             : <div className={`descwrap ${mode === 'split' ? 'split' : ''}`}><CodeEditor key={kind} variant="prose" className="in descarea" path="documento.md" ariaLabel={t.documentAria(labels[kind])} value={text} readOnly={!loaded || systemKinds.includes(kind)} extensions={placeholderFor(kind)} options={proseOptions} onChange={(value) => setTexts((all) => ({ ...all, [kind]: value }))} />{mode === 'split' && <div className="md descarea"><Markdown source={text} onToggle={kind === 'tasks' || kind === 'plano' ? toggle : undefined} /></div>}</div>}
 </>}

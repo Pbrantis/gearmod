@@ -22,7 +22,7 @@ const kindOf = (category: string, type: string, typeKind: string): ColumnKind =>
 }
 const requestId = (): string => randomUUID()
 
-/** Operações de navegação; todos os nomes de tabelas e tipos vêm do catálogo da conexão ativa. */
+/** Navigation operations; all table and type names come from the active connection's catalog. */
 export class DbService {
   private readonly pending = new Set<string>()
   private readonly cancelled = new Set<string>()
@@ -35,7 +35,7 @@ export class DbService {
   list(projectId: string) { return this.connections.list(projectId) }
   private async closeWithChildren(id: string): Promise<void> { await Promise.all([id, ...this.connections.childIds(id)].map((item) => this.manager.close(item))) }
   async save(input: DbConnectionInput) { if (input.id) await this.closeWithChildren(input.id); return this.connections.save(input) }
-  /** Bancos do servidor (sem os de modelo), para escolher qual adicionar à árvore. */
+  /** Server databases (without the template ones), to choose which to add to the tree. */
   async databases(id: string): Promise<string[]> {
     const session = await this.manager.open(id)
     const result = await session.read(requestId(), 'SELECT datname FROM pg_catalog.pg_database WHERE NOT datistemplate AND datallowconn ORDER BY datname')
@@ -60,7 +60,7 @@ export class DbService {
   state(id: string) { this.connections.get(id); return this.manager.state(id) }
   async disconnect(id: string): Promise<void> { await this.manager.close(id) }
   async cancel(id: string, request: string): Promise<void> { const key = `${id}:${request}`; if (this.pending.has(key)) this.cancelled.add(key); const pending = this.manager.active(id); if (pending) await (await pending).cancel(request) }
-  /** Com `all`, inclui `information_schema` e `pg_catalog` (marcados como `system`); os de uso interno (`pg_toast`, `pg_temp_*`) nunca entram. */
+  /** With `all`, includes `information_schema` and `pg_catalog` (marked as `system`); internal-use ones (`pg_toast`, `pg_temp_*`) never enter. */
   async schemas(id: string, all = false): Promise<Array<{ oid: number; name: string; system?: boolean }>> {
     const session = await this.manager.open(id)
     const result = await session.read(requestId(), all
@@ -103,7 +103,7 @@ export class DbService {
       } catch (error) { this.audit(id, 'table-page', query.text, start, 0, 'error'); throw error }
     } finally { this.pending.delete(key); this.cancelled.delete(key) }
   }
-  /** Aplica as alterações pendentes de uma tabela numa transação só (ou só mostra o SQL, com `dryRun`). Falhou um comando, nenhum vale. */
+  /** Applies a table's pending changes in a single transaction (or only shows the SQL, with `dryRun`). If one command fails, none applies. */
   async apply(id: string, request: TableChanges & { requestId: string; oid: number; dryRun?: boolean }): Promise<{ sql: string[]; applied: boolean; counts: Array<{ command: string; rowCount: number | null }>; durationMs: number }> {
     const table = await this.describe(id, request.oid), sql = buildChanges(table, request)
     if (request.dryRun) return { sql, applied: false, counts: [], durationMs: 0 }
@@ -136,7 +136,7 @@ export class DbService {
       catch (error) { this.audit(id, 'count', query.text, start, 0, 'error'); throw error }
     } finally { this.pending.delete(key); this.cancelled.delete(key) }
   }
-  /** Com escrita liberada, comando destrutivo só roda com a confirmação da tela: o nome do banco, em qualquer ambiente (um texto qualquer não basta). */
+  /** With writing enabled, a destructive command only runs with the screen's confirmation: the database name, in any environment (any text is not enough). */
   private checkDestructive(config: { allowWrite: boolean; klass: string; database: string }, sql: string, confirmation: string | undefined): void {
     if (!config.allowWrite || !destructiveStatements(sql).length) return
     if (confirmation !== config.database) throw new Error(tm().db.destructiveNeedsConfirm)

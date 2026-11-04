@@ -2,14 +2,14 @@ import React, { useEffect, useState } from 'react'
 import { comboOf, comboProblem, loadShortcuts, saveShortcuts, shortcutDefaults, shortcutIds, shortcutsChangedEvent, type ShortcutId } from './shortcuts'
 import { useT } from './i18n'
 
-/** Configurações > Atalhos: uma linha por ação, com o atalho atual, "Alterar" (grava a próxima combinação digitada) e "Padrão". */
+/** Settings > Shortcuts: one row per action, with the current shortcut, "Change" (records the next combination typed) and "Default". */
 export function ShortcutsPanel(): React.JSX.Element {
   const t = useT().settings.shortcuts
   const [map, setMap] = useState(loadShortcuts), [recording, setRecording] = useState<ShortcutId | null>(null), [message, setMessage] = useState('')
   useEffect(() => { const again = (): void => setMap(loadShortcuts()); window.addEventListener(shortcutsChangedEvent, again); return () => window.removeEventListener(shortcutsChangedEvent, again) }, [])
   useEffect(() => {
     if (!recording) return
-    // Captura antes de qualquer outro atalho do app e não deixa a tecla chegar ao resto da tela.
+    // Captures before any other app shortcut and keeps the key from reaching the rest of the screen.
     const key = (event: KeyboardEvent): void => {
       event.preventDefault(); event.stopImmediatePropagation()
       if (event.key === 'Escape') { setRecording(null); setMessage(''); return }

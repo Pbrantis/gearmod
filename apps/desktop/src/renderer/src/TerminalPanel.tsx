@@ -41,28 +41,28 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
     xterm.loadAddon(new WebLinksAddon((event, uri) => { if (event.ctrlKey || event.metaKey) void window.gearmod.invoke('app:open-link', { url: uri }).catch((reason: unknown) => toast.error(tr().files.terminal.openLinkFailed, plainError(reason))) }, { hover: () => { container.title = tr().files.terminal.linkHint }, leave: () => { container.title = '' } }))
     xterm.loadAddon(new Unicode11Addon()); xterm.open(container)
     xterm.unicode.activeVersion = '11'
-    // Aceleração por placa de vídeo: se faltar suporte ou o contexto se perder, segue no renderizador padrão, sem aviso.
-    try { const gl = new WebglAddon(); gl.onContextLoss(() => { try { gl.dispose() } catch { /* já descartado */ } }); xterm.loadAddon(gl) } catch { /* renderizador padrão */ }
+    // Graphics card acceleration: if support is missing or the context is lost, it carries on in the default renderer, without notice.
+    try { const gl = new WebglAddon(); gl.onContextLoss(() => { try { gl.dispose() } catch { /* já descartado */ } }); xterm.loadAddon(gl) } catch { /* default renderer */ }
     screen.current = xterm; fit.current = addon; search.current = finder; consumed.current = ''
     const results$ = finder.onDidChangeResults((event) => setResults({ index: event.resultIndex, count: event.resultCount }))
     const files = xterm.registerLinkProvider({ provideLinks: (line, callback) => {
       const context = terminal.snapshot().context, text = xterm.buffer.active.getLine(line - 1)?.translateToString(true) ?? ''
       if (!context || !text) { callback(undefined); return }
-      // Caminho com `:linha[:coluna]` na saída (erros do TypeScript, stack traces): vira link com Ctrl+clique. Veja `terminalLinks.ts`.
+      // Path with `:line[:column]` in the output (TypeScript errors, stack traces): becomes a link with Ctrl+click. See `terminalLinks.ts`.
       callback(findFileLinks(text).map((found) => ({ text: found.text, range: { start: { x: found.start + 1, y: line }, end: { x: found.start + found.text.length, y: line } }, activate: (event: MouseEvent) => { if (!(event.ctrlKey || event.metaKey)) return; const value = linkTarget(found), path = absolute(value) ? value : `${tab.cwd.replace(/[\\/]+$/, '')}/${value}`; window.dispatchEvent(new CustomEvent('gearmod:open-file', { detail: { projectId: context.projectId, cardId: context.cardId, path } })) } })))
     } })
     xterm.attachCustomKeyEventHandler((event) => {
       if (event.ctrlKey && (event.shiftKey && event.code === 'KeyF' || event.code === 'Backquote' || event.key === '^')) return false
       if (event.type !== 'keydown') return true
       if (event.ctrlKey && !event.shiftKey && !event.altKey && event.code === 'KeyF') { event.preventDefault(); setFinding(true); setFocusTick((value) => value + 1); return false }
-      // Ctrl+C copia quando há seleção; sem seleção segue como interrupção (^C) para o programa.
+      // Ctrl+C copies when there is a selection; without a selection it goes through as an interrupt (^C) to the program.
       if (event.ctrlKey && event.code === 'KeyC' && (event.shiftKey || xterm.hasSelection())) { if (xterm.hasSelection()) { void navigator.clipboard.writeText(xterm.getSelection()).catch(() => undefined); xterm.clearSelection() } return false }
       return true
     })
     const input = xterm.onData((data) => { void window.gearmod.invoke('terminal:write', { id: tab.id, data }).catch(() => undefined) })
     const resize = (): void => { if (!box.current?.clientWidth || !box.current?.clientHeight) return; addon.fit(); void window.gearmod.invoke('terminal:resize', { id: tab.id, cols: Math.max(2, xterm.cols), rows: Math.max(2, xterm.rows) }).catch(() => undefined) }
     const observer = new ResizeObserver(resize); observer.observe(container); resize()
-    // Tema claro/escuro (ou outro tema do app): o atributo do documento muda e o terminal repinta.
+    // Light/dark theme (or another app theme): the document attribute changes and the terminal repaints.
     const repaint = (): void => { const next = terminalTheme(); xterm.options.theme = next.theme; setBackground(next.theme.background) }
     const themes = new MutationObserver(repaint); themes.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style', 'class'] }); repaint()
     return () => { themes.disconnect(); observer.disconnect(); input.dispose(); results$.dispose(); files.dispose(); xterm.dispose(); screen.current = null; fit.current = null; search.current = null }
@@ -70,7 +70,7 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
   useEffect(() => { if (!screen.current) return; if (tab.text.startsWith(consumed.current)) screen.current.write(tab.text.slice(consumed.current.length)); else { screen.current.reset(); screen.current.write(tab.text) } consumed.current = tab.text }, [tab.text])
   useEffect(() => { if (visible) window.setTimeout(() => { fit.current?.fit(); screen.current?.focus() }, 0) }, [visible])
   const paste = (event: React.MouseEvent): void => {
-    // Como o terminal do Windows: clique direito copia a seleção ou, sem seleção, cola.
+    // Like the Windows terminal: right click copies the selection or, without a selection, pastes.
     event.preventDefault()
     const xterm = screen.current; if (!xterm) return
     if (xterm.hasSelection()) { void navigator.clipboard.writeText(xterm.getSelection()).catch(() => undefined); xterm.clearSelection() } else void navigator.clipboard.readText().then((text) => { if (text) xterm.paste(text) }).catch(() => undefined)
@@ -93,13 +93,13 @@ export function TerminalPanel({ standalone = false }: { standalone?: boolean } =
     publish(); const observer = new ResizeObserver(publish); observer.observe(element)
     return () => { observer.disconnect(); clear() }
   }, [open, standalone, expanded, position])
-  const moveTo = (value: LayoutPosition): void => { setPosition(value); setExpanded(false); try { localStorage.setItem('gearmod.terminalPosition', value) } catch { /* só vale nesta sessão */ } }
+  const moveTo = (value: LayoutPosition): void => { setPosition(value); setExpanded(false); try { localStorage.setItem('gearmod.terminalPosition', value) } catch { /* only valid for this session */ } }
   const resize = (event: React.PointerEvent<HTMLDivElement>): void => {
     const element = panel.current; if (!element) return
     event.preventDefault(); const vertical = position === 'top' || position === 'bottom', rect = element.getBoundingClientRect(), start = vertical ? event.clientY : event.clientX, initial = vertical ? rect.height : rect.width, sign = position === 'bottom' || position === 'right' ? -1 : 1
     let nextSize = initial; setDragging(true)
     const move = (next: PointerEvent): void => { nextSize = Math.round(Math.max(vertical ? 180 : 320, Math.min((vertical ? window.innerHeight : window.innerWidth) * .75, initial + sign * ((vertical ? next.clientY : next.clientX) - start)))); if (vertical) setHeight(nextSize); else setWidth(nextSize) }
-    const up = (): void => { setDragging(false); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); try { localStorage.setItem(vertical ? 'gearmod.terminalHeight' : 'gearmod.terminalWidth', String(nextSize)) } catch { /* só vale nesta sessão */ } }
+    const up = (): void => { setDragging(false); document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); try { localStorage.setItem(vertical ? 'gearmod.terminalHeight' : 'gearmod.terminalWidth', String(nextSize)) } catch { /* only valid for this session */ } }
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
   const moveHeader = (event: React.PointerEvent<HTMLDivElement>): void => {
@@ -113,7 +113,7 @@ export function TerminalPanel({ standalone = false }: { standalone?: boolean } =
     header.addEventListener('pointermove', move); header.addEventListener('pointerup', end); header.addEventListener('pointercancel', cancel)
   }
   useEffect(() => { if (standalone && pop?.terminalId) { terminal.setContext({ projectId: pop.projectId, cardId: pop.cardId }); void terminal.attach(pop.terminalId) } }, [standalone])
-  // Fechar a janela destacada não deixa processo órfão: as abas dela (inclusive as do "+") passam para a janela principal.
+  // Closing the detached window leaves no orphan process: its tabs (including those from the "+") move to the main window.
   useEffect(() => { if (!standalone) return; const leave = (): void => terminal.handOff(); window.addEventListener('pagehide', leave); window.addEventListener('beforeunload', leave); return () => { window.removeEventListener('pagehide', leave); window.removeEventListener('beforeunload', leave) } }, [standalone])
   const detach = async (point?: { x: number; y: number }): Promise<void> => { if (!current || !context) return; try { await window.gearmod.invoke('windows:open', { kind: 'terminal', projectId: context.projectId, cardId: context.cardId ?? undefined, terminalId: current.id, placement: 'new', ...point }); terminal.setOpen(false) } catch (reason) { toast.error(t.files.terminal.detachFailed, plainError(reason)) } }
   if (!open && !standalone) return null

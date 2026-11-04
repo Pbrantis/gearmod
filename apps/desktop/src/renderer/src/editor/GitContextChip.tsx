@@ -2,7 +2,7 @@ import React from 'react'
 import { BranchIcon, WorktreeIcon } from '../icons'
 import { useT } from '../i18n'
 
-/** Etiqueta com a branch (ou worktree) da raiz de um arquivo. */
+/** Label with the branch (or worktree) of a file's root. */
 export function GitContextChip({ root, title }: { root: { branch?: string | null; worktree?: boolean }; title?: string }): React.JSX.Element {
   const t = useT().git.editor
   const label = root.branch || (root.worktree ? t.worktree : t.mainFolder)

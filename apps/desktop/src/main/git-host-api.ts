@@ -3,7 +3,7 @@ import type { PullRequestDetail, PullRequestSummary } from '@gearmod/contracts'
 export type HostProvider = 'github' | 'gitlab'
 export interface HostAccess { provider: HostProvider; host: string; token: string }
 export interface HostUser { login: string; name: string; email: string | null }
-/** Remoto `origin` já entendido: de onde é e qual o caminho do projeto no provedor. */
+/** `origin` remote already parsed: where it is from and what the project's path is on the provider. */
 export interface RemoteRef { host: string; path: string }
 export type Fetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown>; text(): Promise<string> }>
 
@@ -18,7 +18,7 @@ const countDiff = (diff: string): { additions: number; deletions: number } => {
   return { additions, deletions }
 }
 
-/** Entende `https://host/dono/repo.git`, `git@host:dono/repo.git` e `ssh://git@host:porta/dono/repo`. */
+/** Understands `https://host/owner/repo.git`, `git@host:owner/repo.git` and `ssh://git@host:port/owner/repo`. */
 export function parseRemote(url: string): RemoteRef | null {
   const text = url.trim()
   const scp = /^[\w.-]+@([^:/\s]+):(?!\d+\/)(.+)$/.exec(text)
@@ -54,8 +54,8 @@ export class HostApi {
       if (!response.ok) {
         const raw = await response.text().catch(() => '')
         let detail = raw.slice(0, 300)
-        try { const parsed = JSON.parse(raw) as { message?: unknown; error?: unknown }; detail = String(typeof parsed.message === 'string' ? parsed.message : parsed.error ?? detail).slice(0, 300) } catch { /* texto puro */ }
-        // 403 por falta de escopo também precisa de um token novo; 403 de limite de uso não.
+        try { const parsed = JSON.parse(raw) as { message?: unknown; error?: unknown }; detail = String(typeof parsed.message === 'string' ? parsed.message : parsed.error ?? detail).slice(0, 300) } catch { /* plain text */ }
+        // 403 for a missing scope also needs a new token; 403 for a rate limit does not.
         if (response.status === 403 && /bad credentials|insufficient|token/i.test(detail)) throw new HostAuthError(403)
         throw new HostApiError(response.status, `${response.status}${detail ? ` · ${detail}` : ''}`)
       }
@@ -63,12 +63,12 @@ export class HostApi {
     } finally { clearTimeout(timer) }
   }
 
-  /** Quem é o dono do token; é também o teste de que ele vale. */
+  /** Who owns the token; it is also the test that it is valid. */
   async user(): Promise<HostUser> {
     if (this.access.provider === 'github') {
       const me = await this.call<{ login: string; name?: string | null; email?: string | null }>('/user')
       let email = me.email ?? null
-      if (!email) { try { const list = await this.call<Array<{ email: string; primary?: boolean; verified?: boolean }>>('/user/emails'); email = (list.find((item) => item.primary) ?? list[0])?.email ?? null } catch { /* sem o escopo de e-mail */ } }
+      if (!email) { try { const list = await this.call<Array<{ email: string; primary?: boolean; verified?: boolean }>>('/user/emails'); email = (list.find((item) => item.primary) ?? list[0])?.email ?? null } catch { /* no email scope */ } }
       return { login: me.login, name: me.name || me.login, email }
     }
     const me = await this.call<{ username: string; name?: string; email?: string; public_email?: string }>('/user')
@@ -133,7 +133,7 @@ export class HostApi {
     else await this.call(`${this.gl(remote)}/merge_requests/${number}/notes`, { method: 'POST', body: { body } })
   }
 
-  /** `request-changes` só existe no GitHub; o chamador já barra no GitLab. */
+  /** `request-changes` only exists on GitHub; the caller already blocks it on GitLab. */
   async review(remote: RemoteRef, number: number, action: 'approve' | 'request-changes' | 'comment', body: string): Promise<void> {
     if (this.access.provider === 'github') {
       await this.call(`${this.gh(remote)}/pulls/${number}/reviews`, { method: 'POST', body: { event: action === 'approve' ? 'APPROVE' : action === 'request-changes' ? 'REQUEST_CHANGES' : 'COMMENT', ...(body.trim() ? { body } : {}) } })

@@ -19,7 +19,7 @@ export class QualityService {
     this.database.db.prepare(`INSERT INTO test_runs(id, card_id, command, status, summary, started_at) VALUES (?, ?, ?, 'running', '', ?)`).run(id, cardId, command, startedAt)
     let exitCode = 0, status: TestRun['status'] = 'passed', summary = ''
     try {
-      // S07: o comando de teste é do usuário (não tem perfil de agente); recebe só a lista fixa do app, sem passthrough declarado.
+      // S07: the test command is the user's (it has no agent profile); it receives only the app's fixed list, with no declared passthrough.
       const result = await exec(executable, args, { cwd: worktree.path, timeout: 10 * 60_000, windowsHide: true, maxBuffer: 5 * 1024 * 1024, env: applyEnvPolicy({ envPassthrough: [] }, process.env) })
       summary = `${result.stdout}\n${result.stderr}`.trim().slice(-100_000)
     } catch (error) {
@@ -31,7 +31,7 @@ export class QualityService {
     return { id, cardId, command, status, exitCode, summary: redact(summary), startedAt, endedAt }
   }
 
-  /** Último teste e última revisão do card: o que o gate de Done confere. */
+  /** Last test and last review of the card: what the Done gate checks. */
   status(cardId: string): { test: TestRun | null; review: Review | null } {
     const test = this.database.db.prepare(`SELECT id, card_id AS cardId, command, status, exit_code AS exitCode, summary, started_at AS startedAt, ended_at AS endedAt
       FROM test_runs WHERE card_id = ? ORDER BY started_at DESC LIMIT 1`).get(cardId) as TestRun | undefined

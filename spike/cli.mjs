@@ -1,6 +1,6 @@
-// node cli.mjs <pasta> <comando> [args…]   (banco em spike/graph.sqlite)
-//   index | status | search <q> | explore <q> | node <símbolo> [arquivo] | file <arquivo> [--symbols]
-//   callers <s> | callees <s> | impact <s> | files [pasta] | affected [arquivos…] | map [tokens]
+// node cli.mjs <folder> <command> [args…]   (database in spike/graph.sqlite)
+//   index | status | search <q> | explore <q> | node <symbol> [file] | file <file> [--symbols]
+//   callers <s> | callees <s> | impact <s> | files [folder] | affected [files…] | map [tokens]
 import { CodeIndex } from './graph/index.mjs'
 
 const [root, cmd, ...args] = process.argv.slice(2)

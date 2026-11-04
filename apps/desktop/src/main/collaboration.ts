@@ -8,7 +8,7 @@ import { tm } from './i18n'
 
 export interface FollowUp { chatId: string; prompt: string; planning: boolean }
 const roleName: Record<AgentPurpose, string> = { planning: 'planejador', execution: 'desenvolvedor', test: 'testador' }
-/** Papéis como aparecem nos prompts enviados aos agentes. */
+/** Roles as they appear in the prompts sent to the agents. */
 const promptRole: Record<AgentPurpose, string> = { planning: 'planner', execution: 'developer', test: 'tester' }
 const maxPlannerRounds = 2
 
@@ -21,8 +21,8 @@ const questionStatus: Record<Question['status'], string> = { open: 'aberta', pla
 const changeStatus: Record<Change['status'], string> = { pending: 'aguardando sua autorização', accepted: 'autorizada (planejador atualizando os documentos; depois vai para o desenvolvedor)', suggested: 'outra visão sugerida (planejador ajustando)', rejected: 'recusada', applied: 'aplicada nos documentos' }
 
 /**
- * Comunicação entre as etapas do card. O desenvolvedor e o testador mandam dúvidas ao planejador (o app orquestra, e o planejador só
- * chega ao usuário se precisar) e propõem mudanças que esperam a autorização do usuário antes de virarem documentos e código.
+ * Communication between the card's stages. The developer and the tester send questions to the planner (the app orchestrates, and the planner only
+ * reaches the user if needed) and propose changes that wait for the user's authorization before becoming documents and code.
  */
 function publicQuestion(row: QuestionRow): Question {
   const { askerChatId: _a, rounds: _r, delivered: _d, ...item } = row
@@ -66,7 +66,7 @@ export class CollaborationService {
     }
   }
 
-  /** Reescreve os documentos Dúvidas e Mudanças a partir das tabelas. */
+  /** Rewrites the Questions and Changes documents from the tables. */
   private render(cardId: string): void {
     const questions = this.questions(cardId), changes = this.changes(cardId)
     const q = questions.map((item) => [`### ${qLabel(item.number)} · ${questionStatus[item.status]}`, `**Pergunta (${roleName[item.askerPurpose]}):** ${item.question}`, item.userQuestion && item.status === 'user' ? `**Pergunta do planejador para você:** ${item.userQuestion}` : '', item.answer ? `**Resposta (${item.answeredBy === 'user' ? 'você' : 'planejador'}):** ${item.answer}` : ''].filter(Boolean).join('\n\n')).join('\n\n')
@@ -80,7 +80,7 @@ export class CollaborationService {
     return (this.database.db.prepare(`SELECT COALESCE(MAX(number), 0) + 1 AS value FROM ${table} WHERE card_id = ?`).get(cardId) as { value: number }).value
   }
 
-  /** Dúvida do desenvolvedor ou do testador. Fica "aberta" até a execução dele terminar; aí o app aciona o planejador. */
+  /** Question from the developer or the tester. Stays "open" until their run ends; then the app triggers the planner. */
   askQuestion(input: { cardId: string; chatId: string; purpose: AgentPurpose; question: string }): Question {
     if (input.purpose === 'planning') throw new Error('The planner does not ask itself; if it needs a decision from the user, use gearmod_ask_user')
     const id = randomUUID(), number = this.next('card_questions', input.cardId)
@@ -89,7 +89,7 @@ export class CollaborationService {
     return this.list(input.cardId).questions.find((item) => item.id === id)!
   }
 
-  /** Resposta do planejador (por número da dúvida). */
+  /** Planner's answer (by question number). */
   answerFromPlanner(cardId: string, number: number, answer: string): void {
     const row = this.questions(cardId).find((item) => item.number === number)
     if (!row) throw new Error(tm().collaboration.questionNotFound(qLabel(number)))
@@ -98,7 +98,7 @@ export class CollaborationService {
     this.render(cardId)
   }
 
-  /** O planejador não consegue decidir sozinho: a pergunta vai para o usuário. */
+  /** The planner cannot decide alone: the question goes to the user. */
   escalateToUser(cardId: string, number: number, userQuestion: string): void {
     const row = this.questions(cardId).find((item) => item.number === number)
     if (!row) throw new Error(tm().collaboration.questionNotFound(qLabel(number)))
@@ -117,7 +117,7 @@ export class CollaborationService {
     return this.list(row.cardId)
   }
 
-  /** Proposta de mudança do desenvolvedor ou do testador: nada é alterado até o usuário autorizar. */
+  /** Change proposal from the developer or the tester: nothing is changed until the user authorizes. */
   proposeChange(input: { cardId: string; chatId: string; purpose: AgentPurpose; title: string; details: string; reason: string }): Change {
     if (input.purpose === 'planning') throw new Error('The planner changes the documents directly; change proposals are for the developer and the tester')
     const id = randomUUID(), number = this.next('card_changes', input.cardId)
@@ -126,7 +126,7 @@ export class CollaborationService {
     return this.list(input.cardId).changes.find((item) => item.id === id)!
   }
 
-  /** Aceitar e sugerir outra visão passam pelo planejador (ele atualiza os documentos); recusar volta direto ao autor. */
+  /** Accepting and suggesting another view go through the planner (it updates the documents); refusing goes straight back to the author. */
   decideChange(changeId: string, decision: 'accept' | 'reject' | 'suggest', note?: string): Collaboration {
     const row = this.database.db.prepare(`SELECT card_id AS cardId FROM card_changes WHERE id = ?`).get(changeId) as { cardId: string } | undefined
     if (!row) throw new Error(tm().common.proposalNotFound)
@@ -150,8 +150,8 @@ export class CollaborationService {
   }
 
   /**
-   * Manda ao desenvolvedor (o chat de implementação) implementar uma mudança já autorizada. Normalmente acontece sozinho quando o
-   * planejador termina de atualizar os documentos; este é o botão de lembrete para quando isso ainda não aconteceu.
+   * Tells the developer (the implementation chat) to implement an already authorized change. It usually happens on its own when the
+   * planner finishes updating the documents; this is the reminder button for when that has not happened yet.
    */
   sendChange(changeId: string): Collaboration {
     const row = this.database.db.prepare(`SELECT card_id AS cardId FROM card_changes WHERE id = ?`).get(changeId) as { cardId: string } | undefined
@@ -168,7 +168,7 @@ export class CollaborationService {
     return this.list(row.cardId)
   }
 
-  /** Chamado quando uma execução termina com sucesso: encadeia o que estava esperando por ela. */
+  /** Called when a run ends successfully: chains whatever was waiting for it. */
   afterRun(info: { cardId: string; chatId: string; purpose: AgentPurpose; status: string }): void {
     if (info.status !== 'completed') return
     if (info.purpose !== 'planning') {
@@ -180,7 +180,7 @@ export class CollaborationService {
       if (action) this.start(action)
       return
     }
-    // O planejador terminou: dúvidas sem resposta tentam de novo (até o limite) e depois vão para o usuário.
+    // The planner finished: unanswered questions try again (up to the limit) and then go to the user.
     const stuck = this.questions(info.cardId).filter((item) => item.status === 'planner')
     const retry = stuck.filter((item) => item.rounds < maxPlannerRounds)
     for (const item of stuck.filter((entry) => entry.rounds >= maxPlannerRounds)) this.database.db.prepare(`UPDATE card_questions SET status = 'user', user_question = ? WHERE id = ?`).run(item.question, item.id)
@@ -190,7 +190,7 @@ export class CollaborationService {
       if (action) this.start(action)
     }
     if (stuck.length) this.render(info.cardId)
-    // Mudanças autorizadas/ajustadas: os documentos já foram atualizados, o autor retoma.
+    // Authorized/adjusted changes: the documents were already updated, the author resumes.
     for (const change of this.changes(info.cardId).filter((item) => item.status === 'accepted' || item.status === 'suggested')) {
       this.database.db.prepare(`UPDATE card_changes SET status = 'applied', sent_at = ? WHERE id = ?`).run(new Date().toISOString(), change.id)
       this.start(this.resumeChange(change, change.status === 'accepted'
@@ -201,7 +201,7 @@ export class CollaborationService {
     this.deliverAnswers(info.cardId)
   }
 
-  /** Entrega as respostas ainda não entregues a quem perguntou, uma retomada por chat. */
+  /** Delivers the answers not yet delivered to whoever asked, one resume per chat. */
   private deliverAnswers(cardId: string): void {
     const ready = this.questions(cardId).filter((item) => item.status === 'answered' && !item.delivered && item.askerChatId)
     const byChat = new Map<string, QuestionRow[]>()
@@ -225,7 +225,7 @@ export class CollaborationService {
     return { chatId: change.proposerChatId, planning: false, prompt }
   }
 
-  /** Chat do planejador: o que já existe ou um novo com o agente de planejamento do card (senão o primeiro liberado no projeto). */
+  /** Planner chat: the existing one or a new one with the card's planning agent (otherwise the first one enabled in the project). */
   private plannerAction(cardId: string, prompt: string): FollowUp | null {
     const card = this.board.card(cardId), project = this.board.get(card.projectId).project
     const existing = this.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === 'planning')
@@ -237,7 +237,7 @@ export class CollaborationService {
 
   private start(action: FollowUp): void {
     try { this.starter?.(action) } catch (error) {
-      try { this.conversations.addMessage({ chatId: action.chatId, role: 'system', body: `Não foi possível continuar automaticamente: ${error instanceof Error ? error.message : String(error)}`, status: 'failed' }) } catch { /* chat removido */ }
+      try { this.conversations.addMessage({ chatId: action.chatId, role: 'system', body: `Não foi possível continuar automaticamente: ${error instanceof Error ? error.message : String(error)}`, status: 'failed' }) } catch { /* chat removed */ }
     }
   }
 }

@@ -4,11 +4,11 @@ import type { CodeIndexService } from './service'
 import type { SymbolHit } from './query'
 import type { RootStatus } from './code-index'
 
-/** O pedaço do serviço que o editor usa (permite trocar nos testes). */
+/** The part of the service the editor uses (lets tests swap it). */
 export type EditorCodeIndex = Pick<CodeIndexService, 'enabled' | 'symbols' | 'outline' | 'definitions' | 'references' | 'status' | 'reindex' | 'forget'>
 interface Context { projectId: string; cardId: string | null }
 
-/** Pasta indexada que contém o arquivo (a mais funda, se uma estiver dentro da outra) e o caminho relativo a ela, com `/`. */
+/** Indexed folder that contains the file (the deepest one, if one is inside another) and the path relative to it, with `/`. */
 export function rootOf(roots: string[], file: string): { root: string; relative: string } | null {
   const target = resolve(file)
   let best: { root: string; relative: string } | null = null
@@ -23,12 +23,12 @@ export function rootOf(roots: string[], file: string): { root: string; relative:
 const absolute = (root: string, hit: SymbolHit): CodeSymbol => ({ name: hit.name, qname: hit.qname, kind: hit.kind, path: join(root, hit.path), relative: hit.path, line: hit.line, endLine: hit.endLine, signature: hit.signature })
 
 /**
- * Consultas do editor (ir para símbolo, estrutura, definição, quem usa) sobre as pastas do projeto ou da worktree do card.
- * Os caminhos entram e saem absolutos; com o índice desligado tudo volta vazio.
+ * Editor queries (go to symbol, structure, definition, who uses) over the project's or the card worktree's folders.
+ * Paths come in and go out absolute; with the index turned off everything returns empty.
  */
 export function editorCodeQueries(index: EditorCodeIndex | undefined, codeRoots: (context: Context) => string[], settings?: { enabled(projectId: string): boolean; setEnabled(projectId: string, enabled: boolean): void }) {
   const on = (context: Context): boolean => Boolean(index?.enabled) && (settings?.enabled(context.projectId) ?? true)
-  /** Pastas em ordem: a do arquivo de onde se pergunta primeiro. */
+  /** Folders in order: the one of the file being asked from comes first. */
   const ordered = (context: Context, path?: string): { roots: string[]; from: { root: string; relative: string } | null } => {
     const roots = codeRoots(context), from = path ? rootOf(roots, path) : null
     return { roots: from ? [from.root, ...roots.filter((root) => root !== from.root)] : roots, from }
@@ -62,7 +62,7 @@ export function editorCodeQueries(index: EditorCodeIndex | undefined, codeRoots:
       if (!on(input)) return { enabled: false, roots: [] }
       return { enabled: true, roots: await Promise.all(codeRoots(input).map((root) => index!.status(root))) }
     },
-    /** Liga ou desliga no projeto. Desligar para de observar as pastas e apaga o índice delas; ligar indexa de novo. */
+    /** Turns it on or off for the project. Turning off stops watching the folders and deletes their index; turning on indexes again. */
     async setEnabled(input: { projectId: string; enabled: boolean }): Promise<{ enabled: boolean; roots: RootStatus[] }> {
       if (!settings) throw new Error('The code index settings are not available.')
       const context = { projectId: input.projectId, cardId: null }, roots = codeRoots(context)
@@ -71,7 +71,7 @@ export function editorCodeQueries(index: EditorCodeIndex | undefined, codeRoots:
       if (!input.enabled) { for (const root of roots) await index.forget(root); return { enabled: false, roots: [] } }
       return { enabled: true, roots: await Promise.all(roots.map((root) => index.reindex(root))) }
     },
-    /** Indexa as pastas do projeto agora (o que não mudou é reaproveitado); com `root`, só essa pasta, e a tela chama uma por vez para mostrar o progresso. */
+    /** Indexes the project folders now (what did not change is reused); with `root`, only that folder, and the screen calls one at a time to show progress. */
     async reindex(input: { projectId: string; root?: string | undefined }): Promise<{ enabled: boolean; roots: RootStatus[] }> {
       const context = { projectId: input.projectId, cardId: null }
       if (!on(context)) return { enabled: false, roots: [] }

@@ -79,7 +79,7 @@ describe('CodeIndex', () => {
     const summary = index.q(root).explore('Bridge.save CardHistory.record versions', { detail: 'summary' })
     expect(summary).toContain('**Where things are**')
     expect(summary).not.toContain('**Code**')
-    // busca em português chega ao nome em inglês
+    // a search in Portuguese reaches the English name
     expect(index.q(root).search('histórico')).toContain('CardHistory')
   })
 
@@ -126,7 +126,7 @@ describe('CodeIndex', () => {
     expect(index.q(root).search('brandNew')).toContain('src/docs.ts:5')
     expect(index.q(root).node({ symbol: 'useDocs' })).toContain('brandNew')
     expect(index.q(root).impact('Bridge')).not.toContain('bridge.test.ts')
-    // a outra pasta não muda
+    // the other folder does not change
     expect(index.q(copy).search('brandNew')).toBe('Nothing found for "brandNew".')
     await index.forget(copy)
     expect(index.has(copy)).toBe(false)

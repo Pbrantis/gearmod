@@ -7,7 +7,7 @@ import type { CardHistoryService } from './history'
 import { specKitCommand, specKitGeminiMessage, specKitProvider, type SpecKitRuntime } from './speckit'
 import { tm } from './i18n'
 
-// O passo a passo vive nas skills do plugin (gearmod-implement, gearmod-test, gearmod-small): o prompt só aponta para a skill.
+// The step by step lives in the plugin skills (gearmod-implement, gearmod-test, gearmod-small): the prompt only points to the skill.
 const steps = {
   execution: { skill: 'gearmod-implement', start: 'implement this card', resume: 'continue the implementation where it left off' },
   test: { skill: 'gearmod-test', start: 'test this card', resume: 'continue the test where it left off' },
@@ -16,12 +16,12 @@ const steps = {
 const skillPrompt = (what: string, skill: string): string => `Use the ${skill} skill to ${what}.`
 const skillNotice = (skill: string, extra = ''): string => `▶ Usando a skill ${skill}${extra}`
 
-/** Iniciar e continuar execuções: Iniciar aprova o plano atual, leva o card para Doing e usa o chat de execução do card. */
+/** Start and continue runs: Start approves the current plan, moves the card to Doing and uses the card's execution chat. */
 export class ExecutionService {
   constructor(private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly orchestrator: Pick<AgentOrchestrator, 'start'>, private readonly configs?: Pick<AgentConfigRepository, 'set'>, private readonly git?: { branches(localPath: string): Promise<string[]> }, private readonly history?: Pick<CardHistoryService, 'config'>, private readonly speckit?: Pick<SpecKitRuntime, 'active' | 'artifacts'>) {}
 
-  /** Implementação (padrão) ou teste: cada etapa tem o seu chat e o seu agente; depois de iniciado o agente fica travado (trocar reinicia o chat). */
-  /** Branches para a worktree: usa o repositório SDD selecionado e a branch-base do projeto como padrão. `locked` quando a worktree já existe. */
+  /** Implementation (default) or testing: each stage has its own chat and its own agent; once started the agent is locked (switching restarts the chat). */
+  /** Branches for the worktree: uses the selected SDD repository and the project's base branch as the default. `locked` when the worktree already exists. */
   async branches(cardId: string): Promise<{ branches: string[]; current: string | null; selected: string | null; locked: boolean }> {
     const card = this.board.card(cardId), project = this.board.get(card.projectId).project, sddSourceId = this.history?.config(card.projectId).sdd.sourceId
     const source = (sddSourceId ? project.sources.find((item) => item.id === sddSourceId && item.isGitRepository) : undefined) ?? project.sources.find((item) => item.isGitRepository)
@@ -45,7 +45,7 @@ export class ExecutionService {
       if (!small) this.conversations.approveCurrentPlan(cardId, profileId, this.board.documents.read(cardId, 'plano'))
     }
     const chat = this.conversations.purposeChat(card.projectId, cardId, purpose, profileId)
-    // Spec Kit: a implementação é a skill nativa speckit-implement, só depois de a feature do card ter especificação, plano e tasks.
+    // Spec Kit: implementation is the native speckit-implement skill, only after the card's feature has a specification, plan and tasks.
     if (speckit) {
       const provider = specKitProvider(chat.provider)
       if (!provider) throw new Error(specKitGeminiMessage())

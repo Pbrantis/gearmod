@@ -15,7 +15,7 @@ describe('modelos do Codex', () => {
     await writeFile(join(root, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'gpt-6.1-sol', display_name: 'GPT-6.1-Sol', description: 'x', default_reasoning_level: 'galactic', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'max' }, { effort: 'ultra' }, { effort: 'galactic' }] }] }))
     const models = readCodexModelsCache({ configDir: root } as AgentProfile)
     expect(models).toMatchObject([{ id: 'gpt-6.1-sol', efforts: ['low', 'max', 'ultra'], defaultEffort: 'low' }])
-    // A resposta do IPC é validada pelo contrato: a lista precisa passar inteira.
+    // The IPC response is validated by the contract: the whole list must pass.
     expect(agentOptionsSchema.safeParse({ models, mostUsed: { planning: null, execution: null, test: null } }).success).toBe(true)
   })
 })

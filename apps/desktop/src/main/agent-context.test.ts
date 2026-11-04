@@ -39,7 +39,7 @@ describe('AgentContextService', () => {
     const skillDir = join(root, 'minha-skill'); await mkdir(skillDir, { recursive: true }); await writeFile(join(skillDir, 'SKILL.md'), '---\nname: minha-skill\ndescription: x\n---\nPasso a passo da skill escolhida')
     expect(await service.prompt(card.id, 'Planeje', true, { name: 'minha-skill', path: skillDir })).toContain('Use the minha-skill skill')
     expect(service.developerInstructions(true, { name: 'minha-skill', path: skillDir })).toContain('Passo a passo da skill escolhida')
-    expect(service.developerInstructions(false, { name: 'minha-skill', path: skillDir })).toContain('Passo a passo da skill escolhida') // a skill escolhida acompanha também a execução
+    expect(service.developerInstructions(false, { name: 'minha-skill', path: skillDir })).toContain('Passo a passo da skill escolhida') // the chosen skill also accompanies the execution
     const untitled = board.create({ projectId: project.id, columnId: column.id, title: '', description: '', type: 'task', priority: 'low', acceptanceCriteria: [] })
     expect(await service.prompt(untitled.id, 'Planeje', true)).toContain('gearmod_update_card')
     expect(await service.prompt(untitled.id, 'Execute', false)).not.toContain('gearmod_update_card')
@@ -60,7 +60,7 @@ describe('AgentContextService', () => {
     const withFile = new AgentContextService(board, settings, null, undefined, undefined, undefined, undefined, sddResolver)
     const first = await withFile.block(card.id); const second = await withFile.block(card.id)
     expect(first).toContain('Constituição do SDD'); expect(second).toContain('Constituição do SDD')
-    expect(calls).toBe(2) // chama o resolver a cada turno; o cache evita recalcular o índice, não a leitura em si
+    expect(calls).toBe(2) // calls the resolver on every turn; the cache avoids recomputing the index, not the read itself
     const legacyConstitution = { get: () => ({ projectId: project.id, contentMd: 'Legado no SQLite', version: 1, updatedAt: null, updatedBy: null }), proposals: () => [] }
     const noFileYet = { constitution: async () => ({ path: 'constitution.md', content: null, blobSha: null, baseBlobSha: null, headBlobSha: null, state: 'missing' as const, method: 'native' as const, via: 'ref' as const }) }
     const withFallback = new AgentContextService(board, settings, null, legacyConstitution, undefined, undefined, undefined, noFileYet)

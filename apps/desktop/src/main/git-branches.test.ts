@@ -12,7 +12,7 @@ const exec = promisify(execFile), roots: string[] = [], opened: AppDatabase[] = 
 afterEach(async () => { opened.splice(0).forEach((item) => item.close()); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))) })
 const git = (dir: string, ...args: string[]): Promise<{ stdout: string }> => exec('git', ['-C', dir, ...args])
 
-/** Repositório com um remoto bare (origin) que já tem a main e a branch feature/x. */
+/** Repository with a bare remote (origin) that already has main and the feature/x branch. */
 async function withRemote(): Promise<{ manager: GitManager; repo: string; remote: string; sourceId: string }> {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-branches-')); roots.push(root)
   const repo = join(root, 'repo'), remote = join(root, 'remote.git')

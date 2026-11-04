@@ -7,7 +7,7 @@ import { tm } from './i18n'
 export interface FileVersions { path: string; relative: string; root: string; before: string | null; after: string | null; baseLabel: string; binary: boolean; truncated: boolean }
 const maxBytes = 1_000_000
 
-/** Caminho permitido mesmo quando o arquivo foi apagado: resolve a pasta (a mais próxima que existe) e reanexa o resto. */
+/** Path allowed even when the file was deleted: resolves the folder (the closest one that exists) and reattaches the rest. */
 async function resolveTarget(roots: string[], requested: string): Promise<string> {
   try { return await allowedPath(roots, requested) } catch (error) {
     const parent = dirname(requested)
@@ -17,8 +17,8 @@ async function resolveTarget(roots: string[], requested: string): Promise<string
 }
 
 /**
- * As duas versões do arquivo para o diff: "antes" vem do Git (`baseFor` dá a referência do card; sem ela, `HEAD`) e "depois" é o disco.
- * `null` num dos lados significa arquivo novo (`before`) ou apagado (`after`). Binário ou acima de 1 MB não manda conteúdo.
+ * The two versions of the file for the diff: "before" comes from Git (`baseFor` gives the card's reference; without it, `HEAD`) and "after" is the disk.
+ * `null` on one side means a new file (`before`) or a deleted one (`after`). Binary or above 1 MB sends no content.
  */
 export async function fileVersions(roots: string[], requested: string, options: { git: GitRunner; baseFor(repoTop: string): Promise<{ ref: string; label: string } | null> }): Promise<FileVersions> {
   const target = await resolveTarget(roots, requested)

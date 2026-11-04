@@ -26,11 +26,11 @@ if (typeof window !== 'undefined' && window.gearmod) window.gearmod.onRunEvent((
 export const terminal = {
   subscribe(listener: () => void): () => void { listeners.add(listener); return () => { listeners.delete(listener) } },
   snapshot: (): TerminalState => state,
-  /** Pasta de trabalho dos terminais novos: o card do chat aberto (worktree) ou o projeto. */
+  /** Working folder of new terminals: the open chat's card (worktree) or the project. */
   setContext(context: TerminalState['context']): void { set({ context }) },
   setOpen(open: boolean): void { set({ open }) },
   select(id: string): void { set({ active: id }) },
-  /** `quiet`: só acrescenta a aba (vinda de outra janela), sem abrir o painel nem trocar a aba ativa. */
+  /** `quiet`: only adds the tab (coming from another window), without opening the panel or switching the active tab. */
   async attach(id: string, options?: { quiet?: boolean }): Promise<void> {
     const quiet = Boolean(options?.quiet)
     try {
@@ -41,23 +41,23 @@ export const terminal = {
       set({ tabs: [...state.tabs.filter((item) => item.id !== id), tab], ...(quiet ? { active: state.active ?? id } : { active: id, open: true }), error: '' })
     } catch (reason) { if (!quiet) set({ error: plainError(reason), open: true }) }
   },
-  /** Janela de terminal destacada fechando: as abas abertas nela (inclusive as criadas com "+") voltam para a janela principal; o processo segue. */
+  /** Detached terminal window closing: the tabs open in it (including those created with "+") go back to the main window; the process keeps running. */
   handOff(): void {
     const ids = state.tabs.filter((tab) => !tab.exited).map((tab) => tab.id)
     if (!ids.length) return
     const message = JSON.stringify({ ids, at: Date.now() })
-    try { localStorage.setItem(handOffKey, message) } catch { /* sem armazenamento: tenta só pelo canal */ }
-    try { const channel = new BroadcastChannel(handOffKey); channel.postMessage(message); channel.close() } catch { /* canal indisponível */ }
+    try { localStorage.setItem(handOffKey, message) } catch { /* no storage: try the channel only */ }
+    try { const channel = new BroadcastChannel(handOffKey); channel.postMessage(message); channel.close() } catch { /* channel unavailable */ }
   },
   async openPath(context: { projectId: string; cardId: string | null; path: string }): Promise<string | null> { try { const { id } = await window.gearmod.invoke('workspace:terminal', context); await terminal.attach(id); return id } catch (reason) { set({ error: plainError(reason), open: true }); return null } },
-  /** Abre uma aba nova do terminal na pasta e digita só o primeiro comando; quem responde às perguntas da CLI é o usuário, ali. */
+  /** Opens a new terminal tab in the folder and types only the first command; the user answers the CLI's questions there. */
   async runIn(context: { projectId: string; cardId: string | null; path: string }, command: string): Promise<boolean> {
     const id = await terminal.openPath(context)
     if (!id) return false
     set({ open: true, active: id }); await terminal.send(id, command); return true
   },
   async newTab(): Promise<string | null> {
-    // Sem projeto aberto (contexto vazio), o terminal abre na pasta do usuário, como um terminal comum.
+    // With no open project (empty context), the terminal opens in the user's folder, like a regular terminal.
     const context = state.context ?? { projectId: null, cardId: null }
     try {
       const { id, cwd, shell } = await window.gearmod.invoke('terminal:open', context)
@@ -72,7 +72,7 @@ export const terminal = {
     if (!tab || tab.exited) return
     try { await window.gearmod.invoke('terminal:write', { id, data: `${line}\r` }) } catch (reason) { patchTab(id, (item) => append(item, `${plainError(reason)}\n`)) }
   },
-  /** Botão de play de um bloco de código do chat: roda na aba ativa (abre uma, se não houver ou se ela já terminou). */
+  /** Play button of a chat code block: runs in the active tab (opens one if there is none or if it has already finished). */
   async run(command: string): Promise<void> {
     let id = state.active && state.tabs.some((tab) => tab.id === state.active && !tab.exited) ? state.active : null
     set({ open: true })
@@ -80,7 +80,7 @@ export const terminal = {
     if (id) for (const line of command.split(/\r?\n/).filter((item) => item.trim())) await terminal.send(id, line)
   },
   close(id: string): void {
-    // Fechar a aba mata o processo dela: se ainda está rodando, confirma antes.
+    // Closing the tab kills its process: if it is still running, confirm first.
     if (state.tabs.some((tab) => tab.id === id && !tab.exited) && !window.confirm(tr().files.terminal.closeRunningConfirm)) return
     void window.gearmod.invoke('terminal:kill', { id }).catch(() => undefined)
     const tabs = state.tabs.filter((tab) => tab.id !== id)
@@ -89,13 +89,13 @@ export const terminal = {
   clear(id: string): void { patchTab(id, (tab) => ({ ...tab, text: '' })) }
 }
 
-// Só a janela principal recebe as abas de volta (as extras têm `?pop=` na URL).
+// Only the main window gets the tabs back (extra ones have `?pop=` in the URL).
 if (typeof window !== 'undefined' && window.gearmod && !popoutParams()) {
   const receive = (raw: unknown): void => {
-    try { const parsed = JSON.parse(String(raw)) as { ids?: unknown }; if (Array.isArray(parsed.ids)) for (const id of parsed.ids) if (typeof id === 'string' && !state.tabs.some((tab) => tab.id === id)) void terminal.attach(id, { quiet: true }) } catch { /* mensagem inválida */ }
+    try { const parsed = JSON.parse(String(raw)) as { ids?: unknown }; if (Array.isArray(parsed.ids)) for (const id of parsed.ids) if (typeof id === 'string' && !state.tabs.some((tab) => tab.id === id)) void terminal.attach(id, { quiet: true }) } catch { /* invalid message */ }
   }
   window.addEventListener('storage', (event) => { if (event.key === handOffKey && event.newValue) receive(event.newValue) })
-  try { new BroadcastChannel(handOffKey).onmessage = (event) => receive(event.data) } catch { /* canal indisponível: fica o evento de storage */ }
+  try { new BroadcastChannel(handOffKey).onmessage = (event) => receive(event.data) } catch { /* channel unavailable: the storage event remains */ }
 }
 
 export const useTerminal =(): TerminalState => useSyncExternalStore(terminal.subscribe, terminal.snapshot)

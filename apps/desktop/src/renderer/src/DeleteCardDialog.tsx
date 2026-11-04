@@ -3,7 +3,7 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { Checkbox } from './Checkbox'
 import { useT } from './i18n'
 
-/** A opção vale apenas para a pasta de artefatos gerenciada do card. */
+/** The option applies only to the card's managed artifacts folder. */
 export function DeleteCardDialog({ title, cancel, confirm }: { title: string; cancel(): void; confirm(deleteArtifacts: boolean): void }): React.JSX.Element {
   const { board: t, common } = useT()
   const [deleteArtifacts, setDeleteArtifacts] = useState(false)

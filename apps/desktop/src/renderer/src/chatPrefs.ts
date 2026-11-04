@@ -1,4 +1,4 @@
-/** Preferências só do chat, guardadas neste computador: o espaço entre uma mensagem e a seguinte. */
+/** Chat-only preferences, stored on this computer: the spacing between one message and the next. */
 import { tr } from './i18n'
 
 export type MessageSpacing = 'compact' | 'comfortable' | 'wide'
@@ -10,7 +10,7 @@ export const messageSpacings: Array<{ value: MessageSpacing; label: string; gap:
 const key = 'gearmod.messageSpacing'
 
 export function readMessageSpacing(): MessageSpacing {
-  try { const stored = localStorage.getItem(key); if (messageSpacings.some((item) => item.value === stored)) return stored as MessageSpacing } catch { /* sem armazenamento: usa o padrão */ }
+  try { const stored = localStorage.getItem(key); if (messageSpacings.some((item) => item.value === stored)) return stored as MessageSpacing } catch { /* no storage: uses the default */ }
   return 'comfortable'
 }
 
@@ -19,6 +19,6 @@ export function applyMessageSpacing(value: MessageSpacing = readMessageSpacing()
 }
 
 export function saveMessageSpacing(value: MessageSpacing): void {
-  try { localStorage.setItem(key, value) } catch { /* só vale nesta sessão */ }
+  try { localStorage.setItem(key, value) } catch { /* only valid for this session */ }
   applyMessageSpacing(value)
 }

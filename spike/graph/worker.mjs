@@ -1,4 +1,4 @@
-// Worker de parse: recebe lotes de arquivos e devolve a extração de cada um.
+// Parse worker: receives batches of files and returns the extraction of each.
 import { parentPort } from 'node:worker_threads'
 import { readFileSync } from 'node:fs'
 import { extract } from './extract.mjs'

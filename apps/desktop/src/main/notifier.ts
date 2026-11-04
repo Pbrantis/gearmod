@@ -6,7 +6,7 @@ export type FinishStatus = 'queued' | 'running' | 'completed' | 'failed' | 'inte
 export interface NoticeInput {
   status: FinishStatus
   purpose: ChatPurpose
-  /** Título do card (ou do chat livre). */
+  /** Title of the card (or of the free chat). */
   title: string
   hasPlan: boolean
   pending: { changes: number; questions: number }
@@ -16,7 +16,7 @@ export interface Notice { title: string; body: string }
 
 const clip = (text: string, max = 140): string => { const flat = text.replace(/\s+/g, ' ').trim(); return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat }
 
-/** O que avisar quando um agente termina (null = não vale notificação): conclusão, plano pronto, falha ou algo que precisa do usuário. */
+/** What to notify when an agent finishes (null = no notification): completion, plan ready, failure, or something that needs the user. */
 export function finishNotice(input: NoticeInput): Notice | null {
   if (input.status !== 'completed' && input.status !== 'failed') return null
   const name = input.title.trim() || tm().notifier.newCard
@@ -34,7 +34,7 @@ export function finishNotice(input: NoticeInput): Notice | null {
 
 export interface OpenTarget { projectId: string; cardId: string | null; chatId: string | null; purpose: ChatPurpose | null }
 
-/** Envia a notificação do sistema (só com o app fora de foco e se estiver ligada); o clique abre o chat do card ou o chat livre. */
+/** Sends the system notification (only when the app is out of focus and notifications are on); clicking it opens the card chat or the free chat. */
 export class Notifier {
   constructor(private readonly deps: { enabled(): boolean; focused(): boolean; show(notice: Notice, onClick: () => void): void; open(target: OpenTarget): void }) {}
 

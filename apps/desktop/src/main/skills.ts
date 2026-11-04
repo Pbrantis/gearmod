@@ -13,7 +13,7 @@ const globalFolder: Record<Provider, string> = { claude: '.claude', codex: '.cod
 const projectFolder: Record<Provider, string> = { claude: '.claude', codex: '.agents', gemini: '.gemini' }
 const nameRule = /^[a-z0-9][a-z0-9-]{0,63}$/
 
-/** Cabeçalho `name` e `description` de um SKILL.md (subconjunto de YAML suficiente para skills). */
+/** `name` and `description` header of a SKILL.md (a YAML subset enough for skills). */
 export function parseSkillMd(text: string): { name: string | null; description: string; body: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text)
   if (!match) return { name: null, description: '', body: text }
@@ -33,7 +33,7 @@ export function parseSkillMd(text: string): { name: string | null; description: 
   return { name: fields.name ?? null, description: fields.description ?? '', body: match[2]! }
 }
 
-/** Regras de conversão entre agentes: cabeçalho só com name/description e referências do outro agente trocadas. */
+/** Conversion rules between agents: header with only name/description and the other agent's references swapped. */
 export function convertSkillMd(text: string, from: Provider, to: Provider): string {
   const parsed = parseSkillMd(text), name = parsed.name ?? 'skill'
   const description = parsed.description.replace(/"/g, '\\"')
@@ -60,7 +60,7 @@ async function scanSkills(base: string, provider: Provider): Promise<Found[]> {
 
 const skipDirs = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', 'target', 'vendor', '__pycache__', '.venv', 'venv', '.cache', 'coverage'])
 
-/** Procura pastas com SKILL.md em qualquer lugar de uma raiz (até 5 níveis, ignorando node_modules, .git e builds). O agente é deduzido pelo caminho: .claude → Claude; .agents/.codex → Codex; o resto assume Claude. */
+/** Looks for folders with SKILL.md anywhere in a root (up to 5 levels, ignoring node_modules, .git and builds). The agent is inferred from the path: .claude → Claude; .agents/.codex → Codex; anything else assumes Claude. */
 export async function discoverSkills(root: string, maxDepth = 5, budget = { left: 6000 }): Promise<Found[]> {
   const found: Found[] = []
   const walk = async (dir: string, depth: number): Promise<void> => {
@@ -81,15 +81,15 @@ export async function discoverSkills(root: string, maxDepth = 5, budget = { left
 
 export type SkillReviewer = { adapters: Record<Provider, AgentAdapter>; profile(profileId: string): AgentProfile }
 
-/** Skills globais (pastas dos agentes) e do projeto (`.claude/skills`, `.agents/skills`): detecção, importação e conversão com revisão por agente. */
+/** Global skills (agent folders) and project skills (`.claude/skills`, `.agents/skills`): detection, import and conversion with per-agent review. */
 export class SkillService {
-  private readonly converting = new Map<string, 'convert' | 'review'>()  // chave: escopo|projeto|nome|destino
+  private readonly converting = new Map<string, 'convert' | 'review'>()  // key: scope|project|name|destination
   constructor(private readonly profiles: ProfileRepository, private readonly projects: ProjectRepository, private readonly reviewer?: SkillReviewer, private readonly home: string = homedir(), private readonly emit: (type: string, payload: Record<string, unknown>) => void = () => undefined, private readonly ledger?: { recordAuxiliary(profile: AgentProfile, source: 'skill-review', usage?: { input: number; cached: number; output: number; costUsd?: number }): void }) {}
 
   /**
-   * Skills "global" ficam numa pasta fixa do app (não é segredo, é só Markdown de instrução), compartilhada por todos os
-   * perfis do provedor — mesmo depois do S07/S16 isolarem a pasta de configuração (credenciais) de cada perfil. É por isso
-   * que o primeiro item é sempre a pasta fixa: quem grava (`import`/`convert`) usa `globalBases(provider)[0]`.
+   * "Global" skills live in a fixed app folder (not a secret, just instruction Markdown), shared by all
+   * the provider's profiles — even after S07/S16 isolate each profile's config folder (credentials). That is why
+   * the first item is always the fixed folder: whoever writes (`import`/`convert`) uses `globalBases(provider)[0]`.
    */
   private globalBases(provider: Provider): string[] {
     const dirs = [join(this.home, globalFolder[provider], 'skills')]
@@ -110,7 +110,7 @@ export class SkillService {
     return [...new Set(roots)]
   }
 
-  /** Todas as skills do escopo (com todas as pastas de cada agente). Do projeto: procura em qualquer lugar da pasta do projeto e dos repositórios. */
+  /** All the skills in the scope (with all the folders of each agent). Project: searches anywhere in the project folder and in the repositories. */
   private async collect(scope: SkillScope, projectId?: string): Promise<Array<Found & { origin: string }>> {
     const result: Array<Found & { origin: string }> = []
     if (scope === 'global') {
@@ -145,7 +145,7 @@ export class SkillService {
     return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name))
   }
 
-  /** Exclui a skill (de um agente ou de todos). Só apaga pastas que a própria detecção encontrou, nunca um caminho qualquer. */
+  /** Deletes the skill (of one agent or of all). Only deletes folders that detection itself found, never an arbitrary path. */
   async delete(input: { scope: SkillScope; projectId?: string; name: string; provider?: Provider }): Promise<SkillEntry[]> {
     const targets = (await this.collect(input.scope, input.projectId)).filter((skill) => skill.name === input.name && (!input.provider || skill.provider === input.provider))
     if (!targets.length) throw new Error(tm().skills.skillNotFound)
@@ -153,7 +153,7 @@ export class SkillService {
     return this.list(input.scope, input.projectId)
   }
 
-  /** Importa de uma vez todas as skills (pastas com SKILL.md) de uma pasta escolhida; as que já existem ficam de fora. */
+  /** Imports at once all the skills (folders with SKILL.md) from a chosen folder; the ones that already exist are left out. */
   async importFolder(input: { scope: SkillScope; projectId?: string; folderPath: string; provider: Provider }): Promise<{ imported: string[]; skipped: string[]; skills: SkillEntry[] }> {
     const found = await discoverSkills(resolve(input.folderPath))
     if (!found.length) throw new Error(tm().skills.noSkillInFolder)
@@ -188,7 +188,7 @@ export class SkillService {
     return this.list(input.scope, input.projectId)
   }
 
-  /** Converte por regra e devolve na hora; a revisão pelo agente escolhido roda em segundo plano. */
+  /** Converts by rule and returns right away; the review by the chosen agent runs in the background. */
   async convert(input: { scope: SkillScope; projectId?: string; name: string; from: Provider; to: Provider; reviewProfileId?: string; model?: string | null }): Promise<{ converted: true; reviewing: boolean }> {
     if (input.from === input.to) throw new Error(tm().skills.chooseOtherAgent)
     const entry = (await this.list(input.scope, input.projectId)).find((item) => item.name === input.name)
@@ -218,19 +218,19 @@ export class SkillService {
       const names = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI' }
       const prompt = `Esta skill "${input.name}" foi convertida automaticamente de ${names[input.from]} para ${names[input.to]}. Revise só os arquivos desta pasta: confirme que o SKILL.md tem "name" e "description" válidos para ${names[input.to]}, troque referências a ferramentas, caminhos e convenções de ${names[input.from]} pelas de ${names[input.to]} e corrija o que ficou faltando. Não crie nem altere nada fora desta pasta. Responda com um resumo curto do que mudou.`
       const result = await this.reviewer!.adapters[profile.provider].run({ cwd: targetDir, prompt, sessionId: null, planning: false, profile, model: input.model ?? null, mode: profile.provider === 'claude' ? 'accept_edits' : 'auto', onEvent: () => undefined })
-      try { this.ledger?.recordAuxiliary(profile, 'skill-review', result.usage) } catch { /* métricas nunca bloqueiam a revisão */ }
+      try { this.ledger?.recordAuxiliary(profile, 'skill-review', result.usage) } catch { /* metrics never block the review */ }
       this.emit('skills/review-finished', { name: input.name })
     } catch (error) {
       this.emit('skills/review-failed', { name: input.name, error: error instanceof Error ? error.message : String(error) })
     } finally { this.converting.delete(key) }
   }
 
-  /** Só aceita skills que a própria detecção conhece (globais ou do projeto), nunca um caminho qualquer. */
+  /** Only accepts skills that detection itself knows (global or project), never an arbitrary path. */
   async assertKnown(skill: { name: string; path: string }, projectId: string): Promise<void> {
     const known = [...await this.list('global'), ...await this.list('project', projectId)].some((entry) => entry.name === skill.name && Object.values(entry.paths).includes(skill.path))
     if (!known) throw new Error(tm().skills.unknownSkill)
   }
 
-  /** Conteúdo de uma skill para o provedor (usado para injetar a skill escolhida no chat do Codex). */
+  /** Content of a skill for the provider (used to inject the chosen skill into the Codex chat). */
   async read(path: string): Promise<string> { return parseSkillMd(await readFile(join(path, 'SKILL.md'), 'utf8')).body.trim() }
 }

@@ -1,12 +1,12 @@
 import { useEffect, useRef, type RefObject } from 'react'
 
 /**
- * Mantém a lista rolada até o fim enquanto o conteúdo cresce (texto do agente chegando, ações, perguntas que mudam de altura).
- * Se a pessoa rola para cima para ler, para de acompanhar; ao voltar perto do fim, volta a acompanhar.
+ * Keeps the list scrolled to the end while the content grows (agent text arriving, actions, questions that change height).
+ * If the user scrolls up to read, it stops following; when they return near the end, it follows again.
  */
 export function useStickToBottom(log: RefObject<HTMLElement | null>): void {
   const stick = useRef(true), bound = useRef<HTMLElement | null>(null), cleanup = useRef<(() => void) | null>(null)
-  // Roda a cada render porque a lista pode montar depois (troca de chat/visão); só reata quando o elemento muda.
+  // Runs on every render because the list may mount later (chat/view switch); only reattaches when the element changes.
   useEffect(() => {
     const el = log.current
     if (el === bound.current) return

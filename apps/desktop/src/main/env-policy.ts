@@ -1,18 +1,18 @@
 /**
- * S07 — `ProcessEnvPolicy` (docs/07 §7, decisão do usuário Q-07): o agente recebe só o mínimo necessário do ambiente do
- * Windows. `buildEnv` é pura: nunca lê `process.env` nem grava nada; quem chama decide a base e o modo.
+ * S07 — `ProcessEnvPolicy` (docs/07 §7, user decision Q-07): the agent receives only the minimum necessary from the
+ * Windows environment. `buildEnv` is pure: it never reads `process.env` nor writes anything; the caller decides the base and the mode.
  *
- * Alocação: uma lista fixa (sistema, PATH, proxy, certificados, locale — o que CLIs normalmente precisam para rodar) mais o
- * passthrough que o perfil declarar explicitamente (`envPassthrough`). Nenhuma variável que pareça token/chave/segredo passa
- * sem estar nessa lista declarada — mesmo que o nome bata com a allowlist fixa. As variáveis do Docker Engine nunca passam,
- * declaradas ou não, para o shell do agente não herdar acesso ao Engine por acidente.
+ * Allocation: a fixed list (system, PATH, proxy, certificates, locale — what CLIs normally need to run) plus the
+ * passthrough the profile explicitly declares (`envPassthrough`). No variable that looks like a token/key/secret passes
+ * without being in that declared list — even if the name matches the fixed allowlist. Docker Engine variables never pass,
+ * declared or not, so the agent's shell does not inherit access to the Engine by accident.
  *
- * Modo `observe` (só diagnóstico, via variável de ambiente): não remove nada, só devolve o que teria sido removido, para quem chamar logar.
- * Modo `enforce` (padrão): aplica de verdade.
+ * `observe` mode (diagnostics only, via environment variable): removes nothing, only returns what would have been removed, for the caller to log.
+ * `enforce` mode (default): applies for real.
  */
 export type EnvPolicyMode = 'observe' | 'enforce'
 
-/** Lista fixa: o que CLIs normalmente precisam para rodar (sistema, PATH, proxy, certificados, locale). Nunca inclui segredo. */
+/** Fixed list: what CLIs normally need to run (system, PATH, proxy, certificates, locale). Never includes a secret. */
 const baselineAllowlist = [
   'PATH', 'PATHEXT', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'TEMP', 'TMP', 'TMPDIR',
   'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA',
@@ -25,16 +25,16 @@ const baselineAllowlist = [
   'DISPLAY', 'WSLENV', 'ELECTRON_RUN_AS_NODE'
 ]
 const baselineSet = new Set(baselineAllowlist)
-/** Nunca passam, declaradas ou não: o shell do agente não deve herdar acesso ao Docker Engine por acidente (docs/07 §7). */
+/** Never pass, declared or not: the agent's shell must not inherit access to Docker Engine by accident (docs/07 §7). */
 const blockedAlways = new Set(['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_CERT_PATH', 'DOCKER_TLS_VERIFY'])
-/** Nome parece token/chave/segredo: só passa se declarado explicitamente no perfil. */
+/** Name looks like a token/key/secret: only passes if explicitly declared in the profile. */
 const looksSensitive = (name: string): boolean => /_(TOKEN|KEY|SECRET)$/i.test(name)
 
 export interface EnvPolicyResult { env: NodeJS.ProcessEnv; removed: string[] }
 
 /**
- * Função pura: nunca lê nem grava nada fora dos parâmetros. Em `observe`, `env` é uma cópia integral de `base` (comportamento
- * de hoje) e `removed` lista o que a política teria tirado; em `enforce`, `env` já reflete a política.
+ * Pure function: never reads nor writes anything outside the parameters. In `observe`, `env` is a full copy of `base` (today's behavior)
+ * and `removed` lists what the policy would have taken out; in `enforce`, `env` already reflects the policy.
  */
 export function buildEnv(profile: { envPassthrough?: readonly string[] | null }, base: NodeJS.ProcessEnv, mode: EnvPolicyMode = 'enforce'): EnvPolicyResult {
   const declared = new Set((profile.envPassthrough ?? []).map((name) => name.toUpperCase()))
@@ -49,10 +49,10 @@ export function buildEnv(profile: { envPassthrough?: readonly string[] | null },
   return { env: mode === 'enforce' ? kept : { ...base }, removed }
 }
 
-/** Modo atual: `enforce` por padrão; `GEARMOD_ENV_POLICY_MODE=observe` volta ao ambiente completo (só para diagnóstico). */
+/** Current mode: `enforce` by default; `GEARMOD_ENV_POLICY_MODE=observe` goes back to the full environment (for diagnostics only). */
 export function envPolicyMode(): EnvPolicyMode { return process.env.GEARMOD_ENV_POLICY_MODE === 'observe' ? 'observe' : 'enforce' }
 
-/** Impuro: lê o modo do processo e, em `observe`, loga o que seria removido. Para os pontos reais de disparo de CLI. */
+/** Impure: reads the mode from the process and, in `observe`, logs what would be removed. For the real CLI launch points. */
 export function applyEnvPolicy(profile: { envPassthrough?: readonly string[] | null }, base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const mode = envPolicyMode(), { env, removed } = buildEnv(profile, base, mode)
   if (mode === 'observe' && removed.length) console.warn(`[env-policy] observe: removeria ${removed.length} variável(is) (${removed.slice(0, 10).join(', ')}${removed.length > 10 ? '…' : ''}); nada foi removido (GEARMOD_ENV_POLICY_MODE=observe)`)

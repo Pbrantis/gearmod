@@ -3,7 +3,7 @@ import { ToastCard } from './ToastCard'
 import { toast, useToasts } from './toasts'
 import { useT } from './i18n'
 
-/** Onde os avisos aparecem: canto inferior esquerdo, empilhados. Fica montado uma vez só, na raiz do app. */
+/** Where toasts appear: bottom-left corner, stacked. Mounted only once, at the app root. */
 export function ToastHost(): React.JSX.Element | null {
   const list = useToasts(), t = useT()
   if (!list.length) return null

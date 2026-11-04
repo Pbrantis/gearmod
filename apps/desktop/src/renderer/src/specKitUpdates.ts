@@ -1,7 +1,7 @@
 import { isOutdated } from '@gearmod/contracts'
 
-// Release consultada em 29/10/2026. Este limite de atualização não é uma
-// afirmação de que a integração nativa do GearMod já foi validada.
+// Release checked on 10/29/2026. This update ceiling is not a
+// claim that GearMod's native integration has already been validated.
 export const specKitUpdateCeiling = '1.2.5'
 export const specKitInstallCommand = `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v${specKitUpdateCeiling}`
 

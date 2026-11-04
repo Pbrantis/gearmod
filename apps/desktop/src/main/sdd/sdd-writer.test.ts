@@ -19,7 +19,7 @@ async function repo(): Promise<string> {
   return dir
 }
 
-/** Worktree falsa de teste: `ensureMember` sempre devolve o mesmo membro, já criado via `git worktree add`. */
+/** Fake test worktree: `ensureMember` always returns the same member, already created via `git worktree add`. */
 async function fakeWorktree(main: string) {
   const root = join(main, '..'), path = join(root, 'wt')
   await git(main, 'worktree', 'add', '-b', 'card/x', path, 'main')
@@ -72,7 +72,7 @@ describe('SddWriter', () => {
     const { worktrees, path } = await fakeWorktree(main)
     const outside = join(path, '..', 'fora-da-worktree')
     await mkdir(outside, { recursive: true })
-    try { await symlink(outside, join(path, 'link-escape'), 'junction') } catch { return /* ambiente sem permissão de link simbólico: pula */ }
+    try { await symlink(outside, join(path, 'link-escape'), 'junction') } catch { return /* environment without symlink permission: skip */ }
     const writer = new SddWriter(worktrees)
     await expect(writer.write('c', 's', 'link-escape/arquivo.md', 'x', { blobSha: null })).rejects.toThrow(/escapa/)
   })

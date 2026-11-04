@@ -7,14 +7,14 @@ export type DbActor = { type: 'user' } | { type: 'agent'; cardId: string }
 export type DbQueryResult = { columns: string[]; rows: Array<Array<string | null>>; truncated: boolean; durationMs: number }
 export type DbWriteResult = DbQueryResult & { commands: Array<{ command: string; rowCount: number | null }> }
 const textTypes = { getTypeParser: (_oid: number, _format?: 'text' | 'binary') => (value: string): string => value }
-// Preserva texto e limita a retenção de cada célula de SQL livre; um caractere extra sinaliza truncamento.
+// Preserves text and limits the retention of each free-SQL cell; one extra character signals truncation.
 const boundedTextTypes = { getTypeParser: (_oid: number, _format?: 'text' | 'binary') => (value: string): string => value.length > 8201 ? value.slice(0, 8201) : value }
 const connectionLost = (error: unknown): boolean => {
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
   return code.startsWith('08') || ['57P01', '57P02', 'ECONNREFUSED', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT'].includes(code)
 }
 
-/** Sessões V1a não aceitam ator de IA: o broker só virá em B10. */
+/** V1a sessions do not accept an AI actor: the broker only arrives in B10. */
 export class PgDriver {
   async open(config: DbConnection, password: string | null, actor: DbActor): Promise<PgSession> {
     if (actor.type !== 'user') throw new Error(tm().db.agentAccessUnavailable)
@@ -27,7 +27,7 @@ export class PgDriver {
   }
 }
 
-/** Cada leitura é uma transação READ ONLY encerrada antes da resposta; cursor limita a memória. */
+/** Each read is a READ ONLY transaction ended before the response; a cursor limits memory. */
 export class PgSession {
   private readonly requests = new Map<string, { processID: number; destroy(): void }>()
   private readonly pending = new Set<string>()
@@ -70,7 +70,7 @@ export class PgSession {
     timer.unref()
     try { await this.control.query('SELECT pg_cancel_backend($1)', [request.processID]) } catch { clearTimeout(timer); request.destroy() }
   }
-  /** SQL do usuário em protocolo simples, em cliente descartável para não herdar SET/ROLE/transação. */
+  /** User SQL in simple protocol, on a disposable client so it does not inherit SET/ROLE/transaction. */
   async write(requestId: string, sql: string, rowLimit = 1000): Promise<DbWriteResult> {
     if (!this.allowWrite) throw new Error(tm().db.writeDisabled)
     if (this.closed || this.lost || this.pending.has(requestId)) throw new Error(tm().db.connectionLostClosedOrBusy)
@@ -101,7 +101,7 @@ export class PgSession {
         query.once('end', resolve); client.query(query)
       })
       const all = Array.isArray(results) ? results : [results], last = all.at(-1)
-      // Resultados de comandos sem linhas devem substituir o resultado anterior.
+      // Results of commands without rows must replace the previous result.
       if (last !== current) { rows = []; truncated = false }
       return { columns: last?.fields.map((field) => field.name) ?? [], rows, truncated, durationMs: Date.now() - started, commands: all.map((result) => ({ command: result.command ?? '', rowCount: result.rowCount })) }
     } catch (error) { if (connectionLost(error)) this.markLost(); throw error } finally { this.requests.delete(requestId); this.pending.delete(requestId); destroy() }

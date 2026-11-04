@@ -1,5 +1,5 @@
-// Banco do índice. Tudo que vem do parse é guardado por blob (sha do Git), então worktrees que compartilham
-// arquivos compartilham a análise. Só `trees`, `edges` e `file_edges` são por pasta (root).
+// Index database. Everything from parsing is stored per blob (Git sha), so worktrees that share
+// files share the analysis. Only `trees`, `edges` and `file_edges` are per folder (root).
 import { createRequire } from 'node:module'
 import { EXTRACTOR_VERSION } from './extract.mjs'
 
@@ -35,11 +35,11 @@ export function openStore(file) {
     create index if not exists file_edges_dst on file_edges(root, dst);
     create virtual table if not exists symbols_fts using fts5(words, signature, doc, content='', contentless_delete=1, tokenize="unicode61 remove_diacritics 2");
   `)
-  // bancos antigos: coluna com todas as linhas da chamada
+  // old databases: column with all the call lines
   if (!db.prepare('pragma table_info(edges)').all().some((c) => c.name === 'lines')) db.exec('alter table edges add column lines text')
   const v = db.prepare(`select value from meta where key = 'extractor'`).get()?.value
   if (v !== String(EXTRACTOR_VERSION)) {
-    // extrator mudou: a análise antiga não serve mais
+    // extractor changed: the old analysis is no longer valid
     db.exec(`delete from blobs; delete from symbols; delete from refs; delete from imports; delete from binds; delete from heritage; delete from edges; delete from file_edges; delete from symbols_fts; delete from trees; delete from roots;`)
     db.prepare(`insert or replace into meta(key, value) values ('extractor', ?)`).run(String(EXTRACTOR_VERSION))
   }
@@ -83,7 +83,7 @@ export function writer(db) {
   }
 }
 
-// Apaga a análise de blobs que nenhuma pasta usa mais.
+// Deletes the analysis of blobs that no folder uses anymore.
 export function gc(db) {
   const dead = db.prepare('select sha from blobs where sha not in (select distinct sha from trees)').all().map((r) => r.sha)
   if (!dead.length) return 0

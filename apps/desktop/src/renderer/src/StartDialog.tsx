@@ -9,14 +9,14 @@ import { useEscape } from './useEscape'
 import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
 
-/** Iniciar execução (protótipo): agente · modelo · esforço e "Executar como?". Iniciar aprova o plano atual e leva o card para Doing. */
+/** Start execution (prototype): agent · model · effort and "Run as?". Start approves the current plan and moves the card to Doing. */
 export function StartDialog({ card, purpose, profiles, close, start }: { card: Card; purpose: 'execution' | 'test'; profiles: AgentProfile[]; close(): void; start(config: AgentConfig, baseBranch?: string): Promise<void> }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.start
   const [lockedId, setLockedId] = useState<string>()
   useEffect(() => { void window.gearmod.invoke('chats:list', { projectId: card.projectId, cardId: card.id }).then((items) => setLockedId(items.find((item) => item.purpose === purpose)?.profileId)).catch(() => undefined) }, [card.id, card.projectId, purpose])
   const state = useAgentConfig(card.id, purpose, profiles, lockedId)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  // Worktree: nova (padrão) ou a de outro card do projeto (só se este card ainda não tem uma).
+  // Worktree: new (default) or another project card's (only if this card does not have one yet).
   const [others, setOthers] = useState<Array<{ cardId: string; title: string; branch: string }>>([]), [from, setFrom] = useState('new')
   useEffect(() => { if (!card.workspace) void window.gearmod.invoke('worktrees:candidates', { cardId: card.id }).then(setOthers).catch(() => undefined) }, [card.id, card.workspace])
   const [branches, setBranches] = useState<{ branches: string[]; current: string | null; selected: string | null; locked: boolean }>(), [branch, setBranch] = useState('')

@@ -83,7 +83,7 @@ describe('free chat', () => {
     expect(conversations.listChats(project.id, card.id)[0]).toMatchObject({ id: chat.id, purpose: 'planning', cardId: card.id })
     expect(database.db.prepare('SELECT card_id AS cardId FROM runs WHERE id = ?').get(run.id)).toEqual({ cardId: card.id })
     expect(changes).toContainEqual({ type: 'converted', cardId: card.id, chatId: chat.id })
-    // Depois da conversão o mesmo run já age como planejamento do card.
+    // After the conversion the same run already acts as the card's planning.
     expect(call(token, 'gearmod_write_document', { tipo: 'especificacao', markdown: '## Spec' })).toMatchObject({ ok: true })
     expect(board.documents.read(card.id, 'especificacao')).toBe('## Spec')
     expect(call(token, 'gearmod_create_card', { titulo: 'Outro' })).toMatchObject({ ok: false, error: expect.stringContaining('already has a card') })
@@ -96,7 +96,7 @@ describe('free chat', () => {
     const old = new AppDatabase(path, '0.1.0', migrations.filter((item) => item.version <= 14)); await old.open()
     const profile = { id: 'profile-1' }
     old.db.prepare("INSERT INTO agent_profiles(id, provider, label, scope, color, config_dir, enabled, created_at, updated_at) VALUES ('profile-1', 'codex', 'Codex', 'Pessoal', '#fff', ?, 1, ?, ?)").run(root, new Date().toISOString(), new Date().toISOString())
-    // Banco antigo montado com SQL puro: os repositórios atuais leem colunas que a v14 ainda não tem.
+    // Old database built with plain SQL: the current repositories read columns that v14 does not have yet.
     const now = new Date().toISOString(), project = { id: 'project-1' }, card = { id: 'card-1' }
     old.db.prepare("INSERT INTO projects(id, name, local_path, base_branch, created_at, updated_at) VALUES ('project-1', 'P', ?, 'dev', ?, ?)").run(root, now, now)
     old.db.prepare("INSERT INTO board_columns(id, project_id, label, sort_order, semantic_state) VALUES ('col-1', 'project-1', 'Backlog', 0, 'backlog')").run()

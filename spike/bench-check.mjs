@@ -1,5 +1,5 @@
-// Confere as respostas do benchmark contra o gabarito do conjunto (spike/bench-sets/<set>.json).
-// Uso: node spike/bench-check.mjs <pasta-dos-resultados> [set]   (padrão: gearmod)
+// Checks the benchmark answers against the set's answer key (spike/bench-sets/<set>.json).
+// Usage: node spike/bench-check.mjs <results-folder> [set]   (default: gearmod)
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 

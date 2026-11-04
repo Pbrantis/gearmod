@@ -10,7 +10,7 @@ const request: TableQuery = { oid: 42, conditions: [], order: [], limit: 200, of
 describe('gerador SQL de tabela', () => {
   it('ordena pelo valor da coluna, não pelo texto da saída (id 2 antes de 10)', () => {
     const result = buildTableQuery(table, { ...request, order: [{ column: 1, dir: 'desc' }] })
-    // O apelido da projeção não pode ser o nome da coluna: o ORDER BY usaria o texto convertido.
+    // The projection alias cannot be the column name: ORDER BY would use the converted text.
     expect(result.text).toContain('"id"::text AS "__gearmod_1"')
     expect(result.text).not.toMatch(/AS "id"/)
     expect(result.text).toContain('ORDER BY "id" DESC')

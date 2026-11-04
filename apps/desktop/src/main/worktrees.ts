@@ -17,7 +17,7 @@ export const nativeGit: GitRunner = { run: (args) => exec('git', args, { timeout
 export class WorktreeService {
   constructor(private readonly database: AppDatabase, private readonly dataDir: string, private readonly git: GitRunner = nativeGit) {}
 
-  /** Dono da worktree que o card usa: ele mesmo, ou o card cuja worktree ele pegou emprestada (`link`). */
+  /** Owner of the worktree the card uses: itself, or the card whose worktree it borrowed (`link`). */
   ownerOf(cardId: string): string {
     const linked = this.database.db.prepare(`SELECT o.id FROM cards c JOIN cards o ON o.id = c.worktree_card_id WHERE c.id = ?`).pluck().get(cardId) as string | undefined
     return linked ?? cardId
@@ -29,14 +29,14 @@ export class WorktreeService {
     return row ?? null
   }
 
-  /** Cards do mesmo projeto com worktree ativa que este card pode usar (não inclui ele mesmo nem cards que também usam a de outro). */
+  /** Cards of the same project with an active worktree that this card can use (does not include itself nor cards that also use another's). */
   candidates(cardId: string): Array<{ cardId: string; title: string; branch: string; path: string }> {
     return this.database.db.prepare(`SELECT c.id AS cardId, c.title, w.branch, w.path FROM cards c JOIN worktrees w ON w.card_id = c.id
       WHERE c.project_id = (SELECT project_id FROM cards WHERE id = ?) AND c.id != ? AND c.worktree_card_id IS NULL AND w.cleanup_state = 'active'
         AND w.id = (SELECT id FROM worktrees x WHERE x.card_id = c.id ORDER BY x.created_at DESC LIMIT 1) ORDER BY c.updated_at DESC`).all(cardId, cardId) as Array<{ cardId: string; title: string; branch: string; path: string }>
   }
 
-  /** Faz o card usar a worktree de outro (ou volta a ter a própria com `null`). Só enxerga e trabalha lá: limpeza e merge continuam do dono. */
+  /** Makes the card use another's worktree (or goes back to having its own with `null`). It only sees and works there: cleanup and merge remain the owner's. */
   link(cardId: string, fromCardId: string | null): void {
     if (fromCardId === null) { this.database.db.prepare('UPDATE cards SET worktree_card_id = NULL WHERE id = ?').run(cardId); return }
     if (fromCardId === cardId) throw new Error(tm().worktrees.cardCannotUseOwn)
@@ -46,7 +46,7 @@ export class WorktreeService {
     this.database.db.prepare('UPDATE cards SET worktree_card_id = ? WHERE id = ?').run(fromCardId, cardId)
   }
 
-  /** Se o arquivo está dentro da worktree de outro card (e este card ainda não a usa), devolve quem é o dono. */
+  /** If the file is inside another card's worktree (and this card does not use it yet), returns who the owner is. */
   foreignOwner(cardId: string, filePath: string): { cardId: string; title: string } | null {
     const normal = (value: string): string => value.split(String.fromCharCode(92)).join('/').toLowerCase()
     const target = normal(filePath), mine = this.ownerOf(cardId)
@@ -57,14 +57,14 @@ export class WorktreeService {
   }
 
   /**
-   * Worktree composta do card: uma pasta por repositório envolvido (`cards.repo_ids`; vazio = só o primeiro repositório do projeto, os outros entram sob demanda), todas na
-   * mesma branch. Falha num repositório não desfaz os outros: ele fica `failed` com o erro e a próxima preparação tenta de novo.
-   * Repositório que entra no card depois (o agente descobriu que precisa) ganha a sua pasta na worktree que já existe.
+   * Composite worktree of the card: one folder per involved repository (`cards.repo_ids`; empty = only the project's first repository, the others join on demand), all on the
+   * same branch. A failure in one repository does not undo the others: it stays `failed` with the error and the next preparation tries again.
+   * A repository that joins the card later (the agent found out it needs it) gets its folder in the worktree that already exists.
    */
   async prepare(cardId: string): Promise<Worktree> {
     const owner = this.ownerOf(cardId)
     if (owner !== cardId) return this.prepare(owner)
-    // Duas runs do mesmo card não podem disputar o `worktree add`: a segunda espera a primeira e reaproveita o resultado.
+    // Two runs of the same card must not compete for `worktree add`: the second waits for the first and reuses its result.
     const running = this.preparing.get(cardId)
     const next = (running ?? Promise.resolve()).catch(() => undefined).then(() => this.prepareNow(cardId))
     this.preparing.set(cardId, next)
@@ -82,15 +82,15 @@ export class WorktreeService {
     const all = await this.gitSources(card.projectId, card.projectPath)
     if (!all.length) throw new Error(tm().worktrees.noGitRepoFound)
     const wanted = card.repoIds ? JSON.parse(card.repoIds) as string[] : null
-    // Sem repositórios escolhidos no card, só o primeiro ganha worktree; os outros entram sob demanda (ensureMember) quando o agente precisar.
+    // With no repositories chosen on the card, only the first gets a worktree; the others join on demand (ensureMember) when the agent needs them.
     const sources = wanted?.length ? all.filter((source) => wanted.includes(source.id)) : all.slice(0, 1)
     if (!sources.length) throw new Error(tm().worktrees.chosenReposGone)
-    // Caminho curto (wt/<8 letras do card>/<repo>): no Windows o limite de 260 caracteres quebra repositórios com nomes longos (migrations etc.).
+    // Short path (wt/<8 letters of the card>/<repo>): on Windows the 260-character limit breaks repositories with long names (migrations etc.).
     const short = cardId.slice(0, 8), path = alive?.path ?? join(this.dataDir, 'wt', short)
     await mkdir(path, { recursive: true })
     const slug = plain(card.title).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 36) || 'task'
-    // Worktree recriada (pasta apagada) continua na branch que já tinha, mesmo que o nome gerado tenha mudado.
-    // A branch nasce com o prefixo do tipo do card, em inglês por padrão (feature/, fix/, hotfix/...); quem quiser muda o prefixo no tipo.
+    // A recreated worktree (deleted folder) stays on the branch it already had, even if the generated name has changed.
+    // The branch is born with the card type's prefix, in English by default (feature/, fix/, hotfix/...); whoever wants can change the prefix in the type.
     const branch = existing?.branch ?? `${branchPrefixOf(findCardType(projectCardTypes(this.database.db, card.projectId).types, card.type), card.type)}/${slug}-${short}`
     const current = alive ? this.members(alive.id) : []
     const todo = sources.filter((source) => !current.some((member) => same(member.repoPath, source.repoPath) && member.status === 'active' && existsSync(member.path)))
@@ -115,11 +115,11 @@ export class WorktreeService {
     return worktree
   }
 
-  /** Cria (ou confirma) a pasta de um repositório na worktree, na branch do card; nunca lança — o erro vai no campo `error`. */
+  /** Creates (or confirms) a repository's folder in the worktree, on the card's branch; never throws — the error goes in the `error` field. */
   private async addMember(source: { repoPath: string; name: string; baseRef: string }, cardBaseBranch: string | null, branch: string, memberPath: string): Promise<{ repoPath: string; path: string; baseRef: string; error: string | null }> {
     let baseRef = source.baseRef
     try {
-      // Branch escolhida ao iniciar: vale nos repositórios que a têm (local ou em origin); nos outros fica a branch atual deles.
+      // Branch chosen at start: applies to the repositories that have it (local or in origin); in the others the current branch stays.
       if (cardBaseBranch) for (const candidate of [cardBaseBranch, `origin/${cardBaseBranch}`]) { if (await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', candidate]).then(() => true, () => false)) { baseRef = candidate; break } }
       await this.git.run(['-C', source.repoPath, 'rev-parse', '--verify', baseRef])
       await this.releaseStale(source.repoPath, branch, memberPath)
@@ -128,13 +128,13 @@ export class WorktreeService {
         catch (error) {
           const branches = await this.git.run(['-C', source.repoPath, 'branch', '--list', branch])
           if (!branches.stdout.trim()) throw error
-          // Branch que já existe: com commits próprios (trabalho de uma worktree apagada) é reaproveitada como está; sem nenhum commit que a base
-          // não tenha, só estaria parada num ponto velho, então é recriada em cima da base de agora.
+          // Existing branch: with its own commits (work from a deleted worktree) it is reused as is; with no commit that the base
+          // does not have, it would just be sitting at an old point, so it is recreated on top of the current base.
           const unique = Number((await this.git.run(['-C', source.repoPath, 'rev-list', '--count', `${baseRef}..${branch}`])).stdout.trim()) || 0
           await this.git.run(['-c', 'core.longpaths=true', '-C', source.repoPath, 'worktree', 'add', ...(unique === 0 ? ['-B', branch, memberPath, baseRef] : [memberPath, branch])])
         }
       } catch (error) {
-        // Uma worktree criada pela metade prende a branch e impede a próxima tentativa: desfaz antes de avisar.
+        // A half-created worktree holds the branch and blocks the next attempt: undoes it before warning.
         await this.discard(source.repoPath, memberPath)
         throw error
       }
@@ -146,10 +146,10 @@ export class WorktreeService {
 
   private readonly ensuring = new Map<string, Promise<unknown>>()
   /**
-   * G07 — garante que um repositório específico está na worktree composta do card, mesmo fora de `cards.repo_ids` (ex.: o
-   * repositório do SDD, que só entra no primeiro write). Idempotente: repositório já membro e ativo não é recriado. Não
-   * recria os outros membros existentes. Duas chamadas concorrentes para o mesmo card+repositório são serializadas (a
-   * segunda reaproveita o resultado da primeira), então nunca disputam a mesma pasta/branch no Git.
+   * G07 — ensures a specific repository is in the card's composite worktree, even outside `cards.repo_ids` (e.g. the
+   * SDD repository, which only joins on the first write). Idempotent: a repository already a member and active is not recreated. Does not
+   * recreate the other existing members. Two concurrent calls for the same card+repository are serialized (the
+   * second reuses the first's result), so they never compete for the same folder/branch in Git.
    */
   async ensureMember(cardId: string, sourceId: string): Promise<{ repoPath: string; path: string; baseRef: string; status: 'active' | 'failed'; error: string | null }> {
     const owner = this.ownerOf(cardId)
@@ -176,7 +176,7 @@ export class WorktreeService {
     return { ...result, status: result.error ? 'failed' : 'active' }
   }
 
-  /** Estado de cada repositório da worktree do card: `active` (pasta pronta), `failed` (com o erro) ou `missing` (pasta sumiu). */
+  /** State of each repository in the card's worktree: `active` (folder ready), `failed` (with the error) or `missing` (folder gone). */
   repositories(cardId: string): Array<{ repoPath: string; path: string; baseRef: string; status: 'active' | 'failed' | 'missing'; error: string | null; prUrl: string | null }> {
     const worktree = this.get(cardId)
     if (!worktree) return []
@@ -187,7 +187,7 @@ export class WorktreeService {
     return this.database.db.prepare('SELECT repo_path AS repoPath, path, base_ref AS baseRef, status, error, pr_url AS prUrl FROM worktree_members WHERE worktree_id = ? ORDER BY path').all(worktreeId) as Array<{ repoPath: string; path: string; baseRef: string; status: 'active' | 'failed'; error: string | null; prUrl: string | null }>
   }
 
-  /** Repositórios Git do projeto; sem cadastro, procura na pasta do projeto e grava o que achou. */
+  /** Project Git repositories; without a registry, searches the project folder and saves what it found. */
   private async gitSources(projectId: string, projectPath: string): Promise<Array<{ id: string; name: string; repoPath: string; baseRef: string }>> {
     const read = (): Array<{ id: string; name: string; repoPath: string; baseRef: string }> => this.database.db.prepare(`SELECT id, name, local_path AS repoPath, current_branch AS baseRef
       FROM project_sources WHERE project_id = ? AND is_git_repository = 1 ORDER BY sort_order`).all(projectId) as Array<{ id: string; name: string; repoPath: string; baseRef: string }>
@@ -218,8 +218,8 @@ export class WorktreeService {
     for (const member of members) {
       const state = await directoryState(member.path)
       if (state !== 'missing') { targets.push(member); continue }
-      // A pasta foi apagada fora do GearMod: remove tanto o vínculo órfão do Git quanto o registro local.
-      // Falhas de permissão não entram aqui e continuam visíveis ao usuário, pois podem ser temporárias.
+      // The folder was deleted outside GearMod: removes both the orphan Git link and the local record.
+      // Permission failures do not come in here and remain visible to the user, since they may be temporary.
       await this.git.run(['-C', member.repoPath, 'worktree', 'prune']).catch(() => undefined)
       this.database.db.prepare('DELETE FROM worktree_members WHERE worktree_id = ? AND path = ?').run(worktree.id, member.path)
     }
@@ -229,26 +229,26 @@ export class WorktreeService {
     }
     if (!members.length) targets.push({ repoPath: worktree.repoPath, path: worktree.path, baseRef: worktree.baseRef })
     const snapshots = await Promise.all(targets.map(async (member) => {
-      // O que o card mudou é contado a partir do ponto em que a branch saiu da base (merge-base), não da ponta atual da base:
-      // senão tudo o que a base ganhou depois (ou tem a mais) apareceria como se o card tivesse apagado.
+      // What the card changed is counted from the point where the branch left the base (merge-base), not from the current tip of the base:
+      // otherwise everything the base gained afterwards (or has extra) would appear as if the card had deleted it.
       const since = await this.mergeBase(member)
       const [status, diff] = await Promise.all([
         this.git.run(['-C', member.path, 'status', '--short', '--branch']),
         this.git.run(['-C', member.path, 'diff', '--no-ext-diff', '--binary', since, '--'])
       ])
-      // A raiz real da worktree acompanha cada trecho: a tela de alterações precisa dela para abrir caminhos relativos
-      // corretamente quando o card usa mais de um repositório.
+      // The worktree's real root accompanies each chunk: the changes screen needs it to open relative paths
+      // correctly when the card uses more than one repository.
       return { heading: `\n### GearMod root: ${member.path}\n`, status: status.stdout, diff: diff.stdout }
     }))
     return { worktreeId: worktree.id, status: snapshots.map((item) => `${item.heading}${item.status}`).join(''), diff: snapshots.map((item) => `${item.heading}${item.diff}`).join(''), exists: true }
   }
 
-  /** Ponto de saída do card no repositório (merge-base com a base; sem ele, a própria base): o "antes" de tudo o que o card mudou. */
+  /** Card's exit point in the repository (merge-base with the base; without it, the base itself): the "before" of everything the card changed. */
   private mergeBase(member: { path: string; baseRef: string }): Promise<string> {
     return this.git.run(['-C', member.path, 'merge-base', member.baseRef, 'HEAD']).then((result) => result.stdout.trim() || member.baseRef, () => member.baseRef)
   }
 
-  /** Referência "antes" de um repositório da worktree do card (pasta `repoPath` da worktree); `null` se a pasta não é de nenhum membro. */
+  /** "Before" reference of a worktree repository (the worktree's `repoPath` folder); `null` if the folder belongs to no member. */
   async baseFor(cardId: string, repoPath: string): Promise<{ ref: string; label: string } | null> {
     const worktree = this.get(cardId)
     if (!worktree) return null
@@ -256,11 +256,11 @@ export class WorktreeService {
     return member ? { ref: await this.mergeBase(member), label: tm().worktrees.cardStartingPoint(member.baseRef) } : null
   }
 
-  /** Solta a branch de worktrees antigas do GearMod que ficaram quebradas (pasta apagada ou criação interrompida). */
+  /** Releases the branch of old GearMod worktrees that were left broken (deleted folder or interrupted creation). */
   private async releaseStale(repoPath: string, branch: string, target: string): Promise<void> {
     await this.git.run(['-C', repoPath, 'worktree', 'prune']).catch(() => undefined)
     const list = await this.git.run(['-C', repoPath, 'worktree', 'list', '--porcelain']).catch(() => ({ stdout: '' }))
-    // Caminho real nos dois lados: o Git devolve o nome longo e o Windows pode entregar o curto (FRANCI~1).
+    // Real path on both sides: Git returns the long name and Windows may hand over the short one (FRANCI~1).
     const real = async (path: string): Promise<string> => (await realpath(path).catch(() => resolve(path))).toLowerCase()
     const ours = await real(this.dataDir), wanted = await real(target)
     for (const block of list.stdout.split(/\r?\n\r?\n/)) {
@@ -295,13 +295,13 @@ export class WorktreeService {
   }
 }
 
-/** Mesmo caminho, sem diferenciar maiúsculas (Windows). */
+/** Same path, case-insensitive (Windows). */
 const same = (a: string, b: string): boolean => resolve(a).toLowerCase() === resolve(b).toLowerCase()
 
-/** Tira acentos ("Botão" → "Botao") antes de virar nome de branch ou pasta. */
+/** Strips accents ("Botão" → "Botao") before it becomes a branch or folder name. */
 const plain = (text: string): string => text.normalize('NFKD').replace(/[̀-ͯ]/g, '')
 
-/** Nome da pasta do repositório dentro da worktree composta (curto, sem acento nem caractere especial). */
+/** Name of the repository folder inside the composite worktree (short, with no accent or special character). */
 const memberName = (name: string, index: number): string => plain(name).replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 24) || `repo-${index + 1}`
 
 function friendlyGitError(error: unknown, repo: string): string {
@@ -313,7 +313,7 @@ function friendlyGitError(error: unknown, repo: string): string {
 
 async function exists(path: string): Promise<boolean> { return stat(path).then((value) => value.isDirectory(), () => false) }
 
-/** Distingue pasta removida de acesso temporariamente negado; só o primeiro caso autoriza apagar o registro. */
+/** Tells a removed folder from a temporarily denied access; only the first case allows deleting the record. */
 async function directoryState(path: string): Promise<'available' | 'missing' | 'unavailable'> {
   try { return (await stat(path)).isDirectory() ? 'available' : 'missing' }
   catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR' ? 'missing' : 'unavailable' }

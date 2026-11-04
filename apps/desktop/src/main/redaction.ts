@@ -3,12 +3,12 @@ const patterns = [
   /(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|gsk_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|Bearer\s+[A-Za-z0-9._-]{10,})/gi,
   /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----[\s\S]*?-----END(?: [A-Z]+)? PRIVATE KEY-----/g,
   /\b(?:[A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD)|KEY|DATABASE_URL)\s*=\s*[^\s'"`]+/g,
-  // senha dentro de URL de conexão (postgres://usuario:senha@host)
+  // password inside a connection URL (postgres://user:password@host)
   /([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+(?=@)/gi,
   /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g
 ]
 
-/** Só formatos inconfundíveis (sem a regra genérica `NOME_KEY=valor`): usados para barrar commit. */
+/** Only unmistakable formats (without the generic `NAME_KEY=value` rule): used to block commits. */
 export const highConfidenceSecretPatterns = [patterns[0]!, /-----BEGIN(?: [A-Z]+)? PRIVATE KEY-----/, patterns[3]!, patterns[4]!]
 
 export function redact(value: string, limit = 100_000): string {

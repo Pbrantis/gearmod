@@ -30,7 +30,7 @@ describe('ToolUpdateService', () => {
     expect(calls).toHaveLength(6); expect(calls.some((url) => url.includes('%2F'))).toBe(true)
     clock += 3 * 3600_000; await service.latest(); expect(calls).toHaveLength(6)
     expect(JSON.parse(await readFile(file, 'utf8')).versions.specify).toBe('0.7.2')
-    // Outra instância (app reaberto) lê o arquivo sem pedir de novo.
+    // Another instance (app reopened) reads the file without asking again.
     await new ToolUpdateService(file, async (url) => { calls.push(url); return answer(url) }, () => clock).latest(); expect(calls).toHaveLength(6)
     clock += 25 * 3600_000; await service.latest(); expect(calls).toHaveLength(12)
     await service.latest(true); expect(calls).toHaveLength(18)

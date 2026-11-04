@@ -33,14 +33,14 @@ import type { FileChange } from './changes'
 import { hasAttachmentTarget, hasCommentTarget, queueContextFile, queueContextText } from './Attachments'
 
 const defaultSettings: AppSettings = { tema: 'green', idioma: 'pt-BR', voz: 'small', notificacoes: true, retomarSozinho: true, fotosGravatar: false, execucoesSimultaneas: null }
-/** Último projeto aberto na janela principal (localStorage: só uma preferência local). */
+/** Last project opened in the main window (localStorage: just a local preference). */
 const lastProjectKey = 'gearmod.lastProject'
 
-// Lê o cache local logo ao iniciar. Com dados válidos (por 24 h), isso não faz rede e a aba Ferramentas já abre com os avisos.
+// Reads the local cache right at startup. With valid data (for 24 h), this makes no network call and the Tools tab already opens with the warnings.
 void loadLatest().catch(() => undefined)
 
 function App(): React.JSX.Element {
-  const t = useT()  // troca de idioma re-renderiza a árvore inteira
+  const t = useT()  // changing language re-renders the whole tree
   const terminalState = useTerminal()
   const filePop = pop?.kind === 'file' || pop?.kind === 'files' ? pop : null, filePopout = Boolean(filePop)
   const [filesOpen, setFilesOpen] = useState(filePopout), [fileContext, setFileContext] = useState<{ projectId: string; cardId: string | null; path?: string; reveal?: { path: string; at: number } } | null>(filePop ? { projectId: filePop.projectId, cardId: filePop.cardId, path: filePop.path ?? undefined } : null)
@@ -123,24 +123,24 @@ function App(): React.JSX.Element {
   useEffect(() => { void window.gearmod.invoke('settings:get', undefined).then(setSettings).catch((e: unknown) => setError(plainError(e))) }, [])
   const [themeTick, setThemeTick] = useState(0)
   useEffect(() => { const again = (): void => setThemeTick((value) => value + 1); window.addEventListener(projectThemeEvent, again); return () => window.removeEventListener(projectThemeEvent, again) }, [])
-  // Tema global nas configurações; cada projeto pode ter o seu (Configurar projeto > Geral) e vale enquanto ele está aberto.
+  // Global theme in settings; each project can have its own (Configure project > General) and it applies while that project is open.
   useEffect(() => { applySettings(settings); const own = projectTheme(selected); if (own) applyTheme(own) }, [settings, selected, themeTick])
   useEffect(() => { void reloadProjects().catch((e: unknown) => setError(plainError(e))) }, [])
-  // A janela principal lembra o último projeto aberto: ao recarregar ou reabrir o app, volta para ele (se ainda existir).
+  // The main window remembers the last opened project: when reloading or reopening the app, it goes back to it (if it still exists).
   const restoredProject = useRef(false)
-  useEffect(() => { if (pop || !selected) return; try { localStorage.setItem(lastProjectKey, selected) } catch { /* preferência local */ } }, [selected])
+  useEffect(() => { if (pop || !selected) return; try { localStorage.setItem(lastProjectKey, selected) } catch { /* local preference */ } }, [selected])
   useEffect(() => {
     if (pop || restoredProject.current || !projects.length) return
     restoredProject.current = true
     if (selected) return
-    try { const last = localStorage.getItem(lastProjectKey); if (last && projects.some((project) => project.id === last)) setSelected(last) } catch { /* sem armazenamento: começa sem projeto */ }
+    try { const last = localStorage.getItem(lastProjectKey); if (last && projects.some((project) => project.id === last)) setSelected(last) } catch { /* no storage: starts with no project */ }
   }, [projects])
-  // Clique numa notificação do sistema: vai para o projeto e abre o chat do card (ou o chat livre).
+  // Click on a system notification: goes to the project and opens the card's chat (or the free chat).
   useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/open-target') { const target = event.payload as { projectId: string; cardId: string | null; chatId: string | null; purpose: string | null }; setSelected(target.projectId); setOpenTarget(target) } }), [])
   useEffect(() => window.gearmod.onRunEvent((event) => { if (['gearmod/run-started', 'gearmod/run-completed', 'gearmod/card-updated'].includes(event.eventType)) void reloadProjects() }), [])
-  // Abrir os arquivos recolhe o menu principal (o painel fica ao lado do quadro); ao fechar, o menu volta se foi o app que o recolheu.
+  // Opening the files collapses the main menu (the panel sits beside the board); on closing, the menu comes back if the app was the one that collapsed it.
   const [viewSlot, setViewSlot] = useState<HTMLElement | null>(null), [gearSlot, setGearSlot] = useState<HTMLElement | null>(null), [traySlot, setTraySlot] = useState<HTMLElement | null>(null)
-  // Barra estreita: os botões ao lado da engrenagem vão para o menu de três pontinhos antes de passar por baixo dos botões da janela.
+  // Narrow bar: the buttons next to the gear move to the three-dot menu before passing under the window buttons.
   const [narrowBar, setNarrowBar] = useState(false), [trayOpen, setTrayOpen] = useState(false), actionsRef = useRef<HTMLDivElement>(null)
   useEffect(() => { const measure = (): void => setNarrowBar(window.innerWidth < (collapsed ? 840 : 1040)); measure(); window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure) }, [collapsed])
   useEffect(() => { if (!narrowBar) setTrayOpen(false) }, [narrowBar])
@@ -157,7 +157,7 @@ function App(): React.JSX.Element {
     if (filesOpen && !collapsed) { autoCollapsed.current = true; setCollapsed(true) }
     else if (!filesOpen && autoCollapsed.current) { autoCollapsed.current = false; setCollapsed(false) }
   }, [filesOpen])
-  // Ao abrir o projeto, procura repositórios criados ou configurados por fora e, se o cadastro mudou, recarrega o quadro.
+  // When the project opens, looks for repositories created or configured externally and, if the registry changed, reloads the board.
   useEffect(() => {
     if (!selected) { setBoard(undefined); return }
     let alive = true
@@ -167,7 +167,7 @@ function App(): React.JSX.Element {
   useEffect(() => { const again = (): void => { void refresh().catch(() => undefined) }; window.addEventListener(gitChangedEvent, again); return () => window.removeEventListener(gitChangedEvent, again) }, [selected])
   const configProject = projects.find((project) => project.id === projectConfig)
   return <>
-    {/* Faixa de cima: arrasta a janela; os botões do Windows ficam à direita, por cima dela. */}
+    {/* Top strip: drags the window; the Windows buttons sit on the right, on top of it. */}
     <div className={`titlebar ${collapsed ? 'collapsed' : ''}`}>{!pop && <span className="tb-side" />}<span className="tb-brand"><img src={logo} alt="" draggable={false} />GearMod</span><span className="tb-slot tb-slot-gear" ref={setGearSlot} />{board && <span className="tb-title" data-tip={board.project.name}>{board.project.name}</span>}{board && <button type="button" className="pathchip tb-path tip" data-tip={t.shell.app.pathChipTip} aria-label={t.shell.app.pathChipLabel(board.project.localPath)} onClick={(event) => { if (event.detail === 0) void window.gearmod.invoke('workspace:external', { projectId: board.project.id, cardId: null, path: board.project.localPath, target: 'default' }).catch((reason: unknown) => toast.error(t.shell.app.openFolderFailed, plainError(reason))) }} onDoubleClick={() => { void window.gearmod.invoke('workspace:external', { projectId: board.project.id, cardId: null, path: board.project.localPath, target: 'default' }).catch((reason: unknown) => toast.error(t.shell.app.openFolderFailed, plainError(reason))) }}><FolderGlyph />{board.project.localPath}</button>}{!filePopout && <div className={`tb-actions ${narrowBar ? 'narrow' : ''} ${trayOpen ? 'open' : ''}`} ref={actionsRef}><span className="tb-slot tb-slot-view" ref={setViewSlot} />{narrowBar && <button type="button" className={`ibtn tip tb-more ${trayOpen ? 'on' : ''}`} data-tip={t.shell.app.more} aria-label={t.shell.app.moreBarOptions} aria-haspopup="true" aria-expanded={trayOpen} onClick={() => setTrayOpen(!trayOpen)}><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="4" r="1.4" /><circle cx="10" cy="10" r="1.4" /><circle cx="10" cy="16" r="1.4" /></svg></button>}<div className="tb-tray">{selected && <button type="button" className={`ibtn tip ${filesOpen ? 'on' : ''}`} data-tip={t.shell.app.filesTip} aria-label={t.shell.app.toggleFiles} aria-pressed={filesOpen} onContextMenu={(event) => { event.preventDefault(); setPanelMenu({ kind: 'files', x: event.clientX, y: event.clientY }) }} onClick={toggleFiles}><FolderGlyph /></button>}<button type="button" className={`ibtn tip ${terminalState.open ? 'on' : ''}`} data-tip={t.shell.app.terminalTip} aria-label={t.shell.app.toggleTerminal} aria-pressed={terminalState.open} onContextMenu={(event) => { event.preventDefault(); setPanelMenu({ kind: 'terminal', x: event.clientX, y: event.clientY }) }} onClick={toggleTerminal}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 5 5 5-5 5M11 15h5" /></svg></button><TasksButton /><span className="tb-slot" ref={setTraySlot} /></div></div>}</div>
     <div className={`shell ${collapsed ? 'collapsed' : ''} ${pop ? 'popout' : ''}`}>
     {!pop && <Sidebar projects={projects} profiles={profiles} selected={selected} collapsed={collapsed} onSelect={setSelected} onNew={() => setNewProject(true)} onSettings={() => setSettingsOpen(true)} onAddAgent={() => { setSettingsTab('agents'); setSettingsOpen(true) }} onProjectSettings={(id) => { setConfigTab('general'); setConfigFocus(undefined); setProjectConfig(id) }} onNewChat={(id) => { setSelected(id); setFreeRequest({ projectId: id, at: Date.now() }) }} onToggle={() => setCollapsed(!collapsed)}

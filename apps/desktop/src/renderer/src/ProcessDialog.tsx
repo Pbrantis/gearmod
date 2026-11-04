@@ -4,8 +4,8 @@ import { useEscape } from './useEscape'
 import { useT } from './i18n'
 
 /**
- * Diálogo de andamento de um processo longo. Enquanto roda, "Acompanhar em segundo plano" fecha o diálogo e o processo segue
- * na lista da barra de título; ao terminar, mostra o resultado e o botão de fechar.
+ * Progress dialog for a long process. While it runs, "Follow in the background" closes the dialog and the process continues
+ * in the title bar list; when it finishes, it shows the result and the close button.
  */
 export function ProcessDialog({ taskId, title, log, background, close }: { taskId: string; title: string; log?: string; background(): void; close(): void }): React.JSX.Element | null {
   const t = useT(), task = useTasks().find((item) => item.id === taskId)

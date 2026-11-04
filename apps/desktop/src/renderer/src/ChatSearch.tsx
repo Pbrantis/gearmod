@@ -3,7 +3,7 @@ import type { ChatMessage } from '@gearmod/contracts'
 import { useFitInView } from './useFitInView'
 import { useT } from './i18n'
 
-/** Texto como aparece na tela: sem as marcas de formatação do Markdown. */
+/** Text as it appears on screen: without the Markdown formatting marks. */
 export function visibleText(body: string): string {
   return body
     .replace(/```[^\n]*\n?/g, '').replace(/`([^`]*)`/g, '$1')
@@ -12,7 +12,7 @@ export function visibleText(body: string): string {
     .replace(/(\*\*|__|~~)(.+?)\1/g, '$2').replace(/(^|[^\w*])[*_]([^*_\n]+)[*_](?![\w*])/g, '$1$2')
 }
 
-/** Trecho da mensagem em volta da primeira ocorrência, para a lista de resultados. */
+/** Excerpt of the message around the first occurrence, for the results list. */
 export function snippet(body: string, query: string, radius = 48): string {
   const flat = visibleText(body).replace(/\s+/g, ' ').trim(), at = flat.toLowerCase().indexOf(query.toLowerCase())
   if (at < 0) return flat.slice(0, radius * 2)
@@ -20,14 +20,14 @@ export function snippet(body: string, query: string, radius = 48): string {
   return `${from > 0 ? '…' : ''}${flat.slice(from, to)}${to < flat.length ? '…' : ''}`
 }
 
-/** Mensagens que contêm o texto (sem diferenciar maiúsculas); ferramentas ficam de fora, o que se procura é a conversa. */
+/** Messages that contain the text (case-insensitive); tools are left out, what is searched is the conversation. */
 export function searchMessages(messages: ChatMessage[], query: string): ChatMessage[] {
   const needle = query.trim().toLowerCase()
   if (needle.length < 2) return []
   return messages.filter((message) => message.role !== 'tool' && (message.body.toLowerCase().includes(needle) || visibleText(message.body).toLowerCase().includes(needle)))
 }
 
-/** O atalho pertence ao chat com foco; em tela cheia também funciona quando o foco está no corpo da janela. */
+/** The shortcut belongs to the focused chat; in fullscreen it also works when focus is on the window body. */
 export function useChatSearchShortcut(expanded: boolean): { ref: React.RefObject<HTMLElement | null>; request: number } {
   const ref = useRef<HTMLElement>(null), [request, setRequest] = useState(0)
   useEffect(() => {
@@ -44,7 +44,7 @@ export function useChatSearchShortcut(expanded: boolean): { ref: React.RefObject
   return { ref, request }
 }
 
-/** Lupa do chat: pesquisa no que foi dito (eu e o agente); clicar num resultado rola até a mensagem e a destaca. */
+/** Chat magnifier: searches what was said (me and the agent); clicking a result scrolls to the message and highlights it. */
 export function ChatSearch({ messages, log, reveal, request = 0 }: { messages: ChatMessage[]; log: React.RefObject<HTMLDivElement | null>; reveal?(): void; request?: number }): React.JSX.Element {
   const t = useT(), roleLabel: Record<string, string> = t.chat.roles, [open, setOpen] = useState(false), [query, setQuery] = useState(''), box = useRef<HTMLSpanElement>(null), input = useRef<HTMLInputElement>(null), pop = useRef<HTMLDivElement>(null)
   useFitInView(pop, open)

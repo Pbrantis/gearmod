@@ -13,12 +13,12 @@ import { shortcutFor } from '../shortcuts'
 import { pushRecent, readRecents } from './quickOpen'
 import { useT } from '../i18n'
 
-/** Caminho como o agente costuma escrever: aceita `file:///`, `?consulta`, `:linha` e `#L42`. */
+/** Path the way the agent usually writes it: accepts `file:///`, `?query`, `:line` and `#L42`. */
 const requestedTarget = (path: string): { path: string; line?: number; column?: number } => splitLineSuffix(path.trim().replace(/^file:\/+/i, '').replace(/\?[^#]*/, ''))
 
 /**
- * Painel de arquivo ao lado do chat: o mesmo `FilePane` do modo Arquivos, mas de um arquivo por vez, sem árvore nem abas.
- * Abre no diff quando o arquivo foi alterado pelo card e só deixa digitar depois de "Editar".
+ * File panel beside the chat: the same `FilePane` as in Files mode, but one file at a time, with no tree or tabs.
+ * Opens on the diff when the file was changed by the card and only allows typing after "Edit".
  */
 export function FocusedFile({ projectId, cardId, chatId, request, close, setDirty, style }: {
   projectId: string; cardId: string | null; chatId?: string | undefined; request: { path: string; at: number }; close(): void; setDirty(value: boolean): void; style?: React.CSSProperties
@@ -35,7 +35,7 @@ export function FocusedFile({ projectId, cardId, chatId, request, close, setDirt
     let alive = true
     const target = requestedTarget(effective.path)
     void (async () => {
-      // O diff só abre sozinho se o arquivo está nas alterações do card; a lista vem do snapshot da worktree.
+      // The diff only opens on its own if the file is in the card's changes; the list comes from the worktree snapshot.
       if (cardId) changes.current = await window.gearmod.invoke('worktrees:snapshot', { cardId }).then((snapshot) => snapshot.exists ? parseChanges(snapshot) : [], () => [])
       const opened = await open(target.path)
       if (!alive || !opened) return

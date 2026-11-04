@@ -1,4 +1,4 @@
-/** Mensagens entre o main (CodeIndexService) e o processo utilitário do índice (host.ts). */
+/** Messages between the main process (CodeIndexService) and the index utility process (host.ts). */
 export type CodeTool = 'explore' | 'node' | 'search' | 'impact' | 'callers' | 'callees' | 'affected' | 'map'
 
 export type HostRequest =

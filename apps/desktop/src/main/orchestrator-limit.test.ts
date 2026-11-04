@@ -4,7 +4,7 @@ import type { ConversationRepository } from './conversations'
 import { AgentOrchestrator } from './orchestrator'
 import type { WorktreeService } from './worktrees'
 
-/** Adaptador que só termina quando o teste libera, para segurar as execuções "rodando". */
+/** Adapter that only finishes when the test releases it, to keep the runs "running". */
 function setup(limit: { value: number }) {
   let counter = 0
   const conversations = {

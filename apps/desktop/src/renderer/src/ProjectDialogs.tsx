@@ -21,7 +21,7 @@ import { useEscape } from './useEscape'
 import { ProjectCardTypes } from './CardTypes'
 import { ProjectCodeIndex } from './ProjectCodeIndex'
 
-/** Novo projeto: escolher ou arrastar a pasta (protótipo: `.sourcePick`). */
+/** New project: choose or drag the folder (prototype: `.sourcePick`). */
 export function ProjectDialog({ close, created }: { close(): void; created(project: Project): void }): React.JSX.Element {
   const t = useT(), tp = t.settings.project
   const [name, setName] = useState(''), [icon, setIcon] = useState<string | null>(null), [sources, setSources] = useState<ProjectInspection[]>([]), [error, setError] = useState(''), [choosing, setChoosing] = useState(false), [dragging, setDragging] = useState(false)
@@ -59,9 +59,9 @@ export function ProjectDialog({ close, created }: { close(): void; created(proje
   </div></div>
 }
 
-/** Configurar projeto (protótipo `pcfg`): aba Geral (nome e agentes permitidos), Constituição e Skills do repositório. */
+/** Configure project (prototype `pcfg`): General tab (name and allowed agents), Constitution and repository Skills. */
 
-/** Time de agentes do projeto: só os liberados, com o ícone, o nome embaixo e uma bolinha de conexão; o "+" no fim adiciona outro. */
+/** Project agent team: only the enabled ones, with the icon, the name below and a connection dot; the "+" at the end adds another. */
 function AgentTeam({ profiles, allowed, setAllowed, probes }: { profiles: AgentProfile[]; allowed: string[]; setAllowed(value: string[]): void; probes: Record<string, AgentProbe> }): React.JSX.Element {
   const t = useT(), tp = t.settings.project
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
@@ -82,12 +82,12 @@ function AgentTeam({ profiles, allowed, setAllowed, probes }: { profiles: AgentP
 }
 
 export function ProjectConfigDialog({ project, profiles, saved, renamed, openConstitutionChat, initialTab, initialFocus }: { initialFocus?: 'git-accounts'; project: Project; profiles: AgentProfile[]; saved(): void | Promise<void>; renamed?(): void; openConstitutionChat(prompt?: string): void; initialTab?: 'general' | 'git' }): React.JSX.Element {
-  // Aberto para cuidar das contas Git (ex.: "Adicionar token" na página Git): rola até elas e dá um destaque rápido.
+  // Opened to manage the Git accounts (e.g. "Add token" on the Git page): scrolls to them and gives a quick highlight.
   useEffect(() => {
     if (initialFocus !== 'git-accounts') return
     let tries = 0, timer = 0
     const find = (): void => {
-      // Espera as contas carregarem (os cartões dos servidores), senão a página ainda muda de altura depois da rolagem.
+      // Waits for the accounts to load (the server cards), otherwise the page still changes height after the scroll.
       const target = document.querySelector<HTMLElement>('.modal.pcfg .gacc'), cards = [...document.querySelectorAll<HTMLElement>('.modal.pcfg .gacc .gacc-host')]
       if (target && (cards.length || tries > 30)) {
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
@@ -118,7 +118,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
       if (savedIdentity.current.name === cleanName && savedIdentity.current.icon === nextIcon) return
       await window.gearmod.invoke('projects:update', { projectId: project.id, name: cleanName, icon: nextIcon })
       savedIdentity.current = { name: cleanName, icon: nextIcon }
-      // A sidebar e a barra de título mostram o nome novo já, sem esperar o diálogo fechar.
+      // The sidebar and the title bar show the new name right away, without waiting for the dialog to close.
       renamedRef.current?.()
     })
     saveQueue.current = operation
@@ -148,11 +148,11 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
     setAllowed(next); setSaveState('saving'); setError('')
     const operation = profileQueue.current.catch(() => false).then(async () => { await window.gearmod.invoke('projects:set-profiles', { projectId: project.id, profileIds: next }); return true })
     profileQueue.current = operation.catch(() => false)
-    // Falhou: volta para a lista anterior (que é a salva) e libera o fechamento; senão × e Esc ficavam presos.
+    // Failed: goes back to the previous list (the saved one) and releases closing; otherwise × and Esc stayed stuck.
     void operation.then(() => { if (version === profileVersion.current) setSaveState('saved') }).catch((reason: unknown) => { if (version === profileVersion.current) { setAllowed(previous); setSaveState('idle'); setError(plainError(reason)); profileQueue.current = Promise.resolve(true) } })
   }
   const stopEditingName = (): void => { if (!name.trim()) setName(savedIdentity.current.name); setEditingName(false) }
-  // Esc no campo do nome desfaz a edição (volta ao nome de antes de editar) sem fechar o diálogo.
+  // Esc in the name field undoes the edit (back to the name before editing) without closing the dialog.
   const nameBeforeEdit = React.useRef(project.name)
   useEffect(() => { if (editingName) nameBeforeEdit.current = savedIdentity.current.name }, [editingName])
   useEscape(() => { setName(nameBeforeEdit.current); setError(''); setEditingName(false) }, editingName)
@@ -178,7 +178,7 @@ export function ProjectConfigDialog({ project, profiles, saved, renamed, openCon
   </div></div>
 }
 
-/** Card sem agente liberado no projeto: libera um já cadastrado ou leva ao cadastro. */
+/** Card with no agent enabled in the project: enables an already registered one or leads to registration. */
 export function NoAgentDialog({ project, profiles, close, allowed, openSettings }: { project: Project; profiles: AgentProfile[]; close(): void; allowed(): void; openSettings(): void }): React.JSX.Element {
   const t = useT(), tp = t.settings.project
   const [error, setError] = useState(''), [busy, setBusy] = useState(false)
@@ -196,7 +196,7 @@ export function NoAgentDialog({ project, profiles, close, allowed, openSettings 
   </div></div>
 }
 
-/** Logo depois de criar o projeto: quais agentes vão trabalhar nele. Sem agente cadastrado, manda cadastrar no sistema primeiro. */
+/** Right after creating the project: which agents will work on it. With no agent registered, tells to register one in the system first. */
 export function ProjectAgentsDialog({ project, profiles, close, saved, openSettings }: { project: Project; profiles: AgentProfile[]; close(): void; saved(): void; openSettings(): void }): React.JSX.Element {
   const t = useT(), tp = t.settings.project
   const [allowed, setAllowed] = useState<string[]>(project.allowedProfileIds), [error, setError] = useState(''), [busy, setBusy] = useState(false)

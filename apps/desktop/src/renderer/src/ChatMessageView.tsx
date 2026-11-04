@@ -7,8 +7,8 @@ import { splitChatReplies } from './chatReplyContext'
 import { useT } from './i18n'
 
 /**
- * Uma mensagem do chat no estilo do Claude Code: a minha no balão; a do agente direto no fundo, em Markdown;
- * ferramentas usadas como linhas cinzas que expandem; avisos do sistema discretos.
+ * One chat message in Claude Code style: mine in the bubble; the agent's straight on the background, in Markdown;
+ * tools used as gray lines that expand; system notices kept discreet.
  */
 export function ChatMessageView({ message, answered = true, busy = false, answers }: { message: ChatMessage; answered?: boolean; busy?: boolean; answers?: Map<string, string> }): React.JSX.Element {
   if (message.role === 'tool') {
@@ -17,14 +17,14 @@ export function ChatMessageView({ message, answered = true, busy = false, answer
       ? <details className="msg tool toolrow"><summary>{title}</summary><pre>{detail}</pre></details>
       : <div className="msg tool toolrow"><span className="toolplain">{title}</span></div>
   }
-  // Aviso de que uma skill do sistema conduz esta execução (em vez de mostrar o prompt): vira uma etiqueta discreta.
+  // Notice that a system skill is driving this run (instead of showing the prompt): becomes a discreet tag.
   const skill = message.role === 'system' ? /^▶ Usando a skill (\S+)(.*)$/.exec(message.body) : null
   if (skill) return <div className="msg sys skillnote"><span className="skillbadge">skill</span><b>{skill[1]}</b>{skill[2] && <small>{skill[2].replace(/^\s*·\s*/, '')}</small>}</div>
   const kind = message.role === 'assistant' ? 'agent' : message.role === 'system' ? 'sys' : message.role
   return <div className={`msg ${kind}`} data-mid={message.id}>{message.role === 'system' && message.status === 'failed' ? '⚠ ' : ''}{message.role === 'assistant' ? <div className="md chatmd"><AgentMessage source={message.body} answered={answered} busy={busy} answers={answers} /></div> : message.role === 'user' ? <UserBody body={message.body} /> : message.body}</div>
 }
 
-/** Mensagem do usuário: anexos como miniaturas em cima e só o texto escrito embaixo (o bloco de caminhos fica por baixo dos panos). */
+/** User message: attachments as thumbnails on top and only the written text below (the block of paths stays behind the scenes). */
 function UserBody({ body }: { body: string }): React.JSX.Element {
   const context = splitChatReplies(body), { text, files } = splitAttachmentNote(context.text), replies = context.replies
   const review = parseReviewContext(text), screenTest = parseScreenTest(text)
@@ -33,13 +33,13 @@ function UserBody({ body }: { body: string }): React.JSX.Element {
 
 export interface ScreenTestData { skill: string; visible: boolean }
 
-/** Reconhece o pedido do atalho "Testar na tela (Playwright)" para mostrá-lo como um card de configuração, não como texto. */
+/** Recognizes the request from the "Test on screen (Playwright)" shortcut to show it as a settings card, not as text. */
 export function parseScreenTest(body: string): ScreenTestData | null {
   const match = /^Teste os critérios de aceite que dependem da tela usando o Playwright CLI, seguindo a skill (\S+?)\.( Rode com o navegador visível \(--headed\) e com slowMo para eu acompanhar\.| Rode sem janela \(headless\), guardando screenshot e trace do que falhar\.)$/.exec(body.trim())
   return match ? { skill: match[1]!, visible: match[2]!.includes('--headed') } : null
 }
 
-/** Card do teste na tela: o que será feito e com quais opções (ferramenta, skill, navegador e evidências). */
+/** Screen test card: what will be done and with which options (tool, skill, browser and evidence). */
 function ScreenTestCard({ skill, visible }: ScreenTestData): React.JSX.Element {
   const s = useT().chat.screenTest
   const rows: Array<[string, string]> = [[s.tool, 'Playwright CLI'], [s.skill, skill], [s.browser, visible ? s.browserVisible : s.browserHeadless], [s.evidence, visible ? s.evidenceVisible : s.evidenceFailures]]
@@ -51,7 +51,7 @@ function ScreenTestCard({ skill, visible }: ScreenTestData): React.JSX.Element {
 
 export interface ReviewContextData { path: string; lines: string; oldCode: boolean; code: string; comment: string }
 
-/** Reconhece o pedido criado ao conversar sobre uma seleção do diff. */
+/** Recognizes the request created when chatting about a diff selection. */
 export function parseReviewContext(body: string): ReviewContextData | null {
   const normalized = body.replace(/\r\n?/g, '\n')
   const match = /^Revisão de código em `([^`]+)` \(((?:linha|linhas) [^)]+?|trecho)(, do código antigo)?\):\n\n```diff\n([\s\S]*?)\n```(?:\n\n([\s\S]*))?$/.exec(normalized)
@@ -67,7 +67,7 @@ function LinesIcon(): React.JSX.Element {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5h2M4 10h2M4 15h2M9 5h7M9 10h7M9 15h7" /></svg>
 }
 
-/** Contexto visual do comentário: localização compacta e trecho claramente delimitado como código. */
+/** Visual context of the comment: compact location and an excerpt clearly delimited as code. */
 function ReviewContext({ path, lines, oldCode, code, comment }: ReviewContextData): React.JSX.Element {
   const r = useT().chat.reviewContext
   return <div className="reviewctx">
@@ -89,8 +89,8 @@ function ReviewContext({ path, lines, oldCode, code, comment }: ReviewContextDat
 const pageSize = 10
 
 /**
- * Ações seguidas do agente (Grep, Read…). Uma ação aparece normal; a partir de duas, fica numa caixinha que mostra só a
- * última e expande para o histórico, que desenha 10 por vez e carrega mais ao rolar para cima.
+ * Consecutive agent actions (Grep, Read…). One action appears normally; from two on, it goes in a small box that shows only the
+ * last one and expands into the history, which draws 10 at a time and loads more when scrolling up.
  */
 function ToolGroup({ items }: { items: ChatMessage[] }): React.JSX.Element {
   const t = useT()
@@ -117,13 +117,13 @@ function ToolGroup({ items }: { items: ChatMessage[] }): React.JSX.Element {
 }
 
 /**
- * Lista de mensagens do chat. As ações de ferramenta só aparecem enquanto o agente trabalha no turno atual
- * (depois da última mensagem do usuário); quando ele termina, elas somem e fica só a conversa.
+ * Chat message list. Tool actions only appear while the agent works on the current turn
+ * (after the user's last message); when it finishes, they disappear and only the conversation remains.
  */
 export function ChatMessageList({ messages, busy }: { messages: ChatMessage[]; busy: boolean }): React.JSX.Element {
   const lastUser = messages.reduce((found, m, index) => m.role === 'user' ? index : found, -1)
   const out: React.ReactNode[] = []
-  // Resposta às perguntas do agente: some como balão e aparece dentro do cartão da pergunta.
+  // Answer to the agent's questions: disappears as a bubble and appears inside the question card.
   const hidden = new Set<string>(), answersOf = new Map<string, Map<string, string>>()
   messages.forEach((m, index) => {
     if (m.role !== 'assistant') return

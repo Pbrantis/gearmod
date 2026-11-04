@@ -12,7 +12,7 @@ import { tm } from './i18n'
 
 const exec = promisify(execFile)
 
-/** Roda um comando numa pasta. `env` entra por cima do ambiente já filtrado; `path` vai na frente do PATH. Os argumentos aqui são sempre fixos, nunca do usuário. */
+/** Runs a command in a folder. `env` goes on top of the already filtered environment; `path` goes in front of PATH. The arguments here are always fixed, never from the user. */
 export interface CommandRunner { run(command: string, args: string[], cwd: string, timeoutMs: number, extra?: { env?: Record<string, string>; path?: string }): Promise<string> }
 export const nativeCommands: CommandRunner = {
   run: async (command, args, cwd, timeoutMs, extra) => {
@@ -26,7 +26,7 @@ export const nativeCommands: CommandRunner = {
   }
 }
 
-/** Node portátil que o app baixa quando a máquina não tem um Node 18+ (versão e SHA-256 fixos, de nodejs.org/dist). */
+/** Portable Node the app downloads when the machine has no Node 18+ (fixed version and SHA-256, from nodejs.org/dist). */
 export const nodeRelease = {
   version: '22.23.4',
   url: 'https://nodejs.org/dist/v22.23.4/node-v22.23.4-win-x64.zip',
@@ -49,13 +49,13 @@ export interface PlaywrightDeps {
 }
 
 /**
- * Playwright CLI (`@playwright/cli`) como ferramenta do próprio GearMod (docs/09, fase 11): fica numa pasta do app, nunca dentro do projeto.
- * Cada versão instalada tem a sua pasta e o projeto escolhe qual usar; instalar uma versão nova não mexe nas outras. Os navegadores são
- * compartilhados. Sem Node 18+ na máquina, o app baixa um Node portátil (conferido por SHA-256) e usa só para esta ferramenta.
+ * Playwright CLI (`@playwright/cli`) as a tool of GearMod itself (docs/09, phase 11): lives in an app folder, never inside the project.
+ * Each installed version has its own folder and the project chooses which one to use; installing a new version does not touch the others. The browsers are
+ * shared. Without Node 18+ on the machine, the app downloads a portable Node (checked by SHA-256) and uses it only for this tool.
  *
- *   <toolsDir>/playwright-cli/<versão>/   pacote + node_modules + gearmod-playwright-cli.cmd (o comando que o agente recebe)
- *   <toolsDir>/playwright-browsers/       navegadores
- *   <toolsDir>/node/                      Node portátil, se precisar
+ *   <toolsDir>/playwright-cli/<version>/  package + node_modules + gearmod-playwright-cli.cmd (the command the agent receives)
+ *   <toolsDir>/playwright-browsers/       browsers
+ *   <toolsDir>/node/                      portable Node, if needed
  */
 export class PlaywrightCliService {
   private log = ''
@@ -72,20 +72,20 @@ export class PlaywrightCliService {
   private wrapper(version: string): string { return join(this.versionDir(version), wrapperName) }
   private managedNodeDir(): string { return join(this.nodeRoot, `node-v${this.release.version}-win-x64`) }
 
-  /** Versões instaladas, da mais nova para a mais antiga. */
+  /** Installed versions, from newest to oldest. */
   installed(): Array<{ version: string; path: string }> {
     let names: string[] = []
     try { names = readdirSync(this.cliRoot) } catch { return [] }
     return names.filter((name) => versionPattern.test(name) && existsSync(this.wrapper(name))).sort((a, b) => compareVersions(b, a)).map((version) => ({ version, path: this.wrapper(version) }))
   }
 
-  /** Versão que o projeto usa: a escolhida, se ainda estiver instalada; senão a mais nova instalada. */
+  /** Version the project uses: the chosen one, if still installed; otherwise the newest installed. */
   selected(projectId: string): string | null {
     const all = this.installed(), chosen = this.history.config(projectId).playwrightVersion
     return all.find((item) => item.version === chosen)?.version ?? all[0]?.version ?? null
   }
 
-  /** Browsers baixados: existe uma pasta chromium-* na pasta compartilhada do app. */
+  /** Downloaded browsers: a chromium-* folder exists in the app's shared folder. */
   private browserReady(): boolean {
     try { return readdirSync(this.browsersDir).some((name) => /^chromium(_headless_shell)?-/.test(name)) } catch { return false }
   }
@@ -96,7 +96,7 @@ export class PlaywrightCliService {
   }
   private managedNode(): string | null { return existsSync(join(this.managedNodeDir(), 'node.exe')) ? this.release.version : null }
 
-  /** Versões publicadas no npm (só as estáveis, da mais nova para a mais antiga) para a tela escolher qual instalar. */
+  /** Versions published on npm (stable only, newest to oldest) for the screen to choose which one to install. */
   async availableVersions(): Promise<string[]> {
     const response = await (this.deps.fetchImpl ?? fetch)('https://registry.npmjs.org/@playwright%2fcli', { headers: { accept: 'application/vnd.npm.install-v1+json' }, signal: AbortSignal.timeout(20_000) })
     if (!response.ok) throw new Error(tm().voice.downloadFailed('npm', response.status))
@@ -121,7 +121,7 @@ export class PlaywrightCliService {
     await writeFile(target, bytes)
   }
 
-  /** Node que vai rodar o npm e o playwright-cli: o do sistema, se for 18+; senão o portátil (baixado uma vez, com SHA-256 conferido). Devolve a pasta dele, ou null para o do sistema. */
+  /** Node that will run npm and playwright-cli: the system one, if 18+; otherwise the portable one (downloaded once, with SHA-256 checked). Returns its folder, or null for the system one. */
   private async ensureNode(): Promise<string | null> {
     if (await this.systemNode()) return null
     const dir = this.managedNodeDir()
@@ -137,7 +137,7 @@ export class PlaywrightCliService {
     return dir
   }
 
-  /** Instala uma versão na pasta do app (e opcionalmente o navegador e a skill do agente em um repositório), e passa a usá-la neste projeto. */
+  /** Installs a version in the app folder (and optionally the browser and the agent skill in a repository), and starts using it in this project. */
   async install(input: { projectId: string; version: string; browser: boolean; skills: Array<'claude' | 'agents'>; sourceId?: string | undefined }): Promise<PlaywrightStatus> {
     this.log = ''; this.error = null
     const step = async (title: string, run: () => Promise<string>): Promise<string> => {
@@ -157,7 +157,7 @@ export class PlaywrightCliService {
       await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'gearmod-playwright-cli', private: true }), 'utf8')
       await step(`npm install @playwright/cli@${version}`, () => this.commands.run(npm, ['install', '--no-audit', '--no-fund', '--no-package-lock', `@playwright/cli@${version}`], dir, 10 * 60_000, extra()))
       if (!existsSync(this.bin(version))) throw new Error(tm().playwrightCli.binNotFound)
-      // O comando que o agente recebe: aponta para o Node certo e para os navegadores compartilhados, onde quer que o agente rode.
+      // The command the agent receives: points to the right Node and to the shared browsers, wherever the agent runs.
       const lines = ['@echo off', ...(nodeDir ? [`set "PATH=${nodeDir};%PATH%"`] : []), `set "PLAYWRIGHT_BROWSERS_PATH=${this.browsersDir}"`, `"${this.bin(version)}" %*`]
       await writeFile(this.wrapper(version), `${lines.join('\r\n')}\r\n`, 'utf8')
       const cli = this.wrapper(version)
@@ -177,21 +177,21 @@ export class PlaywrightCliService {
     return this.status(input.projectId)
   }
 
-  /** Escolhe, para este projeto, uma das versões já instaladas. */
+  /** Chooses, for this project, one of the already installed versions. */
   async select(input: { projectId: string; version: string }): Promise<PlaywrightStatus> {
     if (!this.installed().some((item) => item.version === input.version)) throw new Error(tm().playwrightCli.versionNotInstalled(input.version))
     this.history.setConfig(input.projectId, { ...this.history.config(input.projectId), playwrightVersion: input.version })
     return this.status(input.projectId)
   }
 
-  /** Apaga uma versão instalada. Projetos que a usavam passam à mais nova que sobrar. */
+  /** Deletes an installed version. Projects that used it switch to the newest one left. */
   async remove(input: { projectId: string; version: string }): Promise<PlaywrightStatus> {
     if (!versionPattern.test(input.version)) throw new Error(tm().playwrightCli.invalidVersion(input.version))
     await rm(this.versionDir(input.version), { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
     return this.status(input.projectId)
   }
 
-  /** Baixa só o navegador (pasta compartilhada), usando a versão escolhida neste projeto. */
+  /** Downloads only the browser (shared folder), using the version chosen in this project. */
   async installBrowser(input: { projectId: string }): Promise<PlaywrightStatus> {
     const version = this.selected(input.projectId)
     if (!version) throw new Error(tm().playwrightCli.notInstalled)
@@ -203,7 +203,7 @@ export class PlaywrightCliService {
     return this.status(input.projectId)
   }
 
-  /** O que o testador recebe no contexto: o comando, a sessão do card e onde guardar evidências. `null` = desligado ou não instalado. */
+  /** What the tester receives in context: the command, the card's session and where to store evidence. `null` = turned off or not installed. */
   forCard(cardId: string): { comando: string; sessao: string; evidencias: string; regra: string } | null {
     const card = this.database.db.prepare('SELECT project_id AS projectId FROM cards WHERE id = ?').get(cardId) as { projectId: string } | undefined
     if (!card || !this.history.config(card.projectId).playwrightCli) return null
@@ -215,7 +215,7 @@ export class PlaywrightCliService {
     }
   }
 
-  /** Repositórios do projeto: onde a skill do agente pode ser instalada (opcional). */
+  /** Project repositories: where the agent skill can be installed (optional). */
   nodeSources(projectId: string): Array<{ id: string; name: string; node: boolean }> {
     return this.sources(projectId).map((item) => ({ id: item.id, name: item.name, node: existsSync(join(item.path, 'package.json')) }))
   }
@@ -225,7 +225,7 @@ export class PlaywrightCliService {
   }
 }
 
-/** Lê a versão instalada de um pacote (usado pelos testes e pela tela de ferramentas). */
+/** Reads the installed version of a package (used by tests and by the tools screen). */
 export const packageVersion = (dir: string): string | null => {
   try { return (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { version?: string }).version ?? null } catch { return null }
 }

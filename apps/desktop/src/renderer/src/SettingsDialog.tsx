@@ -48,7 +48,7 @@ export function applySettings(settings: AppSettings): void {
   setLocale(settings.idioma)
 }
 
-/** Criar e editar agente: instalar, conectar a conta, nome, uso e cor de personalidade. */
+/** Create and edit agent: install, connect the account, name, usage and personality color. */
 function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; close(): void; changed(): Promise<void> }): React.JSX.Element {
   const t = useT(), ta = t.settings.agent
   const [provider, setProvider] = useState<'codex' | 'claude' | 'gemini'>(profile?.provider ?? 'claude'), [label, setLabel] = useState(profile?.label ?? ''), [scope, setScope] = useState(profile?.scope ?? 'Pessoal'), [color, setColor] = useState(profile?.color ?? defaultAgentColor('claude'))
@@ -116,7 +116,7 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
     {notice && <NoticeDialog eyebrow={t.common.agent} title={notice.title} text={notice.text} close={() => { const after = notice.after; setNotice(undefined); if (after) close() }} />}
   </div></div>
 }
-/** Chave do Groq: fica cifrada no computador; a tela só sabe se existe, nunca mostra o valor. */
+/** Groq key: stays encrypted on the computer; the screen only knows whether it exists, never shows the value. */
 function GroqKeyField(): React.JSX.Element {
   const t = useT(), tg = t.settings.groq
   const [saved, setSaved] = useState<boolean>(), [editing, setEditing] = useState(false), [key, setKey] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
@@ -137,10 +137,10 @@ function GroqKeyField(): React.JSX.Element {
 }
 
 const item = (provider: 'codex' | 'claude' | 'gemini'): string => (providerLabels[provider])
-// Gemini fica oculto ao criar agente: o login pessoal da CLI foi descontinuado pelo Google. Agentes Gemini já criados continuam funcionando.
+// Gemini is hidden when creating an agent: the CLI's personal login was discontinued by Google. Gemini agents already created keep working.
 const newAgentProviders = ['claude', 'codex'] as const
 
-/** Tema do projeto: mostra só o escolhido; ao clicar abre a lista com as cores de cada tema. Vale na hora, só para este projeto. */
+/** Project theme: shows only the chosen one; on click opens the list with each theme's colors. Applies immediately, for this project only. */
 export function ThemePicker({ value, onChange, project = false }: { value: AppTheme | null; onChange(value: AppTheme | null): void; project?: boolean }): React.JSX.Element {
   const t = useT(), tp = t.settings.themePicker
   const [open, setOpen] = useState(false), root = React.useRef<HTMLDivElement>(null), button = React.useRef<HTMLButtonElement>(null), list = React.useRef<HTMLDivElement>(null)
@@ -175,7 +175,7 @@ export function SettingsDialog({ profiles, settings, initialTab, close, changed,
   useEscape(close, !editing)
   const probeAll = (): void => { void window.gearmod.invoke('profiles:probe-all', undefined).then((all) => setStatuses(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }
   useEffect(() => { probeAll() }, [profiles])
-  // A atualização roda num terminal separado: ao voltar para a janela, confere a versão de novo.
+  // The update runs in a separate terminal: when returning to the window, checks the version again.
   useEffect(() => { window.addEventListener('focus', probeAll); return () => window.removeEventListener('focus', probeAll) }, [])
   const latest = useLatestVersions()
   const newer = (profile: AgentProfile): string | null => { const probe = statuses[profile.id], last = latest?.versions[profile.provider as 'claude' | 'codex' | 'gemini']; return probe?.installed && last && isOutdated(probe.version, last) ? last : null }

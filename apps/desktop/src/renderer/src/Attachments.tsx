@@ -14,12 +14,12 @@ export function queueContextFile(target: ContextTarget & { path: string }): void
 }
 
 const textQueue = new Map<string, string[]>(), textListeners = new Map<string, Set<() => void>>()
-/** Comentário sobre um trecho do editor: vira rascunho no campo de mensagem do chat, sem enviar nada. */
+/** Comment on an editor excerpt: becomes a draft in the chat message field, without sending anything. */
 export function queueContextText(target: ContextTarget & { text: string }): void {
   const key = contextKey(target); textQueue.set(key, [...(textQueue.get(key) ?? []), target.text]); textListeners.get(key)?.forEach((listener) => listener())
 }
 export function hasCommentTarget(target: ContextTarget): boolean { return Boolean(textListeners.get(contextKey(target))?.size) }
-/** Recebe os comentários enviados pelo editor de arquivos para este chat. */
+/** Receives the comments sent by the file editor to this chat. */
 export function useContextText(target: ContextTarget, receive: (text: string) => void): void {
   const latest = useRef(receive); latest.current = receive
   useEffect(() => {
@@ -30,8 +30,8 @@ export function useContextText(target: ContextTarget, receive: (text: string) =>
 }
 
 /**
- * Anexos da próxima mensagem do chat: escolher pelo "+", arrastar ou colar (Ctrl+V) no campo. Ficam guardados até a mensagem sair
- * (inclusive quando ela espera na fila) e o agente recebe os caminhos para ler como contexto.
+ * Attachments for the chat's next message: pick with the "+", drag or paste (Ctrl+V) into the field. They are kept until the message leaves
+ * (including when it waits in the queue) and the agent receives the paths to read as context.
  */
 export function useAttachments(target?: ContextTarget): { files: string[]; add(paths: string[]): void; remove(path: string): void; take(): string[]; choose(): Promise<void>; dropProps: React.HTMLAttributes<HTMLElement>; dragging: boolean } {
   const [files, setFiles] = useState<string[]>([]), [dragging, setDragging] = useState(false), ref = useRef<string[]>([])
@@ -46,17 +46,17 @@ export function useAttachments(target?: ContextTarget): { files: string[]; add(p
   const remove = (path: string): void => update(ref.current.filter((item) => item !== path))
   const take = (): string[] => { const taken = ref.current; update([]); return taken }
   const choose = async (): Promise<void> => { try { add(await window.gearmod.invoke('files:choose', undefined)) } catch (reason) { toast.error(tr().chat.attachments.attachFailed, plainError(reason)) } }
-  // Ctrl+V: arquivos copiados no Explorer entram pelo caminho; imagens coladas (prints) são salvas na pasta de anexos do app.
+  // Ctrl+V: files copied in Explorer go in by path; pasted images (screenshots) are saved in the app's attachments folder.
   const paste = async (files: File[]): Promise<void> => {
     const paths: string[] = []
     for (const file of files) {
       let path = ''
-      try { path = window.gearmod.getDroppedFilePath(file) } catch { /* sem caminho */ }
+      try { path = window.gearmod.getDroppedFilePath(file) } catch { /* no path */ }
       if (!path) {
         try {
           const base64 = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] ?? ''); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file) })
           path = await window.gearmod.invoke('files:save-pasted', { name: file.name || `colado.${(file.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, base64 })
-        } catch { /* arquivo grande demais ou ilegível */ }
+        } catch { /* file too large or unreadable */ }
       }
       if (path) paths.push(path)
     }
@@ -105,8 +105,8 @@ export function AttachmentChips({ files, remove }: { files: string[]; remove?(pa
 const noteMarker = 'Arquivos anexados (leia antes de responder; são contexto deste pedido):'
 
 /**
- * Separa a mensagem que foi ao agente do bloco de caminhos que o app acrescenta (orchestrator.attachmentNote):
- * no chat aparece só o que o usuário escreveu, com os anexos como miniaturas em cima.
+ * Splits the message that went to the agent from the block of paths the app appends (orchestrator.attachmentNote):
+ * the chat shows only what the user wrote, with the attachments as thumbnails on top.
  */
 export function splitAttachmentNote(body: string): { text: string; files: string[] } {
   const at = body.indexOf(noteMarker)

@@ -1,4 +1,4 @@
-// Indexa uma pasta com o CodeGraph pela API de biblioteca (não usa `init`/`install`, que mexem na config dos agentes).
+// Indexes a folder with CodeGraph through the library API (does not use `init`/`install`, which touch the agents' config).
 const { CodeGraph } = require('@colbymchenry/codegraph')
 const root = process.argv[2]
 ;(async () => {

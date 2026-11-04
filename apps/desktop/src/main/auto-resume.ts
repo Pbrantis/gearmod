@@ -3,21 +3,21 @@ import type { ChatPurpose, UsageWindow } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
 import { getMainLocale, tm } from './i18n'
 
-/** Um minuto de folga depois do horário em que o limite volta, para o provedor já ter liberado. */
+/** One minute of slack after the time the limit comes back, so the provider has already released it. */
 const slackMs = 60_000
-/** Sem horário conhecido: tenta de novo daqui a 15 minutos. */
+/** No known time: try again in 15 minutes. */
 const fallbackMs = 15 * 60_000
 
 const limitPattern = /usageLimitExceeded|usage[_ ]limit|rate[_ ]limit|limit reached|hit your (usage |session |weekly )?limit|session limit|weekly limit|limite de uso|\b429\b/i
 
-/** O erro da execução diz que o agente parou porque o limite de uso (sessão ou semana) acabou. */
+/** The run error says the agent stopped because the usage limit (session or week) ran out. */
 export function isUsageLimit(error: string | null | undefined): boolean {
   return Boolean(error && limitPattern.test(error))
 }
 
 /**
- * Quando retomar: o horário que o próprio erro informa (epoch do Claude "…limit reached|1760000000", `resets_at`, `resets_in_seconds`)
- * ou, sem ele, o reset da janela de uso que está no limite. Sempre com um minuto de folga.
+ * When to resume: the time the error itself reports (Claude's epoch "…limit reached|1760000000", `resets_at`, `resets_in_seconds`)
+ * or, without it, the reset of the usage window that is at its limit. Always with a one-minute slack.
  */
 export function resumeTime(error: string | null | undefined, windows: UsageWindow[], now = Date.now()): number {
   const text = error ?? ''
@@ -34,11 +34,11 @@ export function resumeTime(error: string | null | undefined, windows: UsageWindo
 
 export interface PendingResume { id: string; chatId: string; cardId: string | null; purpose: ChatPurpose; profileId: string; resumeAt: string; createdAt: string }
 
-/** Retomadas agendadas (no banco, para sobreviver a fechar e abrir o app). */
+/** Scheduled resumes (in the database, to survive closing and reopening the app). */
 export class AutoResumeRepository {
   constructor(private readonly database: AppDatabase) {}
 
-  /** Uma retomada pendente por chat: agendar de novo só troca o horário. */
+  /** One pending resume per chat: scheduling again only changes the time. */
   schedule(input: { chatId: string; cardId: string | null; purpose: ChatPurpose; profileId: string; resumeAt: number }): PendingResume {
     const now = new Date().toISOString(), at = new Date(input.resumeAt).toISOString()
     this.database.db.transaction(() => {
@@ -58,7 +58,7 @@ export class AutoResumeRepository {
 
   finish(id: string, status: 'done' | 'cancelled'): void { this.database.db.prepare('UPDATE auto_resumes SET status = ? WHERE id = ?').run(status, id) }
 
-  /** O chat rodou de novo depois do agendamento (o usuário retomou à mão): a retomada automática não é mais necessária. */
+  /** The chat ran again after the scheduling (the user resumed by hand): the automatic resume is no longer needed. */
   ranSince(item: PendingResume): boolean {
     return Boolean(this.database.db.prepare('SELECT 1 FROM runs WHERE chat_id = ? AND started_at > ? LIMIT 1').get(item.chatId, item.createdAt))
   }
@@ -67,11 +67,11 @@ export class AutoResumeRepository {
 export interface AutoResumeDeps {
   repository: AutoResumeRepository
   enabled(): boolean
-  /** Janelas de uso atualizadas do agente (Claude faz uma chamada mínima para ler o limite). */
+  /** Updated usage windows of the agent (Claude makes a minimal call to read the limit). */
   usage(profileId: string): Promise<UsageWindow[]>
-  /** Recomeça o chat de onde parou (implementação/teste pelo fluxo de Continuar; planejamento e chats do projeto com um pedido de continuar). */
+  /** Restarts the chat from where it stopped (implementation/testing through the Continue flow; planning and project chats with a continue request). */
   resume(item: PendingResume): void
-  /** Aviso no chat (mensagem do sistema) e atualização da tela. */
+  /** Notice in the chat (system message) and screen update. */
   notify(chatId: string, body: string): void
 }
 
@@ -81,8 +81,8 @@ const clock = (ms: number): string => {
 }
 
 /**
- * Retomar sozinho quando o limite de uso volta: ao terminar uma execução por limite, agenda a retomada para o horário de volta (+1 min).
- * Na hora, confere se o limite voltou mesmo; se não, reagenda. Se o usuário já retomou à mão, desiste.
+ * Resume on its own when the usage limit comes back: when a run ends because of the limit, schedules the resume for the return time (+1 min).
+ * At that time, checks that the limit really came back; if not, reschedules. If the user already resumed by hand, gives up.
  */
 export class AutoResumeService {
   private timer?: ReturnType<typeof setInterval>
@@ -92,7 +92,7 @@ export class AutoResumeService {
   start(intervalMs = 30_000): void { this.timer = setInterval(() => void this.tick(), intervalMs); void this.tick() }
   stop(): void { if (this.timer) clearInterval(this.timer) }
 
-  /** Chamado ao fim de cada execução. Devolve o horário agendado (ou null se não foi por limite). */
+  /** Called at the end of each run. Returns the scheduled time (or null if it was not because of a limit). */
   async onFinished(info: { chatId: string; cardId: string | null; purpose: ChatPurpose; profileId: string; status: string; error: string | null }): Promise<number | null> {
     if (info.status !== 'failed' || !isUsageLimit(info.error)) return null
     const at = resumeTime(info.error, await this.deps.usage(info.profileId).catch(() => []))
@@ -108,7 +108,7 @@ export class AutoResumeService {
     try {
       for (const item of this.deps.repository.due(now)) {
         if (!this.deps.enabled() || this.deps.repository.ranSince(item)) { this.deps.repository.finish(item.id, 'cancelled'); continue }
-        // Confere se o limite voltou mesmo: se ainda tem janela cheia com reset no futuro, reagenda para ele.
+        // Checks that the limit really came back: if a window is still full with its reset in the future, reschedule for it.
         const windows = await this.deps.usage(item.profileId).catch(() => [])
         const blocked = windows.filter((window) => window.usedPercent >= 100 && window.resetsAt && Date.parse(window.resetsAt) > now)
         if (blocked.length) {

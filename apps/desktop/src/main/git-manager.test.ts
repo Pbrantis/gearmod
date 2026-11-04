@@ -39,7 +39,7 @@ async function setup(): Promise<{ root: string; repo: string; database: AppDatab
 
 describe('assignLanes', () => {
   it('mantém a história linear numa faixa e abre outra para a branch', () => {
-    // topo → base: merge(m) junta a (faixa 0) e b (faixa 1); base é pai de ambos.
+    // top → base: merge(m) joins a (lane 0) and b (lane 1); base is the parent of both.
     const lanes = assignLanes([
       { hash: 'm', parents: ['a', 'b'] }, { hash: 'a', parents: ['base'] }, { hash: 'b', parents: ['base'] }, { hash: 'base', parents: [] }
     ])
@@ -47,7 +47,7 @@ describe('assignLanes', () => {
   })
 
   it('a história principal fica na faixa da esquerda mesmo depois de uma branch que a alcança', () => {
-    // main: m2 → base; feature: f → base (f é mais velho que m2 na ordem do log)
+    // main: m2 → base; feature: f → base (f is older than m2 in log order)
     const lanes = assignLanes([{ hash: 'merge', parents: ['m2', 'f'] }, { hash: 'f', parents: ['base'] }, { hash: 'm2', parents: ['base'] }, { hash: 'base', parents: [] }])
     expect(lanes).toEqual([0, 1, 0, 0])
   })
@@ -346,7 +346,7 @@ describe('commit do agente', () => {
     const [request] = manager.requests(cardId)
     expect(request).toMatchObject({ status: 'pending', repoName: 'repo', files: ['a.txt'], agentProfileId: profileId })
     expect(database.db.prepare('SELECT COUNT(*) AS n FROM git_commit_requests WHERE status = ?').get('pending')).toEqual({ n: 1 })
-    // um pedido novo no mesmo repositório substitui o pendente
+    // a new request on the same repository replaces the pending one
     await manager.agentCommit({ cardId, chatId, message: 'Cria a', files: ['a.txt'] })
     expect(manager.requests(cardId).filter((item) => item.status === 'pending')).toHaveLength(1)
     const pending = manager.requests(cardId)[0]!

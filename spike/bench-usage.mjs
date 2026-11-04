@@ -1,4 +1,4 @@
-// Detalha o uso por configuração: tokens novos (escrita no cache, mais caros), lidos do cache (baratos), turnos.
+// Details usage per configuration: new tokens (cache writes, more expensive), tokens read from cache (cheap), turns.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 

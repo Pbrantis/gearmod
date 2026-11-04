@@ -8,8 +8,8 @@ import { Queries } from './query'
 export interface RootStatus { root: string; files: number; symbols: number; expected: number; indexedAt: number | null; ms: number | null }
 
 /**
- * Índice de código de várias pastas (projeto e worktrees dos cards) num banco só. As escritas são feitas uma de cada
- * vez; as consultas podem chegar no meio (o indexador cede a vez de tempos em tempos).
+ * Code index for several folders (project and card worktrees) in a single database. Writes are done one at a
+ * time; queries can arrive in between (the indexer yields from time to time).
  */
 export class CodeIndex {
   readonly db: Db
@@ -19,7 +19,7 @@ export class CodeIndex {
 
   constructor(file: string) {
     this.db = openStore(file)
-    // pastas que sumiram (worktrees de cards já removidas) saem do índice ao abrir
+    // folders that disappeared (worktrees of already removed cards) leave the index on open
     const gone = (this.db.prepare('select root from roots').pluck().all() as string[]).filter((root) => !existsSync(root))
     for (const root of gone) for (const table of ['trees', 'edges', 'file_edges', 'roots']) this.db.prepare(`delete from ${table} where root = ?`).run(root)
     if (gone.length) gc(this.db)
@@ -49,16 +49,16 @@ export class CodeIndex {
 
   status(root: string): RootStatus {
     const row = this.db.prepare('select indexed_at, ms from roots where root = ?').get(root) as { indexed_at: number; ms: number } | undefined
-    // contado na hora: as atualizações do watcher não mexem no total gravado na indexação completa
+    // counted on the spot: watcher updates do not touch the total saved in the full indexing
     const files = row ? this.db.prepare('select count(*) from trees where root = ?').pluck().get(root) as number : 0
     const symbols = row ? this.db.prepare('select count(*) from symbols s join trees t on t.sha = s.sha and t.root = ? where s.idx > 0').pluck().get(root) as number : 0
-    // arquivos que o indexador enxerga hoje na pasta: a barra da tela é files ÷ expected
+    // files the indexer sees today in the folder: the screen's bar is files ÷ expected
     let expected = files
-    if (existsSync(root)) { try { expected = listFiles(root).files.size } catch { /* pasta ilegível: sem total, a barra fica cheia */ } }
+    if (existsSync(root)) { try { expected = listFiles(root).files.size } catch { /* unreadable folder: no total, the bar stays full */ } }
     return { root, files, symbols, expected: Math.max(expected, files), indexedAt: row?.indexed_at ?? null, ms: row?.ms ?? null }
   }
 
-  /** Observa a pasta e atualiza o índice sozinho (lotes de 300 ms). */
+  /** Watches the folder and updates the index on its own (300 ms batches). */
   watch(root: string, { exclude = [], onUpdate }: { exclude?: string[]; onUpdate?: (result: UpdateResult | { error: string }) => void } = {}): void {
     if (this.watchers.has(root)) return
     let pending = new Set<string>()
@@ -80,12 +80,12 @@ export class CodeIndex {
       })
       watcher.on('error', () => this.unwatch(root))
       this.watchers.set(root, watcher)
-    } catch { /* pasta sumiu ou o sistema não deixa observar: o índice só atualiza na próxima indexação */ }
+    } catch { /* folder disappeared or the system does not allow watching: the index only updates on the next indexing */ }
   }
 
   unwatch(root: string): void { this.watchers.get(root)?.close(); this.watchers.delete(root) }
 
-  /** Esquece a pasta (worktree removida) e apaga a análise que ninguém mais usa. */
+  /** Forgets the folder (removed worktree) and deletes the analysis nobody else uses. */
   forget(root: string): Promise<void> {
     return this.serial(async () => {
       this.unwatch(root)

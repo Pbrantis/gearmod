@@ -35,21 +35,21 @@ export interface FilePaneProps {
   update(path: string, patch: Partial<Document>): void; save(path: string): Promise<boolean>; reload(path: string): void
   afterComment(): void; error: string; loading: boolean; setError(value: string): void
   command?: PaneCommand | undefined; jump?: { line: number; column: number; length?: number } | undefined; onJumped?(): void
-  /** Só no modo focado: nome do repositório mostrado antes do caminho e botões extras no fim do cabeçalho. */
+  /** Focused mode only: repository name shown before the path and extra buttons at the end of the header. */
   repoName?: string | undefined; headerEnd?: React.ReactNode
-  /** Fechar a aba (faixa de arquivo apagado) e recriar o arquivo apagado com o texto atual; sem `restore` o botão não aparece. */
+  /** Close the tab (deleted-file banner) and recreate the deleted file with the current text; without `restore` the button does not appear. */
   closeDocument?(): void; restore?(path: string): void
-  /** O painel preenche com uma função que devolve o texto selecionado no editor (para semear a busca no projeto). */
+  /** The panel fills this with a function that returns the text selected in the editor (to seed the project search). */
   selectionText?: React.MutableRefObject<(() => string) | null>
-  /** Raízes do projeto: uma imagem solta que já está nelas vira só um link relativo. */
+  /** Project roots: a dropped image that is already inside them becomes just a relative link. */
   roots?: Array<{ path: string }>
-  /** Abre outro arquivo numa linha (ir para a definição, quem usa); sem isso só navega dentro do arquivo aberto. */
+  /** Opens another file at a line (go to definition, who uses it); without this it only navigates within the open file. */
   openAt?(path: string, line: number): void
 }
 
 /**
- * Área de um arquivo aberto: cabeçalho de ações, localizar/substituir, ir para linha, editor, diff, prévia, comentário de linhas e barra de status.
- * `full` é o modo Arquivos (dentro de uma aba); `focused` é o painel ao lado do chat, que abre no diff e só edita depois de "Editar".
+ * Area of an open file: actions header, find/replace, go to line, editor, diff, preview, line comments and status bar.
+ * `full` is the Files mode (inside a tab); `focused` is the panel beside the chat, which opens on the diff and only edits after "Edit".
  */
 export function FilePane({ doc, mode, context, preferences, changePreferences, change, root, commentCardId, commentTarget, update, save, reload, afterComment, error, loading, setError, command, jump, onJumped, repoName, headerEnd, closeDocument, restore, selectionText, roots, openAt }: FilePaneProps): React.JSX.Element {
   const t = useT(), focused = mode === 'focused'
@@ -63,7 +63,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   const indent = useMemo(() => detectIndent(doc.saved), [doc.path, doc.saved])
   const editorOptions = useMemo(() => ({ tabs: indent.kind === 'tab', wrap: preferences.wrap, tabSize: preferences.tabSize, indentWithTab: preferences.indent, whitespace: preferences.whitespace, guides: preferences.guides, scrollPastEnd: preferences.beyond }), [indent.kind, preferences.wrap, preferences.tabSize, preferences.indent, preferences.whitespace, preferences.guides, preferences.beyond])
   const readOnly = doc.truncated || Boolean(doc.locked) || (focused && !edit), canDiff = Boolean(change?.diff)
-  // Vista do diff (lado "depois"): serve de alvo para ir à linha quando o arquivo abre nas alterações.
+  // Diff view ("after" side): serves as the target for jumping to a line when the file opens on the changes.
   const diffView = useRef<EditorView | null>(null), [viewReady, setViewReady] = useState(0)
   const liveView = (): EditorView | null => view.current?.dom.isConnected ? view.current : null
   const jumpView = (): EditorView | null => liveView() ?? (diffView.current?.dom.isConnected ? diffView.current : null)
@@ -75,7 +75,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     const text = editor.state.doc, target = text.line(Math.min(Math.max(1, line), text.lines)), at = target.from + Math.min(column - 1, target.length)
     const head = Math.min(at + length, target.to)
     editor.dispatch({ selection: { anchor: at, head }, effects: EditorView.scrollIntoView(at, { y: 'center' }) }); editor.focus()
-    // Se o editor for recriado logo depois (troca de aba, recarga do documento), ele volta para esta posição, não para a antiga.
+    // If the editor is recreated right after (tab switch, document reload), it goes back to this position, not the old one.
     const path = doc.path
     writeViewState(path, { anchor: at, head, scrollTop: editor.scrollDOM.scrollTop })
     window.requestAnimationFrame(() => { if (editor.dom.isConnected) writeViewState(path, { anchor: at, head, scrollTop: editor.scrollDOM.scrollTop }) })
@@ -91,9 +91,9 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     if (extend && linesRef.current) { setLines([linesRef.current[0], index]); return }
     pickDrag.current = index; setComposing(false); setLines([index, index])
   }
-  /** O botão de comentar acompanha a última linha escolhida, também ao rolar. */
+  /** The comment button follows the last chosen line, also when scrolling. */
   const placeButton = (): void => { const editor = liveView(), box = codeBox.current, picked = linesRef.current; if (!editor || !box || !picked) return; const line = editor.state.doc.line(Math.min(Math.max(...picked) + 1, editor.state.doc.lines)); setButtonTop(Math.max(4, Math.round(editor.documentTop + editor.lineBlockAt(line.from).bottom - box.getBoundingClientRect().top - 14))) }
-  // Índice de código: estrutura do arquivo (relida depois de salvar) e as listas do F12 / Shift+F12.
+  // Code index: file structure (re-read after saving) and the F12 / Shift+F12 lists.
   const [codeOutline, setCodeOutline] = useState<OutlineItem[]>([]), [nav, setNav] = useState<{ title: string; items: NavItem[]; note?: string } | null>(null)
   const goItem = (item: { path: string; line: number }): void => { if (slashed(item.path) === slashed(doc.path)) gotoLine(item.line); else openAt?.(item.path, item.line) }
   const lookUp = async (what: 'definition' | 'references'): Promise<void> => {
@@ -104,7 +104,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     try {
       if (what === 'definition') {
         const found = await window.gearmod.invoke('code-index:definition', { ...context, name, path: doc.path })
-        // Uma só definição: vai direto, como no VS Code; várias abrem a lista.
+        // A single definition: goes straight there, as in VS Code; several open the list.
         if (found.length === 1) { goItem(found[0]!); return }
         setNav({ title: codeNav.definitionsOf(name), items: found.map((hit) => ({ path: hit.path, relative: hit.relative, line: hit.line, title: hit.qname || hit.name, kind: hit.kind, detail: hit.signature.slice(0, 80) })), note: codeNav.noDefinition(name) })
       } else {
@@ -135,7 +135,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     setCodeOutline([])
     if (!codeFile) return
     let alive = true
-    // Depois de salvar, espera o índice reler o arquivo (o watcher dele tem um pequeno atraso).
+    // After saving, waits for the index to re-read the file (its watcher has a small delay).
     const timer = window.setTimeout(() => { void window.gearmod.invoke('code-index:outline', { ...context, path: doc.path }).then((found) => { if (alive) setCodeOutline(found.map((hit) => ({ line: hit.line, endLine: hit.endLine, text: hit.name, depth: hit.depth, kind: hit.kind }))) }).catch(() => undefined) }, 700)
     return () => { alive = false; window.clearTimeout(timer) }
   }, [codeFile, doc.path, doc.saved, context.projectId, context.cardId])
@@ -143,7 +143,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   const trail = useMemo<Array<{ line: number; text: string }>>(() => doc.preview ? [] : markdown ? headingTrail(headings, cursor.line) : symbolTrail(codeOutline, cursor.line), [markdown, doc.preview, headings, codeOutline, cursor.line])
   const outlineLabel = markdown ? t.files.editor.pane.outline : t.files.editor.codeNav.outline
   const goHeading = (heading: { line: number }): void => { setOutlineOpen(false); if (doc.preview) previewRef.current?.querySelector(`[data-line="${heading.line - 1}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); else gotoLine(heading.line) }
-  /** Colar ou soltar imagem só no Markdown editável: grava em `imagens/` e insere o link. */
+  /** Pasting or dropping an image only in editable Markdown: saves to `imagens/` and inserts the link. */
   const editorExtensions = useMemo<Extension[]>(() => markdown && !readOnly ? [...extensions, markdownImages({
     markdownPath: doc.path, fail: (message) => setError(message), droppedPath: (file) => { try { return window.gearmod.getDroppedFilePath(file) } catch { return '' } },
     inProject: (path) => (roots ?? []).some((root) => slashed(path).startsWith(`${slashed(root.path).replace(/\/$/, '')}/`)),
@@ -164,10 +164,10 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
   useEffect(() => { if (!command) return; if (command.type === 'find') showFind(); else if (command.type === 'replace') showFind(true); else if (command.type === 'goto') showGoto(); else if (find) setFind(false); else showFind() }, [command?.at])
   useEffect(() => {
     if (!jump) return
-    // Linha pedida num Markdown/HTML em prévia: mostra o código para o cursor ficar nela.
+    // Line requested in a Markdown/HTML preview: shows the code so the cursor can land on it.
     if (doc.preview) { if (fileKind(doc.path) !== 'image' && !doc.binary) update(doc.path, { preview: false }); return }
-    // A vista pode ainda não existir (diff carregando as versões, editor montando): roda de novo quando ela fica pronta.
-    // Com o arquivo ainda carregando, o editor tem só o texto vazio e a linha cairia na 1: espera o conteúdo chegar.
+    // The view may not exist yet (diff loading the versions, editor mounting): runs again when it is ready.
+    // While the file is still loading, the editor has only empty text and the line would land on 1: waits for the content to arrive.
     const live = liveView()
     if (loading || (live && typeof doc.content === 'string' && live.state.doc.length !== doc.content.replace(/\r\n?/g, '\n').length)) return
     if (gotoLine(jump.line, jump.column, jump.length)) onJumped?.()
@@ -190,7 +190,7 @@ export function FilePane({ doc, mode, context, preferences, changePreferences, c
     const key = event.key.toLowerCase(), stop = (): void => { event.preventDefault(); event.stopPropagation() }
     if (key === 's') { stop(); void save(doc.path) } else if (key === 'f') { stop(); showFind() } else if (key === 'h' && !doc.binary) { stop(); showFind(true) } else if (key === 'g' && !doc.binary) { stop(); showGoto() }
   }
-  // Esc fecha a busca/ir para linha e devolve o foco ao editor (a captura impede o onKeyDown do campo).
+  // Esc closes search/go to line and returns focus to the editor (the capture prevents the field's onKeyDown).
   const escape = (event: React.KeyboardEvent): void => { if (event.key === 'Escape' && (find || goto)) { event.preventDefault(); event.stopPropagation(); setFind(false); setGoto(false); liveView()?.focus() } }
   const dirty = doc.content !== doc.saved, previewable = isMarkdown(doc.path) || isHtml(doc.path) || fileKind(doc.path) === 'image'
   const reviewTarget = { path: doc.relative, send: async (prompt: string): Promise<boolean> => { try { await window.gearmod.invoke('workspace:comment', { ...context, cardId: commentCardId, text: prompt }); afterComment(); return true } catch (reason) { setError(plainError(reason)); return false } } }

@@ -29,31 +29,31 @@ export const appInfoSchema = z.object({
 const isoDate = z.string().datetime()
 const uuid = z.string().uuid()
 /**
- * Tipo do card: id de um dos tipos cadastrados no projeto (ou na lista padrão). É texto livre de tamanho limitado, não um enum:
- * cards antigos com um tipo que saiu da lista continuam válidos (aparecem com cor neutra). O fluxo curto (antiga "tarefa pequena")
- * não é tipo: vem do fluxo escolhido do card (`workflow` = `light`).
+ * Card type: id of one of the types registered in the project (or in the default list). It is free text of limited length, not an enum:
+ * old cards with a type that left the list remain valid (shown in a neutral color). The short flow (formerly "small task")
+ * is not a type: it comes from the card's chosen flow (`workflow` = `light`).
  */
 export const cardTypeSchema = z.string().trim().min(1).max(40)
 export const cardTypeColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
-/** `branchPrefix`: início do nome da branch dos cards deste tipo (`feature/...`). Sem ele vale o padrão em inglês do tipo (`branchPrefixOf`). */
+/** `branchPrefix`: start of the branch name for cards of this type (`feature/...`). Without it, the type's English default applies (`branchPrefixOf`). */
 export const branchPrefixSchema = z.string().trim().min(1).max(40).regex(/^[a-z0-9][a-z0-9._-]*$/)
 export const cardTypeDefSchema = z.object({ id: z.string().trim().min(1).max(40).regex(/^[a-z0-9][a-z0-9_-]*$/), name: z.string().trim().min(1).max(40), color: cardTypeColorSchema, branchPrefix: branchPrefixSchema.optional() })
 const defaultBranchPrefixes: Record<string, string> = { feature: 'feature', bug: 'fix', fix: 'fix', hotfix: 'hotfix', improvement: 'improvement', task: 'task', chore: 'chore' }
-/** Prefixo da branch de um card pelo tipo dele: o escolhido no tipo; senão o padrão em inglês (feature, fix, hotfix...); senão o próprio id do tipo. */
+/** Branch prefix of a card by its type: the one chosen on the type; otherwise the English default (feature, fix, hotfix...); otherwise the type's own id. */
 export const branchPrefixOf = (type: { id: string; branchPrefix?: string | undefined } | undefined, typeId: string): string => type?.branchPrefix || defaultBranchPrefixes[type?.id ?? typeId] || (/^[a-z0-9][a-z0-9-]*$/.test(type?.id ?? typeId) ? (type?.id ?? typeId) : 'feature')
-/** Lista de tipos de card: 1 a 30, ids e nomes sem repetir. */
+/** List of card types: 1 to 30, ids and names without repeats. */
 export const cardTypeListSchema = z.array(cardTypeDefSchema).min(1).max(30)
   .refine((items) => new Set(items.map((item) => item.id)).size === items.length, 'Tipos de card com id repetido')
   .refine((items) => new Set(items.map((item) => item.name.toLocaleLowerCase())).size === items.length, 'Tipos de card com nome repetido')
-/** Tipos padrão (projetos sem lista própria e o padrão global enquanto o usuário não muda nada). */
-/** Nomes em inglês em qualquer idioma (combinam com os prefixos de branch: feature/, fix/, improvement/); quem quiser troca o nome do tipo. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- mantido na assinatura: os chamadores ainda passam o idioma
+/** Default types (projects without their own list and the global default while the user changes nothing). */
+/** English names in any language (they match the branch prefixes: feature/, fix/, improvement/); anyone who wants can rename the type. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept in the signature: callers still pass the language
 export const builtinCardTypes = (_language: 'pt-BR' | 'en' = 'pt-BR'): Array<z.infer<typeof cardTypeDefSchema>> => [
   { id: 'feature', name: 'Feature', color: '#8fb8d6' },
   { id: 'bug', name: 'Bug', color: '#f08a8a' },
   { id: 'improvement', name: 'Improvement', color: '#9ccf6f' }
 ]
-/** Acha o tipo pelo id ou pelo nome (sem diferenciar maiúsculas). */
+/** Finds the type by id or by name (case-insensitive). */
 export const findCardType = <T extends { id: string; name: string }>(types: readonly T[], value: string): T | undefined => {
   const wanted = value.trim().toLocaleLowerCase()
   return types.find((item) => item.id === value.trim()) ?? types.find((item) => item.name.toLocaleLowerCase() === wanted)
@@ -61,21 +61,21 @@ export const findCardType = <T extends { id: string; name: string }>(types: read
 export const cardPrioritySchema = z.enum(['low', 'medium', 'high', 'urgent'])
 export const semanticStateSchema = z.enum(['backlog', 'todo', 'doing', 'test', 'done'])
 
-/** Gemini fica desligado por enquanto: o código do adaptador continua no repositório, mas nenhum perfil Gemini aparece nem pode ser criado. */
+/** Gemini is turned off for now: the adapter code stays in the repository, but no Gemini profile appears or can be created. */
 export const geminiEnabled = false
 export const agentProviderSchema = z.enum(['codex', 'claude', 'gemini'])
 export const agentColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/)
-/** Cores de personalidade oferecidas ao cadastrar um agente; a cor é independente do tema do sistema. */
+/** Personality colors offered when registering an agent; the color is independent of the system theme. */
 export const agentColorPalette = ['#D97757', '#E5A24B', '#9ccf6f', '#6fc3b2', '#8fb8d6', '#aeb9ff', '#b98fd6', '#e07a9a', '#e8c27a', '#c4d96b', '#5fbf8f', '#4fb8c9', '#6f9bf0', '#8c8cf0', '#d98fd9', '#f08a8a', '#d9a477', '#b5bdb7'] as const
 export const providerLabels: Record<z.infer<typeof agentProviderSchema>, string> = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' }
 export const defaultAgentColor = (provider: z.infer<typeof agentProviderSchema>): string => (provider === 'claude' ? agentColorPalette[0] : provider === 'gemini' ? '#7BA7FF' : agentColorPalette[5])
 export const themeSchema = z.enum(['green', 'purple', 'blue', 'orange', 'graphite', 'teal', 'rose', 'light-mint', 'light-sky', 'light-lavender', 'light-sand', 'light-rose', 'light-slate'])
 export const languageSchema = z.enum(['pt-BR', 'en'])
-/** `groq` transcreve na nuvem (Groq, whisper-large-v3-turbo); os outros rodam o whisper.cpp local. */
+/** `groq` transcribes in the cloud (Groq, whisper-large-v3-turbo); the others run local whisper.cpp. */
 export const voiceModelSchema = z.enum(['small', 'large-v3-turbo', 'groq'])
-/** `retomarSozinho`: quando o limite de uso acaba no meio de uma execução, retoma de onde parou assim que ele volta. */
-/** `idioma`: idioma da interface e do que os agentes escrevem. */
-/** `execucoesSimultaneas`: quantos agentes rodam ao mesmo tempo; `null` = ainda não escolhido, vale a recomendação calculada pelo hardware. */
+/** `retomarSozinho`: when the usage limit runs out in the middle of a run, resumes where it stopped as soon as it returns. */
+/** `idioma`: language of the interface and of what the agents write. */
+/** `execucoesSimultaneas`: how many agents run at the same time; `null` = not chosen yet, the hardware-computed recommendation applies. */
 export const concurrencyLimitSchema = z.number().int().min(1).max(16)
 export const appSettingsSchema = z.object({ tema: themeSchema, idioma: languageSchema, voz: voiceModelSchema, notificacoes: z.boolean(), retomarSozinho: z.boolean(), fotosGravatar: z.boolean(), execucoesSimultaneas: concurrencyLimitSchema.nullable() })
 export const updateAppSettingsInputSchema = z.object({ tema: themeSchema.optional(), idioma: languageSchema.optional(), voz: voiceModelSchema.optional(), notificacoes: z.boolean().optional(), retomarSozinho: z.boolean().optional(), fotosGravatar: z.boolean().optional(), execucoesSimultaneas: concurrencyLimitSchema.nullable().optional() }).strict()
@@ -86,12 +86,12 @@ export type VoiceStatus = z.infer<typeof voiceStatusSchema>
 export const agentProfileSchema = z.object({
   id: uuid, provider: agentProviderSchema, label: z.string(), scope: z.string(), color: agentColorSchema,
   configDir: z.string(), executablePath: z.string().nullable(), enabled: z.boolean(), billingMode: z.enum(['subscription','api','credits','unknown']),
-  /** Indício visto na última execução (ex.: `apiKeySource` do Claude); só sugere modalidade na UI, nunca é gravado como `billingMode` sozinho. */
+  /** Hint seen in the last run (e.g. `apiKeySource` from Claude); only suggests a mode in the UI, never saved as `billingMode` on its own. */
   apiKeySourceHint: z.string().nullable().optional(),
-  /** S07/S08: variáveis de ambiente que este perfil declarou para passar ao agente, além da lista fixa do app. Nomes, nunca valores. */
+  /** S07/S08: environment variables this profile declared to pass to the agent, beyond the app's fixed list. Names, never values. */
   envPassthrough: z.array(z.string().trim().min(1).max(100)).max(50).default([])
 })
-/** S16: todo perfil novo exige login próprio; não há mais opção de reaproveitar uma sessão já logada do CLI. */
+/** S16: every new profile requires its own login; there is no longer an option to reuse an already logged-in CLI session. */
 export const createAgentProfileInputSchema = z.object({
   provider: agentProviderSchema, label: z.string().trim().min(1).max(80),
   scope: z.string().trim().min(1).max(80), color: agentColorSchema.optional()
@@ -100,12 +100,12 @@ export const boardColumnSchema = z.object({ id: uuid, projectId: uuid, label: z.
 export const projectSourceSchema = z.object({
   id: uuid, projectId: uuid, name: z.string(), localPath: z.string(), isGitRepository: z.boolean(), currentBranch: z.string().nullable(), sortOrder: z.number().int()
 })
-/** Ícone do projeto: imagem pequena (o app reduz para 96px) guardada como data URL. */
+/** Project icon: small image (the app shrinks it to 96px) stored as a data URL. */
 export const projectIconSchema = z.string().max(300_000).regex(/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/, 'Ícone deve ser uma imagem PNG, JPEG, WebP ou GIF')
 export const projectSchema = z.object({
   id: uuid, name: z.string(), icon: z.string().nullable(), localPath: z.string(), baseBranch: z.string(), remoteProvider: z.string().nullable(),
   allowedProfileIds: z.array(uuid), sources: z.array(projectSourceSchema),
-  /** Tipos de card valendo no projeto: os próprios (`customCardTypes`) ou a lista padrão. */
+  /** Card types in effect in the project: its own (`customCardTypes`) or the default list. */
   cardTypes: z.array(cardTypeDefSchema), customCardTypes: z.boolean(), activity: z.object({ running: z.number().int().nonnegative(), finished: z.number().int().nonnegative() }), createdAt: isoDate, updatedAt: isoDate
 })
 export const projectInspectionSchema = z.object({
@@ -113,7 +113,7 @@ export const projectInspectionSchema = z.object({
 })
 export const agentPurposeSchema = z.enum(['planning', 'execution', 'test'])
 export const permissionModeSchema = z.enum(['plan', 'auto', 'accept_edits', 'manual', 'on_request', 'read_only', 'bypass'])
-/** `ultra`: esforço máximo do Codex com delegação automática de tarefas. */
+/** `ultra`: Codex's maximum effort with automatic task delegation. */
 export const effortSchema = z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 export const agentConfigSchema = z.object({ profileId: uuid, model: z.string().trim().max(120).nullable(), effort: effortSchema.nullable(), mode: permissionModeSchema })
 export const cardAgentsSchema = z.object({ planning: agentConfigSchema.nullable(), execution: agentConfigSchema.nullable(), test: agentConfigSchema.nullable() })
@@ -123,7 +123,7 @@ export const agentOptionsSchema = z.object({ models: z.array(modelOptionSchema),
 
 export type PermissionMode = z.infer<typeof permissionModeSchema>
 export interface PermissionModeInfo { id: PermissionMode; label: string; description: string; purposes: Array<z.infer<typeof agentPurposeSchema>>; needsApprovalUi?: boolean; dangerous?: boolean; recommended?: boolean }
-/** Modos de permissão por provedor (plano 08, seção 6). Solicitações de aprovação aparecem no chat da execução. */
+/** Permission modes per provider (plano 08, section 6). Approval requests appear in the run's chat. */
 export const permissionModes: Record<'claude' | 'codex' | 'gemini', PermissionModeInfo[]> = {
   claude: [
     { id: 'plan', label: 'Plano', description: 'Só lê e planeja; não altera arquivos.', purposes: ['planning'], recommended: true },
@@ -171,7 +171,7 @@ export type AgentUsage = z.infer<typeof agentUsageSchema>
 export const usageHistoryRowSchema = z.object({ period: z.string(), group: z.string(), input: z.number().int().nonnegative(), cached: z.number().int().nonnegative(), output: z.number().int().nonnegative(), billedUsd: z.number(), equivalentUsd: z.number(), unknownUsd: z.number() })
 export type UsageHistoryRow = z.infer<typeof usageHistoryRowSchema>
 
-/** Os 4 documentos do plano + Dúvidas e Mudanças, gerados pelo sistema a partir das perguntas e propostas entre as etapas. */
+/** The 4 plan documents + Doubts and Changes, generated by the system from the questions and proposals between stages. */
 export const questionSchema = z.object({ id: uuid, number: z.number().int(), askerPurpose: agentPurposeSchema, question: z.string(), status: z.enum(['open', 'planner', 'user', 'answered']), answer: z.string().nullable(), answeredBy: z.enum(['planner', 'user']).nullable(), userQuestion: z.string().nullable(), createdAt: isoDate, answeredAt: isoDate.nullable() })
 export const changeSchema = z.object({ id: uuid, number: z.number().int(), proposerPurpose: agentPurposeSchema, title: z.string(), details: z.string(), reason: z.string(), status: z.enum(['pending', 'accepted', 'suggested', 'rejected', 'applied']), userNote: z.string().nullable(), createdAt: isoDate, decidedAt: isoDate.nullable(), sentAt: isoDate.nullable() })
 export const collaborationSchema = z.object({ questions: z.array(questionSchema), changes: z.array(changeSchema) })
@@ -192,7 +192,7 @@ export const cardSchema = z.object({
   id: uuid, projectId: uuid, columnId: uuid, sourceId: uuid.nullable(), type: cardTypeSchema, title: z.string(), description: z.string(),
   priority: cardPrioritySchema, orderKey: z.number(), createdAt: isoDate, updatedAt: isoDate,
   archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema, run: cardRunStateSchema, hasPlan: z.boolean(), planningOpen: z.boolean(), workspace: z.object({ branch: z.string(), baseRef: z.string(), path: z.string(), sharedFrom: z.string().nullable().optional() }).nullable(), pending: z.object({ changes: z.number().int().nonnegative(), questions: z.number().int().nonnegative(), commits: z.number().int().nonnegative(), toSend: z.number().int().nonnegative() }), execProfileId: uuid.nullable(), execModel: z.string().nullable(), agentIds: z.array(uuid), complexity: cardComplexitySchema.nullable(), repoIds: z.array(uuid).nullable(),
-  /** Fluxo escolhido (`light` = fluxo curto, um agente só) e, no SDD, o método. Nulo = ainda não escolhido. */
+  /** Chosen flow (`light` = short flow, a single agent) and, in SDD, the method. Null = not chosen yet. */
   workflow: workflowKindSchema.nullable(), sddMethod: cardSddMethodSchema.nullable()
 })
 export const projectBoardSchema = z.object({ project: projectSchema, columns: z.array(boardColumnSchema), cards: z.array(cardSchema) })
@@ -201,28 +201,28 @@ export const agentProbeSchema = z.object({
   version: z.string().nullable(), executablePath: z.string().nullable(), capabilities: z.array(z.string()), checkedAt: isoDate,
   error: z.string().nullable(), account: z.string().nullable()
 })
-/** `constitution`: chat do projeto (sem card) que escreve a Constituição. */
+/** `constitution`: project chat (no card) that writes the Constitution. */
 export const chatPurposeSchema = z.union([agentPurposeSchema, z.literal('free'), z.literal('constitution')])
 export const chatSchema = z.object({ id: uuid, projectId: uuid, cardId: uuid.nullable(), purpose: chatPurposeSchema, title: z.string().nullable(), busy: z.boolean(), provider: z.enum(['codex', 'claude', 'gemini']), profileId: uuid, providerSessionId: z.string().nullable(), skill: skillRefSchema.nullable(), createdAt: isoDate, updatedAt: isoDate })
-/** Constituição do projeto: princípios que valem para todo card. Opcional; `version` 0 = ainda não existe. */
+/** Project Constitution: principles that apply to every card. Optional; `version` 0 = does not exist yet. */
 export const constitutionSchema = z.object({ projectId: uuid, contentMd: z.string(), version: z.number().int().nonnegative(), updatedAt: isoDate.nullable(), updatedBy: z.enum(['user', 'agent', 'system']).nullable() })
-/** Mudança na Constituição sugerida por um agente fora do chat dela: só vale depois que o usuário aplica. */
+/** Change to the Constitution suggested by an agent outside its chat: only takes effect after the user applies it. */
 export const constitutionProposalSchema = z.object({ id: uuid, projectId: uuid, number: z.number().int().positive(), cardId: uuid.nullable(), title: z.string(), details: z.string(), reason: z.string(), status: z.enum(['pending', 'applied', 'dismissed']), createdAt: isoDate })
-/** Checklist do testador (o que verificar, marcado conforme verifica); vazio até ele montar. */
+/** Tester checklist (what to verify, ticked as they verify); empty until they build it. */
 /**
- * Quem fez a última mudança de um item do checklist (`by`: o usuário clicando ou o agente gravando o checklist) e quando (`at`).
- * `agent`: quando o agente deu o OK ao item; continua guardado mesmo se o usuário desmarcar e marcar de novo, e só some se o agente desmarcar.
+ * Who made the last change to a checklist item (`by`: the user clicking or the agent saving the checklist) and when (`at`).
+ * `agent`: when the agent gave the OK to the item; it stays stored even if the user unticks and ticks again, and only goes away if the agent unticks.
  */
 export const checklistMarkSchema = z.object({ by: z.enum(['user', 'agent']), at: isoDate, agent: isoDate.optional() })
 export const cardChecklistSchema = z.object({ cardId: uuid, contentMd: z.string(), updatedAt: isoDate.nullable(), marks: z.record(z.string(), checklistMarkSchema) })
-/** Chave de um item do checklist (o texto, sem diferença de espaços e de maiúsculas): liga o item à marca de quem o alterou. */
+/** Key of a checklist item (the text, ignoring differences in spacing and case): links the item to the mark of who changed it. */
 export const checklistKey = (text: string): string => text.replace(/\s+/g, ' ').trim().toLowerCase()
 export const constitutionStateSchema = z.object({ constitution: constitutionSchema, proposals: z.array(constitutionProposalSchema), importable: z.string().nullable() })
 export const chatMessageSchema = z.object({ id: uuid, chatId: uuid, role: z.enum(['user', 'assistant', 'system', 'tool']), body: z.string(), status: z.enum(['streaming', 'complete', 'failed']), createdAt: isoDate, providerMessageId: z.string().nullable() })
 export const runSchema = z.object({ id: uuid, cardId: uuid.nullable(), chatId: uuid, profileId: uuid, status: z.enum(['queued', 'running', 'completed', 'failed', 'interrupted', 'cancelled']), startedAt: isoDate, endedAt: isoDate.nullable(), exitReason: z.string().nullable(), worktreeId: uuid.nullable(), providerTurnId: z.string().nullable() })
-/** Tokens gastos em uma etapa do card: `input` é o que o agente leu de novo, `cached` o que veio do cache e `output` o que ele escreveu. */
+/** Tokens spent in a card stage: `input` is what the agent read anew, `cached` what came from cache and `output` what it wrote. */
 export const tokenCountSchema = z.object({ input: z.number().int().nonnegative(), cached: z.number().int().nonnegative(), output: z.number().int().nonnegative(), runs: z.number().int().nonnegative() })
-/** Uso de um agente em uma etapa do card. */
+/** Usage of an agent in a card stage. */
 export const cardAgentUsageSchema = tokenCountSchema.extend({ purpose: z.enum(['planning', 'execution', 'test']), profileId: uuid, label: z.string(), provider: z.enum(['codex', 'claude', 'gemini']) })
 export const cardUsageSchema = z.object({ planning: tokenCountSchema, execution: tokenCountSchema, test: tokenCountSchema, agents: z.array(cardAgentUsageSchema).default([]) })
 export type TokenCount = z.output<typeof tokenCountSchema>
@@ -235,10 +235,10 @@ export const gitSnapshotSchema = z.object({ worktreeId: uuid, status: z.string()
 export const testRunSchema = z.object({ id: uuid, cardId: uuid, command: z.string(), status: z.enum(['running', 'passed', 'failed']), exitCode: z.number().int().nullable(), summary: z.string(), startedAt: isoDate, endedAt: isoDate.nullable() })
 export const reviewSchema = z.object({ id: uuid, cardId: uuid, provider: z.enum(['github', 'gitlab', 'local']), remoteUrl: z.string().nullable(), remoteId: z.string().nullable(), state: z.enum(['open', 'approved', 'merged', 'closed']), targetBranch: z.string(), sourceBranch: z.string(), updatedAt: isoDate })
 
-/** Métricas de uma execução, só com o que o provedor informa: custo `reported` vem do próprio agente; sem isso fica `unavailable` (nunca estimado em silêncio). */
+/** Metrics of a run, only with what the provider reports: `reported` cost comes from the agent itself; without that it is `unavailable` (never silently estimated). */
 export const runMetricSchema = z.object({ runId: uuid, purpose: z.string().nullable(), provider: z.string().nullable(), model: z.string().nullable(), modelEffective: z.string().nullable(), effort: z.string().nullable(), status: z.string(), startedAt: isoDate, endedAt: isoDate.nullable(), durationMs: z.number().int().nullable(), input: z.number().int(), cached: z.number().int(), output: z.number().int(), costUsd: z.number().nullable(), costSource: z.enum(['reported', 'unavailable']), promptChars: z.number().int().nullable(), usedPlaywrightCli: z.boolean() })
 export type RunMetric = z.output<typeof runMetricSchema>
-/** Playwright CLI (@playwright/cli, comando playwright-cli): ferramenta do próprio app, em pasta dele, com várias versões e uma escolhida por projeto. */
+/** Playwright CLI (@playwright/cli, command playwright-cli): the app's own tool, in its own folder, with several versions and one chosen per project. */
 export const playwrightStatusSchema = z.object({
   node: z.object({ system: z.string().nullable(), managed: z.string().nullable() }),
   enabled: z.boolean(), selected: z.string().nullable(),
@@ -257,12 +257,12 @@ export const toolKeys = ['claude', 'codex', 'gemini', 'specify', 'openspec', 'pl
 export const toolVersionsSchema = z.object({ checkedAt: z.string().nullable(), versions: z.object({ claude: z.string().nullable(), codex: z.string().nullable(), gemini: z.string().nullable(), specify: z.string().nullable(), openspec: z.string().nullable(), playwright: z.string().nullable() }), error: z.string().nullable() })
 export type ToolVersions = z.output<typeof toolVersionsSchema>
 
-/** Primeira versão `x.y.z[-pré]` de um texto como `v1.2.3`, `2.0.14 (Claude Code)` ou `codex-cli 0.50.0`. */
+/** First `x.y.z[-pre]` version in a text like `v1.2.3`, `2.0.14 (Claude Code)` or `codex-cli 0.50.0`. */
 const parseVersion = (text: string | null): { core: [number, number, number]; pre: string | null } | null => {
   const found = text ? /(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(text) : null
   return found ? { core: [Number(found[1]), Number(found[2]), Number(found[3])], pre: found[4] ?? null } : null
 }
-/** A versão instalada é mais antiga que a última publicada? Pré-lançamento mais novo que a estável não é "desatualizado". Texto que não é versão = não avisa. */
+/** Is the installed version older than the latest published? A prerelease newer than the stable is not "outdated". Text that is not a version = no warning. */
 export function isOutdated(installed: string | null, latest: string | null): boolean {
   const have = parseVersion(installed), want = parseVersion(latest)
   if (!have || !want) return false
@@ -294,14 +294,14 @@ export const createCardInputSchema = z.object({
 export const updateCardInputSchema = createCardInputSchema.omit({ projectId: true, columnId: true }).extend({ cardId: uuid, title: z.string().trim().min(1).max(240) }).strict()
 export const moveCardInputSchema = z.object({ cardId: uuid, columnId: uuid, beforeCardId: uuid.nullable().default(null), skipGate: z.boolean().default(false) }).strict()
 
-/** Git: regra de commit do agente (padrão do projeto + exceções por branch; a primeira que bater vence). */
+/** Git: agent commit rule (project default + per-branch exceptions; the first that matches wins). */
 export const gitRuleSchema = z.enum(['auto', 'ask', 'never'])
 export const gitPolicySchema = z.object({ def: gitRuleSchema, rules: z.array(z.object({ pattern: z.string().trim().max(200), rule: gitRuleSchema }).strict()).max(50) }).strict()
 export const defaultGitPolicy: z.infer<typeof gitPolicySchema> = { def: 'ask', rules: [{ pattern: 'main', rule: 'never' }, { pattern: 'develop', rule: 'never' }, { pattern: 'release/*', rule: 'never' }] }
 export const gitResolvedRuleSchema = z.object({ rule: gitRuleSchema, why: z.string() })
 export const gitRepoSchema = z.object({ sourceId: uuid, name: z.string(), path: z.string(), head: z.string().nullable(), hasRemote: z.boolean() })
 export const gitRefSchema = z.object({ name: z.string(), kind: z.enum(['head', 'local', 'remote', 'tag']) })
-/** Linha do grafo: um commit, ou (`wip` preenchido) as alterações ainda sem commit da pasta principal ou da worktree de um card. */
+/** Graph row: a commit, or (`wip` filled in) the changes not yet committed in the main folder or in a card's worktree. */
 export const gitRowSchema = z.object({
   hash: z.string(), short: z.string(), parents: z.array(z.string()), lane: z.number().int().nonnegative(), author: z.string(), email: z.string(), date: isoDate.nullable(), subject: z.string(),
   refs: z.array(gitRefSchema), cardId: uuid.nullable(), agentProfileId: uuid.nullable(), wip: z.object({ modified: z.number().int(), added: z.number().int(), deleted: z.number().int(), staged: z.number().int(), branch: z.string() }).nullable(), stash: z.object({ ref: z.string(), commit: z.string() }).optional()
@@ -339,18 +339,18 @@ export const gitCardRepoSchema = z.object({
   sourceId: uuid, name: z.string(), repoPath: z.string(), worktreePath: z.string(), ahead: z.number().int().nonnegative(), behind: z.number().int().nonnegative(), published: z.boolean(), hasRemote: z.boolean(),
   commits: z.array(z.object({ hash: z.string(), short: z.string(), subject: z.string(), author: z.string(), date: isoDate, agentProfileId: uuid.nullable() })), files: z.array(gitChangeSchema), request: gitRequestSchema.nullable(),
   state: z.enum(['active', 'failed', 'missing']), error: z.string().nullable(), prUrl: z.string().nullable(),
-  /** Branch de origem deste repositório (cada um tem a sua; a origem pode ser trocada no card). */
+  /** Origin branch of this repository (each has its own; the origin can be changed on the card). */
   baseRef: z.string()
 })
 export const gitCardSchema = z.object({ branch: z.string().nullable(), baseBranch: z.string().nullable(), rule: gitResolvedRuleSchema, repos: z.array(gitCardRepoSchema), delivery: z.object({ complete: z.boolean(), pending: z.array(z.string()) }) })
 const gitTarget = { sourceId: uuid, cardId: uuid.nullable() }
-/** Pedido de aprovação humana (S02): `kind` identifica o tipo (workflow-choice, git-commit, agent-move, cleanup, ...); `payload` é específico de cada tipo. */
+/** Human approval request (S02): `kind` identifies the type (workflow-choice, git-commit, agent-move, cleanup, ...); `payload` is specific to each type. */
 export const specKitStateSchema = z.object({ active: z.boolean(), enabled: z.boolean(), reason: z.string().nullable(), permission: z.enum(['manual', 'free']).nullable(), permissionRequestId: uuid.nullable(), moveRequestId: uuid.nullable(), startRequestId: uuid.nullable(), provider: z.enum(['codex', 'claude', 'gemini']).nullable(), texts: z.object({ manual: z.string(), free: z.string() }).nullable(), artifacts: z.object({ featureDir: z.string(), spec: z.string().nullable(), plan: z.string().nullable(), tasks: z.string().nullable(), ready: z.boolean() }).nullable() })
 export type SpecKitState = z.output<typeof specKitStateSchema>
 export const approvalSchema = z.object({ id: uuid, kind: z.string(), subjectRef: z.string(), opHash: z.string(), payload: z.record(z.string(), z.unknown()), requestedActor: z.enum(['agent','system','user']), runId: uuid.nullable(), cardId: uuid.nullable(), projectId: uuid.nullable(), status: z.enum(['requested','approved','denied','expired']), decidedBy: z.literal('user').nullable(), decidedAt: isoDate.nullable(), note: z.string().nullable(), requestedAt: isoDate, expiresAt: isoDate, consumedAt: isoDate.nullable() })
 export type Approval = z.output<typeof approvalSchema>
 
-/** G10 — SDD file-first: onde está (sem conteúdo) e o que foi lido da Constitution por lá. */
+/** G10 — file-first SDD: where it is (without content) and what was read from the Constitution there. */
 export const sddLocationSchema = z.object({ repo: z.string(), rootAbs: z.string(), ref: z.string(), via: z.enum(['worktree', 'ref']), sourceId: uuid, method: z.enum(['native', 'speckit']), worktreeBranch: z.string().nullable() })
 export const constitutionViewSchema = z.object({ path: z.string(), content: z.string().nullable(), blobSha: z.string().nullable(), baseBlobSha: z.string().nullable(), headBlobSha: z.string().nullable(), state: z.enum(['in-sync', 'ahead', 'behind', 'diverged', 'missing']), method: z.enum(['native', 'speckit']), via: z.enum(['worktree', 'ref']) })
 const migrationCandidateSchema = z.object({ content: z.string(), sha256: z.string() }).nullable()
@@ -368,10 +368,10 @@ const dbCellSchema = z.object({ t: z.string().nullable(), big: z.literal(true).o
 export type DbConnection = z.output<typeof dbConnectionSchema>
 export type SddLocation = z.output<typeof sddLocationSchema>
 export type ConstitutionView = z.output<typeof constitutionViewSchema>
-/** Símbolo do índice de código para o editor: `path` absoluto, `relative` à pasta indexada. */
+/** Code index symbol for the editor: absolute `path`, `relative` to the indexed folder. */
 const codeSymbolSchema = z.object({ name: z.string(), qname: z.string(), kind: z.string(), path: z.string(), relative: z.string(), line: z.number().int(), endLine: z.number().int(), signature: z.string() })
 export type CodeSymbol = z.output<typeof codeSymbolSchema>
-/** Estado do índice de código num projeto: ligado ou não e, por pasta, arquivos, símbolos e a última indexação (ms desde 1970). */
+/** State of the code index in a project: on or off and, per folder, files, symbols and the last indexing (ms since 1970). */
 const codeIndexStatusSchema = z.object({ enabled: z.boolean(), roots: z.array(z.object({ root: z.string(), files: z.number().int(), symbols: z.number().int(), expected: z.number().int(), indexedAt: z.number().nullable(), ms: z.number().nullable() })) })
 export type CodeIndexStatus = z.output<typeof codeIndexStatusSchema>
 
@@ -453,11 +453,11 @@ export const ipcContracts = {
   , 'projects:branches': { input: z.object({ localPath: z.string().trim().min(1).max(2048) }).strict(), output: z.array(z.string()) }
   , 'projects:choose-directory': { input: z.object({ projectId: uuid }).strict().optional(), output: z.string().nullable() }
   , 'projects:set-profiles': { input: setProjectProfilesInputSchema, output: projectSchema }
-  /** `types` nulo: o projeto volta a usar a lista padrão. */
+  /** `types` null: the project goes back to using the default list. */
   , 'projects:set-card-types': { input: z.object({ projectId: uuid, types: cardTypeListSchema.nullable() }).strict(), output: projectSchema }
   , 'card-types:get-default': { input: z.undefined(), output: z.array(cardTypeDefSchema) }
   , 'card-types:set-default': { input: z.object({ types: cardTypeListSchema }).strict(), output: z.array(cardTypeDefSchema) }
-  /** Quantos cards (inclusive arquivados) usam cada tipo: no projeto, ou nos projetos que seguem a lista padrão. */
+  /** How many cards (including archived) use each type: in the project, or in the projects that follow the default list. */
   , 'card-types:usage': { input: z.object({ projectId: uuid.optional() }).strict(), output: z.record(z.string(), z.number().int().nonnegative()) }
   , 'board:get': { input: projectIdInput, output: projectBoardSchema }
   , 'cards:create': { input: createCardInputSchema, output: cardSchema }

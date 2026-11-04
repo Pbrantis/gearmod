@@ -5,12 +5,12 @@ import { tr } from './i18n'
 const pollMs = 120_000
 const seenKey = (projectId: string): string => `gearmod.prSeen.${projectId}`
 const loadSeen = (projectId: string): Record<string, string> | null => { try { const raw = localStorage.getItem(seenKey(projectId)); return raw ? JSON.parse(raw) as Record<string, string> : null } catch { return null } }
-const saveSeen = (projectId: string, seen: Record<string, string>): void => { try { localStorage.setItem(seenKey(projectId), JSON.stringify(seen)) } catch { /* só vale nesta sessão */ } }
+const saveSeen = (projectId: string, seen: Record<string, string>): void => { try { localStorage.setItem(seenKey(projectId), JSON.stringify(seen)) } catch { /* only valid for this session */ } }
 const keyOf = (sourceId: string, number: number): string => `${sourceId}#${number}`
 
 export interface PullRequestsState {
   lists: Record<string, PullRequestList>
-  /** PRs de outras pessoas com novidade que você ainda não abriu (PR novo, atualizado ou com revisão pedida a você). */
+  /** PRs from other people with news you have not opened yet (new PR, updated, or with a review requested from you). */
   unread(sourceId: string): PullRequestSummary[]
   total: number
   isUnread(sourceId: string, pr: PullRequestSummary): boolean
@@ -19,8 +19,8 @@ export interface PullRequestsState {
 }
 
 /**
- * Lista os PRs abertos de cada repositório do projeto (pelo gh) a cada 2 minutos e ao voltar para a janela, e diz quais têm novidade.
- * Na primeira vez que o projeto é lido tudo conta como visto (senão todo PR antigo acenderia a bolinha), menos o que pede a sua revisão.
+ * Lists the open PRs of each repository in the project (via gh) every 2 minutes and when returning to the window, and says which have news.
+ * The first time the project is read everything counts as seen (otherwise every old PR would light the dot), except what asks for your review.
  */
 export function usePullRequests(projectId: string): PullRequestsState {
   const [lists, setLists] = useState<Record<string, PullRequestList>>({})

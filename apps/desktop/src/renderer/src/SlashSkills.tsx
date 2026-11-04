@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import type { AgentProfile, SkillEntry, SkillRef } from '@gearmod/contracts'
 import { useT } from './i18n'
 
-/** Skills globais e do projeto, as do projeto primeiro (mesma ordem do menu de skills do card). */
+/** Global and project skills, project ones first (same order as the card's skills menu). */
 export function useProjectSkills(projectId: string): SkillEntry[] {
   const [skills, setSkills] = useState<SkillEntry[]>([])
   useEffect(() => {
@@ -13,8 +13,8 @@ export function useProjectSkills(projectId: string): SkillEntry[] {
 }
 
 /**
- * Menu do "/" no campo do chat: digitar `/` lista as skills do agente e escolher uma escreve `/nome ` no texto.
- * Usado por todos os chats (card, livre e Constituição), para o comportamento ser o mesmo em todos.
+ * "/" menu in the chat field: typing `/` lists the agent's skills and choosing one writes `/name ` in the text.
+ * Used by all chats (card, free and Constitution), so the behavior is the same in all of them.
  */
 export function useSlashSkills({ available, provider, input, setInput, area, choose }: {
   available: SkillEntry[]

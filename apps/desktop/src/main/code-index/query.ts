@@ -7,8 +7,8 @@ import { words, type Db } from './store'
 import { expandTerms } from './terms'
 
 /**
- * Consultas sobre o índice de uma pasta. As respostas são texto para o agente (em inglês, como as demais ferramentas
- * MCP): curtas, com caminho:linha, e com código lido do disco na hora, nunca uma cópia velha.
+ * Queries over a folder's index. Answers are text for the agent (in English, like the other MCP
+ * tools): short, with path:line, and with code read from disk on the spot, never an old copy.
  */
 export interface SymbolRow { id: number; sha: string; idx: number; name: string; qname: string; kind: string; parent: number; line: number; end_line: number; signature: string; doc: string | null; exported: number; owner: string | null; path: string }
 interface EdgeRow { src: number; dst: number; kind: string; line: number; n: number; conf: number; lines: string | null }
@@ -47,7 +47,7 @@ export class Queries {
     }
   }
 
-  // ---- básicos ----------------------------------------------------------------------------------------------------
+  // ---- basics ----------------------------------------------------------------------------------------------------
 
   private sym(id: number): SymbolRow | null {
     if (!this.symCache.has(id)) this.symCache.set(id, (this.st.sym.get(this.root, id) as SymbolRow | undefined) ?? null)
@@ -61,7 +61,7 @@ export class Queries {
     return lines
   }
   private allPaths(): string[] { return this.st.paths.all(this.root) as string[] }
-  /** Caminho do índice a partir de um caminho, sufixo ou nome de arquivo (com ou sem extensão). */
+  /** Index path from a path, suffix or file name (with or without extension). */
   resolvePath(file: string | undefined): string | null {
     if (!file) return null
     const wanted = file.replace(/\\/g, '/').replace(/^\.\//, '')
@@ -72,7 +72,7 @@ export class Queries {
   }
   private rank(list: SymbolRow[]): SymbolRow[] { return list.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.exported - a.exported || testFirst(a.path) - testFirst(b.path) || a.path.length - b.path.length) }
   private fts(match: string, limit: number): Array<{ id: number; score: number }> {
-    // a busca textual é global (os blobs são compartilhados entre pastas): filtra pelos símbolos desta
+    // the text search is global (blobs are shared across folders): filter by this folder's symbols
     this.rootIds ??= new Set(this.st.rootIds.all(this.root) as number[])
     const ids = this.rootIds
     try { return (this.st.fts.all(match, Math.max(limit * 8, 400)) as Array<{ id: number; score: number }>).filter((row) => ids.has(row.id)).slice(0, limit) } catch { return [] }
@@ -128,7 +128,7 @@ export class Queries {
   private snippet(symbol: SymbolRow, maxLines: number): string {
     const lines = this.lines(symbol.path)
     let start = symbol.line
-    // comentário de documentação logo acima
+    // documentation comment right above
     while (start > 1 && /^\s*(\/\/|\/\*|\*|#|"""|@|\[)/.test(lines[start - 2] ?? '') && symbol.line - start < 12) start--
     const end = Math.min(symbol.end_line, start + maxLines - 1)
     let out = ''
@@ -139,7 +139,7 @@ export class Queries {
 
   // ---- ferramentas ------------------------------------------------------------------------------------------------
 
-  /** Símbolos por nome ou palavra (também em português). Usado pela ferramenta e pelo "ir para símbolo" do editor. */
+  /** Symbols by name or word (also in Portuguese). Used by the tool and by the editor's "go to symbol". */
   searchSymbols(query: string, { kind, limit = 10 }: { kind?: string; limit?: number } = {}): SymbolHit[] {
     const seen = new Map<number, { s: SymbolRow; score: number }>()
     const add = (symbol: SymbolRow | null, score: number): void => {
@@ -202,7 +202,7 @@ export class Queries {
     return parts.join('\n\n')
   }
 
-  /** Quem chama (in) ou o que é chamado (out), até N níveis. */
+  /** Who calls (in) or what is called (out), up to N levels. */
   walk(symbol: string, { file, depth = 1, limit = 30, direction }: { file?: string; depth?: number; limit?: number; direction: 'in' | 'out' }): string {
     const defs = this.find(symbol, { file })
     if (!defs.length) return `Symbol "${symbol}" not found.\n${this.search(symbol, { limit: 5 })}`
@@ -234,7 +234,7 @@ export class Queries {
     if (!def) return `Symbol "${symbol}" not found.`
     const start = this.withMembers(def)
     const seen = new Map<number, number>(start.map((id) => [id, 0]))
-    const callLines = new Map<number, number[]>() // chamador direto → linhas onde chama
+    const callLines = new Map<number, number[]>() // direct caller → lines where it calls
     let frontier = start
     for (let level = 1; level <= Math.min(depth, 5) && frontier.length; level++) {
       const next: number[] = []
@@ -253,10 +253,10 @@ export class Queries {
     let out = `Impact of changing ${def.kind} ${def.qname} (${this.where(def)}): ${seen.size} symbols in ${byFile.size} files, up to ${depth} levels.${defs.length > 1 ? ` (${defs.length} definitions share this name; used the first — pass arquivo to pick)` : ''}\n`
     out += 'Level 1 (·) uses it directly; the line of each call comes after the dash. Level 2 (··) uses something from level 1.\n'
     for (const [path, list] of files.filter(([path]) => !isTest(path)).slice(0, 25)) out += `\n${path}\n${list.sort((a, b) => a.d - b.d || a.o.line - b.o.line).slice(0, 30).map(({ o, d }) => `  ${'·'.repeat(d)} ${o.kind === 'file' ? '(file level)' : o.qname}:${o.line}${calls(o)}`).join('\n')}${list.length > 30 ? `\n  … +${list.length - 30}` : ''}`
-    // testes que chamam direto mudam junto numa renomeação
+    // tests that call directly change together in a rename
     const direct = files.filter(([path]) => isTest(path)).flatMap(([, list]) => list.filter(({ o }) => callLines.has(o.id)).map(({ o }) => `  ${o.path}:${[...new Set(callLines.get(o.id))].join(', ')}`))
     if (direct.length) out += `\n\nTests that use it directly (change with it):\n${direct.join('\n')}`
-    // nome citado fora das ligações: strings (mock.patch, rotas, config), comentários, imports
+    // name mentioned outside the links: strings (mock.patch, routes, config), comments, imports
     const known = new Set([...callLines].flatMap(([id, lines]) => { const found = this.sym(id); return found ? lines.map((line) => `${found.path}:${line}`) : [] }))
     for (const item of defs) known.add(`${item.path}:${item.line}`)
     const mentions = this.textMentions(def.name, known)
@@ -265,7 +265,7 @@ export class Queries {
     return `${out}\n\nTests to run (${tests.length}): ${tests.join(', ') || 'none found'}`
   }
 
-  /** Linhas (arquivo:linha) que citam o nome como palavra, menos as já conhecidas. */
+  /** Lines (file:line) that cite the name as a word, minus the already known ones. */
   private textMentions(name: string, known: Set<string>): string[] {
     if (name.length < 3) return []
     const pattern = new RegExp(`(^|[^\\w$])${name.replace(/[$]/g, '\\$')}(?![\\w$])`)
@@ -279,7 +279,7 @@ export class Queries {
     return out
   }
 
-  /** Arquivos que a branch atual mudou desde o ponto em que saiu de uma branch principal (origin/HEAD, main, master, dev ou develop). */
+  /** Files the current branch changed since the point where it left a main branch (origin/HEAD, main, master, dev or develop). */
   private committedSinceBase(): string[] {
     const git = (...args: string[]): string => execFileSync('git', ['-C', this.root, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }).trim()
     let head = ''
@@ -294,11 +294,11 @@ export class Queries {
     return []
   }
 
-  /** Testes que dependem dos arquivos alterados (padrão: o que mudou no Git desde o HEAD). */
+  /** Tests that depend on the changed files (default: what changed in Git since HEAD). */
   affected({ files }: { files?: string[] } = {}): string {
     let changed = files ?? []
     if (!changed.length) {
-      // Alterações não commitadas (status) e as já commitadas na branch desde que ela saiu da principal: depois de um commit o status fica vazio, mas os testes continuam valendo.
+      // Uncommitted changes (status) and those already committed on the branch since it left the main one: after a commit the status is empty, but the tests still apply.
       try { changed = execFileSync('git', ['-C', this.root, 'status', '--porcelain', '-uall'], { encoding: 'utf8', windowsHide: true }).split('\n').filter(Boolean).map((line) => line.slice(3).replace(/^.* -> /, '').replace(/^"|"$/g, '')) } catch { changed = [] }
       changed = [...new Set([...changed, ...this.committedSinceBase()])]
     }
@@ -315,7 +315,7 @@ export class Queries {
     return `Changed files (${changed.length}): ${changed.slice(0, 15).join(', ')}${changed.length > 15 ? ' …' : ''}\nAffected tests (${tests.length}):\n${tests.map(([path, level]) => `  ${path}${level === 0 ? ' (changed)' : level > 1 ? ` (${level} levels away)` : ''}`).join('\n') || '  none'}`
   }
 
-  /** Visão geral: arquivos centrais (PageRank no grafo de arquivos) e seus símbolos principais, até `tokens`. */
+  /** Overview: central files (PageRank on the file graph) and their main symbols, up to `tokens`. */
   map({ tokens = 1500, path: prefix = '' }: { tokens?: number; path?: string } = {}): string {
     const keep = (path: string): boolean => path.startsWith(prefix) && !isGenerated(path) && !isTest(path)
     const edges = (this.db.prepare('select src, dst, weight from file_edges where root = ?').all(this.root) as Array<{ src: string; dst: string; weight: number }>).filter((edge) => keep(edge.src) && keep(edge.dst))
@@ -347,7 +347,7 @@ export class Queries {
     return text || 'No data for the map yet.'
   }
 
-  /** Estrutura de um arquivo para o editor: símbolos com nível de aninhamento. */
+  /** Structure of a file for the editor: symbols with nesting level. */
   outline(file: string): Array<SymbolHit & { depth: number }> {
     const path = this.resolvePath(file)
     if (!path) return []
@@ -359,7 +359,7 @@ export class Queries {
     })
   }
 
-  /** Para o editor: definições de um nome (desempata pelo arquivo de onde se pergunta) e onde ele é usado. */
+  /** For the editor: definitions of a name (ties broken by the file being asked from) and where it is used. */
   definitions(name: string, fromFile?: string): SymbolHit[] {
     const list = this.find(name, {})
     const from = fromFile ? this.resolvePath(fromFile) : null
@@ -377,9 +377,9 @@ export class Queries {
   // ---- explorar ---------------------------------------------------------------------------------------------------
 
   /**
-   * Ferramenta principal: acha os símbolos da pergunta (nomes citados, arquivos, busca textual com termos em português),
-   * sobe a nota dos que se ligam entre si e devolve o fluxo de chamadas, quem depende e o código atual. O modo resumo
-   * troca o código pelos locais exatos; mediu-se mais caro (o agente lia os arquivos depois), por isso não é o padrão.
+   * Main tool: finds the question's symbols (mentioned names, files, text search with Portuguese terms),
+   * raises the score of those that link to each other and returns the call flow, who depends on it and the current code. Summary mode
+   * swaps the code for the exact locations; it measured more expensive (the agent read the files afterwards), so it is not the default.
    */
   explore(query: string, { maxFiles = 12, budget = 26000, detail = 'full' }: { maxFiles?: number; budget?: number; detail?: 'full' | 'summary' } = {}): string {
     const wantsTests = /\b(test|teste|spec)/i.test(query)
@@ -402,7 +402,7 @@ export class Queries {
         if (path) for (const item of (this.st.inFile.all(this.root, path) as SymbolRow[]).filter((symbol) => symbol.parent === 0).slice(0, 12)) add(item, item.exported ? 5 : 3)
         continue
       }
-      // identificador de código (camelCase, snake_case, PascalCase) pesa muito; palavra comum pesa pouco
+      // code identifier (camelCase, snake_case, PascalCase) weighs a lot; a common word weighs little
       const identifier = /[A-Z_]|\d/.test(term.slice(1)) || /^[A-Z]/.test(term) || term.includes('.')
       const hits = identifier ? this.find(term) : this.st.byName.all(this.root, term) as SymbolRow[]
       if (!hits.length) continue
@@ -413,7 +413,7 @@ export class Queries {
     if (textTerms.length) this.fts(textTerms.map((term) => `"${term.replace(/"/g, '')}"*`).join(' OR '), 60).forEach((row, i) => add(this.sym(row.id), (exact.size ? 4 : 7) * (1 - i / 60)))
     if (!score.size) return `Nothing found for "${query}". Try names of functions, classes or files.`
 
-    // ligações entre os candidatos sobem a nota
+    // links between the candidates raise the score
     const top40 = [...score].sort((a, b) => b[1] - a[1]).slice(0, 40).map(([id]) => id)
     const candidates = new Set(top40)
     for (const id of top40) {
@@ -422,7 +422,7 @@ export class Queries {
     }
     const ranked = [...score].sort((a, b) => b[1] - a[1]).map(([id]) => id)
 
-    // fluxo: caminhos de chamada entre os símbolos citados (sem citação, entre os mais fortes)
+    // flow: call paths between the mentioned symbols (with no mention, between the strongest)
     const strong = exact.size >= 2 ? ranked.filter((id) => exact.has(id)).slice(0, 10) : ranked.slice(0, 8)
     const strongSet = new Set(strong)
     const flows: number[][] = []
@@ -447,7 +447,7 @@ export class Queries {
     const named = (flow: number[]): number => flow.filter((id) => strongSet.has(id)).length
     const kept: number[][] = []
     for (const flow of flows.sort((a, b) => named(b) - named(a) || a.length - b.length)) if (!kept.some((other) => flow.every((id) => other.includes(id)))) kept.push(flow)
-    // junta caminhos encadeados (a→b e b→c viram a→b→c)
+    // join chained paths (a→b and b→c become a→b→c)
     for (let changed = true; changed;) {
       changed = false
       outer: for (const a of kept) for (const b of kept) {
@@ -457,7 +457,7 @@ export class Queries {
     const inFlow = new Set(kept.flat())
     for (const id of inFlow) if (!score.has(id)) score.set(id, 4)
 
-    // seleção por arquivo; corta o que ficou muito abaixo do melhor
+    // selection by file; cut what ended up far below the best
     const best = score.get(ranked[0]!) ?? 0
     const floor = Math.max(2.5, best * (exact.size ? 0.22 : 0.35))
     const picked: SymbolRow[] = []
@@ -479,7 +479,7 @@ export class Queries {
     if (kept.length) out += `**Flow (call path between the symbols found)**\n\n${kept.slice(0, 4).map((flow) => flow.map((id, i) => { const item = this.sym(id)!; return `${i + 1}. ${item.qname} (${this.where(item)})` }).join('\n   ↓\n')).join('\n\n')}\n\n`
     out += `**Explore: ${query}**\n\n${picked.length} symbols in ${fileOrder.length} files.\n\n`
 
-    // quem depende (conferir antes de editar)
+    // who depends on it (check before editing)
     const callable = ['function', 'method', 'class', 'interface', 'struct', 'trait']
     const blast = [...picked.filter((item) => callable.includes(item.kind) && exact.has(item.id)), ...picked.filter((item) => ['function', 'method', 'class'].includes(item.kind) && !exact.has(item.id))].slice(0, 6)
     if (blast.length) {
@@ -495,7 +495,7 @@ export class Queries {
       out += '\n'
     }
 
-    // relações entre o que foi escolhido
+    // relations among what was chosen
     const relations: Record<string, string[]> = {}
     for (const item of picked) for (const edge of this.outgoing(item.id)) {
       const target = this.sym(edge.dst)
@@ -506,7 +506,7 @@ export class Queries {
 
     if (detail === 'summary') return out + this.exploreOutline(picked, fileOrder, score, wantsTests, inFlow)
 
-    // código atual do disco, agrupado por arquivo
+    // current code from disk, grouped by file
     out += '**Code** (current content on disk, with line numbers — treat it as already read; no need to open these excerpts again)\n\n'
     let used = out.length, shown = 0, testFiles = 0
     const skipped: string[] = []
@@ -547,7 +547,7 @@ export class Queries {
       if (isTest(path) && !wantsTests) continue
       out += `\`${path}\`\n${picked.filter((item) => item.path === path).sort((a, b) => a.line - b.line).map((item) => `  ${item.line}-${item.end_line} ${item.kind} ${item.qname}${item.kind === 'const' ? '' : ` — ${item.signature.slice(0, 120)}`}${item.doc ? `\n      ${item.doc.slice(0, 110)}` : ''}`).join('\n')}\n`
     }
-    // trechos inteiros: os do fluxo e os de maior nota, curtos e que não sejam classes inteiras
+    // whole snippets: those of the flow and the highest scored, short ones and not whole classes
     const snippets = picked.filter((item) => !CLASSY.has(item.kind) && item.end_line - item.line < 45 && (!isTest(item.path) || wantsTests))
       .sort((a, b) => Number(inFlow.has(b.id)) - Number(inFlow.has(a.id)) || (score.get(b.id) ?? 0) - (score.get(a.id) ?? 0)).slice(0, 4)
       .sort((a, b) => a.path.localeCompare(b.path) || a.line - b.line)

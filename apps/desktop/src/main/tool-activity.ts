@@ -4,14 +4,14 @@ const short = (text: string, max: number): string => { const flat = text.replace
 
 export interface ToolActivity { title: string; detail: string }
 
-/** Resumo de uma ferramenta usada pelo agente (para a linha cinza do chat): título curto + detalhe que aparece ao expandir. */
+/** Summary of a tool used by the agent (for the gray line in the chat): short title + detail shown when expanded. */
 function describe(name: string, input: Json): ToolActivity {
   const target = [input.file_path, input.path, input.pattern, input.command, input.url, input.query].find((value) => typeof value === 'string') as string | undefined
   const label = name.replace(/^mcp__gearmod__/, '')
   return { title: short(target ? `${label} ${target}` : label, 90), detail: short(JSON.stringify(input, null, 2), 800) }
 }
 
-/** Arquivos que o agente alterou (ferramentas de escrita do Claude): usados para perceber trabalho feito na worktree de outro card. */
+/** Files the agent changed (Claude's write tools): used to notice work done in another card's worktree. */
 export function toolEditedFiles(type: string, payload: Json): string[] {
   if (type === 'gemini/tool_use') { const input = asObject(payload.parameters), file = input.file_path ?? input.path; return ['write_file', 'replace', 'edit'].includes(String(payload.tool_name)) && typeof file === 'string' ? [file] : [] }
   if (type !== 'claude/assistant') return []
@@ -21,7 +21,7 @@ export function toolEditedFiles(type: string, payload: Json): string[] {
     .map((block) => asObject(block.input).file_path ?? asObject(block.input).notebook_path).filter((value): value is string => typeof value === 'string')
 }
 
-/** Extrai as ferramentas usadas de um evento do Claude (`tool_use` em mensagens do assistente) ou do Codex (itens iniciados). */
+/** Extracts the tools used from a Claude event (`tool_use` in assistant messages) or a Codex event (started items). */
 export function toolActivities(type: string, payload: Json): ToolActivity[] {
   if (type === 'gemini/tool_use' && typeof payload.tool_name === 'string') return [describe(payload.tool_name, asObject(payload.parameters))]
   if (type === 'claude/assistant') {

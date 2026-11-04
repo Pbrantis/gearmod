@@ -8,7 +8,7 @@ import { useT } from './i18n'
 
 const itemLine = /^(\s*)[-*+]\s+\[( |x|X)\]\s+(.*)$/, headingLine = /^#{1,6}\s+(.*)$/
 
-/** Checklist do teste no card: dá para marcar e desmarcar cada item, e cada item marcado mostra se foi você ou o agente. */
+/** Test checklist on the card: each item can be checked and unchecked, and each checked item shows whether you or the agent checked it. */
 export function TestChecklist({ data }: { data: CardChecklist }): React.JSX.Element {
   const t = useT().board.testChecklist
   const [problem, setProblem] = useState('')

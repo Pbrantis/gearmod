@@ -1,6 +1,6 @@
 import type { AgentProfile, SkillEntry, SkillRef } from '@gearmod/contracts'
 
-/** Skill citada no texto como `/nome` (a primeira que o agente tem); `null` quando a mensagem não cita nenhuma. */
+/** Skill mentioned in the text as `/name` (the first one the agent has); `null` when the message mentions none. */
 export function skillInText(text: string, available: SkillEntry[], provider: AgentProfile['provider'] | undefined): SkillRef | null {
   if (!provider) return null
   for (const match of text.matchAll(/(^|\s)\/([^\s/]+)/g)) {

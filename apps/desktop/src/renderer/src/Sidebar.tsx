@@ -24,7 +24,7 @@ const Bar = ({ percent }: { percent: number }): React.JSX.Element => <div classN
 export function usageHistorySummary(rows: UsageHistoryRow[]): { input: number; cached: number; output: number; billed: number; equivalent: number; unknown: number } {
   return rows.reduce((total, row) => ({ input: total.input + row.input, cached: total.cached + row.cached, output: total.output + row.output, billed: total.billed + row.billedUsd, equivalent: total.equivalent + row.equivalentUsd, unknown: total.unknown + row.unknownUsd }), { input: 0, cached: 0, output: 0, billed: 0, equivalent: 0, unknown: 0 })
 }
-/** Consumo somado por agente (o histórico vem agrupado pelo id do agente), do maior custo para o menor. */
+/** Usage summed per agent (the history comes grouped by agent id), from highest cost to lowest. */
 export function usageByAgent(rows: UsageHistoryRow[]): Array<{ id: string; input: number; cached: number; output: number; billed: number; equivalent: number; unknown: number }> {
   const byId = new Map<string, { id: string; input: number; cached: number; output: number; billed: number; equivalent: number; unknown: number }>()
   for (const row of rows) {
@@ -38,8 +38,8 @@ export function usageByAgent(rows: UsageHistoryRow[]): Array<{ id: string; input
 const tokens = (value: number): string => new Intl.NumberFormat(dateLocale()).format(value)
 const money = (value: number): string => new Intl.NumberFormat(dateLocale(), { style: 'currency', currency: 'USD' }).format(value)
 
-/** Uso das sessões: botão do rodapé com os provedores, lista por agente (5 h) e, ao clicar, o painel completo com a semana. */
-/** Instalação do ditado por voz: barra de progresso acima dos agentes e um aviso quando termina; fica visível em qualquer tela. */
+/** Session usage: footer button with the providers, per-agent list (5 h) and, on click, the full panel with the week. */
+/** Voice dictation installation: progress bar above the agents and a notice when it finishes; visible on any screen. */
 function VoiceInstallCard(): React.JSX.Element | null {
   const t = useT(), voice = useVoiceInstall()
   if (!voice.installing && !voice.done && !voice.error) return null
@@ -52,8 +52,8 @@ function VoiceInstallCard(): React.JSX.Element | null {
 
 function UsedAgents({ profiles }: { profiles: AgentProfile[] }): React.JSX.Element {
   const t = useT(), [open, setOpen] = useState(false), [usage, setUsage] = useState<AgentUsage[]>([]), [detail, setDetail] = useState<string>(), [refreshing, setRefreshing] = useState(false)
-  const load = useCallback(async () => { try { setUsage(await window.gearmod.invoke('usage:list', undefined)) } catch { /* uso é informativo */ } }, [])
-  // Mostra o que já se sabe na hora e atualiza por baixo dos panos (o Claude só informa o limite quando roda).
+  const load = useCallback(async () => { try { setUsage(await window.gearmod.invoke('usage:list', undefined)) } catch { /* usage is informational */ } }, [])
+  // Shows what is already known right away and updates behind the scenes (Claude only reports the limit when it runs).
   useEffect(() => {
     if (!open && !detail) return
     let alive = true
@@ -104,7 +104,7 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
       setRetentionMessage(saved ? t.shell.sidebar.csvSaved : t.shell.sidebar.exportCancelled)
     } catch (reason) { setRetentionMessage(plainError(reason)) } finally { setRetentionBusy(false) }
   }
-  // U14: apagar sempre exporta antes (approval_record kind usage-ledger-purge); sem a aprovação, nada é apagado.
+  // U14: deleting always exports first (approval_record kind usage-ledger-purge); without approval, nothing is deleted.
   const purgeAll = async (): Promise<void> => {
     if (!(await ask({ eyebrow: t.shell.sidebar.purgeEyebrow, title: t.shell.sidebar.purgeTitle, text: t.shell.sidebar.purgeText, ok: t.shell.sidebar.purgeOk, danger: true }))) return
     setRetentionBusy(true); setRetentionMessage('')
@@ -141,7 +141,7 @@ function UsageModal({ profiles: all, usage, current, close, only }: { profiles: 
     </div></div>
 }
 
-/** O mesmo painel de uso das configurações, aberto de fora do rodapé (anéis do composer): carrega agentes e uso sozinho. */
+/** The same usage panel as in settings, opened from outside the footer (composer rings): loads agents and usage on its own. */
 export function UsageDialog({ current, close }: { current?: string; close(): void }): React.JSX.Element | null {
   const [profiles, setProfiles] = useState<AgentProfile[]>([]), [usage, setUsage] = useState<AgentUsage[]>([])
   useEffect(() => {
@@ -156,7 +156,7 @@ export function UsageDialog({ current, close }: { current?: string; close(): voi
 
 export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onNew, onSettings, onAddAgent, onProjectSettings, onNewChat, onToggle, onReorder, onDelete }: { projects: Project[]; profiles: AgentProfile[]; selected?: string; collapsed: boolean; onSelect(id: string): void; onNew(): void; onAddAgent(): void; onSettings(): void; onProjectSettings(projectId: string): void; onNewChat(projectId: string): void; onToggle(): void; onReorder(projectIds: string[]): void; onDelete(project: Project): void }): React.JSX.Element {
   const t = useT(), agentUpdates = useAgentUpdatesPending(profiles)
-  // Arrastar: enquanto arrasta, a lista mostra o projeto já na posição nova; ao soltar, grava a ordem.
+  // Dragging: while dragging, the list shows the project already in the new position; on drop, saves the order.
   const [drag, setDrag] = useState<{ id: string; over: number }>(), [menu, setMenu] = useState<{ project: Project; x: number; y: number }>()
   const projectMenu = useRef<HTMLDivElement>(null)
   const ordered = drag ? (() => { const rest = projects.filter((item) => item.id !== drag.id), moving = projects.find((item) => item.id === drag.id)!; rest.splice(drag.over, 0, moving); return rest })() : projects
@@ -188,7 +188,7 @@ export function Sidebar({ projects, profiles, selected, collapsed, onSelect, onN
             if (!drag) return
             e.preventDefault()
             if (drag.id === project.id) return
-            // Posição na lista sem o projeto arrastado; metade de baixo da linha = entra depois dela.
+            // Position in the list without the dragged project; lower half of the row = goes after it.
             const box = e.currentTarget.getBoundingClientRect(), after = e.clientY > box.top + box.height / 2
             const over = (index > drag.over ? index - 1 : index) + (after ? 1 : 0)
             if (over !== drag.over) setDrag({ ...drag, over })

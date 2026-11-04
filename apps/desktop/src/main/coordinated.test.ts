@@ -27,7 +27,7 @@ async function repo(path: string): Promise<void> {
   await writeFile(join(path, 'README.md'), '# fixture'); await exec('git', ['-C', path, 'add', 'README.md']); await exec('git', ['-C', path, 'commit', '-m', 'fixture'])
 }
 
-/** Workspace com docs, frontend e backend (cenários E e H). */
+/** Workspace with docs, frontend and backend (scenarios E and H). */
 async function workspace() {
   const root = await mkdtemp(join(tmpdir(), 'gearmod-coord-')); roots.push(root)
   const ws = join(root, 'ws'), data = join(root, 'data'); await mkdir(ws)
@@ -57,7 +57,7 @@ describe('Worktrees coordenados', () => {
 
   it('falha num repositório não derruba os outros, bloqueia Done e é refeita na próxima preparação', async () => {
     const { board, card, sources, worktrees, database } = await workspace()
-    // Card com os três repositórios escolhidos (sem escolha, só o primeiro ganha worktree na hora).
+    // Card with the three repositories chosen (without a choice, only the first gets a worktree right away).
     board.setRepos(card.id, [sources.frontend!.id, sources.backend!.id, sources.docs!.id])
     database.db.prepare("UPDATE project_sources SET current_branch = 'nao-existe' WHERE id = ?").run(sources.backend!.id)
     const worktree = await worktrees.prepare(card.id)
@@ -89,7 +89,7 @@ describe('Worktrees coordenados', () => {
     expect(results.find((item) => item.repo === 'frontend')).toEqual({ repo: 'frontend', url: 'https://github.com/acme/frontend/pull/7', error: null })
     expect(results.find((item) => item.repo === 'backend')?.error).toMatch(/sem commits/)
     expect(calls[0]!.command).toBe('gh'); expect(calls[0]!.args).toContain('--draft')
-    // A branch nasce com o prefixo do tipo do card; o push leva a branch da worktree para o remoto.
+    // The branch is born with the card type's prefix; the push takes the worktree's branch to the remote.
     expect((await exec('git', ['--git-dir', remote, 'branch', '--list'])).stdout).toContain(worktrees.get(card.id)!.branch)
     const view = await git.card(card.id)
     expect(view.repos.find((repo) => repo.name === 'frontend')?.prUrl).toBe('https://github.com/acme/frontend/pull/7')

@@ -5,16 +5,16 @@ import { DiffEditor } from './editor/DiffEditor'
 import { usePreferences } from './editor/preferences'
 import { tr, useT } from './i18n'
 
-/** Pedidos de aprovação (S02) deste card: recarrega quando o card muda ou uma ferramenta do agente é usada. */
+/** Approval requests (S02) of this card: reloads when the card changes or an agent tool is used. */
 export function useApprovals(cardId: string): { items: Approval[]; reload(): Promise<void> } {
   const [items, setItems] = useState<Approval[]>([])
-  const reload = useCallback(async (): Promise<void> => { if (!cardId) return setItems([]); try { setItems(await window.gearmod.invoke('approvals:list', { cardId })) } catch { /* o chat segue sem o aviso */ } }, [cardId])
+  const reload = useCallback(async (): Promise<void> => { if (!cardId) return setItems([]); try { setItems(await window.gearmod.invoke('approvals:list', { cardId })) } catch { /* the chat continues without the notice */ } }, [cardId])
   useEffect(() => { void reload() }, [reload])
   useEffect(() => window.gearmod.onRunEvent((event) => { if (['gearmod/card-updated', 'gearmod/run-completed'].includes(event.eventType)) void reload() }), [reload])
   return { items, reload }
 }
 
-/** Título e descrição por tipo de pedido; tipos ainda não conhecidos caem no genérico (não bloqueia nenhum pedido novo). */
+/** Title and description per request type; types not yet known fall back to the generic one (does not block any new request). */
 function describe(approval: Approval): { title: string; detail: string } {
   const payload = approval.payload, a = tr().chat.approval
   switch (approval.kind) {
@@ -27,7 +27,7 @@ function describe(approval: Approval): { title: string; detail: string } {
   }
 }
 
-/** Cartão genérico de aprovação (S02): mostra o pedido pendente e deixa o usuário autorizar ou negar. Usado no chat do card. */
+/** Generic approval card (S02): shows the pending request and lets the user authorize or deny. Used in the card chat. */
 export function ApprovalAsk({ approval, onDecided }: { approval: Approval; onDecided(approval: Approval): void }): React.JSX.Element {
   const t = useT(), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [preferences] = usePreferences()
@@ -46,10 +46,10 @@ export function ApprovalAsk({ approval, onDecided }: { approval: Approval; onDec
   </div>
 }
 
-/** No chat do card: todos os pedidos pendentes de aprovação (qualquer tipo), um cartão cada. */
+/** In the card chat: all pending approval requests (any type), one card each. */
 export function ApprovalAsks({ cardId }: { cardId: string }): React.JSX.Element | null {
   const { items, reload } = useApprovals(cardId)
-  // git-commit só espelha o approval_record para auditoria (S06); a decisão em si continua pelo cartão de commit (CommitAsks), sem duplicar o pedido na tela.
+  // git-commit only mirrors the approval_record for audit (S06); the decision itself still goes through the commit card (CommitAsks), without duplicating the request on screen.
   const pending = items.filter((item) => (item.status === 'requested' && item.kind !== 'git-commit' && !item.kind.startsWith('speckit-')) || (item.kind === 'constitution-apply' && item.status === 'approved' && !item.consumedAt))
   if (!pending.length) return null
   return <>{pending.map((item) => <ApprovalAsk key={item.id} approval={item} onDecided={() => void reload()} />)}</>

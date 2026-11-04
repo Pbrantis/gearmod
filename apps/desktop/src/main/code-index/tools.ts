@@ -2,8 +2,8 @@ import type { CodeTool } from './protocol'
 import type { Queries } from './query'
 
 /**
- * Ferramentas MCP do índice (gearmod_code_*). Os argumentos seguem o padrão das outras ferramentas do GearMod
- * (nomes em português); as respostas são em inglês.
+ * MCP tools of the index (gearmod_code_*). The arguments follow the pattern of GearMod's other tools
+ * (names in Portuguese); the answers are in English.
  */
 export const codeToolNames: Record<string, CodeTool> = {
   gearmod_code_explore: 'explore',

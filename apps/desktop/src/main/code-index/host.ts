@@ -2,8 +2,8 @@ import type { HostMessage, HostRequest } from './protocol'
 import { createHostHandler } from './host-handler'
 
 /**
- * Processo utilitário do índice de código (Electron utilityProcess). É o dono do banco: indexa, observa as pastas e
- * responde às consultas sem travar o processo principal.
+ * Code index utility process (Electron utilityProcess). It owns the database: indexes, watches the folders and
+ * answers queries without blocking the main process.
  */
 const port = process.parentPort
 const send = (message: HostMessage): void => port.postMessage(message)

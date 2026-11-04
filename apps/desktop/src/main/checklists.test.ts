@@ -52,9 +52,9 @@ describe('checklist do teste', () => {
     expect(unchecked.marks['ca07 parcial']).toMatchObject({ by: 'user', agent: agentAt })
     const again = checklists.toggle(cardId, 0, 'CA07 parcial', true)
     expect(again.marks['ca07 parcial']).toMatchObject({ by: 'user', agent: agentAt })
-    // item que só o usuário marcou não ganha OK do agente
+    // an item only the user checked does not get the agent's OK
     expect(checklists.toggle(cardId, 1, 'CA08', true).marks.ca08?.agent).toBeUndefined()
-    // se o agente reescrever o checklist deixando tudo igual, nada muda
+    // if the agent rewrites the checklist leaving everything equal, nothing changes
     expect(checklists.write(cardId, '- [x] CA07 parcial\n- [x] CA08\n').marks['ca07 parcial']).toMatchObject({ by: 'user', agent: agentAt })
     // o agente desmarcar tira o OK dele
     expect(checklists.write(cardId, '- [ ] CA07 parcial\n- [x] CA08\n').marks['ca07 parcial']).toEqual(expect.objectContaining({ by: 'agent' }))

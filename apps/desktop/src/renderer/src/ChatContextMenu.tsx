@@ -4,7 +4,7 @@ import { BoardIcon, TrashIcon } from './icons'
 import { useEscape } from './useEscape'
 import { useT } from './i18n'
 
-/** Chats vinculados ao card fazem parte do histórico e não podem ser apagados isoladamente. */
+/** Chats linked to the card are part of its history and cannot be deleted individually. */
 export function ChatContextMenu({ x, y, chat, cardTitle, openCard, remove, close }: { x: number; y: number; chat: Chat; cardTitle?: string; openCard?(): void; remove(): void; close(): void }): React.JSX.Element {
   const t = useT(), m = t.chat.contextMenu
   const root = useRef<HTMLDivElement>(null), [pos, setPos] = useState({ left: x, top: y })

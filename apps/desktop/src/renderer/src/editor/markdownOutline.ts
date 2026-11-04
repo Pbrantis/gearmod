@@ -1,6 +1,6 @@
 export interface Heading { level: 1 | 2 | 3 | 4 | 5 | 6; text: string; line: number }
 
-/** Títulos de um Markdown (linha a partir de 1); `#` dentro de bloco cercado por ``` ou ~~~ não conta. */
+/** Headings of a Markdown file (1-based line); `#` inside a block fenced by ``` or ~~~ does not count. */
 export function markdownHeadings(source: string): Heading[] {
   const headings: Heading[] = []
   let fence: string | null = null
@@ -14,7 +14,7 @@ export function markdownHeadings(source: string): Heading[] {
   return headings
 }
 
-/** Cadeia de títulos que contém a linha: o mais próximo acima dela e os de nível menor que o levam até o topo. */
+/** Chain of headings that contain the line: the nearest one above it and the lower-level ones that lead up to the top. */
 export function headingTrail(headings: Heading[], line: number): Heading[] {
   const above = headings.filter((heading) => heading.line <= line), trail: Heading[] = []
   for (const heading of [...above].reverse()) if (!trail.length || heading.level < trail[0]!.level) trail.unshift(heading)

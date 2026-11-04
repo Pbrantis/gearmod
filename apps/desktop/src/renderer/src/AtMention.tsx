@@ -6,8 +6,8 @@ interface Hit { path: string; relative: string; name: string; directory: boolean
 const maxHits = 8
 
 /**
- * "@" no campo de mensagem: abre a lista de arquivos do projeto (ou da worktree do card), filtrada pelo que vem depois do "@".
- * Escolher troca o trecho por `@caminho/relativo ` no texto, que o agente entende como referência ao arquivo.
+ * "@" in the message field: opens the list of project files (or the card's worktree), filtered by what comes after the "@".
+ * Choosing one replaces the fragment with `@relative/path ` in the text, which the agent understands as a file reference.
  */
 export function useAtMention({ projectId, cardId, input, setInput }: { projectId: string; cardId: string | null; input: string; setInput(value: string): void }) {
   const t = useT()
@@ -44,7 +44,7 @@ export function useAtMention({ projectId, cardId, input, setInput }: { projectId
     setInput(next); setCaret(position)
     window.requestAnimationFrame(() => { const element = area.current; if (element) { element.focus(); element.setSelectionRange(position, position) } })
   }
-  /** Devolve true quando a tecla foi da lista (setas, Enter/Tab para escolher, Esc para fechar): o chamador não deve enviar a mensagem. */
+  /** Returns true when the key belonged to the list (arrows, Enter/Tab to choose, Esc to close): the caller must not send the message. */
   const keyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): boolean => {
     if (!open || event.nativeEvent.isComposing) return false
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); setIndex((value) => (value + (event.key === 'ArrowDown' ? 1 : hits.length - 1)) % hits.length); return true }
@@ -60,14 +60,14 @@ export function useAtMention({ projectId, cardId, input, setInput }: { projectId
   </div> : null
   return {
     menu, keyDown, ref: area,
-    /** Chamar quando o texto ou o cursor mudam, para saber se há um "@" antes do cursor. */
+    /** Call when the text or the cursor changes, to find out whether there is an "@" before the cursor. */
     caret: (value: number): void => setCaret(value)
   }
 }
 
 export interface InputToken { start: number; end: number; kind: 'file' | 'skill'; word: string }
 
-/** Trechos do texto que valem como bloco: `@arquivo` e `/skill` (só as skills conhecidas), sempre começando uma palavra. */
+/** Fragments of the text that count as a block: `@file` and `/skill` (only known skills), always starting a word. */
 export function inputTokens(text: string, skillNames: string[]): InputToken[] {
   const found: InputToken[] = []
   for (const match of text.matchAll(/(^|\s)(@[^\s@]+|\/[^\s/]+)(?=\s|$)/g)) {
@@ -79,8 +79,8 @@ export function inputTokens(text: string, skillNames: string[]): InputToken[] {
 }
 
 /**
- * Backspace (ou Delete) dentro de um bloco `@arquivo` ou `/skill` apaga o bloco inteiro, com o espaço que vem depois.
- * Devolve o novo texto e a posição do cursor, ou `null` quando a tecla não é de um bloco (o chamador segue normal).
+ * Backspace (or Delete) inside an `@file` or `/skill` block removes the whole block, together with the space after it.
+ * Returns the new text and the cursor position, or `null` when the key is not on a block (the caller proceeds normally).
  */
 export function dropToken(event: React.KeyboardEvent<HTMLTextAreaElement>, text: string, skillNames: string[]): { text: string; at: number; token: InputToken } | null {
   if ((event.key !== 'Backspace' && event.key !== 'Delete') || event.nativeEvent.isComposing || event.shiftKey || event.altKey || event.metaKey) return null
@@ -93,7 +93,7 @@ export function dropToken(event: React.KeyboardEvent<HTMLTextAreaElement>, text:
   return { text: text.slice(0, token.start) + text.slice(stop), at: token.start, token }
 }
 
-/** Camada atrás do textarea (texto transparente): repete o texto e pinta os blocos `@arquivo` e `/skill` em outra cor. */
+/** Layer behind the textarea (transparent text): repeats the text and paints the `@file` and `/skill` blocks in another color. */
 export function InputMirror({ text, skillNames, area }: { text: string; skillNames: string[]; area: React.RefObject<HTMLTextAreaElement | null> }): React.JSX.Element {
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => {

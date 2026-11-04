@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-// Pilha de quem escuta Esc: só o último a abrir (o de cima) reage, para não fechar também o que está por trás.
+// Stack of Esc listeners: only the last one to open (the top one) reacts, so the one behind it does not close too.
 const stack: Array<{ close(): void }> = []
 const onKey = (event: KeyboardEvent): void => {
   if (event.key !== 'Escape') return
@@ -9,7 +9,7 @@ const onKey = (event: KeyboardEvent): void => {
   event.stopImmediatePropagation(); top.close()
 }
 
-/** Fecha o diálogo ou menu com Esc, parando a propagação. `enabled=false` não escuta (diálogo condicional). Esc nunca confirma. */
+/** Closes the dialog or menu with Esc, stopping propagation. `enabled=false` does not listen (conditional dialog). Esc never confirms. */
 export function useEscape(close: () => void, enabled = true): void {
   const entry = useRef({ close })
   entry.current.close = close

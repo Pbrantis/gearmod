@@ -4,8 +4,8 @@ import { EXTRACTOR_VERSION, type Extraction } from './extract'
 export type Db = Database.Database
 
 /**
- * Banco do índice. Tudo que vem do parse é guardado por blob (sha do Git), então worktrees que compartilham arquivos
- * compartilham a análise. Só `trees`, `edges`, `file_edges` e `roots` são por pasta (root).
+ * Index database. Everything that comes from parsing is stored by blob (Git sha), so worktrees that share files
+ * share the analysis. Only `trees`, `edges`, `file_edges` and `roots` are per folder (root).
  */
 export function openStore(file: string): Db {
   const db = new Database(file)
@@ -41,14 +41,14 @@ export function openStore(file: string): Db {
   `)
   const version = db.prepare(`select value from meta where key = 'extractor'`).pluck().get() as string | undefined
   if (version !== String(EXTRACTOR_VERSION)) {
-    // a extração mudou: a análise antiga não serve mais
+    // the extraction changed: the old analysis is no longer valid
     db.exec('delete from blobs; delete from symbols; delete from refs; delete from imports; delete from binds; delete from heritage; delete from edges; delete from file_edges; delete from symbols_fts; delete from trees; delete from roots;')
     db.prepare(`insert or replace into meta(key, value) values ('extractor', ?)`).run(String(EXTRACTOR_VERSION))
   }
   return db
 }
 
-/** "recordExploration" vira "recordExploration record exploration", para a busca achar pelas partes do nome. */
+/** "recordExploration" becomes "recordExploration record exploration", so the search finds it by parts of the name. */
 export function words(...parts: Array<string | null | undefined>): string {
   const out = new Set<string>()
   for (const part of parts) {
@@ -83,7 +83,7 @@ export function writer(db: Db): (sha: string, lang: string, extraction: Extracti
   }
 }
 
-/** Apaga a análise dos blobs que nenhuma pasta usa mais. */
+/** Deletes the analysis of blobs that no folder uses anymore. */
 export function gc(db: Db): number {
   const dead = db.prepare('select sha from blobs where sha not in (select distinct sha from trees)').pluck().all() as string[]
   if (!dead.length) return 0

@@ -1,10 +1,10 @@
 /**
- * Detecção de comandos SQL destrutivos (PostgreSQL), usada pela tela de SQL para pedir confirmação
- * e pelo processo principal como defesa. Ignora comentários (`--`, `/* *\/` aninhados), strings
- * (`'...'`, `E'...'`, `$tag$...$tag$`) e identificadores entre aspas, e separa os comandos por `;`.
+ * Detection of destructive SQL commands (PostgreSQL), used by the SQL screen to ask for confirmation
+ * and by the main process as a defense. Ignores comments (`--`, nested `/* *\/`), strings
+ * (`'...'`, `E'...'`, `$tag$...$tag$`) and quoted identifiers, and splits commands by `;`.
  *
- * O que conta como destrutivo: `DROP ...`, `TRUNCATE ...`, `DELETE`/`UPDATE` sem `WHERE` (também dentro
- * de CTEs) e `ALTER ... DROP ...`. Corpos de funções e blocos `DO` ficam em strings e não são analisados.
+ * What counts as destructive: `DROP ...`, `TRUNCATE ...`, `DELETE`/`UPDATE` without `WHERE` (also inside
+ * CTEs) and `ALTER ... DROP ...`. Function bodies and `DO` blocks stay in strings and are not analyzed.
  */
 export type DestructiveKind = 'drop' | 'truncate' | 'delete-all' | 'update-all' | 'alter-drop'
 export interface DestructiveStatement { kind: DestructiveKind; sql: string }
@@ -12,7 +12,7 @@ export interface DestructiveStatement { kind: DestructiveKind; sql: string }
 interface Token { type: 'word' | 'open' | 'close' | 'other'; value: string }
 interface Statement { tokens: Token[]; start: number; end: number }
 
-/** Quebra o texto em comandos, já sem comentários e strings (que viram um token `other`). */
+/** Splits the text into commands, already without comments and strings (which become an `other` token). */
 function statements(text: string): Statement[] {
   const result: Statement[] = []
   let tokens: Token[] = [], start = 0, i = 0
@@ -49,7 +49,7 @@ function statements(text: string): Statement[] {
 
 const DML = new Set(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'MERGE', 'VALUES', 'TABLE'])
 
-/** Procura `word` no mesmo nível de parênteses a partir de `from`, até o fim do escopo. */
+/** Looks for `word` at the same parenthesis level from `from`, up to the end of the scope. */
 function hasAtSameDepth(tokens: Token[], from: number, word: string): boolean {
   let depth = 0
   for (let i = from; i < tokens.length; i++) {
@@ -61,7 +61,7 @@ function hasAtSameDepth(tokens: Token[], from: number, word: string): boolean {
   return false
 }
 
-/** Posições onde começa um comando: o início, logo depois de `(` e o comando principal depois das CTEs. */
+/** Positions where a command starts: the beginning, right after `(` and the main command after the CTEs. */
 function heads(tokens: Token[]): number[] {
   const result = [0]
   tokens.forEach((token, index) => { if (token.type === 'open' && tokens[index + 1]?.type === 'word') result.push(index + 1) })
@@ -78,7 +78,7 @@ function heads(tokens: Token[]): number[] {
   return result
 }
 
-/** Comandos destrutivos encontrados em `sql`, na ordem em que aparecem. */
+/** Destructive commands found in `sql`, in the order they appear. */
 export function destructiveStatements(sql: string): DestructiveStatement[] {
   const found: DestructiveStatement[] = []
   for (const statement of statements(sql)) {

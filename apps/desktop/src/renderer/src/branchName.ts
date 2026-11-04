@@ -1,4 +1,4 @@
-/** Por que o Git recusaria este nome de branch/tag (regras do `git check-ref-format`); `null` quando o nome serve. */
+/** Why Git would reject this branch/tag name (`git check-ref-format` rules); `null` when the name is fine. */
 export type BranchNameProblem = 'spaces' | 'chars' | 'sequence' | 'edges' | 'lock'
 
 export function branchNameProblem(name: string): BranchNameProblem | null {

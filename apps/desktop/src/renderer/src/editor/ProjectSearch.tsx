@@ -10,8 +10,8 @@ type Root = { path: string; name: string; worktree: boolean }
 const repoName = (root: Root | undefined, path: string): string => root ? (root.worktree ? root.name.replace(/^\d+-/, '') : root.name) : nameOf(path)
 
 /**
- * Busca no conteúdo do projeto (lateral do modo Arquivos): campo, Aa / palavra inteira / regex, filtro de arquivos e os resultados
- * agrupados por repositório (quando há mais de um) e por arquivo. Clicar abre o arquivo na linha, com o trecho selecionado.
+ * Search in the project's content (side of Files mode): field, Aa / whole word / regex, file filter and the results
+ * grouped by repository (when there is more than one) and by file. Clicking opens the file at the line, with the match selected.
  */
 export function ProjectSearch({ context, roots, seed, open, onQueryChange }: {
   context: { projectId: string; cardId: string | null }; roots: Root[]; seed: { text: string; at: number } | undefined; open(path: string, line: number, column: number, length: number): void; onQueryChange?(value: string): void

@@ -9,7 +9,7 @@ export type DbConnection = { id: string; projectId: string; name: string; klass:
 export type DbConnectionInput = Omit<DbConnection, 'id' | 'hasSecret' | 'origin' | 'envId' | 'parentId'> & { parentId?: string | null; id?: string; password?: string; passwordStorage?: 'secure' | 'session'; confirmWrite?: string }
 const loopback = (host: string): boolean => ['localhost', '127.0.0.1', '::1'].includes(host.toLowerCase())
 
-/** Configuração por projeto; senha não é persistida no SQLite nem devolvida ao renderer. */
+/** Per-project configuration; the password is not persisted in SQLite nor returned to the renderer. */
 export class DbConnections {
   private readonly sessionPasswords = new Map<string, string>()
   constructor(private readonly database: AppDatabase, private readonly secretDir: string, private readonly storage: SecureStorage) {}
@@ -17,7 +17,7 @@ export class DbConnections {
   list(projectId: string): DbConnection[] {
     const rows = this.database.db.prepare(`SELECT id, project_id AS projectId, parent_id AS parentId, name, klass, host, port, database_name AS "database", username AS "user", ssl_mode AS sslMode, has_secret AS hasSecret, allow_write AS allowWrite, agent_access AS agentAccess, origin, env_id AS envId FROM db_connections WHERE project_id=? ORDER BY name COLLATE NOCASE`).all(projectId) as Array<Omit<DbConnection, 'hasSecret' | 'allowWrite'> & { hasSecret: number; allowWrite: number }>
     const roots = new Map(rows.filter((row) => !row.parentId).map((row) => [row.id, row]))
-    // O banco herda do servidor tudo o que é da conexão (host, porta, usuário, SSL, ambiente e senha); só a escrita pode ser mais restrita.
+    // The database inherits from the server everything that belongs to the connection (host, port, user, SSL, environment and password); only writing can be more restricted.
     return rows.map((row) => {
       const parent = row.parentId ? roots.get(row.parentId) : undefined
       if (!parent) return { ...row, hasSecret: Boolean(row.hasSecret) || this.sessionPasswords.has(row.id), allowWrite: Boolean(row.allowWrite) }
@@ -32,9 +32,9 @@ export class DbConnections {
   }
   async password(id: string): Promise<string | null> { const item = this.get(id), owner = item.parentId ?? id; return this.sessionPasswords.get(owner) ?? (item.hasSecret ? this.store(owner).read() : null) }
   setSessionPassword(id: string, password: string): void { this.sessionPasswords.set(this.get(id).parentId ?? id, password) }
-  /** Bancos do servidor, para encerrar as sessões deles quando o servidor muda ou some. */
+  /** Server databases, to end their sessions when the server changes or goes away. */
   childIds(id: string): string[] { return this.database.db.prepare('SELECT id FROM db_connections WHERE parent_id=?').pluck().all(id) as string[] }
-  /** Os campos de conexão de um banco vêm sempre do servidor. */
+  /** A database's connection fields always come from the server. */
   inherit<T extends DbConnectionInput>(input: T): T {
     if (!input.parentId) return input
     const parent = this.get(input.parentId)

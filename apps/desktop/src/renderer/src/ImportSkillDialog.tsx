@@ -12,8 +12,8 @@ const offered = ['claude', 'codex'] as const
 export const skillSlug = (value: string): string => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 64)
 
 /**
- * Diálogo de importar skill, usado nas skills globais (Configurações) e nas do projeto.
- * `one`: uma pasta de skill ou um SKILL.md; `folder`: uma pasta com várias skills.
+ * Import skill dialog, used for global skills (Settings) and for project ones.
+ * `one`: a skill folder or a SKILL.md; `folder`: a folder with several skills.
  */
 export function ImportSkillDialog({ mode, scope, projectId, close, imported }: {
   mode: 'one' | 'folder'

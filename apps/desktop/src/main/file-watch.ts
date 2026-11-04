@@ -4,9 +4,9 @@ type Emit = (eventType: string, payload: Record<string, unknown>) => void
 interface Watched { watcher: FSWatcher | null; timer: NodeJS.Timeout | null }
 
 /**
- * Vigia arquivos abertos nas telas para avisar quando o agente (ou outro programa) os altera no disco. Um `fs.watch` por arquivo,
- * não por pasta; cada tela tem o seu `watchId` e a lista nova substitui a anterior. Quem grava trocando o arquivo (`rename`) é seguido:
- * o watcher é refeito se o arquivo continua lá, ou avisa `deleted` se sumiu.
+ * Watches files open on the screens to report when the agent (or another program) changes them on disk. One `fs.watch` per file,
+ * not per folder; each screen has its own `watchId` and the new list replaces the previous one. Files written by swapping (`rename`) are followed:
+ * the watcher is rebuilt if the file is still there, or it reports `deleted` if it is gone.
  */
 export class FileWatchService {
   private readonly groups = new Map<string, Map<string, Watched>>()

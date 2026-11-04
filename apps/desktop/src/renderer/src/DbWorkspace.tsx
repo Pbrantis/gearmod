@@ -4,10 +4,10 @@ import { activate, closeTab, dirtyTabs, nextSqlNumber, moveTab, openTab, placeTa
 
 type Props = { layout: WsNode; change(next: (layout: WsNode) => WsNode): void; focus: string; setFocus(id: string): void; renderTab(tab: WsTab): React.ReactNode; sqlConnection?: string; tabNote?(tab: WsTab): string | undefined; confirmClose?(tab: WsTab): Promise<boolean>; tabState?(tab: WsTab): string | undefined }
 
-/** Área de janelas: arraste uma aba para a borda de um painel para dividir a tela, ou para o centro para juntá-la. */
+/** Window area: drag a tab to a panel's edge to split the screen, or to the center to merge it. */
 export function DbWorkspace({ layout, change, focus, setFocus, renderTab, sqlConnection, tabNote, tabState, confirmClose }: Props): React.JSX.Element {
   const [drag, setDrag] = useState<string>()
-  // Abas de tabela só carregam (e conectam ao banco) depois de abertas; a que já estava aberta ao entrar espera o clique.
+  // Table tabs only load (and connect to the database) after being opened; the one that was already open on entry waits for the click.
   const [visited, setVisited] = useState<Set<string>>(() => new Set()), ready = useRef(false)
   useEffect(() => { ready.current = true }, [])
   const visit = (id: string): void => setVisited((current) => current.has(id) ? current : new Set(current).add(id))
@@ -37,7 +37,7 @@ function PaneView({ pane, focused, drag, setDrag, change, setFocus, addSql, conf
   const t = useT()
   const [zone, setZone] = useState<DropZone>(), [tabDrop, setTabDrop] = useState<{ id: string; after: boolean }>()
   useEffect(() => { if (ready.current) visit(pane.active) }, [pane.active])
-  // Soltar sobre uma aba põe a aba arrastada antes (metade esquerda) ou depois (metade direita) dela.
+  // Dropping onto a tab puts the dragged tab before (left half) or after (right half) it.
   const dropOnTab = (target: string): void => {
     const index = pane.tabs.findIndex((tab) => tab.id === target), before = tabDrop?.after ? pane.tabs[index + 1]?.id : target
     if (drag) change((current) => placeTab(current, drag, pane.id, before)); setTabDrop(undefined); setZone(undefined); setDrag(undefined); setFocus(pane.id)

@@ -8,8 +8,8 @@ import { ProfileRepository, ProjectRepository } from './projects'
 import { convertSkillMd, parseSkillMd, SkillService } from './skills'
 
 const roots: string[] = [], databases: AppDatabase[] = []
-// No Windows o SQLite aberto trava o arquivo: fecha os bancos antes de apagar a pasta temporária.
-afterEach(async () => { for (const database of databases.splice(0)) { try { database.close() } catch { /* já fechado */ } } await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
+// On Windows an open SQLite locks the file: closes the databases before deleting the temp folder.
+afterEach(async () => { for (const database of databases.splice(0)) { try { database.close() } catch { /* already closed */ } } await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))) })
 const git = { validate: async () => undefined, branches: async () => ['dev'], inspect: async (localPath: string) => ({ localPath, name: 'p', repositories: [] }) }
 const skillMd = (name: string, description: string, body = 'Siga o CLAUDE.md do projeto e a pasta .claude/skills.') => `---\nname: ${name}\ndescription: ${description}\nallowed-tools: Bash\n---\n\n${body}\n`
 

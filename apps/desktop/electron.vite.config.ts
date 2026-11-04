@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: ['@gearmod/contracts'] })],
-    // o índice de código roda num processo utilitário próprio (out/main/codeIndexHost.js)
+    // the code index runs in its own utility process (out/main/codeIndexHost.js)
     build: { rollupOptions: { input: { index: resolve(__dirname, 'src/main/index.ts'), codeIndexHost: resolve(__dirname, 'src/main/code-index/host.ts') } } }
   },
   preload: {
@@ -16,7 +16,7 @@ export default defineConfig({
     plugins: [
       react(),
       {
-        // O servidor de desenvolvimento precisa de localhost/ws para o HMR; o app empacotado não precisa de nenhum dos dois.
+        // The dev server needs localhost/ws for HMR; the packaged app needs neither.
         name: 'gearmod-production-csp',
         apply: 'build',
         transformIndexHtml: (html) => html.replace(" http://localhost:* ws://localhost:*", '')

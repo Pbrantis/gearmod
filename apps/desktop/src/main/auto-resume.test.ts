@@ -55,7 +55,7 @@ describe('retomar quando o limite de uso volta', () => {
     expect(notes.at(-1)).toContain('retoma sozinho')
     expect(repository.pending()).toHaveLength(1)
 
-    // Na hora, o limite ainda está cheio: reagenda em vez de retomar.
+    // Right now the limit is still full: reschedule instead of resuming.
     const later = Date.now() + 3_700_000
     windows = [window(100, new Date(later + 600_000).toISOString())]
     await service.tick(later)
@@ -63,14 +63,14 @@ describe('retomar quando o limite de uso volta', () => {
     expect(notes.at(-1)).toContain('ainda não voltou')
     expect(repository.pending()).toHaveLength(1)
 
-    // Voltou: retoma uma vez só.
+    // It came back: resume only once.
     windows = [window(0, null)]
     await service.tick(later + 700_000)
     expect(resumed).toMatchObject([{ chatId: chat.id, cardId: card.id, purpose: 'execution' }])
     await service.tick(later + 800_000)
     expect(resumed).toHaveLength(1)
 
-    // O usuário retomou à mão antes da hora: a retomada automática é descartada.
+    // The user resumed by hand before the time: the automatic resume is discarded.
     await service.onFinished({ chatId: chat.id, cardId: card.id, purpose: 'execution', profileId: profile.id, status: 'failed', error: 'usage limit' })
     await new Promise((resolve) => setTimeout(resolve, 5))
     conversations.createRun({ cardId: card.id, chatId: chat.id, profileId: profile.id })

@@ -55,7 +55,7 @@ describe('fileVersions', () => {
     const board = new BoardRepository(database, projects), column = board.get(project.id).columns[0]!
     const card = board.create({ projectId: project.id, columnId: column.id, title: 'Tarefa', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const service = new WorktreeService(database, data), worktree = await service.prepare(card.id), member = service.repositories(card.id)[0]!
-    // A base anda depois que o card nasceu: o "antes" do card continua sendo o ponto de saída, não a ponta nova da base.
+    // The base moves on after the card was born: the card's "before" remains the branch-off point, not the base's new tip.
     await writeFile(join(repo, 'a.txt'), 'base mudou\n'); await exec('git', ['-C', repo, 'commit', '-am', 'base anda'])
     await writeFile(join(member.path, 'a.txt'), 'card mudou\n')
     const result = await fileVersions([worktree.path, member.path], join(member.path, 'a.txt'), { git: nativeGit, baseFor: (top) => service.baseFor(card.id, top) })

@@ -8,13 +8,13 @@ export interface GrepMatch { path: string; root: string; line: number; column: n
 const maxMatches = 2000, maxFiles = 300, maxMillis = 10_000, maxFileBytes = 1_000_000, previewWidth = 200
 const ignored = new Set(['node_modules', '.git', 'dist', 'out', 'build', '.next', 'coverage'])
 
-/** Expressão JS equivalente à busca, usada para achar o trecho exato na linha e na busca sem Git. */
+/** JS expression equivalent to the search, used to find the exact snippet in the line and in the non-Git search. */
 function matcher(options: GrepOptions): RegExp {
   const source = options.regex ? options.query : options.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   try { return new RegExp(options.wholeWord ? `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])` : source, options.caseSensitive ? 'u' : 'iu') } catch { throw new Error(tm().search.invalidRegex) }
 }
 
-/** Corta a linha em volta da ocorrência (200 caracteres) e devolve onde ela ficou no trecho. */
+/** Cuts the line around the match (200 characters) and returns where it ended up in the snippet. */
 function preview(text: string, found: { start: number; end: number }): { preview: string; matchStart: number; matchEnd: number } {
   const line = text.replace(/\r$/, '')
   if (line.length <= previewWidth) return { preview: line, matchStart: found.start, matchEnd: found.end }
@@ -24,7 +24,7 @@ function preview(text: string, found: { start: number; end: number }): { preview
 
 const globToRegExp = (glob: string): RegExp => new RegExp(`(^|/)${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*\/?/g, '\uE000').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]').replace(/\uE000/g, '(?:.*/)?')}$`, 'i')
 
-/** `git grep` (respeita o .gitignore e é rápido). Para ao atingir os limites ou o tempo; `null` se a pasta não é repositório. */
+/** `git grep` (respects .gitignore and is fast). Stops on reaching the limits or the time; `null` if the folder is not a repository. */
 function gitGrep(root: string, options: GrepOptions, regex: RegExp, take: (match: GrepMatch) => boolean): Promise<'done' | 'limited' | 'none'> {
   return new Promise((resolveRun, reject) => {
     const args = ['-C', root, 'grep', '-n', '--column', '-I', '--untracked', '-z', ...(options.caseSensitive ? [] : ['-i']), ...(options.wholeWord ? ['-w'] : []), options.regex ? '-E' : '-F', '-e', options.query]
@@ -56,7 +56,7 @@ function gitGrep(root: string, options: GrepOptions, regex: RegExp, take: (match
   })
 }
 
-/** Raiz sem Git: percorre as pastas (menos as de dependências e build) e lê só texto de até 1 MB. */
+/** Root without Git: walks the folders (except dependency and build ones) and reads only text up to 1 MB. */
 async function walkGrep(root: string, options: GrepOptions, regex: RegExp, take: (match: GrepMatch) => boolean, deadline: number): Promise<'done' | 'limited'> {
   const filters = (options.include ?? '').split(/[\s,]+/).filter(Boolean).map(globToRegExp), pending = [root]
   while (pending.length) {
@@ -83,7 +83,7 @@ async function walkGrep(root: string, options: GrepOptions, regex: RegExp, take:
   return 'done'
 }
 
-/** Busca no conteúdo das raízes do projeto. Mesmo arquivo achado por raízes aninhadas aparece uma vez. */
+/** Searches the content of the project's roots. The same file found through nested roots appears once. */
 export async function grepProject(roots: string[], options: GrepOptions): Promise<{ results: GrepMatch[]; limited: boolean }> {
   if (!options.query) return { results: [], limited: false }
   const regex = matcher(options), results: GrepMatch[] = [], seen = new Set<string>(), files = new Set<string>(), deadline = Date.now() + maxMillis
@@ -99,7 +99,7 @@ export async function grepProject(roots: string[], options: GrepOptions): Promis
     if (limited || Date.now() > deadline) { limited = true; break }
     const outcome = await gitGrep(root, options, regex, take)
     if (outcome === 'limited') { limited = true; break }
-    // Pasta-mãe de outras raízes e sem Git (a da worktree do card) não é percorrida: os repositórios dela já são raízes.
+    // A parent folder of other roots and without Git (the card's worktree one) is not walked: its repositories are already roots.
     if (outcome === 'none' && !real.some((other) => other !== root && other.startsWith(root + sep))) { if (await walkGrep(root, options, regex, take, deadline) === 'limited') limited = true }
   }
   return { results, limited }

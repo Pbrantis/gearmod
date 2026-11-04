@@ -68,8 +68,8 @@ export class ConversationRepository {
   }
 
   /**
-   * Subagentes e comandos em segundo plano do chat, lidos dos eventos task_* que o Claude já emite (e o app já grava).
-   * Sem aviso de término e com a execução já encerrada, a tarefa foi interrompida. Comandos de subagentes não entram: ficam dentro do subagente.
+   * Background subagents and commands of the chat, read from the task_* events Claude already emits (and the app already saves).
+   * Without a completion notice and with the run already ended, the task was interrupted. Subagent commands do not count: they stay inside the subagent.
    */
   backgroundTasks(chatId: string): BackgroundTask[] {
     const rows = this.database.db.prepare(`SELECT e.run_id AS runId, e.payload_json_sanitized AS payload, e.created_at AS at, r.status AS runStatus
@@ -118,13 +118,13 @@ export class ConversationRepository {
     return { chat, cardId: row.cardId ?? null, projectPath, profile: { id: row.profileId, provider: row.provider, label, scope, color, configDir, executablePath, enabled: Boolean(enabled), billingMode, envPassthrough } }
   }
 
-  /** Título do chat livre (primeiro pedido), só se ainda não tiver. */
+  /** Free chat title (first request), only if it does not have one yet. */
   setTitleIfEmpty(chatId: string, title: string): void {
     this.database.db.prepare("UPDATE chats SET title = ? WHERE id = ? AND (title IS NULL OR title = '')").run(title.slice(0, 120), chatId)
   }
 
-  /** O chat livre virou planejamento de um card novo: passa a ser o chat de planejamento dele, com o histórico e a sessão do agente. */
-  /** G09: o chat da Constituição também pode criar um card para gravar uma mudança de verdade; vira planejamento como o chat livre. */
+  /** The free chat became the planning of a new card: it becomes that card's planning chat, with the history and the agent session. */
+  /** G09: the Constitution chat can also create a card to save a real change; it becomes planning like the free chat. */
   convertToPlanning(chatId: string, cardId: string): void {
     this.database.db.transaction(() => {
       const converted = this.database.db.prepare("UPDATE chats SET card_id = ?, purpose = 'planning', updated_at = ? WHERE id = ? AND purpose IN ('free','constitution')").run(cardId, new Date().toISOString(), chatId)
@@ -142,7 +142,7 @@ export class ConversationRepository {
     this.database.db.prepare('UPDATE runs SET status = ?, ended_at = ?, exit_reason = ?, provider_turn_id = COALESCE(?, provider_turn_id) WHERE id = ?').run(status, ended, exitReason, providerTurnId, runId)
   }
 
-  /** Guarda os tokens da execução (o agente informa ao terminar, também quando foi interrompido). */
+  /** Saves the run's tokens (the agent reports them when it finishes, also when interrupted). */
   recordUsage(runId: string, usage: { input: number; cached: number; output: number; costUsd?: number } | undefined): void {
     if (!usage) return
     this.database.db.prepare('UPDATE runs SET input_tokens = ?, cached_tokens = ?, output_tokens = ?, cost_usd = ? WHERE id = ?').run(usage.input, usage.cached, usage.output, usage.costUsd ?? null, runId)
@@ -153,19 +153,19 @@ export class ConversationRepository {
     this.database.db.prepare('UPDATE runs SET model_effective = ? WHERE id = ?').run(model, runId)
   }
 
-  /** Identificação da execução para as métricas: etapa, provedor, modelo e esforço usados e o tamanho do texto enviado ao agente. */
+  /** Run identification for the metrics: stage, provider, model and effort used and the size of the text sent to the agent. */
   recordRunMeta(runId: string, meta: { purpose: string; provider: string; model: string | null; effort: string | null; promptChars: number }): void {
     this.database.db.prepare('UPDATE runs SET purpose = ?, provider = ?, model = ?, effort = ?, prompt_chars = ? WHERE id = ?').run(meta.purpose, meta.provider, meta.model, meta.effort, meta.promptChars, runId)
   }
 
-  /** Métricas das execuções do card, só com o que o agente informou (custo sem valor do agente fica `unavailable`). */
+  /** Metrics of the card's runs, only with what the agent reported (cost without a value from the agent stays `unavailable`). */
   runMetrics(cardId: string): RunMetric[] {
     const rows = this.database.db.prepare(`SELECT r.id AS runId, COALESCE(r.purpose, c.purpose) AS purpose, r.provider, r.model, r.model_effective AS modelEffective, r.effort, r.status, r.started_at AS startedAt, r.ended_at AS endedAt,
       r.input_tokens AS input, r.cached_tokens AS cached, r.output_tokens AS output, r.cost_usd AS costUsd, r.prompt_chars AS promptChars, r.used_playwright_cli AS usedPlaywrightCli FROM runs r JOIN chats c ON c.id = r.chat_id WHERE r.card_id = ? ORDER BY r.started_at`).all(cardId) as Array<Omit<RunMetric, 'durationMs' | 'costSource' | 'usedPlaywrightCli'> & { usedPlaywrightCli: number }>
     return rows.map((row) => ({ ...row, usedPlaywrightCli: Boolean(row.usedPlaywrightCli), durationMs: row.endedAt ? Math.max(0, Date.parse(row.endedAt) - Date.parse(row.startedAt)) : null, costSource: row.costUsd === null ? 'unavailable' : 'reported' }))
   }
 
-  /** Tokens do card somados por etapa (planejamento, implementação e teste), pelo propósito do chat de cada execução. */
+  /** Card tokens summed by stage (planning, implementation and testing), by the purpose of each run's chat. */
   cardUsage(cardId: string): CardUsage {
     const total = (): TokenCount => ({ input: 0, cached: 0, output: 0, runs: 0 })
     const usage: CardUsage = { planning: total(), execution: total(), test: total(), agents: [] }
@@ -204,7 +204,7 @@ export class ConversationRepository {
     return this.listPlans(plan.cardId).find((item) => item.id === planId)!
   }
 
-  /** Garante que o Plano atual do card exista como versão em `plans` e o aprova (Iniciar aprova o plano). */
+  /** Ensures the card's current Plan exists as a version in `plans` and approves it (Start approves the plan). */
   approveCurrentPlan(cardId: string, profileId: string, planDocument: string): Plan | null {
     const latest = this.listPlans(cardId)[0]
     if (planDocument.trim() && latest?.contentMd !== planDocument) this.savePlan(cardId, profileId, planDocument)
@@ -212,13 +212,13 @@ export class ConversationRepository {
     return target ? this.approvePlan(target.id) : null
   }
 
-  /** Chat de cada etapa do card (planejamento, implementação, teste): um por etapa, com o histórico, criado na primeira vez. */
+  /** Chat of each card stage (planning, implementation, testing): one per stage, with the history, created the first time. */
   purposeChat(projectId: string, cardId: string, purpose: AgentPurpose, profileId: string): Chat {
     const existing = this.listChats(projectId, cardId).find((chat) => chat.purpose === purpose)
     return existing ?? this.createChat({ projectId, cardId, purpose, profileId })
   }
 
-  /** Reinicia o chat de uma etapa (troca de agente): apaga mensagens, execuções e eventos dele. Recusa se ainda tem agente trabalhando. */
+  /** Restarts a stage's chat (agent switch): deletes its messages, runs and events. Refuses if an agent is still working. */
   resetChat(chatId: string): void {
     if (!this.database.db.prepare('SELECT 1 FROM chats WHERE id = ?').get(chatId)) throw new Error(tm().common.chatNotFound)
     if (this.database.db.prepare(`SELECT 1 FROM runs WHERE chat_id = ? AND status IN ('queued', 'running') LIMIT 1`).get(chatId)) throw new Error(tm().conversations.stopAgentBeforeRestart)
@@ -230,7 +230,7 @@ export class ConversationRepository {
     })()
   }
 
-  /** Apaga um chat do projeto. Chats vinculados a cards são parte do histórico do card e nunca podem ser apagados isoladamente. */
+  /** Deletes a project chat. Chats linked to cards are part of the card's history and can never be deleted in isolation. */
   deleteChat(chatId: string): void {
     const chat = this.database.db.prepare('SELECT card_id AS cardId FROM chats WHERE id = ?').get(chatId) as { cardId: string | null } | undefined
     if (!chat) throw new Error(tm().common.chatNotFound)

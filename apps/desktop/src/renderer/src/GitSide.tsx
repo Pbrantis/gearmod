@@ -13,7 +13,7 @@ const loadHeights = (): Record<string, number> => { try { return JSON.parse(loca
 const syncArrow = (direction: 'up' | 'down'): React.JSX.Element => <svg viewBox="0 0 16 16" aria-hidden="true"><path d={direction === 'down' ? 'M8 3v8M4.5 7.5 8 11l3.5-3.5M3.5 13.5h9' : 'M8 13V5M4.5 8.5 8 5l3.5 3.5M3.5 2.5h9'} /></svg>
 const withoutRemote = (name: string): string => name.replace(/^[^/]+\//, '')
 
-/** Agrupa pelo primeiro trecho do nome (feature/x vira a pasta "feature"); sem barra fica solto. Mantém a ordem original. */
+/** Groups by the first part of the name (feature/x becomes the "feature" folder); without a slash it stays loose. Keeps the original order. */
 function group<T>(items: T[], nameOf: (item: T) => string): Array<Node<T>> {
   const out: Array<Node<T>> = [], folders = new Map<string, Extract<Node<T>, { type: 'folder' }>>()
   for (const item of items) {
@@ -28,13 +28,13 @@ function group<T>(items: T[], nameOf: (item: T) => string): Array<Node<T>> {
 }
 
 /**
- * Lateral do Git: Local, Remoto, Worktrees e Stashes. Branches agrupadas por pasta (fechadas, menos a que tem a branch atual ou o card em foco),
- * seções que abrem/fecham e linhas entre elas que se arrastam para mudar a altura de cada uma.
+ * Git sidebar: Local, Remote, Worktrees and Stashes. Branches grouped by folder (closed, except the one with the current branch or the focused card),
+ * sections that open/close and lines between them that can be dragged to change each one's height.
  */
 export function GitSide({ graph, worktree, selectWorktree, title, icons, picked, onPick, onPickStash, onOpen, onMenu, onFolderMenu, onWorktreeMenu, prs }: { prs?: { list?: PullRequestList; isUnread(pr: PullRequestSummary): boolean; open(pr?: PullRequestSummary): void }; graph?: GitGraph; worktree: string | null; selectWorktree(id: string | null): void; title(cardId: string | null): string; icons: Icons; picked?: string; onPick(kind: 'local' | 'remote', name: string): void; onPickStash(ref: string): void; onOpen(kind: 'local' | 'remote', name: string, current: boolean): void; onMenu(kind: 'local' | 'remote' | 'stash', name: string, event: React.MouseEvent): void; onFolderMenu(kind: 'local', folder: string, names: string[], event: React.MouseEvent): void; onWorktreeMenu(cardId: string, branch: string, event: React.MouseEvent): void }): React.JSX.Element {
   const T = useT(), t = T.git.side, common = T.common
   const saved = useRef(loadOpen()), [shut, setShut] = useState<Record<string, boolean>>(saved.current.shut), [folders, setFolders] = useState<Record<string, boolean>>(saved.current.folders), [heights, setHeights] = useState(loadHeights)
-  useEffect(() => { try { localStorage.setItem(openKey, JSON.stringify({ shut, folders })) } catch { /* só vale nesta sessão */ } }, [shut, folders])
+  useEffect(() => { try { localStorage.setItem(openKey, JSON.stringify({ shut, folders })) } catch { /* only valid for this session */ } }, [shut, folders])
   const tree = useRef<HTMLDivElement>(null)
   const localNodes = group<LocalBranch>(graph?.branches.local ?? [], (branch) => branch.name), remoteNodes = group<RemoteBranch>(graph?.branches.remote ?? [], (branch) => withoutRemote(branch.name))
   const localActive = (branch: LocalBranch): boolean => picked === `local:${branch.name}` || (!picked && branch.head)
@@ -61,13 +61,13 @@ export function GitSide({ graph, worktree, selectWorktree, title, icons, picked,
       : <>{prs.list.prs.map((pr) => <button type="button" key={pr.number} className="gref" data-tip={pr.title} onClick={() => prs.open(pr)}>{icons.branch}<span className="gwt"><span className="gn">{prs.isUnread(pr) && <i className="ydot" />}#{pr.number} {pr.title}</span><small style={{ fontFamily: 'var(--sans)' }}>{pr.author} · {pr.head}{pr.draft ? ` · ${t.draftTag}` : ''}</small></span></button>)}<button type="button" className="gref" onClick={() => prs.open()}><span className="gwt"><span className="gn">{t.openPrPanel}</span></span></button></> },
     { key: 'stash', label: t.stashes, icon: icons.stash, count: graph?.stashes.length ?? 0, body: <>{graph?.stashes.map((stash) => <button type="button" key={stash.ref} className={`gref ${picked === `stash:${stash.ref}` ? 'on' : ''}`} data-tip={stash.ref} onClick={() => onPickStash(stash.ref)} onContextMenu={(event) => onMenu('stash', stash.ref, event)}><span className="gn" style={{ fontFamily: 'var(--sans)' }}>{stash.message}</span></button>)}{graph && !graph.stashes.length && <div className="gempty" style={{ padding: 8 }}>{t.noStash}</div>}</> }
   ]
-  // Ordem fixa: cada seção fica no seu lugar, aberta ou fechada; Local fica sempre aberta e as abertas dividem o espaço.
+  // Fixed order: each section stays in its place, open or closed; Local is always open and the open ones share the space.
   const ordered = sections
   const isShut = (key: string): boolean => key !== 'local' && Boolean(shut[key])
   const openKeys = ordered.filter((section) => !isShut(section.key)).map((section) => section.key), lastOpen = openKeys[openKeys.length - 1]
   const dragTarget = (index: number): string | undefined => { const found = ordered.slice(0, index + 1).reverse().find((section) => !isShut(section.key)); return found && found.key !== lastOpen ? found.key : undefined }
 
-  // A linha entre duas seções muda a altura da seção aberta logo acima; a última aberta preenche o resto.
+  // The line between two sections changes the height of the open section right above; the last open one fills the rest.
   const drag = (index: number) => (event: React.PointerEvent<HTMLDivElement>): void => {
     const key = dragTarget(index), el = key ? tree.current?.querySelector<HTMLElement>(`[data-sec="${key}"]`) : null
     if (!key || !el) return
@@ -76,11 +76,11 @@ export function GitSide({ graph, worktree, selectWorktree, title, icons, picked,
     const move = (ev: PointerEvent): void => setHeights((current) => ({ ...current, [key]: Math.max(60, Math.round(h0 + ev.clientY - start)) }))
     const up = (): void => {
       document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.body.classList.remove('gresizing-v')
-      setHeights((current) => { try { localStorage.setItem(heightsKey, JSON.stringify(current)) } catch { /* só vale nesta sessão */ } return current })
+      setHeights((current) => { try { localStorage.setItem(heightsKey, JSON.stringify(current)) } catch { /* only valid for this session */ } return current })
     }
     document.body.classList.add('gresizing-v'); document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
   }
-  // Aberta: parte de uma fatia igual do espaço (ou da altura que você arrastou) e encolhe se faltar lugar; o conteúdo rola dentro dela.
+  // Open: starts from an equal slice of the space (or the height you dragged) and shrinks if room runs out; the content scrolls inside it.
   const styleOf = (key: string): React.CSSProperties => isShut(key) ? { flex: 'none' } : key === lastOpen ? { flex: '1 1 0' } : heights[key] ? { flex: `0 1 ${heights[key]}px` } : { flex: '1 1 0' }
 
   if (!graph) return <aside className="gside"><div className="gtree gcol gskel-side" aria-busy="true" aria-label={t.loadingBranches}>{[0, 1, 2, 3].map((section) => <div className="gskel-sec" key={section}><span className="gskel-bar head" />{Array.from({ length: section === 0 ? 5 : 3 }, (_, index) => <span className="gskel-bar" key={index} style={{ width: `${55 + ((index * 23 + section * 11) % 40)}%` }} />)}</div>)}</div></aside>

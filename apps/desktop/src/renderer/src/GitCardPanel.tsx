@@ -16,16 +16,16 @@ import { useAsk } from './useAsk'
 import { useT } from './i18n'
 import { SparkIcon, TrashIcon } from './icons'
 
-/** Pedidos de commit do agente deste card (pendentes e os últimos decididos); recarrega quando o card muda. */
+/** This card's agent commit requests (pending and the latest decided); reloads when the card changes. */
 export function useGitRequests(cardId: string): { items: GitRequest[]; reload(): Promise<void> } {
   const [items, setItems] = useState<GitRequest[]>([])
-  const reload = useCallback(async (): Promise<void> => { if (!cardId) return setItems([]); try { setItems(await window.gearmod.invoke('git:requests', { cardId })) } catch { /* o chat segue sem o aviso */ } }, [cardId])
+  const reload = useCallback(async (): Promise<void> => { if (!cardId) return setItems([]); try { setItems(await window.gearmod.invoke('git:requests', { cardId })) } catch { /* the chat carries on without the notice */ } }, [cardId])
   useEffect(() => { void reload() }, [reload])
   useEffect(() => window.gearmod.onRunEvent((event) => { if (['gearmod/card-updated', 'gearmod/run-completed'].includes(event.eventType)) void reload() }), [reload])
   return { items, reload }
 }
 
-/** Pedido de commit do agente: autorizar, editar a mensagem ou recusar. Aparece no chat de implementação e no painel Git do card. */
+/** Agent commit request: authorize, edit the message or decline. Appears in the implementation chat and in the card's Git panel. */
 export function CommitAsk({ request, agent, branch, ruleWhy, onDecided, openGit, variant }: { request: GitRequest; agent?: AgentProfile; branch?: string | null; ruleWhy?: string; onDecided(request: GitRequest): void; openGit?(): void; variant: 'chat' | 'panel' }): React.JSX.Element {
   const t = useT().git.cardPanel
   const [editing, setEditing] = useState(false), [message, setMessage] = useState(request.message), [error, setError] = useState(request.error ?? ''), [busy, setBusy] = useState(false)
@@ -44,7 +44,7 @@ export function CommitAsk({ request, agent, branch, ruleWhy, onDecided, openGit,
       <button type="button" className="mini secondary" disabled={busy} onClick={() => void decide('deny')}>{t.deny}</button></div></div>
 }
 
-/** No chat de implementação: os pedidos pendentes e o resultado dos que o usuário acabou de decidir. */
+/** In the implementation chat: the pending requests and the result of those the user just decided. */
 export function CommitAsks({ cardId, branch, profiles, openGit }: { cardId: string; branch?: string | null; profiles: AgentProfile[]; openGit(): void }): React.JSX.Element | null {
   const t = useT().git.cardPanel
   const { items, reload } = useGitRequests(cardId), [results, setResults] = useState<GitRequest[]>([])
@@ -54,7 +54,7 @@ export function CommitAsks({ cardId, branch, profiles, openGit }: { cardId: stri
     {pending.map((item) => <CommitAsk key={item.id} request={item} variant="chat" branch={branch} agent={profiles.find((profile) => profile.id === item.agentProfileId)} onDecided={(done) => { setResults((current) => [...current, done]); void reload() }} openGit={openGit} />)}</>
 }
 
-/** Origem deste repositório: cada um tem a sua. Ao escolher outra, os commits do card passam a ser contados a partir dela. */
+/** This repository's origin: each has its own. Choosing another makes the card's commits be counted from it. */
 function BaseSelect({ repo, cardId, base, reload }: { repo: GitCardRepo; cardId: string; base: string; reload(): Promise<void> }): React.JSX.Element {
   const t = useT().git.cardPanel
   const [options, setOptions] = useState<string[]>([]), [error, setError] = useState('')
@@ -67,7 +67,7 @@ function BaseSelect({ repo, cardId, base, reload }: { repo: GitCardRepo; cardId:
 const editOptions = { wrap: true, tabSize: 2, indentWithTab: true, whitespace: false, guides: false, scrollPastEnd: false }
 export type DiffTarget = { sourceId: string; path: string; hash?: string }
 
-/** Painel do arquivo alterado, à esquerda do chat: o diff (do commit ou ainda sem commit) com seleção de linhas para a IA. */
+/** Changed file panel, to the left of the chat: the diff (of the commit or still uncommitted) with line selection for the AI. */
 export function DiffPane({ cardId, target, close, ask, style }: { cardId: string; target: DiffTarget; close(): void; ask(prompt: string): boolean | Promise<boolean>; style?: React.CSSProperties }): React.JSX.Element {
   const { common, git: { cardPanel: t, page: tp } } = useT()
   const { sourceId, path, hash } = target, [error, setError] = useState(''), [version, setVersion] = useState(0)
@@ -100,7 +100,7 @@ export function DiffPane({ cardId, target, close, ask, style }: { cardId: string
   </aside>
 }
 
-/** Arquivos de um commit do card; cada um abre o diff. */
+/** Files of a card commit; each one opens the diff. */
 function CommitFiles({ sourceId, hash, pick }: { sourceId: string; hash: string; pick(path: string): void }): React.JSX.Element {
   const common = useT().common
   const [files, setFiles] = useState<GitCommitFile[]>()
@@ -110,7 +110,7 @@ function CommitFiles({ sourceId, hash, pick }: { sourceId: string; hash: string;
 
 const ALL_REPOS = '__all__'
 
-/** Mensagem do commit (com sugestão da IA) para um ou vários repositórios; em cada um só vai o que está marcado. */
+/** Commit message (with an AI suggestion) for one or several repositories; in each only what is checked goes. */
 function CommitBox({ repos, cardId, excluded, reload, onDone, onCancel, onSeeFiles }: { repos: GitCardRepo[]; cardId: string; excluded(repo: GitCardRepo): string[]; reload(): Promise<void>; onDone?(): void; onCancel?(): void; onSeeFiles?(): void }): React.JSX.Element {
   const T = useT(), t = T.git.cardPanel, box = useRef<HTMLDivElement>(null)
   useEffect(() => { if (onCancel) box.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [])
@@ -118,7 +118,7 @@ function CommitBox({ repos, cardId, excluded, reload, onDone, onCancel, onSeeFil
   const ready = repos.map((repo) => ({ repo, paths: [...new Set(repo.files.map((file) => file.path))].filter((path) => !excluded(repo).includes(path)) })).filter((item) => item.paths.length > 0)
   const amendTargets = repos.filter((repo) => repo.commits.length > 0).map((repo) => ({ repo, paths: ready.find((item) => item.repo.sourceId === repo.sourceId)?.paths ?? [] }))
   const published = amend && amendTargets.some((item) => item.repo.published)
-  // Marcar Amend traz a mensagem do último commit para o campo (se ele estiver vazio); desmarcar tira, se ela não foi mexida. Com vários repositórios cada um mantém a sua.
+  // Checking Amend brings the last commit's message into the field (if it is empty); unchecking removes it, if it was not touched. With several repositories each keeps its own.
   const toggleAmend = (value: boolean): void => {
     setAmend(value); setError('')
     if (value) {
@@ -184,7 +184,7 @@ function RepoSection({ repo, cardId, branch, base, profiles, excluded, setExclud
     {confirming && <ConfirmDialog eyebrow={td.confirmEyebrow} title={td.confirmTitle(1)} text={td.confirmText(branch, repo.name)} ok={td.publishAndOpen} cancel={() => setConfirming(false)} confirm={() => void openPr()} />}</section>
 }
 
-/** Painel Git do card (botão Chat | Git): a branch de origem e a do card, uma seção por repositório e o commit fixo no rodapé. */
+/** Card Git panel (Chat | Git button): the source branch and the card's, one section per repository and the commit pinned at the footer. */
 export function GitCardPanel({ cardId, profiles, openRules, openGraph, diff, setDiff }: { cardId: string; profiles: AgentProfile[]; openRules(): void; openGraph(cardId: string): void; diff?: DiffTarget; setDiff(value: DiffTarget | undefined): void }): React.JSX.Element {
   const T = useT(), t = T.git.cardPanel, tw = T.git.worktreeDelete
   const [data, setData] = useState<GitCard>(), [error, setError] = useState(''), [excluded, setExcluded] = useState<Record<string, string[]>>({}), [target, setTarget] = useState<string>(), [wtDelete, setWtDelete] = useState(false)

@@ -7,7 +7,7 @@ export type LayoutPosition = 'left' | 'right' | 'top' | 'bottom'
 export function WindowIcon(): React.JSX.Element {
   return <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3" width="15" height="14" rx="2.5" /><path d="M3 7h14M5 5h.1M7 5h.1" /></svg>
 }
-/** Mesmo desenho e mesmas opções para posicionar painéis e janelas. Maximizar e restaurar ficam por conta do botão do sistema. */
+/** Same design and same options for positioning panels and windows. Maximize and restore are left to the system button. */
 export function WindowLayoutMenu({ move, detach, detachDisabled = false, closeWindow, className = '' }: { move(position: LayoutPosition): void; detach?(): void; detachDisabled?: boolean; closeWindow?(): void; className?: string }): React.JSX.Element {
   const t = useT(), labels: Record<LayoutPosition, string> = { left: t.shell.windowLayout.left, right: t.shell.windowLayout.right, top: t.shell.windowLayout.top, bottom: t.shell.windowLayout.bottom }
   const [open, setOpen] = useState(false), box = useRef<HTMLSpanElement>(null), menu = useRef<HTMLDivElement>(null)

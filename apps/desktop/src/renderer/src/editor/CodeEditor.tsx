@@ -11,13 +11,13 @@ export type { EditorOptions }
 export interface EditorViewState { anchor: number; head: number; scrollTop: number }
 const noExtensions: Extension[] = []
 
-/** Editor de código sobre o CodeMirror 6. A view é criada uma vez; valor, linguagem e opções entram por compartimentos. */
+/** Code editor on top of CodeMirror 6. The view is created once; value, language and options go in through compartments. */
 export function CodeEditor({ value, path, onChange, readOnly = false, options, extensions = noExtensions, onReady, initialSelection, initialScroll, onViewState, ariaLabel, className = '', conflictLabels, onCompareConflict, variant = 'code' }: {
   value: string; path: string; onChange?(value: string): void; readOnly?: boolean; options: EditorOptions; extensions?: Extension[]; onReady?(view: EditorView): void
   initialSelection?: { anchor: number; head: number }; initialScroll?: number; onViewState?(state: EditorViewState): void; ariaLabel: string; className?: string
-  /** Arquivo com marcadores de conflito ganha os botões de aceitar por bloco; estes são os nomes dos lados (padrão: atual / chegando). */
+  /** A file with conflict markers gets per-block accept buttons; these are the names of the sides (default: current / incoming). */
   conflictLabels?: { ours: string; theirs: string }; onCompareConflict?: ConflictOptions['compare']
-  /** `prose`: texto corrido (documentos do card, Constituição) sem números de linha nem dobras, com a mesma quebra de linha de um campo de texto. */
+  /** `prose`: running text (card documents, Constitution) without line numbers or folds, with the same line wrapping as a text field. */
   variant?: 'code' | 'prose'
 }): React.JSX.Element {
   const t = useT(), host = useRef<HTMLDivElement>(null), view = useRef<EditorView | null>(null)

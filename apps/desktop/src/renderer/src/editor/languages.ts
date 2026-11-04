@@ -29,7 +29,7 @@ register(['java'], legacy(async () => (await import('@codemirror/legacy-modes/mo
 register(['cs'], legacy(async () => (await import('@codemirror/legacy-modes/mode/clike')).csharp, '//'))
 register(['cpp', 'h'], legacy(async () => (await import('@codemirror/legacy-modes/mode/clike')).cpp, '//'))
 
-/** Linguagem pela extensão, carregada sob demanda para não pesar a abertura do app; `null` = texto puro. */
+/** Language by extension, loaded on demand so it does not weigh down app startup; `null` = plain text. */
 export async function languageFor(path: string): Promise<Extension | null> {
   const name = path.split(/[\\/]/).at(-1) ?? ''
   const load = loaders[name === '.env' || name.startsWith('.env.') ? 'env' : extensionOf(path)]
@@ -37,5 +37,5 @@ export async function languageFor(path: string): Promise<Extension | null> {
 }
 
 const names: Record<string, string> = { js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JavaScript React', ts: 'TypeScript', mts: 'TypeScript', cts: 'TypeScript', tsx: 'TypeScript React', json: 'JSON', jsonc: 'JSON', css: 'CSS', scss: 'SCSS', less: 'Less', html: 'HTML', htm: 'HTML', md: 'Markdown', mdx: 'Markdown', markdown: 'Markdown', py: 'Python', sql: 'SQL', xml: 'XML', svg: 'SVG', csproj: 'XML', yml: 'YAML', yaml: 'YAML', sh: 'Shell', bash: 'Shell', ps1: 'PowerShell', toml: 'TOML', ini: 'INI', go: 'Go', rs: 'Rust', java: 'Java', cs: 'C#', cpp: 'C++', h: 'C/C++' }
-/** Nome da linguagem para a barra de status; `Texto` quando não há realce. */
+/** Language name for the status bar; `Texto` when there is no highlighting. */
 export const languageName = (path: string): string => { const name = path.split(/[\\/]/).at(-1) ?? '', key = name === '.env' || name.startsWith('.env.') ? 'env' : extensionOf(path); return key === 'conf' ? tr().files.editor.languageConfig : key === 'env' ? tr().files.editor.languageEnv : names[key] ?? tr().files.editor.languagePlain }

@@ -1,6 +1,6 @@
 import type { GitPolicy, GitRepo } from '@gearmod/contracts'
 
-/** Git do projeto já carregado: a aba Git de Configurar projeto abre na hora e atualiza por baixo dos panos. */
+/** Project Git already loaded: the Git tab of Configure project opens instantly and refreshes behind the scenes. */
 export const gitConfigEvent = 'gearmod:git-changed'
 interface Cached { policy?: GitPolicy; repos?: GitRepo[] }
 const cache = new Map<string, Cached>(), loading = new Map<string, Promise<boolean>>()
@@ -9,8 +9,8 @@ export const cachedGit = (projectId: string): Cached => cache.get(projectId) ?? 
 export const rememberGit = (projectId: string, patch: Cached): void => { cache.set(projectId, { ...cachedGit(projectId), ...patch }) }
 
 /**
- * Procura repositórios novos (criados por fora), lê a regra de commit e guarda tudo. Roda ao abrir o projeto e sempre que a aba Git
- * é aberta; chamadas simultâneas dividem a mesma busca. Devolve se o cadastro de repositórios mudou.
+ * Looks for new repositories (created externally), reads the commit rule and stores everything. Runs when the project opens and whenever the Git tab
+ * is opened; simultaneous calls share the same search. Returns whether the repository registry changed.
  */
 export function refreshGit(projectId: string): Promise<boolean> {
   const running = loading.get(projectId)

@@ -101,7 +101,7 @@ interface Services {
   sddResolver: Pick<SddResolver, 'locate' | 'constitution'>
   sddWriter: Pick<SddWriter, 'write'>
   dbManager?: DbService
-  /** Índice de código para o editor (ir para símbolo, estrutura, definição, quem usa) e as pastas que ele cobre. */
+  /** Code index for the editor (go to symbol, outline, definition, usages) and the folders it covers. */
   codeIndex?: EditorCodeIndex
   codeRoots?(context: { projectId: string; cardId: string | null }): string[]
   codeIndexSettings?: { enabled(projectId: string): boolean; setEnabled(projectId: string, enabled: boolean): void }
@@ -115,7 +115,7 @@ interface Services {
   openFileExternal?(path: string, target: 'explorer' | 'default' | 'vscode'): Promise<void>
   trashItem?(path: string): Promise<void>
   openExternal(url: string): Promise<void>
-  /** Cor dos botões de janela do Windows (minimizar, maximizar, fechar): escuros no tema claro, claros no escuro. */
+  /** Color of the Windows window buttons (minimize, maximize, close): dark on the light theme, light on the dark one. */
   setTitleBarTheme?(light: boolean): void
   chooseSkillSource(): Promise<string | null>
   saveTextFile(input: { content: string; defaultName: string }): Promise<{ saved: boolean; path: string | null }>
@@ -127,8 +127,8 @@ interface Services {
 type Handler = (input: never) => unknown | Promise<unknown>
 
 /**
- * Só o renderer do próprio app (arquivo local empacotado ou o servidor de dev) pode chamar os canais. Eventos sem `senderFrame` não vêm do
- * Electron (testes); com a chave presente e vazia (frame destruído) ou de outra origem, recusa.
+ * Only the app's own renderer (packaged local file or the dev server) may call the channels. Events without `senderFrame` do not come from
+ * Electron (tests); with the key present and empty (destroyed frame) or from another origin, it refuses.
  */
 export function isTrustedSender(event: unknown, devUrl: string | undefined = process.env.ELECTRON_RENDERER_URL): boolean {
   if (!event || typeof event !== 'object' || !('senderFrame' in event)) return true
@@ -139,7 +139,7 @@ export function isTrustedSender(event: unknown, devUrl: string | undefined = pro
   try { return new URL(url).origin === new URL(devUrl).origin } catch { return false }
 }
 
-/** Caminhos de rede (UNC) e de dispositivo disparam autenticação SMB e vazam hash; a pré-visualização só lê disco local. */
+/** Network (UNC) and device paths trigger SMB authentication and leak a hash; the preview only reads local disk. */
 export const isLocalAbsolutePath = (path: string): boolean => isAbsolute(path) && !/^[\\/]{2}/.test(path)
 
 export function registerIpc(ipcMain: IpcMainLike, services: Services): () => void {
@@ -151,10 +151,10 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     if (worktree && existsSync(worktree.path)) return [...new Set([worktree.path, ...services.worktrees.repositories(cardId!).filter((repo) => repo.status === 'active').map((repo) => repo.path)])]
     return [...new Set([project.localPath, ...project.sources.map((source) => source.localPath)])]
   }
-  // workspaceRoots confere que o card é do projeto antes de o índice abrir qualquer pasta
+  // workspaceRoots checks that the card belongs to the project before the index opens any folder
   const code = editorCodeQueries(services.codeIndex, (context) => { const roots = workspaceRoots(context); return services.codeRoots?.(context) ?? roots }, services.codeIndexSettings)
   const applyingConstitution = new Set<string>()
-  /** Estado do Spec Kit de um card para o chat: permissão escolhida, cartões pendentes e os artefatos REAIS da feature do card. */
+  /** Spec Kit state of a card for the chat: chosen permission, pending cards and the REAL artifacts of the card's feature. */
   const specKitState = (cardId: string): SpecKitState => {
     services.speckit.sync(cardId)
     const speckit = services.speckit, card = services.board.card(cardId), availability = speckit.availability(card.projectId), active = speckit.active(cardId)
@@ -207,10 +207,10 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'speckit:choose': (input: { cardId: string; permission: 'manual' | 'free' }) => {
       const first = !services.speckit.permission(input.cardId)
       services.speckit.choose(input.cardId, input.permission)
-      // Primeira escolha: a etapa specify começa sozinha, visível no chat e com o entendimento e as decisões do card como entrada.
+      // First choice: the specify step starts on its own, visible in the chat and with the card's understanding and decisions as input.
       if (first) {
         const card = services.board.card(input.cardId), chat = services.conversations.listChats(card.projectId, input.cardId).find((item) => item.purpose === 'planning')
-        let hasSpec = false; try { hasSpec = Boolean(services.speckit.artifacts(input.cardId).spec) } catch { /* sem worktree ainda */ }
+        let hasSpec = false; try { hasSpec = Boolean(services.speckit.artifacts(input.cardId).spec) } catch { /* no worktree yet */ }
         const specProvider = chat ? specKitProvider(chat.provider) : null
         if (chat && specProvider && !chat.busy && !hasSpec) {
           const decisions = services.history.decisions(input.cardId).filter((item) => item.status !== 'superseded')
@@ -237,11 +237,11 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
           services.history.selectWorkflow(approval.cardId, workflow, { actor: 'user' }, typeof approval.payload.reason === 'string' ? approval.payload.reason : '', 'user', method)
         }
       }
-      // S05: aprovar um pedido de movimento do agente aplica o movimento agora, ainda sujeito ao gate de Done (skipGate fica false).
+      // S05: approving an agent move request applies the move now, still subject to the Done gate (skipGate stays false).
       if (approval.status === 'approved' && approval.kind === 'agent-move' && approval.cardId && typeof approval.payload.columnId === 'string') {
         services.board.move(approval.cardId, approval.payload.columnId, null, 'agent')
       }
-      // Spec Kit: o pedido de implementação no planejamento só mexe no card depois da aprovação do usuário. Negar = cancelar.
+      // Spec Kit: the implementation request in planning only touches the card after the user's approval. Deny = cancel.
       if (approval.status === 'approved' && approval.kind === specKitMoveKind && approval.cardId && typeof approval.payload.columnId === 'string') {
         services.board.move(approval.cardId, approval.payload.columnId, null, 'user')
         if (approval.note === 'move-and-implement') services.speckit.requestStart(approval.cardId)
@@ -290,7 +290,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'backups:list': () => services.backups.list(),
     'backups:create': () => services.backups.create(services.database.db, 'manual'),
     'backups:restore': async (input: { backupId: string }) => {
-      // Fechar o banco debaixo de um agente em execução corromperia a run e o MCP dele: espera terminarem.
+      // Closing the database under a running agent would corrupt its run and its MCP: wait for them to finish.
       if ((services.database.db.prepare(`SELECT COUNT(*) FROM runs WHERE status IN ('queued', 'running')`).pluck().get() as number) > 0) throw new Error(tm().ipc.restoreAgentsRunning)
       services.database.close()
       await services.backups.restore(input.backupId, services.database.path)
@@ -358,7 +358,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'collab:answer-question': (input: { questionId: string; answer: string }) => services.collab.answerByUser(input.questionId, input.answer),
     'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => (systemDocumentKinds as readonly string[]).includes(input.kind) ? (() => { throw new Error(tm().ipc.documentGeneratedBySystem) })() : services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),
     'cards:document-versions': (input: { cardId: string; kind: CardDocumentKind }) => services.board.documents.versions(input.cardId, input.kind),
-    // Spec Kit: o tasks.md da feature é a fonte; marcar no card grava nele (senão o espelho apagaria a marca).
+    // Spec Kit: the feature's tasks.md is the source; checking in the card writes to it (otherwise the mirror would erase the mark).
     'cards:toggle-task': (input: { cardId: string; line: number; checked: boolean }) => services.speckit.setTask(input.cardId, input.line, input.checked) ? services.board.documents.get(input.cardId).tasks : services.board.documents.setTask(input.cardId, input.line, input.checked, 'user'),
     'cards:start': (input: { cardId: string; config: AgentConfig; purpose?: 'execution' | 'test'; baseBranch?: string }) => { const run = services.executions.start(input.cardId, input.config, input.purpose, input.baseBranch); services.speckit.settleStart(input.cardId); return run },
     'cards:branches': (input: { cardId: string }) => services.executions.branches(input.cardId),
@@ -369,24 +369,24 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'chats:reset': (input: { chatId: string }) => { services.conversations.resetChat(input.chatId); return { reset: true as const } },
     'chats:delete': (input: { chatId: string }) => { services.conversations.deleteChat(input.chatId); return { deleted: true as const } },
     'cards:mark-viewed': (input: { cardId: string }) => services.board.markViewed(input.cardId),
-    // O arquivo do repositório é a fonte da Constituição: a aba mostra o texto dele (as sugestões continuam no banco) e a edição passa por um card, com aprovação.
+    // The repository file is the Constitution's source: the tab shows its text (suggestions stay in the database) and editing goes through a card, with approval.
     'constitution:get': async (input: { projectId: string }) => {
       const state = services.constitution.state(input.projectId)
       const view = await services.sddResolver.constitution({ projectId: input.projectId }).catch(() => null)
       let contentMd = view?.content ?? ''
-      // A branch base pode não ter o arquivo (ou a leitura pelo Git falhar): se a Constituição está na pasta do repositório SDD, mostra a do disco.
+      // The base branch may not have the file (or reading via Git may fail): if the Constitution is in the SDD repository folder, show the one on disk.
       if (!contentMd.trim()) {
         try {
           const config = services.history.config(input.projectId).sdd, location = await services.sddResolver.locate({ projectId: input.projectId })
           contentMd = readFileSync(join(location.repo, config.root, config.constitution[config.method]), 'utf8')
-        } catch { /* sem arquivo na pasta: segue vazio */ }
+        } catch { /* no file in the folder: stays empty */ }
       }
       return { ...state, constitution: { ...state.constitution, contentMd } }
     },
     'constitution:save': (): never => { throw new Error(tm().ipc.constitutionSaveViaCard) },
     'constitution:import': (input: { projectId: string }) => services.constitution.importSpecKit(input.projectId),
     'constitution:set-proposal': (input: { proposalId: string; status: 'applied' | 'dismissed' }) => services.constitution.state(services.constitution.setProposal(input.proposalId, input.status)),
-    // G10: canais do SDD file-first (resolver/writer), ao lado dos antigos `constitution:*` (SQLite, legado até G14).
+    // G10: file-first SDD channels (resolver/writer), alongside the old `constitution:*` (SQLite, legacy until G14).
     'sdd:config-get': (input: { projectId: string }) => services.history.config(input.projectId).sdd,
     'sdd:config-set': (input: { projectId: string; config: SddConfig }) => { const current = services.history.config(input.projectId); return services.history.setConfig(input.projectId, { ...current, sdd: input.config }).sdd },
     'sdd:locate': (input: { projectId: string; cardId: string | null }) => services.sddResolver.locate({ projectId: input.projectId, cardId: input.cardId ?? undefined }),
@@ -443,13 +443,13 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'code-index:reindex': (input: { projectId: string; root?: string }) => code.reindex(input),
     'files:read': (input: { chatId: string; path: string }) => {
       const context = services.conversations.context(input.chatId), worktree = context.cardId ? services.worktrees.get(context.cardId) : null
-      // Card com worktree: a pasta dela e a de cada repositório dela (é onde o agente trabalha), mesmo que o estado esteja desatualizado.
-      // Sem worktree (planejamento e chat livre, que rodam read-only), a pasta do projeto.
+      // Card with a worktree: its folder and each of its repositories' (where the agent works), even if the state is out of date.
+      // No worktree (planning and free chat, which run read-only): the project folder.
       const roots = worktree && existsSync(worktree.path) ? [...services.worktrees.repositories(context.cardId!).filter((item) => item.status === 'active').map((item) => item.path), worktree.path] : [context.projectPath]
       return readProjectFile(roots, input.path)
     },
     'app:open-link': async (input: { url: string }) => {
-      // Só links web e e-mail; nada de file:, javascript: ou caminhos locais.
+      // Only web and email links; no file:, javascript: or local paths.
       if (!/^(https?:\/\/|mailto:)/i.test(input.url) || input.url.length > 2048) throw new Error(tm().ipc.linkNotAllowed)
       await services.openExternal(input.url); return { opened: true as const }
     },
@@ -458,7 +458,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
       const mime = imageMime[extname(input.path).toLowerCase()]
       try { return mime && isLocalAbsolutePath(input.path) && statSync(input.path).size < 8_000_000 ? `data:${mime};base64,${readFileSync(input.path).toString('base64')}` : null } catch { return null }
     },
-    // Arquivo colado do clipboard (print, imagem copiada) não tem caminho: vai para a pasta de anexos do app e o agente lê dali.
+    // A file pasted from the clipboard (screenshot, copied image) has no path: it goes to the app's attachments folder and the agent reads it from there.
     'files:save-pasted': (input: { name: string; base64: string }) => {
       const dir = join(services.backups.attachmentsDir, 'pasted'); mkdirSync(dir, { recursive: true })
       const safe = basename(input.name).replace(/[^\w. -]/g, '_').slice(-80) || 'arquivo', path = join(dir, `${randomUUID().slice(0, 8)}-${safe}`)
@@ -470,8 +470,8 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:checklist-toggle': (input: { cardId: string; line: number; text: string; checked: boolean }) => { const next = services.checklists.toggle(input.cardId, input.line, input.text, input.checked); services.history.sync(input.cardId); return next },
     'cards:delete': async (input: { cardId: string; deleteArtifacts?: boolean }) => {
       const card = services.board.card(input.cardId)
-      // D8: a worktree e a branch do card não ficam para trás. Com alteração sem commit a exclusão é recusada (nada é perdido em silêncio);
-      // branch com commits que não estão em outra branch fica no Git (`branch -d`).
+      // D8: the card's worktree and branch do not stay behind. With uncommitted changes the deletion is refused (nothing is silently lost);
+      // a branch with commits that are not on another branch stays in Git (`branch -d`).
       const ownsWorktree = services.database.db.prepare(`SELECT 1 FROM worktrees WHERE card_id = ? AND cleanup_state != 'removed'`).get(input.cardId)
       const shared = services.database.db.prepare('SELECT 1 FROM cards WHERE worktree_card_id = ? AND id <> ? LIMIT 1').get(input.cardId, input.cardId)
       if (ownsWorktree && !shared) {
@@ -525,7 +525,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'git:file-path': async (input: { sourceId: string; cardId: string | null; path: string }) => services.gitManager.filePath(input.sourceId, input.cardId, input.path),
     'git:file-write': async (input: { sourceId: string; cardId: string | null; path: string; content: string }) => { await services.gitManager.writeFileText(input.sourceId, input.cardId, input.path, input.content); return {} },
     'terminal:open': (input: { projectId: string | null; cardId: string | null }) => {
-      // Dentro da worktree do card (onde o agente trabalha); sem worktree, na pasta do projeto; fora de um projeto, na pasta do usuário.
+      // Inside the card worktree (where the agent works); with no worktree, in the project folder; outside a project, in the user's folder.
       const worktree = input.cardId ? services.worktrees.get(input.cardId) : null, cwd = worktree && existsSync(worktree.path) ? worktree.path : input.projectId ? services.projects.get(input.projectId).localPath : homedir()
       const id = services.terminals.open(cwd); return { id, cwd, shell: services.terminals.info(id).shell }
     },
@@ -536,7 +536,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'metrics:card': (input: { cardId: string }) => services.conversations.runMetrics(input.cardId),
     'workflow:get': (input: { projectId: string }) => workflowState(services.history, input.projectId),
     'workflow:open-path': async (input: { projectId: string; which: 'artifacts' | 'sdd' }) => {
-      // Só abre as pastas que o próprio projeto configurou (ou o padrão dos artefatos), nunca um caminho vindo da tela.
+      // Only opens folders the project itself configured (or the default artifacts one), never a path coming from the screen.
       const state = workflowState(services.history, input.projectId), path = input.which === 'sdd' ? state.config.sddPath : state.config.artifactsDir ?? state.defaultArtifactsDir
       if (!path) throw new Error(tm().ipc.folderNotDefined)
       await services.openPath(path); return { path }
@@ -548,7 +548,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'messages:list': (input: { chatId: string }) => services.conversations.listMessages(input.chatId)
     , 'agents:start': (input: { chatId: string; prompt: string; planning: boolean; attachments?: string[]; choice?: { model?: string | null; effort?: Effort | null; mode?: PermissionMode } }) => {
       try { return services.orchestrator.start(input) } catch (error) {
-        // Pediu implementação no planejamento do Spec Kit: o bloqueio vale, e o app oferece mover o card (aprovação do usuário).
+        // Asked for implementation in Spec Kit planning: the block applies, and the app offers to move the card (user approval).
         if (error instanceof SpecKitImplementBlocked) { const cardId = services.conversations.context(input.chatId).cardId; if (cardId && services.speckit.active(cardId)) services.speckit.requestMove(cardId); throw new Error(error.message) }
         throw error
       }
@@ -587,7 +587,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'git:stash-file': (input: { sourceId: string; cardId: string | null; path: string }) => services.gitManager.stashFile(input.sourceId, input.cardId, input.path)
     , 'git:ignore-file': (input: { sourceId: string; cardId: string | null; path: string; kind: 'file' | 'directory' | 'extension' }) => services.gitManager.ignoreFile(input.sourceId, input.cardId, input.path, input.kind)
     , 'git:suggest-message': async (input: { sourceId: string; cardId: string | null; paths?: string[] }) => {
-      // Primeiro os agentes configurados no próprio card; depois qualquer outro perfil do Claude (um com a conta vencida não deve travar os demais).
+      // First the agents configured on the card itself; then any other Claude profile (one with an expired account must not block the rest).
       const claude = services.profiles.list().filter((item) => item.provider === 'claude')
       if (!claude.length) throw new Error(tm().adapters.commitSuggestNoClaude)
       const cardAgents = input.cardId ? services.agentConfigs.get(input.cardId) : null

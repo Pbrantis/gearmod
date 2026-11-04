@@ -5,7 +5,7 @@ import { useT } from './i18n'
 
 export type ScopeItem = { key: string; label: string; note?: string; checked: boolean; system?: boolean }
 
-/** Lista com caixas de seleção para escolher o que aparece na árvore (bancos de um servidor ou esquemas de um banco). Aplica ao clicar fora ou com Enter; Esc cancela. */
+/** List with checkboxes to choose what appears in the tree (a server's databases or a database's schemas). Applies on click outside or with Enter; Esc cancels. */
 export function DbScopePicker({ x, y, title, items, apply, close }: { x: number; y: number; title: string; items: ScopeItem[]; apply(keys: string[]): void; close(): void }): React.JSX.Element {
   const t = useT()
   const root = useRef<HTMLDivElement>(null), [pos, setPos] = useState({ left: x, top: y })

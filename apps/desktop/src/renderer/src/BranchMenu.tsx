@@ -7,7 +7,7 @@ export type BranchAction = 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebas
 export type CommitMenuAction = 'checkout' | 'cherry-pick' | 'revert' | 'rebase' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag' | 'copy'
 export type StashMenuAction = 'apply' | 'pop' | 'drop'
 
-/** Menu do botão direito do Git (branches, commits, stashes): lista de ações com setas, Enter e Esc. */
+/** Git right-click menu (branches, commits, stashes): list of actions with arrows, Enter and Esc. */
 export function GitMenu<K extends string>({ x, y, title, label, items, run, close }: { x: number; y: number; title: string; label: string; items: Array<MenuItem<K>>; run(key: K): void; close(): void }): React.JSX.Element {
   const list = items.filter((item) => !item.off)
   const root = useRef<HTMLDivElement>(null), [pos, setPos] = useState({ left: x, top: y }), [active, setActive] = useState(0)
@@ -36,7 +36,7 @@ export function GitMenu<K extends string>({ x, y, title, label, items, run, clos
   </div>
 }
 
-/** Ações de uma branch (como no GitKraken): trocar, puxar, enviar, rebase, merge, criar a partir dela e apagar. */
+/** Branch actions (as in GitKraken): switch, pull, push, rebase, merge, create from it and delete. */
 export function branchItems(kind: 'local' | 'remote', head: boolean, current: string | null): Array<MenuItem<BranchAction>> {
   const m = tr().git.menu
   const local = kind === 'local', other = head ? m.isCurrent : current ? undefined : m.noCurrent
@@ -56,7 +56,7 @@ export function branchItems(kind: 'local' | 'remote', head: boolean, current: st
   ]
 }
 
-/** Ações de um commit: levar ou desfazer na branch atual, mover a branch (reset), criar branch ou tag ali. */
+/** Commit actions: cherry-pick or revert onto the current branch, move the branch (reset), create a branch or tag there. */
 export function commitItems(current: string | null): Array<MenuItem<CommitMenuAction>> {
   const m = tr().git.menu
   const none = current ? undefined : m.noCurrent

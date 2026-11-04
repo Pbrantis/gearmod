@@ -6,7 +6,7 @@ const elapsed = (from: string, to: string | null, now: number): string => {
   return seconds < 60 ? `${seconds}s` : seconds < 3600 ? `${Math.floor(seconds / 60)}min` : `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}min`
 }
 
-/** Subagentes e comandos em segundo plano do chat, lidos dos eventos que o agente já emite. Some quando o chat nunca usou segundo plano. */
+/** Subagents and background commands of the chat, read from the events the agent already emits. Disappears when the chat never used the background. */
 export function AgentBackground({ chatId }: { chatId?: string }): React.JSX.Element | null {
   const t = useT().chat.background
   const [tasks, setTasks] = useState<BackgroundTask[]>([]), [open, setOpen] = useState(false), [now, setNow] = useState(Date.now()), [expanded, setExpanded] = useState<string[]>([]), box = useRef<HTMLSpanElement>(null)

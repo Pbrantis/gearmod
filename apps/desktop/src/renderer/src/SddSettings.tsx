@@ -9,7 +9,7 @@ const FolderIcon = (): React.JSX.Element => <svg className="cx-foldico" viewBox=
 const slash = (value: string): string => value.replace(/\\/g, '/').replace(/\/$/, '')
 const isAbsolute = (value: string): boolean => /^(?:[A-Za-z]:\/|\/)/.test(slash(value))
 
-/** Localização versionada; o conteúdo é editado na worktree de um card. */
+/** Versioned location; the content is edited in a card's worktree. */
 export function SddSettings({ project, openConstitutionChat, onOpenReference }: { project: Project; openConstitutionChat(prompt?: string): void; onOpenReference(): void }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.sddSettings
   const [config, setConfig] = useState<SddConfig>(), [branch, setBranch] = useState(project.baseBranch), [branches, setBranches] = useState<string[]>([])
@@ -30,7 +30,7 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
       setMessage(t.saved)
     } catch (e) { setMessage(plainError(e)) } finally { setBusy(false) }
   }
-  // Salva sozinho a cada mudança (depois de um instante), sem botão: o primeiro valor carregado não conta como mudança.
+  // Saves on its own at each change (after a moment), without a button: the first loaded value does not count as a change.
   const lastSaved = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (!config || !source) return

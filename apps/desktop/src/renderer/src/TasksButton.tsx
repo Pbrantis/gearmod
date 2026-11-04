@@ -9,7 +9,7 @@ const elapsed = (task: BgTask, now: number): string => {
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}min ${String(seconds % 60).padStart(2, '0')}s`
 }
 
-/** Botão da barra de título com os processos em segundo plano (instalações, revisões…) e o andamento de cada um. */
+/** Title bar button with the background processes (installs, reviews…) and the progress of each. */
 export function TasksButton(): React.JSX.Element {
   const t = useT()
   const list = useTasks(), running = list.filter((item) => item.state === 'running').length, failed = list.filter((item) => item.state === 'failed').length

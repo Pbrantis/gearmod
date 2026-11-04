@@ -1,4 +1,4 @@
-/** Leitura do documento Tasks: só os itens de primeiro nível contam como tasks; os critérios ficam recuados dentro de cada task. */
+/** Reading the Tasks document: only first-level items count as tasks; criteria are indented inside each task. */
 import { tm } from './i18n'
 const topLevelItem = /^[-*+]\s+\[( |x|X)\]\s+(.*)$/
 const anyItem = /^\s*[-*+]\s+\[( |x|X)\]\s+/
@@ -16,7 +16,7 @@ export function countTasks(markdown: string): TaskCount {
   return { done, total }
 }
 
-/** Erro em português para o agente corrigir quando o Tasks foge do formato (o contador do card depende dele). */
+/** Error in Portuguese for the agent to fix when Tasks departs from the format (the card counter depends on it). */
 export function validateTasks(markdown: string): string | null {
   if (!markdown.trim()) return null
   if (countTasks(markdown).total === 0) return 'O documento Tasks precisa ter ao menos uma task de primeiro nível no formato "- [ ] T001 Descrição".'
@@ -29,8 +29,8 @@ const checkVerb = /^(rodar|executar|verificar|validar|confirmar|garantir|checar|
 const checkTarget = /\b(lint|type-?check|typecheck|tsc|suite|testes|tests?|regress\w*|continua\w* funcionando|still works?|build)\b/
 
 /**
- * Tasks que são só verificação ("rodar lint, type-check e a suíte", "confirmar que X continua funcionando"): isso é da etapa de teste
- * (Plano de testes) ou da regra de pronto do desenvolvedor, não uma task. Escrever testes continua sendo task normal.
+ * Tasks that are only verification ("run lint, type-check and the suite", "confirm that X still works"): that belongs to the test step
+ * (Test plan) or the developer's done rule, not to a task. Writing tests remains a normal task.
  */
 export function verificationOnlyTasks(markdown: string): string[] {
   const found: string[] = []
@@ -44,7 +44,7 @@ export function verificationOnlyTasks(markdown: string): string[] {
   return found
 }
 
-/** Marca ou desmarca o item (de qualquer nível) da linha informada, contando linhas a partir de 0. */
+/** Checks or unchecks the item (of any level) on the given line, counting lines from 0. */
 export function setTaskChecked(markdown: string, lineIndex: number, checked: boolean): string {
   const lines = markdown.split('\n')
   const line = lines[lineIndex]

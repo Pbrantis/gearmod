@@ -33,8 +33,8 @@ const cardTypeError = (types: Array<{ id: string; name: string }>): string => `t
 const normalize = (value: string): string => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
 
 /**
- * Canal local entre o servidor MCP (processo filho do agente) e o app. Usa socket Unix / named pipe, nunca porta de rede,
- * e cada execução tem um token próprio, válido só enquanto ela roda. Toda escrita passa pelas mesmas validações do IPC.
+ * Local channel between the MCP server (the agent's child process) and the app. Uses a Unix socket / named pipe, never a network port,
+ * and each run has its own token, valid only while it runs. Every write goes through the same validations as IPC.
  */
 export class McpBridge {
   usesSpecKit(cardId: string): boolean { return this.deps.history?.sddMethod(cardId) === 'speckit' }
@@ -76,9 +76,9 @@ export class McpBridge {
   register(runId: string, cardId: string | null, notify: (change: CardChange) => void, chat: { id: string; purpose: ChatPurpose } = { id: '', purpose: 'execution' }): McpEndpoint {
     const token = randomBytes(24).toString('hex')
     this.runs.set(token, { runId, cardId, chatId: chat.id, purpose: chat.purpose, written: new Set(), pendingMove: null, notify })
-    // o índice de código das pastas desta conversa começa a ficar pronto enquanto o agente sobe; desligado no projeto, as ferramentas somem
+    // the code index of this conversation's folders starts getting ready while the agent boots; if turned off in the project, the tools disappear
     const codeOn = this.codeOn({ cardId, chatId: chat.id })
-    if (codeOn && chat.purpose !== 'constitution') { try { this.deps.codeIndex?.prewarm(this.deps.codeRoots?.({ cardId, chatId: chat.id }) ?? []) } catch { /* sem pastas ainda */ } }
+    if (codeOn && chat.purpose !== 'constitution') { try { this.deps.codeIndex?.prewarm(this.deps.codeRoots?.({ cardId, chatId: chat.id }) ?? []) } catch { /* no folders yet */ } }
     return { command: this.deps.runtime ?? process.execPath, args: [this.deps.serverScript], env: { ELECTRON_RUN_AS_NODE: '1', GEARMOD_SOCKET: this.socketPath, GEARMOD_TOKEN: token, GEARMOD_PURPOSE: chat.purpose, GEARMOD_CODE_INDEX: codeOn ? '1' : '0' } }
   }
 
@@ -102,7 +102,7 @@ export class McpBridge {
         return instructions ? { ok: true, text: instructions } : { ok: false, error: `Unknown skill: ${args.nome}` }
       }
       if (tool === 'gearmod_create_card') {
-        // Chat da Constituição também pode criar um card (ex.: para gravar uma mudança de verdade, G09); a conversa passa a ser a dele.
+        // A Constitution chat can also create a card (e.g. to really write a change, G09); the conversation becomes that card's.
         if ((run.purpose !== 'free' && run.purpose !== 'constitution') || run.cardId) return { ok: false, error: 'This conversation already has a card.' }
         if (!this.deps.conversations) return { ok: false, error: 'Free chat is not available' }
         const constitutionChat = run.purpose === 'constitution'
@@ -111,7 +111,7 @@ export class McpBridge {
         if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade must be low, medium, high or urgent' }
         if (typeof summary !== 'string') return { ok: false, error: 'resumo must be a text' }
         const projectId = this.deps.conversations.projectOf(run.chatId), types = board.cardTypes(projectId)
-        // Sem tipo: o primeiro da lista do projeto. Com tipo: id ou nome de um dos tipos do projeto.
+        // No type: the first in the project's list. With a type: id or name of one of the project's types.
         const type = args.tipo === undefined ? types[0]!.id : findCardType(types, String(args.tipo))?.id
         if (!type) return { ok: false, error: cardTypeError(types) }
         const columns = board.get(projectId).columns
@@ -124,7 +124,7 @@ export class McpBridge {
         return { ok: true, text: constitutionChat ? `Card "${card.title}" created in ${column.label}. Send the complete text with gearmod_write_constitution for review and approval on the card.` : `Card "${card.title}" created in ${column.label}. This chat is now its planning chat: load gearmod-planning with gearmod_read_skill, follow the skill, save the Specification, Plan and Tasks with gearmod_write_document and call gearmod_finish_planning when done.` }
       }
       if (tool === 'gearmod_read_constitution' || tool === 'gearmod_write_constitution' || tool === 'gearmod_propose_constitution') return this.constitution(run, tool, args)
-      // índice de código: só leitura, nas pastas desta conversa (worktree do card ou pastas do projeto); vale também no chat livre
+      // code index: read-only, in this conversation's folders (card worktree or project folders); also applies in the free chat
       if (tool.startsWith('gearmod_code_')) return this.codeTool(run, tool, args)
       if (!run.cardId) return { ok: false, error: 'This conversation has no card yet. If the user asks to plan something, call gearmod_create_card first.' }
       if (tool === 'gearmod_request_commit') return this.requestCommit(run, args)
@@ -154,7 +154,7 @@ export class McpBridge {
         const missing = board.markPlanReady(run.cardId)
         if (missing.length) return { ok: false, error: `Documents still missing: ${missing.join(', ')}. Save them and call again.` }
         run.notify({ type: 'card' })
-        // Artefatos do plano (pasta do card e, no fluxo SDD, a pasta central do método) são gravados pelo app, nunca pelo planejador.
+        // Plan artifacts (card folder and, in the SDD flow, the method's central folder) are written by the app, never by the planner.
         let notices: string[] = []; try { notices = this.deps.planReady?.(run.cardId).notices ?? [] } catch (error) { notices = [error instanceof Error ? error.message : String(error)] }
         return { ok: true, text: `Planning concluded; the card now shows as "Plan ready".${notices.length ? ` Notices: ${notices.join(' ')}` : ''}` }
       }
@@ -167,7 +167,7 @@ export class McpBridge {
         const current = board.card(run.cardId)
         const title = args.titulo === undefined ? current.title : args.titulo, type = args.tipo === undefined ? current.type : args.tipo, priority = args.prioridade === undefined ? current.priority : args.prioridade
         if (typeof title !== 'string' || !title.trim() || title.length > 240) return { ok: false, error: 'titulo must be a text of 1 to 240 characters' }
-        // Tipo novo precisa ser um dos tipos do projeto; o atual (mesmo que tenha saído da lista) continua aceito.
+        // A new type must be one of the project's types; the current one (even if it left the list) is still accepted.
         const resolvedType = args.tipo === undefined || args.tipo === current.type ? current.type : findCardType(board.cardTypes(current.projectId), String(type))?.id
         if (!resolvedType) return { ok: false, error: cardTypeError(board.cardTypes(current.projectId)) }
         if (!['low', 'medium', 'high', 'urgent'].includes(String(priority))) return { ok: false, error: 'prioridade must be low, medium, high or urgent' }
@@ -203,10 +203,10 @@ export class McpBridge {
         if (typeof args.coluna !== 'string' || (args.quando !== 'agora' && args.quando !== 'ao_terminar')) return { ok: false, error: 'provide coluna and quando ("agora" or "ao_terminar")' }
         const column = this.findColumn(run.cardId, args.coluna)
         if (!column) return { ok: false, error: `Column not found: ${args.coluna}` }
-        // A política vale para os dois momentos: o movimento "ao terminar" também não escapa de deny nem de ask.
+        // The policy applies to both moments: the "when finishing" move also does not escape deny or ask.
         const moveDecision = this.policyDecision(run, 'move')
         if (moveDecision === 'deny') return { ok: false, error: 'Blocked by the project policy (move).' }
-        // S05 (atrás da flag, ou quando a política do projeto manda perguntar): o movimento vira pedido pendente; a Done continua sujeita ao gate quando o usuário aprovar.
+        // S05 (behind the flag, or when the project policy says ask): the move becomes a pending request; Done stays subject to the gate when the user approves.
         if ((this.deps.agentMoveApproval || moveDecision === 'ask') && this.deps.approvals) {
           const card = board.card(run.cardId)
           const approval = this.deps.approvals.request({ kind: 'agent-move', subjectRef: run.cardId, payload: { columnId: column.id, columnLabel: column.label }, requestedActor: 'agent', runId: run.runId, cardId: run.cardId, projectId: card.projectId })
@@ -221,12 +221,12 @@ export class McpBridge {
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) } }
   }
 
-  /** Repositórios do card: só eles ganham worktree. Na execução, o repositório novo é preparado na hora (os outros continuam como estão). */
+  /** Card repositories: only they get a worktree. On a run, the new repository is prepared on the spot (the others stay as they are). */
   private async codeTool(run: RunState, tool: string, args: Record<string, unknown>): Promise<Reply> {
     const { codeIndex, codeRoots } = this.deps
     if (!codeIndex || !codeRoots || !codeIndex.isTool(tool)) return { ok: false, error: `Unknown tool: ${tool}` }
     if (run.purpose === 'constitution') return { ok: false, error: 'The code tools are not available in the Constitution chat.' }
-    // pode ter sido desligado com o agente já rodando
+    // may have been turned off while the agent was already running
     if (!this.codeOn(run)) return { ok: false, error: 'The code index is turned off for this project. Use Grep and Read instead.' }
     return { ok: true, text: await codeIndex.tool(tool, args, codeRoots({ cardId: run.cardId, chatId: run.chatId })) }
   }
@@ -246,7 +246,7 @@ export class McpBridge {
     const missing = names.filter((_, index) => !chosen[index])
     if (missing.length) return { ok: false, error: `Unknown repository: ${missing.join(', ')}. Available: ${sources.map((source) => source.name).join(', ')}` }
     board.setRepos(run.cardId, chosen.length ? chosen.map((source) => source!.id) : null)
-    try { this.deps.history?.decide(run.cardId, { kind: 'scope', statement: `Repositórios do card: ${chosen.length ? chosen.map((source) => source!.name).join(', ') : 'todos'}`, rationale: typeof args.motivo === 'string' ? args.motivo : '', actor: 'agent', source: { actor: 'agent', runId: run.runId, chatId: run.chatId } }) } catch { /* decisão é registro, não bloqueia */ }
+    try { this.deps.history?.decide(run.cardId, { kind: 'scope', statement: `Repositórios do card: ${chosen.length ? chosen.map((source) => source!.name).join(', ') : 'todos'}`, rationale: typeof args.motivo === 'string' ? args.motivo : '', actor: 'agent', source: { actor: 'agent', runId: run.runId, chatId: run.chatId } }) } catch { /* decision is a record, it does not block */ }
     let prepared = ''
     if (run.purpose === 'execution' || run.purpose === 'test') {
       const worktree = await this.deps.prepareWorktree?.(run.cardId).catch((error: unknown) => { prepared = ` Could not prepare: ${error instanceof Error ? error.message : String(error)}`; return null })
@@ -256,7 +256,7 @@ export class McpBridge {
     return { ok: true, text: `The card works in: ${chosen.length ? chosen.map((source) => source!.name).join(', ') : 'all repositories'}.${prepared}` }
   }
 
-  /** Complexity Engine, decisões, entendimento e exploração: tudo vira evento versionado do card (docs/09). */
+  /** Complexity Engine, decisions, understanding and exploration: all become a versioned card event (docs/09). */
   private history(run: RunState, tool: string, args: Record<string, unknown>): Reply {
     const history = this.deps.history
     const cardId = run.cardId
@@ -302,7 +302,7 @@ export class McpBridge {
         const active = history.decisions(cardId).filter((item) => item.status !== 'superseded')
         const reviewed = Array.isArray(args.decisoes_revisadas) ? args.decisoes_revisadas : []
         if (!Array.isArray(args.decisoes_revisadas) || active.some((item) => !reviewed.includes(item.number))) return { ok: false, error: `Review the current decisions below before registering. If the new one replaces any, give its number in substitui; if it is equivalent, do not duplicate. Send all reviewed numbers in decisoes_revisadas (or [] if there are no decisions):\n${active.map((item) => `D${item.number} [${item.status}]: ${item.statement}`).join('\n') || '(none)'}` }
-        // A entrada MCP nunca é prova de uma ação humana; mesmo quando o agente alega que veio do usuário, fica como proposta.
+        // MCP input is never proof of a human action; even when the agent claims it came from the user, it stays as a proposal.
         const decision = history.decide(cardId, { kind: kind.data, statement: args.decisao, rationale: typeof args.motivo === 'string' ? args.motivo : '', actor: 'agent', supersedes: Number.isInteger(args.substitui) ? args.substitui as number : null, source })
         run.notify({ type: 'card' })
         return { ok: true, text: `Decision D${String(decision.number).padStart(3, '0')} registered as a proposal, awaiting the user${args.origem === 'usuario' ? ' (the origin declared by the agent was downgraded)' : ''}.` }
@@ -324,7 +324,7 @@ export class McpBridge {
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message.slice(0, 2000) : String(error) } }
   }
 
-  /** Commit do agente: a regra da branch (nunca, pedir permissão ou automático) é aplicada pelo GitManager. */
+  /** Agent commit: the branch rule (never, ask permission or automatic) is applied by the GitManager. */
   private async requestCommit(run: RunState, args: Record<string, unknown>): Promise<Reply> {
     if (!this.deps.git) return { ok: false, error: 'GearMod Git is not available' }
     if (run.purpose !== 'execution' || !run.cardId) return { ok: false, error: 'This tool is for the developer (implementation stage).' }
@@ -340,9 +340,9 @@ export class McpBridge {
   }
 
   /**
-   * Constituição (G09): todos leem (pelo resolver file-first, com fallback no SQLite legado); só quem tem card grava — na
-   * worktree dele, pelo `SddWriter` — e os outros chats propõem (o usuário aplica). O chat da Constituição conversa e
-   * entende livremente, mas sem card não grava nada: a instrução (skill) é criar um card quando for de verdade gravar.
+   * Constitution (G09): everyone reads (via the file-first resolver, with a fallback to legacy SQLite); only whoever has a card writes — in
+   * its worktree, via `SddWriter` — and other chats propose (the user applies). The Constitution chat converses and
+   * understands freely, but with no card it writes nothing: the instruction (skill) is to create a card when it is really time to write.
    */
   private async constitution(run: RunState, tool: string, args: Record<string, unknown>): Promise<Reply> {
     const { constitution, conversations } = this.deps
@@ -353,7 +353,7 @@ export class McpBridge {
         try {
           const view = await this.deps.sddResolver.constitution({ projectId, cardId: run.cardId ?? undefined })
           if (view.content !== null) return { ok: true, text: `Project Constitution:\n\n${view.content}` }
-        } catch { /* repositório do SDD ainda não configurado ou indisponível: trata como sem Constituição */ }
+        } catch { /* SDD repository not configured yet or unavailable: treat as no Constitution */ }
       }
       return { ok: true, text: 'The project has no Constitution yet.' }
     }
@@ -383,8 +383,8 @@ export class McpBridge {
   }
 
   /**
-   * S11: consulta o `PolicyEngine` (regras do projeto). Sem regra para a ação, nada muda (libera); `deny` bloqueia; `ask` explícito
-   * também não executa sozinho: devolve ao agente que a ação depende do usuário (ou, no movimento, vira pedido de aprovação).
+   * S11: queries the `PolicyEngine` (project rules). With no rule for the action, nothing changes (allowed); `deny` blocks; explicit `ask`
+   * also does not run on its own: it tells the agent the action depends on the user (or, for a move, becomes an approval request).
    */
   private policyDecision(run: RunState, action: 'commit' | 'move' | 'choose-workflow'): 'allow' | 'ask' | 'deny' {
     if (!this.deps.policy || !run.cardId) return 'allow'
@@ -396,13 +396,13 @@ export class McpBridge {
   private policyDenied(run: RunState, action: 'commit' | 'move' | 'choose-workflow'): string | null {
     const decision = this.policyDecision(run, action)
     if (decision === 'deny') return `Blocked by the project policy (${action}).`
-    // choose-workflow e move já passam por aprovação do usuário; só o commit precisa ser barrado aqui.
+    // choose-workflow and move already go through user approval; only the commit needs to be blocked here.
     if (decision === 'ask' && action === 'commit') return 'The project policy requires the user to approve commits: ask the user to commit from the Git page.'
     return null
   }
 }
 
-/** Plano B: documentos devolvidos no texto entre marcadores `<!-- gearmod:documento tipo=... -->`. */
+/** Plan B: documents returned in the text between markers `<!-- gearmod:documento tipo=... -->`. */
 export function extractDocuments(text: string): Array<{ kind: CardDocumentKind; markdown: string }> {
   const found: Array<{ kind: CardDocumentKind; markdown: string }> = []
   for (const match of text.matchAll(/<!--\s*gearmod:documento\s+tipo=([a-z]+)\s*-->([\s\S]*?)<!--\s*\/gearmod:documento\s*-->/g)) {

@@ -76,7 +76,7 @@ describe('UsageLedgerService', () => {
   it('aggregates ledger rows by requested group and period, respeitando o fuso do usuário', async () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     ledger.recordRun('r', { input: 3, cached: 2, output: 1 })
-    // 2026-01-01T00:00:00Z: em UTC é dia 1º; em America/Manaus (UTC-4, sem horário de verão) ainda é 31/12 à noite.
+    // 2026-01-01T00:00:00Z: in UTC it is the 1st; in America/Manaus (UTC-4, no daylight saving time) it is still the evening of Dec 31.
     expect(ledger.history({ granularity: 'day', tz: 'UTC', groupBy: 'provider' })).toEqual([{ period: '2026-01-01', group: 'codex', input: 3, cached: 2, output: 1, billedUsd: 0, equivalentUsd: 0, unknownUsd: 0 }])
     expect(ledger.history({ granularity: 'day', tz: 'America/Manaus', groupBy: 'provider' })).toEqual([{ period: '2025-12-31', group: 'codex', input: 3, cached: 2, output: 1, billedUsd: 0, equivalentUsd: 0, unknownUsd: 0 }])
     expect(ledger.history({ granularity: 'month', tz: 'America/Manaus', groupBy: 'provider' })[0]).toMatchObject({ period: '2025-12' })
@@ -87,8 +87,8 @@ describe('UsageLedgerService', () => {
     const { database } = await setup(), ledger = new UsageLedgerService(database)
     database.db.prepare("INSERT INTO runs(id,card_id,chat_id,profile_id,status,started_at,purpose,provider,model) VALUES ('r2','k','h','a','completed','2026-07-01T02:00:00.000Z','execution','codex','gpt')").run()
     ledger.recordRun('r', { input: 1, cached: 0, output: 0 }); ledger.recordRun('r2', { input: 1, cached: 0, output: 0 })
-    // Horário de verão do hemisfério norte (ex.: Europe/Lisbon, UTC+1 no inverno e UTC+0... aqui o oposto: América do Sul não tem mais DST,
-    // mas Europe/London tem: 2026-07-01T02:00Z cai em BST (UTC+1) → 03:00 local, mesmo dia; e 2026-01-01T00:00Z cai em GMT (UTC+0) → mesmo dia.
+    // Northern hemisphere daylight saving time (e.g. Europe/Lisbon, UTC+1 in winter and UTC+0... here the opposite: South America no longer has DST,
+    // but Europe/London does: 2026-07-01T02:00Z falls in BST (UTC+1) → 03:00 local, same day; and 2026-01-01T00:00Z falls in GMT (UTC+0) → same day.
     const london = ledger.history({ granularity: 'day', tz: 'Europe/London', groupBy: 'provider' })
     expect(london.map((row) => row.period).sort()).toEqual(['2026-01-01', '2026-07-01'])
     const manaus = ledger.history({ granularity: 'day', tz: 'America/Manaus', groupBy: 'provider' })

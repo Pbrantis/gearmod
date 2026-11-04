@@ -8,8 +8,8 @@ import { toast } from './toasts'
 
 
 /**
- * Confirmação para apagar a worktree de um card (todas as pastas dela). Mostra o card, o que seria perdido (commits sem push e arquivos
- * sem commit) e deixa escolher se a branch local também vai: com commits sem push ela fica marcada para ser mantida.
+ * Confirmation to delete a card's worktree (all its folders). Shows the card, what would be lost (unpushed commits and uncommitted files)
+ * and lets you choose whether the local branch goes too: with unpushed commits it is marked to be kept.
  */
 export function WorktreeDeleteDialog({ projectId, cardId, sourceId, close, done }: { projectId?: string; cardId: string; sourceId?: string; close(): void; done(): void }): React.JSX.Element | null {
   const t = useT().git.worktreeDelete
@@ -21,7 +21,7 @@ export function WorktreeDeleteDialog({ projectId, cardId, sourceId, close, done 
   }, [projectId, cardId, sourceId])
   if (!info) return null
   const unpushed = info.repos.reduce((sum, repo) => sum + repo.unpushed, 0), files = info.repos.reduce((sum, repo) => sum + repo.files, 0), risky = unpushed > 0 || files > 0
-  // Sem commits soltos a branch vai junto por padrão; com commits sem push ela fica, a menos que a pessoa marque.
+  // With no loose commits the branch goes along by default; with unpushed commits it stays, unless the person checks it.
   const withBranch = deleteBranch ?? unpushed === 0
   const lossLines = info.repos.filter((repo) => repo.unpushed > 0 || repo.files > 0)
   const confirm = async (): Promise<void> => {

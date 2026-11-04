@@ -1,4 +1,4 @@
-// Compara as arestas do protótipo com as do CodeGraph (mesma pasta). Chave: tipo + arquivo:linha da chamada + arquivo e nome do destino.
+// Compares the prototype's edges with CodeGraph's (same folder). Key: kind + file:line of the call + file and name of the target.
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const { DatabaseSync } = require('node:sqlite')
@@ -20,7 +20,7 @@ for (const r of me.prepare(`select e.kind, e.line, e.conf, ts.path sp, s.qname s
   const kind = r.kind === 'renders' ? 'calls' : r.kind
   mine.set(`${kind}|${r.sp}:${r.line}|${r.tp}#${r.tn}`, r)
 }
-// O CodeGraph guarda uma aresta por linha de chamada; nós guardamos a primeira linha por par. Comparamos também por par (sem linha).
+// CodeGraph stores one edge per call line; we store the first line per pair. We also compare per pair (without line).
 const pair = (k) => k.replace(/:\d+\|/, '|')
 const theirPairs = new Map([...theirs].map(([k, v]) => [pair(k), v]))
 const myPairs = new Map([...mine].map(([k, v]) => [pair(k), v]))

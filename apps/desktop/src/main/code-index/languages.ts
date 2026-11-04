@@ -2,15 +2,15 @@ import type { Node } from '@vscode/tree-sitter-wasm'
 import { QUERIES } from './queries'
 
 /**
- * Linguagens do índice de código: gramática WASM (@vscode/tree-sitter-wasm), extensões e como ler os imports.
- * As consultas estão em queries.ts. Convenção das capturas (o extrator é genérico e só entende estas):
- *   @def.<tipo> + @name            definição (function, method, class, interface, type, enum, struct, trait, const, property, module)
- *   @owner                         numa @def.method: tipo dono (receptor do Go); com @container: bloco sem símbolo (impl do Rust)
- *   @import                        nó de import, interpretado por `imports(node)`
- *   @call/@new/@jsx + @callee [+ @receiver]   chamada, instanciação, componente JSX
- *   @type / @ref                   referência a tipo / identificador passado como valor
- *   @extends / @implements         herança da classe que envolve o nó (ou de @owner)
- *   @bind.* @field.* @bindcall.* @bindexpr.* @binddestr.* @bdc.*   variáveis e campos com tipo conhecido
+ * Code index languages: WASM grammar (@vscode/tree-sitter-wasm), extensions and how to read the imports.
+ * The queries are in queries.ts. Capture convention (the extractor is generic and only understands these):
+ *   @def.<kind> + @name            definition (function, method, class, interface, type, enum, struct, trait, const, property, module)
+ *   @owner                         on a @def.method: owning type (Go receiver); with @container: block without a symbol (Rust impl)
+ *   @import                        import node, interpreted by `imports(node)`
+ *   @call/@new/@jsx + @callee [+ @receiver]   call, instantiation, JSX component
+ *   @type / @ref                   reference to a type / identifier passed as a value
+ *   @extends / @implements         inheritance of the class that wraps the node (or of @owner)
+ *   @bind.* @field.* @bindcall.* @bindexpr.* @binddestr.* @bdc.*   variables and fields with a known type
  *   @export.default / @export.local
  */
 export interface ImportRecord { spec: string; local: string | null; imported: string | null; reexport?: boolean }
@@ -78,7 +78,7 @@ function pyImports(node: Node): ImportRecord[] {
   const moduleNode = node.childForFieldName('module_name')
   const spec = moduleNode?.text ?? ''
   for (const item of kids(node)) {
-    // nós do web-tree-sitter não são o mesmo objeto a cada chamada: compara pela posição
+    // web-tree-sitter nodes are not the same object on each call: compare by position
     if (moduleNode && item.startIndex === moduleNode.startIndex) continue
     if (item.type === 'wildcard_import') out.push({ spec, local: '*', imported: '*', reexport: true })
     else if (item.type === 'aliased_import') out.push({ spec, local: item.childForFieldName('alias')?.text ?? null, imported: last(item.childForFieldName('name')?.text ?? '', '.') })
@@ -109,7 +109,7 @@ function csImports(node: Node): ImportRecord[] {
 }
 
 function rustImports(node: Node): ImportRecord[] {
-  // use crate::a::b::{C, d::E as F};  -> uma linha por nome
+  // use crate::a::b::{C, d::E as F};  -> one line per name
   const out: ImportRecord[] = []
   const walk = (item: Node | null, prefix: string): void => {
     if (!item) return

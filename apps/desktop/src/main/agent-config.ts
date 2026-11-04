@@ -4,14 +4,14 @@ import type { BoardRepository, ProfileRepository } from './projects'
 import { tm } from './i18n'
 
 const claudeEfforts: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
-/** Claude aceita aliases de modelo; Opus para planejar e Sonnet para executar são as recomendações de partida. */
+/** Claude accepts model aliases; Opus for planning and Sonnet for executing are the starting recommendations. */
 export const claudeModels: ModelOption[] = [
   { id: 'opus', label: 'Opus', get description() { return tm().modelOptions.opusDescription }, efforts: claudeEfforts, recommendedFor: ['planning'], defaultEffort: 'high' },
   { id: 'sonnet', label: 'Sonnet', get description() { return tm().modelOptions.sonnetDescription }, efforts: claudeEfforts, recommendedFor: ['execution', 'test'], defaultEffort: 'medium' },
   { id: 'haiku', label: 'Haiku', get description() { return tm().modelOptions.haikuDescription }, efforts: ['low', 'medium', 'high'], recommendedFor: [], defaultEffort: 'low' }
 ]
 
-/** Aliases do Gemini CLI (`--model`). O CLI não expõe níveis de esforço. */
+/** Gemini CLI aliases (`--model`). The CLI does not expose effort levels. */
 export const geminiModels: ModelOption[] = [
   { id: 'auto', label: 'Auto', get description() { return tm().modelOptions.autoDescription }, efforts: [], recommendedFor: ['planning', 'execution', 'test'], defaultEffort: null },
   { id: 'pro', label: 'Pro', get description() { return tm().modelOptions.proDescription }, efforts: [], recommendedFor: [], defaultEffort: null },
@@ -21,7 +21,7 @@ export const geminiModels: ModelOption[] = [
 
 export type CodexModelLister = (profileId: string) => Promise<ModelOption[]>
 
-/** Modelo, esforço e modo por card e por finalidade (planejar/executar), com o "mais usado" de cada agente. */
+/** Model, effort and mode per card and per purpose (plan/execute), with each agent's "most used". */
 export class AgentConfigRepository {
   private readonly codexCache = new Map<string, ModelOption[]>()
   constructor(private readonly database: AppDatabase, private readonly board: BoardRepository, private readonly profiles: ProfileRepository, private readonly listCodexModels?: CodexModelLister) {}
@@ -45,7 +45,7 @@ export class AgentConfigRepository {
     return this.get(cardId)
   }
 
-  /** Configuração usada num turno: a salva no card (se for do mesmo agente) ou o padrão (mais usado, senão recomendado). */
+  /** Configuration used in a turn: the one saved on the card (if it is for the same agent) or the default (most used, otherwise recommended). */
   resolve(cardId: string, profileId: string, purpose: AgentPurpose): AgentConfig {
     const saved = this.get(cardId)[purpose]
     if (saved && saved.profileId === profileId) return saved

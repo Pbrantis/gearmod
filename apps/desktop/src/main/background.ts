@@ -1,6 +1,6 @@
 /**
- * Segundo plano: fechar a janela só esconde o app na bandeja (os agentes continuam). Sair de verdade é pelo ícone da bandeja
- * e, com agente trabalhando, pede confirmação porque os processos dos agentes morrem junto com o app.
+ * Background: closing the window only hides the app in the tray (the agents keep running). Really quitting is through the tray icon
+ * and, with an agent working, asks for confirmation because the agent processes die along with the app.
  */
 import { tm } from './i18n'
 

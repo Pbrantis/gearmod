@@ -5,7 +5,7 @@ import { useT } from './i18n'
 
 interface Candidate { cardId: string; title: string; branch: string; path: string }
 
-/** Escolher a worktree de outro card para este usar (ver Alterações e Git dela, e trabalhar lá), em vez de criar uma nova. */
+/** Choose another card's worktree for this one to use (see its Changes and Git, and work there), instead of creating a new one. */
 export function LinkWorktreeDialog({ cardId, close, linked }: { cardId: string; close(): void; linked(): void }): React.JSX.Element {
   const { board: t, common } = useT()
   const [items, setItems] = useState<Candidate[]>(), [error, setError] = useState(''), [busy, setBusy] = useState<string>()

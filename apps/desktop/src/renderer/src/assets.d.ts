@@ -1,3 +1,3 @@
-// Imagens importadas pelo Vite viram a URL do arquivo.
+// Images imported by Vite become the file's URL.
 declare module '*.png' { const url: string; export default url }
 declare module '*.gif' { const url: string; export default url }

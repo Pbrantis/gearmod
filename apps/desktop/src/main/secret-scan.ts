@@ -7,8 +7,8 @@ export interface SecretHit { path: string; line: number }
 const maxBytes = 1_000_000
 
 /**
- * Procura chaves e senhas reais nos arquivos que o agente quer commitar (S13). Só formatos inconfundíveis (chave de API de provedor,
- * chave privada, JWT, senha em URL de conexão): uma linha `API_KEY=seu-valor` num `.env.example` não conta. Nunca devolve o valor.
+ * Looks for real keys and passwords in the files the agent wants to commit (S13). Only unmistakable formats (provider API key,
+ * private key, JWT, password in a connection URL): a line `API_KEY=your-value` in a `.env.example` does not count. Never returns the value.
  */
 export async function scanForSecrets(dir: string, paths: string[]): Promise<SecretHit[]> {
   const hits: SecretHit[] = []

@@ -9,14 +9,14 @@ import { usePreferences } from './editor/preferences'
 import { useT } from './i18n'
 import { toast } from './toasts'
 
-/** `stash` = apply/pop de stash que conflitou: não há operação para continuar/cancelar, só arquivos a resolver. */
+/** `stash` = stash apply/pop that conflicted: there is no operation to continue/cancel, only files to resolve. */
 export type ConflictState = { operation: 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'stash' | null; files: string[] }
 export const operationLabel: Record<NonNullable<ConflictState['operation']>, string> = { merge: 'Merge', rebase: 'Rebase', 'cherry-pick': 'Cherry-pick', revert: 'Revert', stash: 'Stash' }
 export interface ConflictTarget { sourceId: string; cardId: string | null; repo: string; cardTitle: string | null }
 
 /**
- * Resolução de conflitos dentro da página Git, repositório por repositório (inclusive a worktree de um card): os arquivos em conflito à esquerda e,
- * à direita, o arquivo inteiro no editor com "Aceitar atual · chegando · ambos · Comparar" em cada bloco. Nada é gravado sem "Salvar".
+ * Conflict resolution inside the Git page, repository by repository (including a card's worktree): the conflicted files on the left and,
+ * on the right, the whole file in the editor with "Accept current · incoming · both · Compare" on each block. Nothing is written without "Save".
  */
 export function ConflictsView({ target, changed, back, setDirty }: { target: ConflictTarget; changed(): void; back(): void; setDirty(value: boolean): void }): React.JSX.Element {
   const { common, git: { conflicts: t } } = useT()
@@ -26,7 +26,7 @@ export function ConflictsView({ target, changed, back, setDirty }: { target: Con
   const [preferences] = usePreferences(), view = useRef<EditorView | null>(null)
   const rebase = state.operation === 'rebase', oursLabel = rebase ? t.oursBase : t.oursCurrent, theirsLabel = rebase ? t.theirsYourCommit : t.theirsIncoming
   const draft = drafts[path], dirty = (file: string): boolean => Boolean(drafts[file] && drafts[file]!.text !== drafts[file]!.saved)
-  // O conflito de stash some do Git assim que o último arquivo é marcado; guarda o tipo para a tela não virar "Operação".
+  // The stash conflict disappears from Git as soon as the last file is marked; keeps the type so the screen does not turn into "Operation".
   const [kind, setKind] = useState<ConflictState['operation']>(null)
   const reload = useCallback(async (): Promise<ConflictState> => { const next = await window.gearmod.invoke('git:conflicts', tail); setState(next); if (next.operation) setKind(next.operation); return next }, [sourceId, cardId])
   useEffect(() => { void reload().catch((reason: unknown) => setError(plainError(reason))) }, [reload])
@@ -43,18 +43,18 @@ export function ConflictsView({ target, changed, back, setDirty }: { target: Con
   const options = useMemo(() => ({ wrap: preferences.wrap, tabSize: preferences.tabSize, indentWithTab: preferences.indent, whitespace: preferences.whitespace, guides: preferences.guides, scrollPastEnd: preferences.beyond }), [preferences.wrap, preferences.tabSize, preferences.indent, preferences.whitespace, preferences.guides, preferences.beyond])
   const act = async (task: () => Promise<unknown>): Promise<void> => { setBusy(true); setError(''); try { await task() } catch (reason) { setError(plainError(reason)) } finally { setBusy(false) } }
   const forget = (file: string): void => setDrafts((all) => { const next = { ...all }; delete next[file]; return next })
-  /** Pergunta antes de abandonar uma edição que ainda não foi salva. */
+  /** Asks before abandoning an edit that has not been saved. */
   const guard = (file: string, title: string, run: () => void): void => { if (dirty(file)) setPending({ title, text: t.unsavedIn(file), run }); else run() }
   const save = (): Promise<void> => act(async () => { if (!draft) return; await window.gearmod.invoke('git:conflict-save', { ...tail, path, content: draft.text }); setDrafts((all) => ({ ...all, [path]: { text: draft.text, saved: draft.text } })) })
   const resolve = (side: 'ours' | 'theirs' | 'marked'): Promise<void> => act(async () => { await window.gearmod.invoke('git:conflict-resolve', { ...tail, path, side }); forget(path); await reload(); changed() })
   const saveAndMark = (): Promise<void> => act(async () => { if (!draft) return; await window.gearmod.invoke('git:conflict-save', { ...tail, path, content: draft.text }); await window.gearmod.invoke('git:conflict-resolve', { ...tail, path, side: 'marked' }); forget(path); await reload(); changed() })
   const stash = kind === 'stash'
-  // Stash: os arquivos já foram marcados com git add; não há "continue" no Git, então concluir só volta ao grafo.
+  // Stash: the files were already marked with git add; there is no "continue" in Git, so finishing just goes back to the graph.
   const finish = (action: 'continue' | 'abort'): Promise<void> => act(async () => { if (!stash) await window.gearmod.invoke('git:conflict-finish', { ...tail, action }); else toast.success(t.stashDone, t.stashKept); changed(); back() })
   const open = (file: string): void => { if (file !== path) guard(path, t.switchFileTitle, () => { setComparing(undefined); setPath(file) }) }
   const label = kind ? operationLabel[kind] : t.operation
   const marked = draft ? hasConflicts(draft.text) : false
-  // Ctrl+S com marcadores: salva o rascunho, mas avisa que ainda não dá para marcar como resolvido.
+  // Ctrl+S with markers: saves the draft, but warns that it cannot yet be marked as resolved.
   const keySave = (): void => { if (!draft) return; if (!marked) { void save(); return } void (draft.text === draft.saved ? Promise.resolve() : save()).then(() => toast.warning(t.markersLeft, t.markersLeftKey)) }
   return <section className="cflview" style={{ gridColumn: '1 / -1' }} aria-label={t.resolveAria} onKeyDown={(event) => { if (event.ctrlKey && !event.shiftKey && event.key.toLowerCase() === 's') { event.preventDefault(); keySave() } }}>
     <header className="cflview-head"><div><div className="eyebrow">{stash ? t.stashHead : t.inProgress(label)}</div><h2>{target.repo}{target.cardTitle ? <small>{t.worktreeOf(target.cardTitle)}</small> : null}</h2></div><span className="cflview-count">{state.files.length ? t.filesInConflict(state.files.length) : t.allResolved}</span><button type="button" className="mini secondary" onClick={() => guard(path, t.backToGraphTitle, back)}>{t.backToGraph}</button></header>

@@ -6,9 +6,9 @@ import { splitChatReplies } from './chatReplyContext'
 import { useT } from './i18n'
 
 /**
- * Mensagem escrita enquanto o agente ainda trabalha: fica numa prévia embaixo do chat em vez de se perder. Quando o agente termina,
- * ela segue sozinha; "Enviar agora" interrompe o turno e manda já, para complementar o contexto (a sessão do agente continua).
- * Se você parou o agente no botão, ela espera a sua decisão em vez de sair sozinha.
+ * Message written while the agent is still working: stays in a preview under the chat instead of getting lost. When the agent finishes,
+ * it goes out on its own; "Send now" interrupts the turn and sends right away, to add to the context (the agent's session continues).
+ * If you stopped the agent with the button, it waits for your decision instead of going out on its own.
  */
 export function useQueuedMessage(busy: boolean, deliver: (text: string, files: string[]) => Promise<void>): {
   queued: string; files: string[]; queue(text: string, files?: string[]): void; take(): { text: string; files: string[] }; discard(): void; markStopped(): void; sendNow(cancel: () => Promise<void>): void
@@ -22,7 +22,7 @@ export function useQueuedMessage(busy: boolean, deliver: (text: string, files: s
     stopped.current = false; interrupting.current = false
     if (!queued || manual) return
     setQueued(''); setFiles([]); void deliver(queued, files)
-  }, [busy]) // só reage ao fim do turno; a mensagem e os anexos são os da renderização em que ele terminou
+  }, [busy]) // only reacts to the end of the turn; the message and attachments are those of the render in which it ended
   const queue = useCallback((text: string, nextFiles: string[] = []) => {
     setQueued((current) => (current ? `${current}\n\n${text}` : text))
     setFiles((current) => [...new Set([...current, ...nextFiles])].slice(0, 20))

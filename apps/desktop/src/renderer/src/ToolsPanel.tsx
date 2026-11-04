@@ -16,9 +16,9 @@ const statusKey = (projectId: string): string => `gearmod.tools-status.${project
 const cachedStatus = (projectId: string): ToolsStatus | undefined => {
   try { const raw = localStorage.getItem(statusKey(projectId)); return raw ? JSON.parse(raw) as ToolsStatus : undefined } catch { return undefined }
 }
-const saveStatus = (projectId: string, status: ToolsStatus): void => { try { localStorage.setItem(statusKey(projectId), JSON.stringify(status)) } catch { /* cache é apenas conveniência visual */ } }
+const saveStatus = (projectId: string, status: ToolsStatus): void => { try { localStorage.setItem(statusKey(projectId), JSON.stringify(status)) } catch { /* cache is just a visual convenience */ } }
 
-/** A engrenagem e a aba compartilham o último resultado, sem esperar outra verificação ao abrir o diálogo. */
+/** The gear and the tab share the last result, without waiting for another check when the dialog opens. */
 export function useToolsPending(projectId: string): boolean {
   const latest = useLatestVersions(), [state, setState] = useState(() => ({ projectId, pending: pendingByProject.get(projectId) ?? false }))
   useEffect(() => {
@@ -44,7 +44,7 @@ const safeName = (value: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test
 
 interface Step { label: string; command: string; next?: string | undefined; disabled?: string | undefined }
 
-/** Aba Ferramentas do projeto: o Spec Kit roda no terminal do app; a sondagem só acontece quando o usuário pede. */
+/** Project Tools tab: Spec Kit runs in the app terminal; probing only happens when the user asks. */
 export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; openedTerminal(): void }): React.JSX.Element {
   const t = useT(), tt = t.settings.tools
   const [status, setStatus] = useState<ToolsStatus | undefined>(() => cachedStatus(projectId)), [error, setError] = useState(''), [checking, setChecking] = useState(false), [config, setConfig] = useState<WorkflowConfig>()
@@ -60,10 +60,10 @@ export function ToolsPanel({ projectId, openedTerminal }: { projectId: string; o
   const copy = (command: string): void => { void navigator.clipboard.writeText(command).then(() => { setCopied(command); window.setTimeout(() => setCopied(''), 1400) }).catch((reason: unknown) => toast.error(tt.cannotCopy, plainError(reason))) }
   const upToDate = (installed: string | null): { from: string; to: string } | null => installed && latest?.versions.specify && isOutdated(installed, latest.versions.specify) ? { from: installed, to: latest.versions.specify } : null
 
-  // Os botões ficam lado a lado; o "Próximo passo" de cada um vem numa linha própria embaixo (senão alarga a coluna do primeiro botão e afasta os outros).
+  // The buttons sit side by side; each one's "Next step" goes on its own line below (otherwise it widens the first button's column and pushes the others away).
   const buttons = (steps: Step[], repoId: string): React.JSX.Element => <div className="tl-steps"><div className="tl-btns">{steps.map((step) => <button key={step.label + step.command} type="button" className="mini" disabled={Boolean(step.disabled) || !folder(repoId)} data-tip={step.disabled ?? tt.runTip(folder(repoId), step.command)} onClick={() => void run(step.command, repoId)}>{step.label}</button>)}</div>
     {steps.filter((step) => step.next).map((step) => <small key={step.label + step.command} className="tl-next">{tt.nextStep}<code>{step.next}</code><button type="button" className="tl-copy" aria-label={tt.copyCommand} data-tip={tt.copyCommand} onClick={() => copy(step.next!)}>{copied === step.next ? tt.copiedShort : tt.copyShort}</button></small>)}</div>
-  // Só os repositórios que têm a ferramenta viram chip; os demais ficam resumidos numa frase (os nomes aparecem ao passar o mouse).
+  // Only repositories that have the tool become a chip; the rest are summarized in one sentence (names appear on hover).
   type RepoInfo = NonNullable<typeof status>['repos'][number]
   const startedChips = (started: (repo: RepoInfo) => boolean, detail: (repo: RepoInfo) => string): React.JSX.Element => {
     const all = status?.repos ?? [], on = all.filter(started), off = all.filter((repo) => !started(repo))

@@ -1,11 +1,11 @@
-/** Trecho alterado: linhas novas (a partir de 1; `toLine < fromLine` quando só houve remoção) e o texto que estava lá antes. */
+/** Changed chunk: new lines (1-based; `toLine < fromLine` when there was only a removal) and the text that was there before. */
 export interface ReviewChunk { fromLine: number; toLine: number; old: string }
 
 const fence = (text: string, language = ''): string => { const ticks = '`'.repeat(Math.max(3, ...(text.match(/`+/g) ?? []).map((run) => run.length + 1))); return `${ticks}${language}\n${text}\n${ticks}` }
 
 /**
- * Texto do pedido de revisão feito no diff: arquivo, linhas (numeração nova), o trecho atual e, nos trechos alterados que cruzam a seleção,
- * o que estava antes. `from`/`to` são linhas a partir de 1, em qualquer ordem.
+ * Text of the review request made in the diff: file, lines (new numbering), the current chunk and, for changed chunks that cross the selection,
+ * what was there before. `from`/`to` are 1-based lines, in any order.
  */
 export function diffReviewPrompt({ path, from, to, after, chunks, comment = '' }: { path: string; from: number; to: number; after: string; chunks: ReviewChunk[]; comment?: string }): string {
   const lo = Math.max(1, Math.min(from, to)), hi = Math.max(from, to), lines = after.split('\n')

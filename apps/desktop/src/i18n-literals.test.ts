@@ -3,9 +3,9 @@ import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Trava (I5): texto em português escrito direto no código, fora dos dicionários `i18n/`, só pode diminuir.
- * Arquivo novo, ou arquivo com mais textos do que a linha de base, reprova. Texto novo de tela vai para o dicionário (`useT`, `tr`, `tm`).
- * Quando você traduzir textos de um arquivo, rode `UPDATE_I18N_BASELINE=1 vitest run src/i18n-literals.test.ts` para baixar a linha de base.
+ * Lock (I5): Portuguese text written directly in the code, outside the `i18n/` dictionaries, can only shrink.
+ * A new file, or a file with more strings than the baseline, fails. New screen text goes in the dictionary (`useT`, `tr`, `tm`).
+ * When you translate strings in a file, run `UPDATE_I18N_BASELINE=1 vitest run src/i18n-literals.test.ts` to lower the baseline.
  */
 const accents = /[áàâãéêíóôõúçÁÉÍÓÚÇ]/
 const literal = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g

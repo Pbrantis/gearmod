@@ -46,15 +46,15 @@ describe('WorktreeService', () => {
     expect((await service.snapshot(second.id)).status).not.toContain('change.txt')
     expect((await service.prepare(first.id)).id).toBe(one.id)
     expect(one.path.length).toBeLessThan(data.length + 16)
-    // Duas runs do mesmo card preparando ao mesmo tempo não disputam o `worktree add` (D5).
+    // Two runs of the same card preparing at the same time do not compete for `worktree add` (D5).
     const concurrent = board.create({ projectId: project.id, columnId: column.id, title: 'Concorrente', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const [a, b] = await Promise.all([service.prepare(concurrent.id), service.prepare(concurrent.id)])
     expect(a.id).toBe(b.id)
-    // Uma tentativa anterior que falhou deixou a branch presa numa worktree pela metade: a próxima solta e recria.
+    // A previous attempt that failed left the branch stuck in a half-made worktree: the next one releases and recreates it.
     const accented = board.create({ projectId: project.id, columnId: column.id, title: 'Botão de reset', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const stale = join(data, 'worktrees', 'antiga'), branch = `task/botao-de-reset-${accented.id.slice(0, 8)}`
     await exec('git', ['-C', repo, 'worktree', 'add', '-b', branch, stale, 'dev'])
-    // D5: branch velha sem commits próprios é recriada na base de agora; com commits próprios é reaproveitada.
+    // D5: an old branch with no commits of its own is recreated on the current base; with its own commits it is reused.
     const oldTip = (await exec('git', ['-C', repo, 'rev-parse', 'dev'])).stdout.trim()
     const parked = board.create({ projectId: project.id, columnId: column.id, title: 'Parada', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const kept = board.create({ projectId: project.id, columnId: column.id, title: 'Com trabalho', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
@@ -77,7 +77,7 @@ describe('WorktreeService', () => {
     expect(() => board.move(first.id, done.id, null)).toThrow('Revisar')
     const review = quality.prepareLocalReview(first.id); expect(quality.approveLocal(review.id).state).toBe('approved')
     expect(board.move(first.id, done.id, null).columnId).toBe(done.id)
-    // Pasta removida manualmente: o snapshot não quebra e limpa o membro órfão do banco/Git.
+    // Folder removed manually: the snapshot does not break and cleans up the orphan member from the database/Git.
     const member = database.db.prepare('SELECT path FROM worktree_members WHERE worktree_id = ?').get(one.id) as { path: string }
     await rm(member.path, { recursive: true, force: true })
     expect((await service.snapshot(first.id)).exists).toBe(false)
@@ -121,7 +121,7 @@ describe('WorktreeService', () => {
     const board = new BoardRepository(database, projects), column = board.get(project.id).columns[0]!
     const card = board.create({ projectId: project.id, columnId: column.id, title: 'Card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     const sources = Object.fromEntries(board.get(project.id).project.sources.map((source) => [source.name, source]))
-    board.setRepos(card.id, [sources.app!.id]) // docs não entra pelo fluxo normal
+    board.setRepos(card.id, [sources.app!.id]) // docs does not enter through the normal flow
     const service = new WorktreeService(database, data), lower = (path: string): string => path.toLowerCase()
     const worktree = await service.prepare(card.id)
     expect(service.repositories(card.id).map((repo) => lower(repo.repoPath))).toEqual([lower(sources.app!.localPath)])
@@ -129,11 +129,11 @@ describe('WorktreeService', () => {
     expect(added.status).toBe('active')
     expect(existsSync(join(added.path, 'README.md'))).toBe(true)
     expect(service.repositories(card.id).map((repo) => lower(repo.repoPath)).sort()).toEqual([lower(sources.app!.localPath), lower(sources.docs!.localPath)].sort())
-    // Idempotente: chamar de novo não recria nem move a pasta.
+    // Idempotent: calling again neither recreates nor moves the folder.
     const again = await service.ensureMember(card.id, sources.docs!.id)
     expect(again.path).toBe(added.path)
     expect(database.db.prepare('SELECT COUNT(*) FROM worktree_members WHERE worktree_id = ?').pluck().get(worktree.id)).toBe(2)
-    // Concorrência: duas chamadas ao mesmo tempo para um repositório novo não duplicam o membro nem corrompem a worktree.
+    // Concurrency: two simultaneous calls for a new repository do not duplicate the member nor corrupt the worktree.
     const concurrent = board.create({ projectId: project.id, columnId: column.id, title: 'Outro card', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
     board.setRepos(concurrent.id, [sources.app!.id])
     await service.prepare(concurrent.id)

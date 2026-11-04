@@ -12,7 +12,7 @@ import { tr, useT } from '../i18n'
 
 type Review = { path: string; send(prompt: string): boolean | Promise<boolean> }
 const collapse = { margin: 3, minSize: 6 }
-/** No modo uma coluna só o "Reverter" existe: o "aceitar" do CodeMirror é escondido. */
+/** In single-column mode only "Revert" exists: CodeMirror's "accept" is hidden. */
 const mergeControls = (type: 'reject' | 'accept', action: (event: MouseEvent) => void): HTMLElement => {
   if (type === 'accept') { const hidden = document.createElement('span'); hidden.hidden = true; return hidden }
   const button = document.createElement('button'); button.type = 'button'; button.name = 'reject'; button.textContent = tr().files.editor.diff.revert; button.title = tr().files.editor.diff.revertTip; button.setAttribute('aria-label', tr().files.editor.diff.revertTip); button.onmousedown = action
@@ -20,8 +20,8 @@ const mergeControls = (type: 'reject' | 'accept', action: (event: MouseEvent) =>
 }
 
 /**
- * Diff de um arquivo sobre o `@codemirror/merge`: uma coluna (`unified`) ou lado a lado (`split`), com cores de sintaxe, trechos iguais recolhidos,
- * reverter trecho, navegação entre alterações e comentário de linhas para o agente. O texto "depois" é do pai (`after`): editar aqui ou no editor é a mesma coisa.
+ * File diff on top of `@codemirror/merge`: one column (`unified`) or side by side (`split`), with syntax colors, unchanged sections collapsed,
+ * chunk revert, navigation between changes and line comments for the agent. The "after" text belongs to the parent (`after`): editing here or in the editor is the same thing.
  */
 export function DiffEditor({ before, after, path, layout, editable, onChange, review, options, onReady, unavailable, fallbackDiff, title, onBack, onToggleLayout }: {
   title?: string; onBack?(): void; onToggleLayout?(): void; before: string | null; after: string | null; path: string; layout: 'unified' | 'split'; editable: boolean; onChange?(after: string): void; review?: Review
@@ -36,7 +36,7 @@ export function DiffEditor({ before, after, path, layout, editable, onChange, re
   const original = deleted ? '' : before ?? ''
   const placeButton = (): void => { const view = main.current, wrap = box.current, picked = linesRef.current; if (!view || !wrap || !picked) return; const line = view.state.doc.line(Math.min(Math.max(...picked) + 1, view.state.doc.lines)); setTop(Math.max(4, Math.round(view.documentTop + view.lineBlockAt(line.from).bottom - wrap.getBoundingClientRect().top - 14))) }
   const sync = (view: EditorView): void => { setCount(getChunks(view.state)?.chunks.length ?? 0) }
-  /** Extensões do editor onde se escolhe e edita o texto novo. */
+  /** Extensions of the editor where the new text is chosen and edited. */
   const mainExtensions = useMemo((): Extension[] => [
     Prec.high(keymap.of([{ key: 'Alt-F5', run: (view) => goToNextChunk(view), preventDefault: true }, { key: 'Shift-Alt-F5', run: (view) => goToPreviousChunk(view), preventDefault: true }])),
     ...(review ? [linePicker((index, extend) => { if (extend && linesRef.current) setLines([linesRef.current[0], index]); else { picking.current = index; setComposing(false); setLines([index, index]) } }, (index) => { if (picking.current !== null) setLines([picking.current, index]) }, () => { picking.current = null })] : []),
@@ -63,7 +63,7 @@ export function DiffEditor({ before, after, path, layout, editable, onChange, re
     const frame = window.requestAnimationFrame(() => sync(view)); latest.current.onReady?.(view)
     return () => { alive = false; window.cancelAnimationFrame(frame); main.current = null; merge.current?.destroy(); merge.current = null; view.destroy(); setLines(null); setComposing(false) }
   }, [layout, original, path, readOnlyView, options, unavailable, deleted, mainExtensions])
-  // O pai pode trocar o texto por fora (recarregar do disco): aplica sem recriar a vista nem perder a rolagem.
+  // The parent may swap the text externally (reload from disk): applies it without recreating the view or losing scroll.
   useEffect(() => { const view = main.current; if (view && after !== null && after !== view.state.doc.toString()) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: after } }) }, [after])
   useEffect(() => { main.current?.dispatch({ effects: setPicked.of(lines) }); placeButton() }, [lines])
   useEffect(() => { if (composing) field.current?.focus() }, [composing])

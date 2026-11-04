@@ -8,7 +8,7 @@ function sections(text: string): Array<{ root?: string; body: string }> {
   return matches.map((match, index) => ({ root: match[1]!.trim(), body: text.slice((match.index ?? 0) + match[0].length, matches[index + 1]?.index ?? text.length) }))
 }
 
-/** Separa o diff do snapshot por arquivo e conta linhas; arquivos novos ainda não rastreados vêm do status (`??`). */
+/** Splits the snapshot diff by file and counts lines; new untracked files come from the status (`??`). */
 export function parseChanges(snapshot: GitSnapshot): FileChange[] {
   const files: FileChange[] = []
   for (const section of sections(snapshot.diff)) {
@@ -35,10 +35,10 @@ export function parseChanges(snapshot: GitSnapshot): FileChange[] {
 export interface ChangeRoot { path: string; name: string; branch: string | null; worktree: boolean; primary: boolean }
 export interface ChangeGroup { root: string | null; name: string; branch: string | null; worktree: boolean; added: number; removed: number; files: FileChange[] }
 const keyOf = (path: string): string => path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
-/** Nome do repositório para mostrar: as pastas da worktree levam um prefixo numérico (`1-api`) que só serve para ordenar. */
+/** Repository name to display: worktree folders carry a numeric prefix (`1-api`) that only serves for ordering. */
 const repoName = (root: { name: string; worktree: boolean }): string => root.worktree ? root.name.replace(/^\d+-/, '') : root.name
 
-/** Agrupa os alterados por repositório: o principal primeiro, depois por nome. Sem `root` (repositório único) vira um grupo só, sem nome. */
+/** Groups the changed files by repository: the main one first, then by name. Without `root` (single repository) it becomes one unnamed group. */
 export function groupChanges(changes: FileChange[], roots: ChangeRoot[]): ChangeGroup[] {
   const groups = new Map<string, ChangeGroup & { primary: boolean }>()
   for (const change of changes) {
@@ -54,8 +54,8 @@ export function groupChanges(changes: FileChange[], roots: ChangeRoot[]): Change
 }
 
 /**
- * Rótulo de cada aba aberta: só o nome do arquivo, ou `repo › nome` quando há dois ou mais repositórios e o arquivo não é do principal,
- * ou quando duas abas têm o mesmo nome. Raízes que contêm outras (a pasta-mãe da worktree) não contam como repositório.
+ * Label for each open tab: just the file name, or `repo › name` when there are two or more repositories and the file is not from the main one,
+ * or when two tabs have the same name. Roots that contain others (the worktree's parent folder) do not count as a repository.
  */
 export function tabLabels(paths: string[], roots: ChangeRoot[]): Record<string, { name: string; repo: string | null }> {
   const leaves = roots.filter((root) => !roots.some((other) => other !== root && keyOf(other.path).startsWith(`${keyOf(root.path)}/`))), many = leaves.length > 1
@@ -72,7 +72,7 @@ export function tabLabels(paths: string[], roots: ChangeRoot[]): Record<string, 
   return result
 }
 
-/** Alteração do card que corresponde a um caminho aberto (absoluto, com ou sem `root` na alteração). */
+/** Card change that matches an open path (absolute, with or without `root` on the change). */
 export function findChange(changes: FileChange[] | undefined, path: string): FileChange | undefined {
   const normal = path.replace(/\\/g, '/').toLowerCase()
   return changes?.find((item) => item.root ? normal === `${item.root.replace(/\\/g, '/').replace(/\/+$/, '')}/${item.path}`.toLowerCase() : normal.endsWith(`/${item.path.toLowerCase()}`))

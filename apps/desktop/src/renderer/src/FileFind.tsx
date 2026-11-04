@@ -39,10 +39,10 @@ export function FileFind({ input, query, setQuery, options, setOptions, count, i
   </>
 }
 
-/** Caixa "Ir para linha": `42` ou `42:7`; `submit` devolve `false` se o texto não for válido. */
+/** "Go to line" box: `42` or `42:7`; `submit` returns `false` if the text is not valid. */
 export function GoToLine({ submit, close }: { submit(text: string): boolean; close(): void }): React.JSX.Element {
   const t = useT(), [text, setText] = useState(''), [rejected, setInvalid] = useState(false), field = useRef<HTMLInputElement>(null)
-  // Inválido já ao digitar (texto que não é `42`/`42:7`) ou quando o Enter foi recusado.
+  // Invalid as soon as typed (text that is not `42`/`42:7`) or when Enter was rejected.
   const invalid = rejected || (text.trim() !== '' && !parseGoto(text))
   useEffect(() => { field.current?.focus() }, [])
   return <div className="wf-find" role="dialog" aria-label={t.files.find.goto.label}>

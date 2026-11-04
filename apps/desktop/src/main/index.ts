@@ -62,8 +62,8 @@ import { onMainLocaleChange, setMainLocale, tm } from './i18n'
 import { CodeIndexService, type HostProcess } from './code-index/service'
 import { CodeIndexSettings } from './code-index/project-setting'
 
-// Pasta de dados fixa em %APPDATA%\GearMod, sem depender do nome do pacote npm.
-// Perfil separado (ex.: GEARMOD_PROFILE=teste): outra pasta de dados e outro lock de instância única, para rodar junto da versão homologada.
+// Fixed data folder at %APPDATA%\GearMod, independent of the npm package name.
+// Separate profile (e.g. GEARMOD_PROFILE=test, used by test.ps1): another data folder and another single-instance lock, to run alongside the stable install.
 const profileName = (process.env.GEARMOD_PROFILE ?? '').replace(/[^\w-]/g, '')
 app.setName('GearMod')
 app.setPath('userData', join(app.getPath('appData'), profileName ? `GearMod-${profileName}` : 'GearMod'))
@@ -83,9 +83,9 @@ const conversations = new ConversationRepository(database)
 const constitution = new ConstitutionRepository(database)
 const checklists = new ChecklistRepository(database)
 const worktrees = new WorktreeService(database, dataDir)
-// Índice de código (grafo de símbolos) para as ferramentas gearmod_code_*: roda num processo utilitário, aberto no primeiro uso.
+// Code index (symbol graph) for the gearmod_code_* tools: runs in a utility process, started on first use.
 const codeIndex = new CodeIndexService({ dataDir, fork: () => utilityProcess.fork(join(__dirname, 'codeIndexHost.js'), [], { serviceName: 'GearMod code index', stdio: 'ignore' }) as unknown as HostProcess })
-/** Pastas que o índice cobre: os repositórios da worktree do card, senão as fontes do projeto. Vale para os agentes e para o editor. */
+/** Folders the index covers: the card worktree's repositories, otherwise the project sources. Applies to the agents and the editor. */
 const projectCodeRoots = ({ projectId, cardId }: { projectId: string; cardId: string | null }): string[] => {
   const worktree = cardId ? worktrees.get(cardId) : null
   if (cardId && worktree && existsSync(worktree.path)) {
@@ -109,7 +109,7 @@ gitManager.onFolderRemoved = (path) => { void codeIndex.forget(path).catch(() =>
 const gitAccounts = new GitAccounts(database, new SecretStore(join(dataDir, 'git-accounts.bin'), safeStorage))
 const pullRequests = new PullRequestService(database, undefined, undefined, gitAccounts)
 const history = new CardHistoryService(database, dataDir)
-// As cópias spec.md/plan.md/tasks.md da pasta de artefatos acompanham os documentos do card (marcar uma task regrava tasks.md).
+// The spec.md/plan.md/tasks.md copies in the artifacts folder follow the card documents (checking a task rewrites tasks.md).
 board.documents.onWrite = (cardId, kind) => { if (kind === 'especificacao' || kind === 'plano' || kind === 'tasks') refreshArtifactCopies(history, board, cardId) }
 const sddResolver = new SddResolver(history, board, projects, worktrees)
 const sddWriter = new SddWriter(worktrees)
@@ -117,7 +117,7 @@ const playwright = new PlaywrightCliService(database, history, undefined, join(d
 const specTools = new SpecToolsService(database)
 const toolUpdates = new ToolUpdateService(join(app.getPath('userData'), 'tool-versions.json'))
 const agentContext = new AgentContextService(board, settings, existsSync(pluginDir) ? pluginDir : null, constitution, (cardId) => gitManager.agentRule(cardId), history, (cardId) => {
-  // Multirrepositório: o agente vê os repositórios do card e a pasta de cada um na worktree; o testador, o Playwright CLI quando ligado.
+  // Multi-repository: the agent sees the card's repositories and each one's folder in the worktree; the tester, the Playwright CLI when on.
   const card = board.card(cardId), sources = projects.get(card.projectId).sources.filter((source) => source.isGitRepository)
   const repos = worktrees.repositories(cardId)
   const repositorios = sources.length > 1 ? sources.map((source) => {
@@ -135,7 +135,7 @@ const usage = new UsageService(database, profiles, (profile) => probeClaudeLimit
 const appIcon = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'tray' : 'resources/tray', 'app.png')
 const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'gearmod-mcp' : 'resources/gearmod-mcp', 'server.mjs')
 const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/card-updated', payload: { cardId, type: 'document' } })))
-// S05, atrás da flag (padrão off até soak, Q-05): movimento imediato do agente vira pedido pendente de aprovação.
+// S05, behind the flag (default off until soak, Q-05): an immediate agent move becomes a pending approval request.
 const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.GEARMOD_AGENT_MOVE_APPROVAL === '1', codeIndex, codeRoots, codeEnabled })
 const writeback = new AgentWriteback(board, mcpBridge)
 const shownNotifications = new Set<Notification>()
@@ -145,7 +145,7 @@ const notifier = new Notifier({
   show: (notice, onClick) => {
     if (!Notification.isSupported()) return
     const notification = new Notification({ title: notice.title, body: notice.body, icon: appIcon })
-    shownNotifications.add(notification)  // guarda a referência até o clique ou o fechamento, senão o sistema pode descartá-la
+    shownNotifications.add(notification)  // keeps the reference until click or close, otherwise the system may discard it
     notification.on('click', () => { shownNotifications.delete(notification); onClick() })
     notification.on('close', () => shownNotifications.delete(notification))
     notification.show()
@@ -162,18 +162,18 @@ const mcpRegistry = new McpRegistry(database, join(dataDir, 'mcp', 'secrets'), s
 const speckit = new SpecKitRuntime({ history, board: Object.assign(Object.create(board), { documents: board.documents }) as typeof board, worktrees, approvals, root: (projectId) => resolvedSddRoot(history, board, projectId, 'speckit') })
 const orchestrator = new AgentOrchestrator(conversations, { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter(), gemini: new GeminiCliAdapter(nodeProcesses) }, (event) => {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', event))
-  // A contagem só baixa depois que a run sai da fila do orquestrador, por isso o pequeno atraso.
+  // The count only drops after the run leaves the orchestrator queue, hence the small delay.
   if (event.eventType.startsWith('gearmod/run-')) setTimeout(updateTray, 100)
 }, worktrees, () => settings.get().execucoesSimultaneas ?? recommendedConcurrency(), agentContext, writeback, agentConfigs, usage, collab, (info) => {
   if (info.cardId) void cardUsageExport.export(info.cardId).catch(() => console.error('Falha ao exportar consumo do card.'))
-  // Evento do fim da execução (métricas e relatórios de implementação/verificação na pasta de artefatos do card).
-  if (info.cardId && info.purpose !== 'free' && info.purpose !== 'constitution') { try { history.runFinished({ cardId: info.cardId, runId: info.runId, chatId: info.chatId, purpose: info.purpose, status: info.status }) } catch { /* artefato é best-effort */ } }
-  // Notificação do sistema quando um agente termina (só com o app fora de foco); o clique abre o chat do card ou o chat livre.
+  // Run-end event (metrics and implementation/verification reports in the card artifacts folder).
+  if (info.cardId && info.purpose !== 'free' && info.purpose !== 'constitution') { try { history.runFinished({ cardId: info.cardId, runId: info.runId, chatId: info.chatId, purpose: info.purpose, status: info.status }) } catch { /* artifact is best-effort */ } }
+  // System notification when an agent finishes (only with the app out of focus); the click opens the card chat or the free chat.
   const card = info.cardId ? board.card(info.cardId) : null
   const title = card?.title || conversations.listChats(conversations.projectOf(info.chatId)).find((chat) => chat.id === info.chatId)?.title || ''
   const notice = finishNotice({ status: info.status, purpose: info.purpose, title, hasPlan: card?.hasPlan ?? false, pending: card?.pending ?? { changes: 0, questions: 0 }, error: info.error })
   if (notice) notifier.notify(notice, { projectId: card?.projectId ?? conversations.projectOf(info.chatId), cardId: info.cardId, chatId: info.chatId, purpose: info.purpose })
-  // Parou por limite de uso: agenda a retomada para quando o limite voltar.
+  // Stopped by usage limit: schedules the resume for when the limit comes back.
   void autoResume.onFinished({ ...info, profileId: conversations.context(info.chatId).profile.id }).catch(() => undefined)
 }, usageLedger, profiles, speckit, mcpRegistry)
 const pushEvent = (eventType: string, payload: Record<string, unknown>): void => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType, payload }))
@@ -192,7 +192,7 @@ const autoResume = new AutoResumeService({
 const skills = new SkillService(profiles, projects, { adapters: { codex: new CodexAppServerAdapter(), claude: new ClaudeCliAdapter(), gemini: new GeminiCliAdapter(nodeProcesses) }, profile: (id) => profiles.get(id) }, homedir(), (type, payload) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: type, payload })), usageLedger)
 collab.setStarter((action) => { orchestrator.start({ ...action, automatic: true }) })
 orchestrator.setHarness(new HarnessService(database, history, worktrees))
-/** Chave do Groq cifrada pelo sistema (DPAPI no Windows); nunca vai para o banco nem para o backup. */
+/** Groq key encrypted by the system (DPAPI on Windows); it never goes to the database or the backup. */
 const groqKeyFile = join(dataDir, 'whisper', 'groq.key')
 const voiceSecrets = new SecretStore(groqKeyFile, safeStorage)
 const dbConnections = new DbConnections(database, join(dataDir, 'db', 'secrets'), safeStorage)
@@ -207,20 +207,20 @@ async function openDatabase(): Promise<void> {
     await backups.create(db, `schema-upgrade-${from}-to-${to}`)
   })
   conversations.reconcileInterrupted()
-  // Runs apagadas do SQLite ainda podem existir no histórico versionado do card; a chave (run_id, seq) torna a recuperação idempotente.
+  // Runs deleted from SQLite may still exist in the card's versioned history; the (run_id, seq) key makes recovery idempotent.
   for (const project of projects.list()) for (const card of board.get(project.id).cards) {
-    try { usageLedger.importHistory(card.id, history.artifactsDir(card.id)) } catch { /* histórico em disco é opcional */ }
+    try { usageLedger.importHistory(card.id, history.artifactsDir(card.id)) } catch { /* history on disk is optional */ }
   }
-  // Eventos que não chegaram ao history.jsonl (app fechou no meio, pasta indisponível) são gravados agora.
-  try { history.reconcile() } catch { /* tenta de novo na próxima abertura */ }
+  // Events that did not reach history.jsonl (app closed midway, folder unavailable) are written now.
+  try { history.reconcile() } catch { /* tries again on the next open */ }
 }
 
-/** Altura da faixa de cima (a mesma `--titlebar` do CSS). */
+/** Height of the top strip (the same `--titlebar` as the CSS). */
 const titleBarHeight = 44
 
 let mainWindow: BrowserWindow | undefined
 
-/** Janela principal ou, com `popout`, uma janela extra com só uma parte do app (chat, Git ou quadro) — o estado todo vive no processo principal, então as duas ficam em dia. */
+/** Main window or, with `popout`, an extra window with only one part of the app (chat, Git or board) — all state lives in the main process, so both stay up to date. */
 async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Rectangle }): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     width: 1100,
@@ -230,8 +230,8 @@ async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Re
     ...(popout?.bounds ?? {}),
     show: false,
     backgroundColor: '#0b0b0b',
-    // Barra de título própria: o app desenha a faixa de cima (e dá para arrastar por ela); os botões de minimizar, maximizar e
-    // fechar continuam os do Windows, por cima, com fundo transparente para seguir o tema.
+    // Custom title bar: the app draws the top strip (and it can be dragged); the minimize, maximize and
+    // close buttons remain Windows', on top, with a transparent background to follow the theme.
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#00000000', symbolColor: '#d4d9d5', height: titleBarHeight },
     icon: appIcon,
@@ -244,31 +244,31 @@ async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Re
   })
   if (!popout) mainWindow = window
   window.once('ready-to-show', () => window.show())
-  // Sem o menu (File, Edit…) somem os atalhos dele; em desenvolvimento, F12 / Ctrl+Shift+I abre as ferramentas e Ctrl+R recarrega.
+  // Without the menu (File, Edit…) its shortcuts go away; in development, F12 / Ctrl+Shift+I opens the devtools and Ctrl+R reloads.
   if (!app.isPackaged) window.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return
     const key = input.key.toLowerCase()
     if (key === 'f12' || (input.control && input.shift && key === 'i')) { event.preventDefault(); window.webContents.toggleDevTools() }
     else if (input.control && key === 'r') { event.preventDefault(); window.webContents.reload() }
   })
-  // Fechar a janela só esconde o app na bandeja: os agentes continuam trabalhando. Sair é pelo ícone da bandeja.
+  // Closing the window only hides the app in the tray: agents keep working. Quit is via the tray icon.
   if (!popout) window.on('close', (event) => {
     if (quitting) return
     event.preventDefault(); window.hide()
     if (!toldHidden && Notification.isSupported()) { toldHidden = true; new Notification({ ...hiddenNotice, icon: appIcon }).show() }
   })
-  // O editor cancela o `beforeunload` quando há arquivo não salvo; sem isso o Electron só ignoraria o fechamento (o X da janela de chat não fazia
-  // nada e "Sair" ficava parado). Aqui o usuário escolhe: descartar e seguir, ou cancelar — e, se cancelar uma saída, nada foi fechado ainda.
+  // The editor cancels `beforeunload` when there is an unsaved file; without that Electron would just ignore the close (the chat window's X did
+  // nothing and "Quit" hung). Here the user chooses: discard and go on, or cancel — and, if a quit is cancelled, nothing has been closed yet.
   window.webContents.on('will-prevent-unload', (event) => {
-    if (!window.isVisible()) window.show()  // saindo pela bandeja, a janela pode estar escondida
+    if (!window.isVisible()) window.show()  // when quitting via the tray, the window may be hidden
     window.focus()
     const response = dialog.showMessageBoxSync(window, { type: 'warning', title: tm().app.unsavedTitle, message: tm().app.unsavedMessage, detail: tm().app.unsavedDetail, buttons: [quitting ? tm().app.discardAndQuit : tm().app.discardAndClose, tm().app.cancel], defaultId: 1, cancelId: 1, noLink: true })
     if (response === 0) { event.preventDefault(); return }
-    quitting = false  // a saída foi cancelada: o X da janela principal volta a só esconder na bandeja
+    quitting = false  // the quit was cancelled: the main window's X goes back to only hiding in the tray
   })
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', (event) => event.preventDefault())
-  // Só o microfone (ditado por voz) é liberado; qualquer outra permissão continua negada.
+  // Only the microphone (voice dictation) is allowed; any other permission stays denied.
   window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback, details) => callback(permission === 'media' && (details as { mediaTypes?: string[] }).mediaTypes?.every((type) => type === 'audio') === true))
   window.webContents.session.setPermissionCheckHandler((_webContents, permission) => permission === 'media')
   const query = popout ? popoutQuery(popout.target) : undefined
@@ -279,13 +279,13 @@ async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Re
 
 const areaOf = (window: BrowserWindow): Electron.Rectangle => screen.getDisplayMatching(window.getBounds()).workArea
 
-/** Move a janela para uma metade da tela (ou a solta, se já estava encaixada). */
+/** Moves the window to one half of the screen (or releases it, if it was already snapped). */
 function placeWindow(window: BrowserWindow, placement: WindowPlacement): void {
   if (window.isMaximized()) window.unmaximize()
   window.setBounds(placementBounds(areaOf(window), placement))
 }
 
-/** Abre uma janela só com aquela parte; ao encaixar numa metade, a janela de origem fica com a outra. */
+/** Opens a window with only that part; when snapping to a half, the source window takes the other. */
 function openPopout(target: PopoutTarget, placement: WindowPlacement, point?: { x: number; y: number }): void {
   const origin = BrowserWindow.getFocusedWindow() ?? mainWindow
   const originDisplay = origin ? screen.getDisplayMatching(origin.getBounds()) : screen.getPrimaryDisplay()
@@ -314,7 +314,7 @@ const fileActions = {
     if (target === 'vscode') { await shell.openExternal(pathToFileURL(path).href.replace(/^file:\/\//, 'vscode://file')); return }
     const error = await shell.openPath(path); if (error) throw new Error(error)
   },
-  /** Excluir é sempre para a Lixeira do sistema, nunca definitivo. */
+  /** Delete always goes to the system Recycle Bin, never permanent. */
   async trashItem(path: string): Promise<void> { await shell.trashItem(path) }
 }
 
@@ -325,7 +325,7 @@ async function chooseDirectory(defaultPath?: string): Promise<string | null> {
   return result.canceled ? null : result.filePaths[0] ?? null
 }
 
-/** Arquivos para anexar a uma mensagem do chat (viram contexto do agente). */
+/** Files to attach to a chat message (they become agent context). */
 async function chooseFiles(): Promise<string[]> {
   const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
   const options: OpenDialogOptions = { properties: ['openFile', 'multiSelections'], title: tm().app.attachFiles }
@@ -333,7 +333,7 @@ async function chooseFiles(): Promise<string[]> {
   return result.canceled ? [] : result.filePaths
 }
 
-/** Salva um texto (CSV de consumo) onde o usuário escolher; cancelar não grava nada. */
+/** Saves a text (usage CSV) where the user chooses; cancelling writes nothing. */
 async function saveTextFile(input: { content: string; defaultName: string }): Promise<{ saved: boolean; path: string | null }> {
   const owner = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
   const options = { title: tm().app.saveFile, defaultPath: input.defaultName, filters: [{ name: 'CSV', extensions: ['csv'] }] }
@@ -359,7 +359,7 @@ function showWindow(): void {
   window.show(); window.focus()
 }
 
-/** Sair de verdade (menu da bandeja): com agente trabalhando, confirma antes, porque as execuções morrem junto com o app. */
+/** Real quit (tray menu): with an agent working, confirms first, because runs die along with the app. */
 async function requestQuit(): Promise<void> {
   const prompt = quitPrompt(orchestrator.pendingCount())
   if (prompt) {
@@ -392,24 +392,24 @@ function createTray(): void {
   updateTray()
 }
 
-// Uma cópia só: abrir o GearMod de novo (com ele escondido na bandeja) traz a janela de volta em vez de abrir outro app no mesmo banco.
+// Single instance: opening GearMod again (with it hidden in the tray) brings the window back instead of opening another app on the same database.
 if (!app.requestSingleInstanceLock()) app.exit(0)
 app.on('second-instance', showWindow)
 
 app.whenReady().then(async () => {
-  app.setAppUserModelId('dev.gearmod.desktop')  // necessário para as notificações do Windows
+  app.setAppUserModelId('dev.gearmod.desktop')  // required for Windows notifications
   await openDatabase()
-  setMainLocale(settings.get().idioma)  // só depois de abrir o banco: antes disso as configurações não podem ser lidas
+  setMainLocale(settings.get().idioma)  // only after opening the database: before that the settings cannot be read
   await mcpBridge.listen()
   disposeIpc = registerIpc(ipcMain, { database, speckit, pullRequests, gitAccounts, mcp: mcpRegistry, backups, notes, settings, profiles, projects, board, git, chooseDirectory, chooseFiles, agentProbes, conversations, orchestrator, worktrees, quality, executions, agentConfigs, skills, constitution, checklists, voice, usage, collab, gitManager, history, playwright, specTools, toolUpdates, approvals, sddResolver, sddWriter, dbManager, fileWatch, terminals, returnFile, codeIndex, codeRoots: projectCodeRoots, codeIndexSettings, ...fileActions, openExternal: (url) => shell.openExternal(url), setTitleBarTheme: (light) => { for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.setTitleBarOverlay({ color: '#00000000', symbolColor: light ? '#26303a' : '#d4d9d5', height: titleBarHeight }) }, openWindow: openPopout, placeWindow: (placement) => { const window = BrowserWindow.getFocusedWindow(); if (window) placeWindow(window, placement) }, openPath: async (path) => { await mkdir(path, { recursive: true }); const error = await shell.openPath(path); if (error) throw new Error(error) }, chooseSkillSource, saveTextFile, appVersion, dataDir, reopen: openDatabase })
-  Menu.setApplicationMenu(null)  // sem File/Edit/View/Window/Help: a faixa de cima é do app
+  Menu.setApplicationMenu(null)  // no File/Edit/View/Window/Help: the top strip belongs to the app
   createTray()
   await createWindow()
-  autoResume.start()  // confere a cada 30 s se chegou a hora de retomar algo que parou por limite de uso
+  autoResume.start()  // checks every 30 s whether it is time to resume something that stopped because of a usage limit
   app.on('activate', showWindow)
 }).catch((error: unknown) => {
   console.error('GearMod startup failed', error)
-  // As configurações podem não ter sido lidas (banco fechado): usa o idioma salvo se der, senão o do sistema.
+  // Settings may not have been read (database closed): use the saved language if possible, otherwise the system's.
   try { setMainLocale(settings.get().idioma) } catch { setMainLocale(app.getLocale().toLowerCase().startsWith('pt') ? 'pt-BR' : 'en') }
   const detail = error instanceof Error ? error.message : String(error)
   const code = typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : ''
@@ -419,8 +419,8 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-// Qualquer saída (bandeja, desligar o Windows, atualização) libera o fechamento da janela. Nada é encerrado aqui: uma janela com arquivo
-// não salvo ainda pode cancelar a saída (veja `will-prevent-unload`).
+// Any exit (tray, Windows shutdown, update) releases the window close. Nothing is shut down here: a window with an unsaved file
+// can still cancel the quit (see `will-prevent-unload`).
 app.on('before-quit', () => { quitting = true })
-// Só depois que todas as janelas fecharam (ninguém cancelou) é que agentes, terminais, bandeja e banco são encerrados.
+// Only after all windows have closed (nobody cancelled) are agents, terminals, tray and database shut down.
 app.on('will-quit', () => { orchestrator.shutdown(); autoResume.stop(); terminals.dispose(); fileWatch.dispose(); codeIndex.dispose(); tray?.destroy(); disposeIpc?.(); void mcpBridge.close(); void dbSessions.closeAll(); database.close() })

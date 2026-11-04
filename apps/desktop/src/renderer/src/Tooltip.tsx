@@ -3,8 +3,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 const gap = 6, margin = 8, delayMs = 300
 
 /**
- * Tooltip único do app para todo elemento com `data-tip`. Posiciona pelo retângulo real do elemento (em cima; embaixo se não couber)
- * e mantém o balão dentro da janela. Substitui os `::after` do CSS, que saíam no lugar errado conforme o elemento pai.
+ * Single tooltip for the app, for every element with `data-tip`. Positions by the element's real rectangle (above; below if it does not fit)
+ * and keeps the bubble inside the window. Replaces the CSS `::after` ones, which ended up in the wrong place depending on the parent element.
  */
 export function TooltipLayer(): React.JSX.Element | null {
   const [tip, setTip] = useState<{ text: string; rect: DOMRect }>(), [pos, setPos] = useState<{ left: number; top: number }>()
@@ -34,7 +34,7 @@ export function TooltipLayer(): React.JSX.Element | null {
       document.removeEventListener('pointerdown', hide, true); document.removeEventListener('wheel', hide); window.removeEventListener('blur', hide)
     }
   }, [])
-  // Mede o balão depois de renderizar e escolhe o lado que cabe, centralizado no elemento e preso dentro da janela.
+  // Measures the bubble after rendering and picks the side that fits, centered on the element and clamped inside the window.
   useLayoutEffect(() => {
     if (!tip || !box.current) return
     const { width, height } = box.current.getBoundingClientRect(), { rect } = tip

@@ -6,14 +6,14 @@ import { useT } from './i18n'
 
 const FolderIcon = (): React.JSX.Element => <svg className="cx-foldico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
 
-/** Configuração do projeto: pesos e limites do Complexity Engine e pasta dos artefatos. */
+/** Project settings: Complexity Engine weights and thresholds, and the artifacts folder. */
 export function WorkflowPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.workflowPanel
   const [config, setConfig] = useState<WorkflowConfig>(), [defaultDir, setDefaultDir] = useState(''), [message, setMessage] = useState('')
   const [editArt, setEditArt] = useState(false), [saveState, setSaveState] = useState<'' | 'saving' | 'saved'>(''), lastSaved = React.useRef('')
   const take = (state: { config: WorkflowConfig; defaultArtifactsDir: string }): void => { lastSaved.current = JSON.stringify(state.config); setConfig(state.config); setDefaultDir(state.defaultArtifactsDir) }
   useEffect(() => { void window.gearmod.invoke('workflow:get', { projectId }).then(take).catch((reason) => setMessage(plainError(reason))) }, [projectId])
-  // Salva sozinho ~0,7 s depois da última mudança; o que o servidor devolve só atualiza as detecções, para não mexer no que está sendo digitado.
+  // Saves on its own ~0.7 s after the last change; what the server returns only updates the detections, so it does not disturb what is being typed.
   useEffect(() => {
     if (!config || JSON.stringify(config) === lastSaved.current) return
     const snapshot = JSON.stringify(config)
@@ -63,7 +63,7 @@ export function WorkflowPanel({ projectId }: { projectId: string }): React.JSX.E
 }
 
 
-/** Barra de 0 até a pontuação máxima em três faixas (simples, média, complexa); as alças arrastam os limites, e os campos continuam valendo. */
+/** Bar from 0 to the maximum score in three bands (simple, medium, complex); the handles drag the thresholds, and the fields still apply. */
 function LimitsBar({ max, simpleMax, mediumMax, change }: { max: number; simpleMax: number; mediumMax: number; change(simpleMax: number, mediumMax: number): void }): React.JSX.Element {
   const t = useT().board.workflowPanel
   const track = React.useRef<HTMLDivElement>(null)

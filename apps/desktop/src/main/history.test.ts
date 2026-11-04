@@ -21,7 +21,7 @@ afterEach(async () => { for (const close of closers.splice(0)) await close(); aw
 const low: DimensionScores = { escopo: 1, acoplamento: 0, incerteza: 1, risco: 0, novidade: 0, validacao: 1 }
 const high: DimensionScores = { escopo: 3, acoplamento: 2, incerteza: 2, risco: 2, novidade: 1, validacao: 2 }
 
-/** Repositório Git falso só com os arquivos que `readHead` lê (HEAD e a ref da branch). */
+/** Fake Git repository with only the files that `readHead` reads (HEAD and the branch ref). */
 function fakeRepo(path: string, hash: string): void {
   mkdirSync(join(path, '.git', 'refs', 'heads'), { recursive: true })
   writeFileSync(join(path, '.git', 'HEAD'), 'ref: refs/heads/main\n'); writeFileSync(join(path, '.git', 'refs', 'heads', 'main'), `${hash}\n`)
@@ -152,16 +152,16 @@ describe('Artefatos versionáveis', () => {
     const dir = history.artifactsDir(card.id), file = join(dir, 'history.jsonl')
     expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(3)
     expect(readFileSync(join(dir, 'discovery.md'), 'utf8')).toContain('Avisar o usuário de pedidos novos')
-    // App caiu depois de gravar e antes de marcar: a próxima reconciliação não duplica.
+    // App crashed after writing and before marking: the next reconciliation does not duplicate.
     database.db.prepare('UPDATE card_events SET synced_at = NULL').run()
     expect(history.reconcile()).toBe(1)
     expect(readFileSync(file, 'utf8').trim().split('\n')).toHaveLength(3)
-    // Linha cortada no fim do arquivo é ignorada.
+    // A truncated line at the end of the file is ignored.
     writeFileSync(file, `${readFileSync(file, 'utf8')}{"id":"cortad`)
     const fromFiles = readArtifactHistory(dir)
     expect(fromFiles.assessments.map((item) => item.total)).toEqual([5])
     expect(fromFiles.decisions.map((item) => item.statement)).toEqual(['Só Android'])
-    // Banco perdeu o histórico (ex.: backup antigo restaurado): rebuild recria tudo a partir do arquivo.
+    // Database lost the history (e.g. old backup restored): rebuild recreates everything from the file.
     database.db.exec('DELETE FROM card_assessments; DELETE FROM card_decisions; DELETE FROM card_events;')
     expect(history.rebuild(card.id)).toEqual({ events: 3, assessments: 1, decisions: 1 })
     expect(history.rebuild(card.id)).toEqual({ events: 0, assessments: 0, decisions: 0 })
@@ -196,7 +196,7 @@ describe('Artefatos versionáveis', () => {
       expect(config.sdd.method, fixture.name).toBe(fixture.expectMethod)
       expect(config.legacyMethod, fixture.name).toBe(fixture.expectLegacy)
     }
-    // Escrita: sempre grava `sdd`, nunca complexMethod legado (a UI de hoje só oferece native/speckit).
+    // Write: always writes `sdd`, never the legacy complexMethod (today's UI only offers native/speckit).
     const saved = history.setConfig(project.id, { ...defaultWorkflowConfig, sdd: { ...defaultWorkflowConfig.sdd, method: 'speckit' } })
     expect(saved.sdd.method).toBe('speckit')
     const storedRaw = JSON.parse(database.db.prepare('SELECT workflow_config FROM projects WHERE id = ?').pluck().get(project.id) as string)
@@ -266,7 +266,7 @@ describe('Ferramentas MCP e contexto', () => {
     expect(proposed.status).toBe('requested')
     approvals.decide(proposed.id, true)
     history.selectWorkflow(card.id, 'light', { actor: 'user' }, '', 'user')
-    // O fluxo curto não muda o tipo do card: vem do workflow escolhido.
+    // The short flow does not change the card type: it comes from the chosen workflow.
     expect(board.card(card.id)).toMatchObject({ type: card.type, workflow: 'light', sddMethod: null })
     expect(call('gearmod_assess_complexity', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'user-correction', motivo: 'x' })).toMatchObject({ ok: false })
     expect(call('gearmod_assess_complexity', { notas: { escopo: 2, acoplamento: 2, incerteza: 1, risco: 1, novidade: 0, validacao: 1 }, confianca: 'alta', gatilho: 'new-dependency', motivo: 'Descobri que o backend também muda' }).text).toContain('before 5; +9')

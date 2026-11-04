@@ -36,12 +36,12 @@ interface RawMr {
   author?: { username?: string } | null; reviewers?: Array<{ username?: string }>; user_notes_count?: number
 }
 
-/** Pull requests (GitHub, pelo gh) e merge requests (GitLab, pelo glab) por repositório do projeto. Só roda quando a tela pede; nunca guarda credencial. */
+/** Pull requests (GitHub, via gh) and merge requests (GitLab, via glab) per project repository. Only runs when the screen asks; never stores credentials. */
 export class PullRequestService {
   private viewers = new Map<Provider, string | null>()
   constructor(private readonly database: AppDatabase, private readonly cli: CliRunner = nativeCli, private readonly git: GitRunner = nativeGit, private readonly accounts?: GitAccounts) {}
 
-  /** Roda pela API com o token do projeto/repositório, se houver; sem token devolve `used: false` e quem chamou cai no gh/glab. */
+  /** Runs through the API with the project/repository token, if any; without a token returns `used: false` and the caller falls back to gh/glab. */
   private async viaToken<T>(sourceId: string, run: (api: HostApi, remote: RemoteRef, login: string) => Promise<T>): Promise<{ used: true; value: T } | { used: false }> {
     const found = await this.accounts?.lookup(sourceId)
     if (!found || found.status === 'none') return { used: false }
@@ -77,7 +77,7 @@ export class PullRequestService {
     try {
       login = provider === 'github' ? (await this.exec(provider, dir, ['api', 'user', '--jq', '.login'])).trim() || null
         : (JSON.parse(await this.exec(provider, dir, ['api', 'user'])) as { username?: string }).username ?? null
-    } catch { /* sem login: nada é "meu" */ }
+    } catch { /* no login: nothing is "mine" */ }
     if (login) this.viewers.set(provider, login)
     return login
   }
@@ -126,7 +126,7 @@ export class PullRequestService {
       comments?: Array<{ author?: { login?: string }; body: string; createdAt: string }>; reviews?: Array<{ author?: { login?: string }; body: string; state: string; submittedAt?: string }>
     }
     let diff = ''
-    try { diff = await this.exec(provider, dir, ['pr', 'diff', String(number)]) } catch { /* o resto ainda abre */ }
+    try { diff = await this.exec(provider, dir, ['pr', 'diff', String(number)]) } catch { /* the rest still opens */ }
     return {
       number: raw.number, title: raw.title, body: raw.body ?? '', url: raw.url, state: raw.state, draft: raw.isDraft, head: raw.headRefName, base: raw.baseRefName,
       reviewDecision: raw.reviewDecision || null, author: raw.author?.login ?? '', additions: raw.additions, deletions: raw.deletions, mergeable: raw.mergeable ?? null,
@@ -137,7 +137,7 @@ export class PullRequestService {
     }
   }
 
-  /** Merge request do GitLab pela API do glab (`:id` é o projeto da pasta). */
+  /** GitLab merge request through glab's API (`:id` is the folder's project). */
   private async viewMr(dir: string, number: number): Promise<PullRequestDetail> {
     const api = async <T>(path: string): Promise<T> => JSON.parse(await this.exec('gitlab', dir, ['api', path])) as T
     const base = `projects/:id/merge_requests/${number}`
@@ -185,7 +185,7 @@ export class PullRequestService {
     await this.exec(provider, dir, ['pr', 'review', String(number), `--${action}`, ...(body.trim() ? ['--body', body] : [])])
   }
 
-  /** Publica a branch e abre o PR/MR. O título e o corpo vêm da tela; nada é enviado sem o usuário pedir. */
+  /** Publishes the branch and opens the PR/MR. The title and body come from the screen; nothing is sent unless the user asks. */
   async create(sourceId: string, input: { head: string; base: string; title: string; body: string; draft: boolean }): Promise<{ url: string }> {
     const dir = this.path(sourceId), provider = await this.provider(dir) ?? 'gitlab'
     try { await this.git.run(['-C', dir, 'push', '-u', 'origin', input.head]) } catch (error) { throw new Error(tm().pullRequests.couldNotPublishBranch(cliError(provider, error))) }
@@ -200,7 +200,7 @@ export class PullRequestService {
     return { url }
   }
 
-  /** Só abre no navegador um endereço de PR que o CLI listou para este repositório. */
+  /** Only opens in the browser a PR address that the CLI listed for this repository. */
   async assertUrl(sourceId: string, url: string): Promise<string> {
     const list = await this.list(sourceId)
     if (!list.prs.some((pr) => pr.url === url)) throw new Error(tm().pullRequests.unknownPrUrlRepo)

@@ -14,7 +14,7 @@ const dirs: string[] = []
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }) })
 const profile = (configDir = 'C:\\profiles\\gemini'): AgentProfile => ({ id: '10000000-0000-4000-8000-000000000001', provider: 'gemini', label: 'Gemini', scope: 'work', color: '#7BA7FF', configDir, executablePath: null, enabled: true, billingMode: 'subscription', envPassthrough: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' } as unknown as AgentProfile)
 
-/** Processo falso: guarda o que foi escrito na entrada padrão e deixa o teste empurrar linhas de saída. */
+/** Fake process: keeps what was written to stdin and lets the test push output lines. */
 function fakeGemini(script: (send: (value: Record<string, unknown>) => void, input: () => string) => void, seen?: { args: string[]; env: NodeJS.ProcessEnv; stdin: string; settings?: string }): ProcessFactory {
   return { start(_command, args, options) {
     const emitter = new EventEmitter() as EventEmitter & Partial<ChildProcessWithoutNullStreams>

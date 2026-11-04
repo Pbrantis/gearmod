@@ -6,12 +6,12 @@ import type { AppDatabase } from './database'
 import { tm } from './i18n'
 
 type Actor = 'user' | 'agent' | 'system'
-/** Até este tamanho a Constituição vai inteira no contexto do agente; acima, vai só o índice e ele lê o resto pela ferramenta. */
+/** Up to this size the Constitution goes whole into the agent's context; above it, only the index goes and the agent reads the rest through the tool. */
 export const inlineLimit = 6000
-/** Onde o GitHub Spec Kit guarda a constituição de um projeto. */
+/** Where GitHub Spec Kit keeps a project's constitution. */
 const specKitFile = join('.specify', 'memory', 'constitution.md')
 
-/** Constituição do projeto: princípios que todo card respeita. É opcional; sem ela o GearMod segue como antes. */
+/** Project Constitution: principles every card respects. It is optional; without it GearMod carries on as before. */
 export class ConstitutionRepository {
   constructor(private readonly database: AppDatabase) {}
 
@@ -20,7 +20,7 @@ export class ConstitutionRepository {
     return row ? { projectId, ...row } : { projectId, contentMd: '', version: 0, updatedAt: null, updatedBy: null }
   }
 
-  /** Grava o texto inteiro e guarda a versão anterior no histórico. Texto igual ao atual não gera versão nova. */
+  /** Saves the whole text and keeps the previous version in the history. Text equal to the current one does not create a new version. */
   write(projectId: string, contentMd: string, actor: Actor): Constitution {
     const current = this.get(projectId)
     if (current.version && current.contentMd === contentMd) return current
@@ -53,12 +53,12 @@ export class ConstitutionRepository {
     return row.projectId
   }
 
-  /** Estado da aba: texto, propostas e, se houver, a constituição do Spec Kit que dá para importar. */
+  /** Tab state: text, proposals and, if any, the Spec Kit constitution that can be imported. */
   state(projectId: string): ConstitutionState {
     return { constitution: this.get(projectId), proposals: this.proposals(projectId), importable: this.specKitPath(projectId) }
   }
 
-  /** Importa `.specify/memory/constitution.md` (Spec Kit) da pasta do projeto ou do primeiro repositório que tiver. */
+  /** Imports `.specify/memory/constitution.md` (Spec Kit) from the project folder or the first repository that has it. */
   importSpecKit(projectId: string): ConstitutionState {
     const path = this.specKitPath(projectId)
     if (!path) throw new Error(tm().constitution.noConstitutionFile)
@@ -74,7 +74,7 @@ export class ConstitutionRepository {
   }
 }
 
-/** Índice da Constituição para o contexto: os títulos (princípios e seções), sem o corpo. */
+/** Constitution index for the context: the titles (principles and sections), without the body. */
 export function constitutionIndex(contentMd: string): string {
   const headings = contentMd.split(/\r?\n/).filter((line) => /^#{1,4}\s+\S/.test(line)).map((line) => line.replace(/\s+$/, ''))
   return headings.slice(0, 80).join('\n')

@@ -1,5 +1,5 @@
-// Servidor MCP (stdio) do índice de código. Indexa a pasta ao subir (reaproveitando o banco), observa mudanças
-// e responde às ferramentas. Variáveis: GRAPH_ROOT, GRAPH_DB, GRAPH_EXCLUDE (vírgulas), GRAPH_TOOLS=core|all.
+// MCP server (stdio) of the code index. Indexes the folder on startup (reusing the database), watches changes
+// and answers the tools. Variables: GRAPH_ROOT, GRAPH_DB, GRAPH_EXCLUDE (commas), GRAPH_TOOLS=core|all.
 import { createInterface } from 'node:readline'
 import { CodeIndex } from './graph/index.mjs'
 
@@ -13,8 +13,8 @@ const str = (description) => ({ type: 'string', description })
 const num = (description) => ({ type: 'number', description })
 const bool = (description) => ({ type: 'boolean', description })
 
-// GRAPH_DETAIL=completo (padrão) | resumo: o que codigo_explorar devolve quando o agente não diz.
-// O resumo saiu mais caro na medição (o agente lia os arquivos depois), então o padrão é o completo.
+// GRAPH_DETAIL=completo (default) | resumo: what codigo_explorar returns when the agent does not say.
+// The summary came out more expensive in the measurement (the agent read the files afterward), so the default is the full one.
 const DETAIL = process.env.GRAPH_DETAIL === 'resumo' ? 'resumo' : 'completo'
 const EXPLORE_DESC = DETAIL === 'resumo'
   ? 'Ferramenta principal: use PRIMEIRO para entender uma área, um fluxo ou um bug, e antes de editar. Devolve numa chamada o caminho de chamadas, quem depende de cada símbolo e os testes, onde está cada símbolo (arquivo e linhas exatas, com assinatura) e o código dos trechos principais. Para o resto, leia só as linhas indicadas (Read com offset/limit) ou peça detalhe="completo". Aceita pergunta em linguagem natural ou nomes de símbolos/arquivos (ex.: "recordExploration codeVersions history.ts").'

@@ -4,7 +4,7 @@ import { toolKeys, type ToolVersions } from '@gearmod/contracts'
 import { tm } from './i18n'
 
 type Key = typeof toolKeys[number]
-/** De onde vem a última versão de cada ferramenta: pacote do npm ou release do GitHub. */
+/** Where the latest version of each tool comes from: npm package or GitHub release. */
 const sources: Record<Key, { kind: 'npm'; name: string } | { kind: 'github'; repo: string }> = {
   claude: { kind: 'npm', name: '@anthropic-ai/claude-code' }, codex: { kind: 'npm', name: '@openai/codex' }, gemini: { kind: 'npm', name: '@google/gemini-cli' }, openspec: { kind: 'npm', name: '@fission-ai/openspec' },
   playwright: { kind: 'npm', name: '@playwright/cli' }, specify: { kind: 'github', repo: 'github/spec-kit' }
@@ -19,8 +19,8 @@ const nativeFetch: FetchJson = async (url, timeoutMs) => {
 const empty = (): ToolVersions => ({ checkedAt: null, versions: { claude: null, codex: null, gemini: null, specify: null, openspec: null, playwright: null }, error: null })
 
 /**
- * Última versão publicada de Claude Code, Codex, Spec Kit, OpenSpec e Playwright CLI, para avisar de atualização. Busca no máximo uma vez a cada 24 h
- * (ou com `force`), guarda o resultado num arquivo e, sem internet, devolve o que tinha com `error` em vez de estourar.
+ * Latest published version of Claude Code, Codex, Spec Kit, OpenSpec and Playwright CLI, to warn about updates. Fetches at most once every 24 h
+ * (or with `force`), saves the result in a file and, without internet, returns what it had with `error` instead of blowing up.
  */
 export class ToolUpdateService {
   private cache: ToolVersions | null = null
@@ -32,7 +32,7 @@ export class ToolUpdateService {
     return this.cache
   }
 
-  /** Retorna somente o último resultado gravado; não consulta a rede. */
+  /** Returns only the last saved result; does not query the network. */
   cached(): ToolVersions { return this.load() }
 
   async latest(force = false): Promise<ToolVersions> {
@@ -50,9 +50,9 @@ export class ToolUpdateService {
       } catch { failed++ }
     }))
     const error = failed ? tm().toolUpdates.checkFailed : null
-    // Só marca como verificado quando tudo respondeu; assim uma falha não esconde a próxima tentativa por 24 h.
+    // Only marks as checked when everything responded; this way a failure does not hide the next attempt for 24 h.
     this.cache = { checkedAt: failed ? cached.checkedAt : new Date(this.now()).toISOString(), versions, error }
-    if (failed < toolKeys.length) { try { mkdirSync(dirname(this.file), { recursive: true }); writeFileSync(this.file, JSON.stringify({ checkedAt: this.cache.checkedAt, versions })) } catch { /* só não guarda o cache */ } }
+    if (failed < toolKeys.length) { try { mkdirSync(dirname(this.file), { recursive: true }); writeFileSync(this.file, JSON.stringify({ checkedAt: this.cache.checkedAt, versions })) } catch { /* it just does not save the cache */ } }
     return this.cache
   }
 }

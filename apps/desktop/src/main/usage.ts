@@ -15,7 +15,7 @@ const labelFor = (id: string, minutes?: number): string => windowLabel(id) ?? (m
 const iso = (seconds: number): string => new Date(seconds * 1000).toISOString()
 const periods: Record<string, number> = { five_hour: 5 * 3600_000, seven_day: 7 * 86_400_000 }
 
-/** Janela que já reiniciou: volta a 0% e o próximo reset é projetado somando o período da janela (5 h ou semana). */
+/** Window that has already reset: goes back to 0% and the next reset is projected by adding the window period (5 h or a week). */
 export function rollWindow(window: UsageWindow, now = Date.now()): UsageWindow {
   if (!window.resetsAt || Date.parse(window.resetsAt) > now) return window
   const period = periods[window.id]
@@ -23,7 +23,7 @@ export function rollWindow(window: UsageWindow, now = Date.now()): UsageWindow {
   return { ...window, usedPercent: 0, resetsAt: next }
 }
 
-/** Janelas de uso numa linha das sessões do Codex (`rate_limits` com `primary` e `secondary`); aceita variações de nome dos campos. */
+/** Usage windows in a line of Codex sessions (`rate_limits` with `primary` and `secondary`); accepts variations in field names. */
 export function parseCodexRateLimits(line: string): { windows: UsageWindow[]; at: string | null } | null {
   if (!line.includes('rate_limits')) return null
   let parsed: unknown
@@ -69,7 +69,7 @@ async function tail(path: string, bytes: number): Promise<string> {
   try { const { size } = await handle.stat(); const length = Math.min(size, bytes); const buffer = Buffer.alloc(length); await handle.read(buffer, 0, length, size - length); return buffer.toString('utf8') } finally { await handle.close() }
 }
 
-/** Uso das sessões: Codex lido de `<CODEX_HOME>/sessions/**\/*.jsonl`; Claude a partir do `rate_limit_event` que o Claude Code emite em cada execução. */
+/** Session usage: Codex read from `<CODEX_HOME>/sessions/**\/*.jsonl`; Claude from the `rate_limit_event` that Claude Code emits on each run. */
 export class UsageService {
   private readonly probing = new Set<string>()
   constructor(private readonly database: AppDatabase, private readonly profiles: ProfileRepository, private readonly probeClaude?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly staleMs = 10 * 60_000, private readonly readCodex?: (profile: AgentProfile) => Promise<Record<string, unknown> | null>, private readonly ledger?: UsageLedgerService, private readonly writeLegacySnapshots = process.env.GEARMOD_LEGACY_USAGE_SNAPSHOTS === '1') {}
@@ -129,8 +129,8 @@ export class UsageService {
   }
 
   /**
-   * O Claude só informa o limite quando roda. Para o painel não ficar vazio ou velho, faz uma chamada mínima (modelo barato)
-   * por baixo dos panos e guarda o `rate_limit_event`. Só repete quando o dado tem mais de 10 minutos.
+   * Claude only reports the limit when it runs. So the panel is not empty or stale, it makes a minimal call (cheap model)
+   * under the hood and saves the `rate_limit_event`. Only repeats when the data is more than 10 minutes old.
    */
   async refresh(explicit = false): Promise<Array<{ profileId: string; provider: 'claude' | 'codex' | 'gemini'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {
     if (explicit && this.probeClaude) {
@@ -138,7 +138,7 @@ export class UsageService {
         const last = this.claude(profile).capturedAt
         if (last && Date.now() - Date.parse(last) < this.staleMs) return
         this.probing.add(profile.id)
-        try { const payload = await this.probeClaude!(profile); this.ledger?.recordAuxiliary(profile, 'probe'); if (payload) this.recordClaude(profile.id, payload) } catch { /* sem rede ou sem login: mantém o último dado */ } finally { this.probing.delete(profile.id) }
+        try { const payload = await this.probeClaude!(profile); this.ledger?.recordAuxiliary(profile, 'probe'); if (payload) this.recordClaude(profile.id, payload) } catch { /* no network or no login: keeps the last data */ } finally { this.probing.delete(profile.id) }
       }))
     }
     return this.list()
@@ -146,7 +146,7 @@ export class UsageService {
 
   async list(): Promise<Array<{ profileId: string; provider: 'claude' | 'codex' | 'gemini'; windows: UsageWindow[]; capturedAt: string | null; source: string }>> {
     return Promise.all(this.profiles.list().map(async (profile) => {
-      // O Gemini CLI não informa limites de uso; o consumo de tokens de cada execução continua no histórico do card.
+      // The Gemini CLI does not report usage limits; each run's token consumption remains in the card history.
       const data = profile.provider === 'claude' ? this.claude(profile) : profile.provider === 'gemini' ? { windows: [], capturedAt: null } : await this.codex(profile)
       return { profileId: profile.id, provider: profile.provider, ...data, source: profile.provider === 'claude' ? tm().usage.sourceClaude : profile.provider === 'gemini' ? tm().usage.sourceGemini : tm().usage.sourceCodex }
     }))

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react'
 
-/** Mantém o menu preso ao botão, com limite de altura e sem recorte pelo contêiner. */
+/** Keeps the menu attached to the button, with a height limit and without clipping by the container. */
 export function useFloatingMenu(open: boolean, button: RefObject<HTMLButtonElement | null>, preferUp = false): CSSProperties | undefined {
   const [box, setBox] = useState<CSSProperties>()
   useLayoutEffect(() => {

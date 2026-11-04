@@ -5,7 +5,7 @@ import { plainError } from './NoticeDialog'
 import { StartDialog } from './StartDialog'
 import { useT } from './i18n'
 
-/** Estado do Spec Kit do card (permissão escolhida, cartões pendentes e artefatos reais); recarrega com os eventos do card. */
+/** Card Spec Kit state (chosen permission, pending cards and real artifacts); reloads with the card's events. */
 export function useSpecKit(cardId: string): { state: SpecKitState | null; reload(): Promise<void> } {
   const [state, setState] = useState<SpecKitState | null>(null)
   const reload = useCallback(async (): Promise<void> => { if (!cardId) return setState(null); try { setState(await window.gearmod.invoke('speckit:state', { cardId })) } catch { setState(null) } }, [cardId])
@@ -14,7 +14,7 @@ export function useSpecKit(cardId: string): { state: SpecKitState | null; reload
   return { state, reload }
 }
 
-/** Controle de modo do chat de planejamento: com Spec Kit mostra a permissão escolhida (e deixa trocar); sem ele, o "Só planejar" de sempre. */
+/** Planning chat mode control: with Spec Kit shows the chosen permission (and lets you change it); without it, the usual "Plan only". */
 export function SpecKitModeChip({ cardId, spec, reload }: { cardId: string; spec: SpecKitState | null; reload(): Promise<void> }): React.JSX.Element {
   const t = useT().board.specKit
   const [open, setOpen] = useState(false), [error, setError] = useState('')
@@ -26,14 +26,14 @@ export function SpecKitModeChip({ cardId, spec, reload }: { cardId: string; spec
       {error && <p className="error">{error}</p>}</div>}</span>
 }
 
-/** Cartões do Spec Kit no chat: escolha de permissão (antes da 1ª skill), movimentação para implementar e confirmação no chat de implementação. */
+/** Spec Kit cards in the chat: permission choice (before the 1st skill), move to implement, and confirmation in the implementation chat. */
 export function SpecKitAsks({ card, spec, reload, mode, profiles, onStarted, runNext, onSwitch, busy: chatBusy, dockHost }: { dockHost?: HTMLElement | null; card: Card; spec: SpecKitState | null; reload(): Promise<void>; mode: 'planning' | 'execution' | 'test'; profiles: AgentProfile[]; onStarted(): void; runNext?(prompt: string): void; onSwitch?(mode: 'planning' | 'execution' | 'test'): void; busy?: boolean }): React.JSX.Element | null {
   const { board: tb, common } = useT(), t = tb.specKit
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [starting, setStarting] = useState(false), [column, setColumn] = useState('')
   const working = busy
-  // O cartão de próximos passos some assim que um passo é pedido e só volta quando o agente termina sem ter avançado.
+  // The next-steps card disappears as soon as a step is requested and only returns when the agent finishes without having advanced.
   const [sent, setSent] = useState(false), [artMin, setArtMin] = useState(() => { try { return localStorage.getItem('gearmod.speckit.dock.min') === '1' } catch { return false } })
-  const toggleMin = (): void => { setArtMin(!artMin); try { localStorage.setItem('gearmod.speckit.dock.min', artMin ? '0' : '1') } catch { /* preferência local */ } }
+  const toggleMin = (): void => { setArtMin(!artMin); try { localStorage.setItem('gearmod.speckit.dock.min', artMin ? '0' : '1') } catch { /* local preference */ } }
   useEffect(() => { if (!chatBusy) setSent(false) }, [chatBusy])
   useEffect(() => { setSent(false) }, [spec?.artifacts?.spec, spec?.artifacts?.plan, spec?.artifacts?.tasks])
   const moveId = spec?.moveRequestId ?? null

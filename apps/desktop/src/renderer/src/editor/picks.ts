@@ -1,7 +1,7 @@
 import { RangeSetBuilder, StateEffect, StateField, type Extension } from '@codemirror/state'
 import { Decoration, EditorView, GutterMarker, gutterLineClass, lineNumbers } from '@codemirror/view'
 
-/** Linhas escolhidas para comentar (índices a partir de 0, em qualquer ordem); `null` limpa. */
+/** Lines picked for commenting (0-based indexes, in any order); `null` clears. */
 export const setPicked = StateEffect.define<[number, number] | null>()
 class PickedMarker extends GutterMarker { elementClass = 'wf-picked-gutter' }
 const marker = new PickedMarker(), lineClass = Decoration.line({ class: 'wf-picked' })
@@ -15,7 +15,7 @@ const pickedField = StateField.define<[number, number] | null>({
   ]
 })
 
-/** Calha de números onde clicar escolhe a linha, Shift+clique estende e arrastar escolhe várias (`pick(índice, estender)`, `drag(índice)`). */
+/** Number gutter where clicking picks the line, Shift+click extends and dragging picks several (`pick(index, extend)`, `drag(index)`). */
 export function linePicker(pick: (index: number, extend: boolean) => void, drag: (index: number) => void, end: () => void): Extension {
   const indexOf = (view: EditorView, from: number): number => view.state.doc.lineAt(from).number - 1
   return [pickedField, lineNumbers({ domEventHandlers: {

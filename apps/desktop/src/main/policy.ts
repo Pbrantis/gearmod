@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto'
 import type { AppDatabase } from './database'
 import type { PolicyAction, PolicyDecision, PolicyRule } from '@gearmod/contracts'
 
-/** Decisão pura e determinística: a primeira regra para a ação decide; sem regra para a ação, fica `ask` (nunca libera por omissão). */
+/** Pure, deterministic decision: the first rule for the action decides; with no rule for the action, it stays `ask` (never allows by omission). */
 export function decide(rules: readonly PolicyRule[], action: PolicyAction): PolicyDecision {
   return rules.find((rule) => rule.action === action)?.decision ?? 'ask'
 }
 
 /**
- * `PolicyEngine` mínimo (S11): embrulha `decide()` com o registro de toda decisão em `card_events` (auditoria), sem guardar estado
- * próprio. As regras vêm do `workflowConfig.policy` do projeto; vazio = tudo `ask` (comportamento de hoje, nada muda sozinho).
+ * Minimal `PolicyEngine` (S11): wraps `decide()` with the recording of every decision in `card_events` (audit), keeping no state
+ * of its own. The rules come from the project's `workflowConfig.policy`; empty = everything `ask` (today's behavior, nothing changes on its own).
  */
 export class PolicyEngine {
   constructor(private readonly database: AppDatabase) {}
@@ -19,7 +19,7 @@ export class PolicyEngine {
     try {
       this.database.db.prepare(`INSERT INTO card_events(id,card_id,project_id,type,schema_version,actor,created_at,json) VALUES (?,?,?,?,1,?,?,?)`)
         .run(randomUUID(), context.cardId, context.projectId, 'policy.decided', context.actor, new Date().toISOString(), JSON.stringify({ action, decision }))
-    } catch { /* auditoria não bloqueia a decisão */ }
+    } catch { /* audit does not block the decision */ }
     return decision
   }
 }

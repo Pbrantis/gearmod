@@ -13,7 +13,7 @@ export interface SddLocation { repo: string; rootAbs: string; ref: string; via: 
 export interface ConstitutionView { path: string; content: string | null; blobSha: string | null; baseBlobSha: string | null; headBlobSha: string | null; state: ThreeWayState; method: SddConfig['method']; via: SddVia }
 export interface SddEntry { name: string; isDirectory: boolean }
 
-/** Caminho da Constitution selecionado no projeto, relativo à raiz do repositório SDD. */
+/** Path of the Constitution selected in the project, relative to the SDD repository root. */
 function constitutionCandidates(config: SddConfig): Array<{ method: SddConfig['method']; file: string; relPath: string }> {
   const relPath = (file: string): string => [config.root, file].filter(Boolean).join('/').replace(/\\/g, '/')
   const file = config.constitution[config.method]
@@ -21,10 +21,10 @@ function constitutionCandidates(config: SddConfig): Array<{ method: SddConfig['m
 }
 
 /**
- * G03 — `SddResolver.locate` (`02` §4.2, ADR-001 2b): só lê, nunca escreve (isso é o `SddWriter`, G08). Com worktree do
- * card → arquivo da worktree (`via:'worktree'`); sem worktree → `git show <baseRef>:<path>` (`via:'ref'`), onde
- * `baseRef` é `cards.base_branch` ?? padrão do projeto ?? branch atual do repositório SDD. Erro acionável quando o
- * `sourceId` configurado não existe mais no projeto.
+ * G03 — `SddResolver.locate` (`02` §4.2, ADR-001 2b): only reads, never writes (that is `SddWriter`, G08). With the card's
+ * worktree → file in the worktree (`via:'worktree'`); without a worktree → `git show <baseRef>:<path>` (`via:'ref'`), where
+ * `baseRef` is `cards.base_branch` ?? the project default ?? the current branch of the SDD repository. Actionable error when the
+ * configured `sourceId` no longer exists in the project.
  */
 export class SddResolver {
   constructor(
@@ -68,9 +68,9 @@ export class SddResolver {
   }
 
   /**
-   * Conteúdo e estado (3 vias) da Constitution. `content: null` = o arquivo ainda não existe no caminho selecionado
-   * (não é erro). O método e o caminho são uma única escolha de projeto; sem arquivo, a resposta aponta para onde uma
-   * Constitution nova será criada.
+   * Content and (three-way) state of the Constitution. `content: null` = the file does not exist yet at the selected path
+   * (not an error). The method and the path are a single project choice; without a file, the response points to where a new
+   * Constitution will be created.
    */
   async constitution(scope: { projectId: string; cardId?: string }): Promise<ConstitutionView> {
     const config = this.scopeConfig(scope), location = await this.locate(scope), candidates = constitutionCandidates(config)
@@ -81,7 +81,7 @@ export class SddResolver {
         const content = await readFile(fileAbs, 'utf8').then((text) => text, () => null)
         if (content === null && candidate !== candidates[candidates.length - 1]) continue
         const headSha = content === null ? null : await this.git.run(['hash-object', fileAbs]).then((result) => result.stdout.trim() || null, () => null)
-        // Sem worktree não haveria o que comparar; aqui ela existe, então mede contra a base escolhida para o card.
+        // Without a worktree there would be nothing to compare; here it exists, so it measures against the base chosen for the card.
         const baseRefForState = (scope.cardId ? this.board.baseBranch(scope.cardId) : null) ?? this.projects.get(scope.projectId).baseBranch ?? await this.currentBranch(location.repo)
         const baseTip = await reader.blobSha(baseRefForState, candidate.relPath).catch(() => null)
         const mergeBase = location.worktreeBranch ? await mergeBaseCommit(this.git, location.repo, baseRefForState, location.worktreeBranch) : null
@@ -89,14 +89,14 @@ export class SddResolver {
         return { path: candidate.relPath, content, blobSha: headSha, baseBlobSha: baseTip, headBlobSha: headSha, state: constitutionState(mergeBaseSha, baseTip, headSha), method: candidate.method, via: 'worktree' }
       }
     }
-    // Sem worktree, a leitura É a própria base: nada divergiu ainda (estado 3 vias só existe quando há cópia do card para comparar).
+    // Without a worktree, the read IS the base itself: nothing has diverged yet (three-way state only exists when there is a card copy to compare).
     for (const candidate of candidates) {
       const content = await reader.show(location.ref, candidate.relPath)
       if (content === null && candidate !== candidates[candidates.length - 1]) continue
       const blobSha = content === null ? null : await reader.blobSha(location.ref, candidate.relPath)
       return { path: candidate.relPath, content, blobSha, baseBlobSha: blobSha, headBlobSha: blobSha, state: constitutionState(blobSha, blobSha, blobSha), method: candidate.method, via: 'ref' }
     }
-    throw new Error(tm().sdd.noConstitutionPath) // inatingível: `candidates` sempre tem um item
+    throw new Error(tm().sdd.noConstitutionPath) // unreachable: `candidates` always has an item
   }
 
   private scopeConfig(scope: { projectId: string; cardId?: string }): SddConfig {

@@ -4,8 +4,8 @@ import type { BoardRepository } from './projects'
 
 type Publish = (type: string, payload: Record<string, unknown>) => void
 
-/** Liga uma execução ao card: entrega o servidor MCP ao agente e, no fim, aplica o que o agente devolveu (marcadores, plano, movimento adiado). */
-/** Título de reserva a partir do primeiro pedido: primeira frase, sem Markdown, até 60 caracteres. */
+/** Links an execution to the card: hands the MCP server to the agent and, at the end, applies what the agent returned (markers, plan, deferred move). */
+/** Fallback title from the first request: first sentence, no Markdown, up to 60 characters. */
 export function titleFromPrompt(prompt: string): string {
   const plain = prompt.replace(/```[\s\S]*?```/g, ' ').replace(/[#>*_`[\]]/g, '').replace(/\s+/g, ' ').trim()
   const sentence = plain.split(/(?<=[.!?])\s/)[0] ?? plain
@@ -22,7 +22,7 @@ export class AgentWriteback {
     return this.bridge.register(runId, cardId, (change) => publish('gearmod/card-updated', { cardId, ...change }), chat)
   }
 
-  /** Devolve avisos (em português) para mostrar no chat quando algo não pôde ser aplicado. */
+  /** Returns warnings (in Portuguese) to show in the chat when something could not be applied. */
   finish(input: { runId: string; cardId: string | null; planning: boolean; completed: boolean; text: string; prompt?: string; publish: Publish }): { notices: string[]; wroteDocuments: boolean } {
     const report = this.bridge.finish(input.runId), notices: string[] = []
     if (!input.cardId) return { notices, wroteDocuments: false }
@@ -44,7 +44,7 @@ export class AgentWriteback {
       }
     }
     if (input.planning && input.prompt) {
-      // Se o agente não deu título ao card (sem MCP, por exemplo), usa o início do primeiro pedido para o card não ficar anônimo.
+      // If the agent gave the card no title (without MCP, for example), use the start of the first request so the card is not anonymous.
       const card = this.board.card(input.cardId)
       const title = card.title.trim() ? '' : titleFromPrompt(input.prompt)
       if (title) {

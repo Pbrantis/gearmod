@@ -1,7 +1,7 @@
 export type WindowPlacement = 'new' | 'left' | 'right' | 'top' | 'bottom' | 'fill' | 'second'
 export interface Bounds { x: number; y: number; width: number; height: number }
 
-/** Metade da área útil da tela para onde a janela vai (esquerda, direita, em cima, embaixo); `new` é uma janela solta, deslocada um pouco. */
+/** Half of the usable screen area where the window goes (left, right, top, bottom); `new` is a loose window, offset a little. */
 export function placementBounds(area: Bounds, placement: WindowPlacement): Bounds {
   const halfW = Math.floor(area.width / 2), halfH = Math.floor(area.height / 2)
   switch (placement) {
@@ -14,12 +14,12 @@ export function placementBounds(area: Bounds, placement: WindowPlacement): Bound
   }
 }
 
-/** A outra metade, para a janela que abriu poder dividir a tela com a nova. */
+/** The other half, so the window that opened can share the screen with the new one. */
 export const oppositePlacement = (placement: WindowPlacement): WindowPlacement | null => placement === 'left' ? 'right' : placement === 'right' ? 'left' : placement === 'top' ? 'bottom' : placement === 'bottom' ? 'top' : null
 
 export interface PopoutTarget { kind: 'board' | 'chats' | 'git' | 'db' | 'chat' | 'files' | 'file' | 'terminal'; projectId: string; cardId?: string | undefined; chatId?: string | undefined; terminalId?: string | undefined; path?: string | undefined; paths?: string[] | undefined; purpose?: string | undefined }
 
-/** Parâmetros que o renderer lê (`?pop=chat&project=…`) para montar só aquela parte do app. */
+/** Parameters the renderer reads (`?pop=chat&project=…`) to mount only that part of the app. */
 export function popoutQuery(target: PopoutTarget): Record<string, string> {
   const query: Record<string, string> = { pop: target.kind, project: target.projectId }
   if (target.cardId) query.card = target.cardId

@@ -3,7 +3,7 @@ import { useT } from './i18n'
 import { useEscape } from './useEscape'
 import { plainError } from './NoticeDialog'
 
-/** Um pedido do usuário passou do limite de execuções simultâneas e ficou na fila: pergunta se roda mesmo assim, espera ou muda o limite. */
+/** A user request went over the simultaneous runs limit and was queued: asks whether to run anyway, wait or change the limit. */
 export function RunLimitPrompt({ openSettings }: { openSettings(): void }): React.JSX.Element | null {
   const t = useT(), tr = t.settings.dialog.runLimit
   const [queued, setQueued] = useState<{ runId: string; active: number; limit: number }>(), [error, setError] = useState('')
@@ -11,7 +11,7 @@ export function RunLimitPrompt({ openSettings }: { openSettings(): void }): Reac
     if (event.eventType !== 'gearmod/run-queued') return
     setError(''); setQueued({ runId: event.runId, active: Number(event.payload.active), limit: Number(event.payload.limit) })
   }), [])
-  // Se a fila andou sozinha (uma execução terminou), a pergunta perde o sentido.
+  // If the queue moved on its own (a run finished), the question no longer makes sense.
   useEffect(() => window.gearmod.onRunEvent((event) => { if (queued && event.runId === queued.runId && event.eventType === 'gearmod/run-started') setQueued(undefined) }), [queued])
   const dismiss = (): void => setQueued(undefined)
   useEscape(dismiss, Boolean(queued))

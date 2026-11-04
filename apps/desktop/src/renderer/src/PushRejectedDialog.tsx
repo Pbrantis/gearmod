@@ -6,8 +6,8 @@ import { useT } from './i18n'
 type Pull = 'ff' | 'rebase'
 
 /**
- * Push recusado porque a branch remota tem commits que a local não tem (caso típico: amend de um commit já publicado).
- * Em vez de só avisar o erro, deixa escolher: trazer o remoto (Pull / Pull com rebase) ou sobrescrevê-lo (Forçar push).
+ * Push rejected because the remote branch has commits the local one does not (typical case: amend of an already published commit).
+ * Instead of just showing the error, lets you choose: bring in the remote (Pull / Pull with rebase) or overwrite it (Force push).
  */
 export function PushRejectedDialog({ branch, cancel, pull, force }: { branch: string; cancel(): void; pull(mode: Pull): void; force(): void }): React.JSX.Element {
   const { common, git: { pushRejected: t } } = useT()

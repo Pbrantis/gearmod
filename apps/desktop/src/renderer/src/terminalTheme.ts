@@ -1,9 +1,9 @@
 import type { ITheme } from '@xterm/xterm'
 
-/** Lê uma variável CSS do app (`--surface`...) e devolve `fallback` se não existir ou não for uma cor hexadecimal simples. */
+/** Reads a CSS variable from the app (`--surface`...) and returns `fallback` if it does not exist or is not a simple hex color. */
 const read = (name: string, fallback: string): string => { const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback }
 
-/** Cores do terminal acompanhando o tema do app (claro ou escuro): fundo, texto e destaque vêm das variáveis CSS; a paleta ANSI muda para ler bem no claro. */
+/** Terminal colors following the app theme (light or dark): background, text and accent come from the CSS variables; the ANSI palette changes to read well on light. */
 export function terminalTheme(): { theme: ITheme; search: { match: string; active: string } } {
   const light = document.documentElement.dataset.theme === 'light'
   const base: ITheme = light

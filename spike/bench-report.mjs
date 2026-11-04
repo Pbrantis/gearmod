@@ -1,4 +1,4 @@
-// Resume os JSON do claude -p: tokens, custo, turnos e duração por pergunta e configuração (média das repetições).
+// Summarizes the claude -p JSON files: tokens, cost, turns and duration per question and configuration (average of the repetitions).
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 

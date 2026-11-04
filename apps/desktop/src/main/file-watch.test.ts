@@ -7,7 +7,7 @@ import { FileWatchService } from './file-watch'
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
 
-/** Espera até `count` eventos (ou 2 s) e devolve o que chegou. */
+/** Waits for up to `count` events (or 2 s) and returns what arrived. */
 const collect = (events: Array<Record<string, unknown>>, count: number): Promise<void> => new Promise((resolve) => { const started = Date.now(); const timer = setInterval(() => { if (events.length >= count || Date.now() - started > 2000) { clearInterval(timer); resolve() } }, 20) })
 
 describe('FileWatchService', () => {
@@ -18,7 +18,7 @@ describe('FileWatchService', () => {
     service.watch('janela', [file])
     await writeFile(file, 'dois'); await collect(events, 1)
     expect(events[0]).toEqual({ path: file })
-    // O agente costuma gravar num temporário e trocar: o watcher precisa seguir o arquivo novo.
+    // The agent often writes to a temp file and swaps it in: the watcher has to follow the new file.
     await writeFile(join(dir, 'novo.tmp'), 'tres'); await rename(join(dir, 'novo.tmp'), file); await collect(events, 2)
     expect(events.length).toBeGreaterThanOrEqual(2)
     const before = events.length

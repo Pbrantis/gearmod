@@ -7,7 +7,7 @@ import { tr, useT } from './i18n'
 
 const maxSeconds = 300
 
-/** Ditado por voz: grava o microfone, converte para WAV 16 kHz e manda ao main (whisper.cpp local ou Groq). O texto volta para o campo do chat. */
+/** Voice dictation: records the microphone, converts to 16 kHz WAV and sends it to main (local whisper.cpp or Groq). The text goes back to the chat field. */
 export function useDictation(onText: (text: string) => void, hint?: string): { status?: VoiceStatus; recording: boolean; transcribing: boolean; progress: string; error: string; toggle(): Promise<void>; install(): Promise<void> } {
   const t = useT().chat.dictation
   const [status, setStatus] = useState<VoiceStatus>(), [recording, setRecording] = useState(false), [transcribing, setTranscribing] = useState(false), [error, setError] = useState('')

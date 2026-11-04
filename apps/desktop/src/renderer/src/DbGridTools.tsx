@@ -4,12 +4,12 @@ import { useT } from './i18n'
 
 const autoOptions = (off: string): Array<[number, string]> => [[0, off], [5, '5 s'], [10, '10 s'], [30, '30 s'], [60, '1 min'], [300, '5 min']]
 
-/** Botão de ícone da barra das grades do banco (tabela e resultado de SQL). */
+/** Icon button for the database grids' toolbar (table and SQL result). */
 export function TbBtn({ label, keys, onClick, disabled, tone, on, children }: { label: string; keys?: string; onClick(): void; disabled?: boolean; tone?: 'danger' | 'ok'; on?: boolean; children: React.ReactNode }): React.JSX.Element {
   return <button type="button" className={`db-tb${tone ? ` ${tone}` : ''}${on ? ' on' : ''}`} data-tip={keys ? `${label} (${keys})` : label} aria-label={label} disabled={disabled} onClick={onClick}><svg viewBox="0 0 16 16" aria-hidden="true">{children}</svg></button>
 }
 
-/** Recarregar (Ctrl+F5), atualização automática (sempre desligada ao abrir) e cancelar (Ctrl+F2): iguais na tabela e no resultado de SQL. */
+/** Reload (Ctrl+F5), auto refresh (always off on open) and cancel (Ctrl+F2): the same in the table and in the SQL result. */
 export function RefreshTools({ busy, reload, cancel, autoBlocked }: { busy: boolean; reload(quiet: boolean): void; cancel(): void; autoBlocked?: string }): React.JSX.Element {
   const t = useT()
   const [autoSec, setAutoSec] = useState(0), [menu, setMenu] = useState<{ x: number; y: number }>()

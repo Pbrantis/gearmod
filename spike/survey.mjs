@@ -1,4 +1,4 @@
-// Conta arquivos por linguagem suportada em cada pasta (só lê nomes).
+// Counts files per supported language in each folder (only reads names).
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { listFiles } from './graph/indexer.mjs'

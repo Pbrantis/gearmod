@@ -7,8 +7,8 @@ import { useT } from '../i18n'
 type Versions = { before: string | null; after: string | null; binary: boolean; truncated: boolean }
 
 /**
- * Diff de um arquivo do Git (não preparado, preparado ou de um commit) no `DiffEditor`, só leitura. `auto` mostra o não preparado e, se não houver,
- * o preparado. Binário ou grande demais cai para o diff em texto de `git:diff`/`git:commit-diff`.
+ * Diff of a Git file (unstaged, staged or from a commit) in the `DiffEditor`, read-only. `auto` shows the unstaged one and, if there is none,
+ * the staged one. Binary or too large falls back to the text diff from `git:diff`/`git:commit-diff`.
  */
 export function GitDiffEditor({ sourceId, cardId, path, hash, mode = 'auto', review, reloadKey = 0 }: {
   sourceId: string; cardId: string | null; path: string; hash?: string | undefined; mode?: 'auto' | 'unstaged' | 'staged'; review?: { path: string; send(prompt: string): boolean | Promise<boolean> } | undefined; reloadKey?: number

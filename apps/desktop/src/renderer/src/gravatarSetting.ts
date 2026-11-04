@@ -1,4 +1,4 @@
-/** Opt-in (Configurações → Geral): sem ele nenhum hash de e-mail sai do app. O valor fica em cache; a tela de configurações o atualiza ao mudar. */
+/** Opt-in (Settings → General): without it no email hash leaves the app. The value is cached; the settings screen updates it when it changes. */
 let enabled: Promise<boolean> | null = null
 export function setGravatarEnabled(value: boolean): void { enabled = Promise.resolve(value) }
 export function gravatarEnabled(): Promise<boolean> {

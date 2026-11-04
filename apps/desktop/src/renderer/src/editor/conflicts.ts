@@ -3,21 +3,21 @@ import { EditorSelection, Prec, StateField, type EditorState, type Extension } f
 import { tr } from '../i18n'
 
 export interface Conflict {
-  /** Do começo da linha `<<<<<<<` até o fim da linha `>>>>>>>` (com a quebra de linha), em caracteres do documento. */
+  /** From the start of the `<<<<<<<` line to the end of the `>>>>>>>` line (including the line break), in document characters. */
   from: number; to: number
   ours: { from: number; to: number }; base: { from: number; to: number } | null; theirs: { from: number; to: number }
   oursName: string; theirsName: string
-  /** Posições dos quatro marcadores (começo de cada linha) para decorar. */
+  /** Positions of the four markers (start of each line) to decorate. */
   markers: number[]
 }
 
 const hasMarkers = /^<{7}( |$)[^]*?^>{7}( |$)/m
-/** Rápido: o texto tem um bloco de conflito inteiro? (para ligar a extensão só quando vale a pena) */
+/** Quick check: does the text have a whole conflict block? (to enable the extension only when it is worth it) */
 export const hasConflicts = (text: string): boolean => hasMarkers.test(text)
 
 /**
- * Blocos de conflito do Git (`<<<<<<<`, `|||||||` opcional do diff3, `=======`, `>>>>>>>`), com posições de caractere; aceita CRLF.
- * Bloco sem fechamento é ignorado, e um `<<<<<<<` novo antes de fechar recomeça o bloco.
+ * Git conflict blocks (`<<<<<<<`, optional diff3 `|||||||`, `=======`, `>>>>>>>`), with character positions; accepts CRLF.
+ * A block with no closing marker is ignored, and a new `<<<<<<<` before closing restarts the block.
  */
 export function findConflicts(text: string): Conflict[] {
   const conflicts: Conflict[] = []
@@ -39,7 +39,7 @@ export function findConflicts(text: string): Conflict[] {
   return conflicts
 }
 
-/** Texto do trecho escolhido (cada lado termina com a quebra de linha de antes do marcador seguinte). */
+/** Text of the chosen part (each side ends with the line break before the next marker). */
 export const conflictText = (text: string, range: { from: number; to: number }): string => text.slice(range.from, range.to)
 
 export interface ConflictOptions { oursLabel: string; theirsLabel: string; compare?(info: { ours: string; theirs: string; oursLabel: string; theirsLabel: string }): void }
@@ -48,7 +48,7 @@ type Choice = 'ours' | 'theirs' | 'both'
 const conflictField = StateField.define<Conflict[]>({ create: (state) => findConflicts(state.doc.toString()), update: (value, transaction) => transaction.docChanged ? findConflicts(transaction.newDoc.toString()) : value })
 export const conflictsIn = (state: EditorState): Conflict[] => state.field(conflictField, false) ?? []
 
-/** Troca o bloco inteiro pelo lado escolhido numa única transação (um Ctrl+Z desfaz). */
+/** Replaces the whole block with the chosen side in a single transaction (one Ctrl+Z undoes it). */
 export function resolveConflict(view: EditorView, at: number, choice: Choice): boolean {
   const text = view.state.doc.toString(), found = findConflicts(text).find((item) => at >= item.from && at < item.to)
   if (!found) return false
@@ -108,7 +108,7 @@ const theme = EditorView.baseTheme({
   '.cm-conflict-actions button:hover': { textDecoration: 'underline' }
 })
 
-/** Conflito de merge dentro do editor: cores por lado, "Aceitar atual · chegando · ambos · Comparar" acima de cada bloco e Alt+F5 / Shift+Alt+F5 entre blocos. */
+/** Merge conflict inside the editor: colors per side, "Accept current · incoming · both · Compare" above each block and Alt+F5 / Shift+Alt+F5 between blocks. */
 export function conflictExtension(options: ConflictOptions): Extension {
   return [conflictField, theme, EditorView.decorations.compute([conflictField], (state) => decorate(state, options)), Prec.high(keymap.of([{ key: 'Alt-F5', run: nextConflict }, { key: 'Shift-Alt-F5', run: previousConflict }]))]
 }

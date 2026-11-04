@@ -7,11 +7,11 @@ import { tr } from '../i18n'
 
 export interface EditorActions {
   save(): void; find(): void; replace(): void; goto(): void
-  /** Navegação pelo índice de código: F12, Shift+F12 e Ctrl+Shift+O. */
+  /** Navigation through the code index: F12, Shift+F12 and Ctrl+Shift+O. */
   definition?(): void; references?(): void; outline?(): void
 }
 
-/** Ctrl+Shift+Enter: abre uma linha nova acima da atual, já com o recuo dela. */
+/** Ctrl+Shift+Enter: opens a new line above the current one, already with its indentation. */
 export const insertLineAbove: Command = ({ state, dispatch }) => {
   if (state.readOnly) return false
   const changes = state.changeByRange((range) => {
@@ -22,7 +22,7 @@ export const insertLineAbove: Command = ({ state, dispatch }) => {
   return true
 }
 
-/** Atalho e descrição (no idioma da interface) mostrados no menu de configurações do editor. */
+/** Shortcut and description (in the interface language) shown in the editor settings menu. */
 export const shortcutList = (): Array<{ keys: string; label: string }> => {
   const s = tr().files.editor.shortcuts
   return [
@@ -37,7 +37,7 @@ export const shortcutList = (): Array<{ keys: string; label: string }> => {
 }
 
 const ran = (action: () => void): Command => () => { action(); return true }
-/** Atalhos do editor, com prioridade sobre os padrões do CodeMirror (que abririam o painel de busca nativo). */
+/** Editor shortcuts, with priority over CodeMirror's defaults (which would open the native search panel). */
 export function editorKeymap(actions: EditorActions): Extension {
   const bindings: KeyBinding[] = [
     { key: 'Mod-s', run: ran(actions.save), preventDefault: true }, { key: 'Mod-f', run: ran(actions.find), preventDefault: true },

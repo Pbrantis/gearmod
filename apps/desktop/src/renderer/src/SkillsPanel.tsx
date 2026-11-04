@@ -12,7 +12,7 @@ import { useT } from './i18n'
 const providerName = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini' } as const
 const skillCatalogs = [{ key: 'skillsSh', url: 'https://skills.sh' }, { key: 'anthropic', url: 'https://github.com/anthropics/skills' }] as const
 
-/** Skills globais (pasta de cada agente) ou do projeto (detectadas no repositório): importar e converter para o outro agente. */
+/** Global skills (each agent's folder) or project ones (detected in the repository): import and convert to the other agent. */
 export function SkillsPanel({ scope, projectId, profiles, globalCount }: { scope: SkillScope; projectId?: string; profiles: AgentProfile[]; globalCount?: number }): React.JSX.Element {
   const t = useT(), ts = t.settings.skills
   const [skills, setSkills] = useState<SkillEntry[]>([]), [loaded, setLoaded] = useState(false), [error, setError] = useState(''), [importing, setImporting] = useState(false), [converting, setConverting] = useState<{ name: string; to: 'claude' | 'codex' | 'gemini' }>()

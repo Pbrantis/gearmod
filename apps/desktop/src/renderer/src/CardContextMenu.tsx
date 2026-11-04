@@ -6,7 +6,7 @@ import { useT } from './i18n'
 
 interface Item { key: string; label: string; hint: string; icon: React.ReactNode; danger?: boolean; run(): void }
 
-/** Menu do botão direito no card: abrir, ir para o chat/Git e excluir, com atalho por letra. */
+/** Right-click menu on the card: open, go to chat/Git and delete, with letter shortcuts. */
 export function CardContextMenu({ x, y, card, open, chat, git, remove, close }: { x: number; y: number; card: Card; open(): void; chat(): void; git(): void; remove(): void; close(): void }): React.JSX.Element {
   const t = useT().board
   const root = useRef<HTMLDivElement>(null), [pos, setPos] = useState({ left: x, top: y }), [active, setActive] = useState(0)

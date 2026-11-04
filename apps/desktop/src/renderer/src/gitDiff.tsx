@@ -6,7 +6,7 @@ export type DiffRow =
   | { kind: 'hunk'; text: string }
   | { kind: 'ctx' | 'add' | 'del'; text: string; oldNo: number | null; newNo: number | null; mark?: [number, number] }
 
-/** Trecho do meio que mudou entre duas linhas (tira o começo e o fim iguais): vira o destaque forte dentro da linha. */
+/** Middle part that changed between two lines (strips the equal start and end): becomes the strong highlight inside the line. */
 function changedPart(before: string, after: string): { del: [number, number]; add: [number, number] } {
   let start = 0
   while (start < before.length && start < after.length && before[start] === after[start]) start++
@@ -15,7 +15,7 @@ function changedPart(before: string, after: string): { del: [number, number]; ad
   return { del: [start, endB], add: [start, endA] }
 }
 
-/** Lê o diff unificado do git: some o cabeçalho técnico, numera as linhas (antes/depois) e marca o que mudou dentro de linhas editadas. */
+/** Parses git's unified diff: hides the technical header, numbers the lines (before/after) and marks what changed inside edited lines. */
 export function parseDiff(text: string): DiffRow[] {
   const rows: DiffRow[] = []
   let oldNo = 0, newNo = 0, inHunk = false
@@ -31,7 +31,7 @@ export function parseDiff(text: string): DiffRow[] {
     else if (line.startsWith('-')) rows.push({ kind: 'del', text: line.slice(1), oldNo: oldNo++, newNo: null })
     else rows.push({ kind: 'ctx', text: line.slice(1), oldNo: oldNo++, newNo: newNo++ })
   }
-  // Bloco de removidas seguido de adicionadas com o mesmo tamanho = linhas editadas: marca só o pedaço que mudou.
+  // Block of removed lines followed by added lines of the same size = edited lines: marks only the part that changed.
   for (let i = 0; i < rows.length; i++) {
     if (rows[i]!.kind !== 'del') continue
     let d = i; while (rows[d]?.kind === 'del') d++
@@ -53,7 +53,7 @@ function Code({ row }: { row: Extract<DiffRow, { kind: 'ctx' | 'add' | 'del' }> 
   return <>{row.text.slice(0, from)}<mark>{row.text.slice(from, to) || ' '}</mark>{row.text.slice(to)}</>
 }
 
-/** Texto do pedido de revisão: onde está (arquivo e linhas), o trecho escolhido e o que o usuário escreveu. */
+/** Review request text: where it is (file and lines), the chosen chunk and what the user wrote. */
 export function reviewPrompt(path: string, rows: Array<Extract<DiffRow, { kind: 'ctx' | 'add' | 'del' }>>, comment: string): string {
   const nums = rows.map((row) => row.newNo ?? row.oldNo).filter((value): value is number => value !== null)
   const onlyOld = rows.every((row) => row.newNo === null)
@@ -63,9 +63,9 @@ export function reviewPrompt(path: string, rows: Array<Extract<DiffRow, { kind: 
 }
 
 /**
- * Diff com duas colunas de número, vermelho para o que saiu, verde para o que entrou e destaque forte no trecho exato que mudou.
- * Com `review`, as linhas podem ser escolhidas (clique, arraste ou Shift+clique): aparece um botão de chat ao lado da seleção e,
- * ao clicar nele, o campo para dizer à IA o que fazer com essas linhas.
+ * Diff with two number columns, red for what left, green for what came in and a strong highlight on the exact part that changed.
+ * With `review`, lines can be picked (click, drag or Shift+click): a chat button appears beside the selection and,
+ * when clicked, the field to tell the AI what to do with those lines.
  */
 export function DiffLines({ text, review }: { text: string; review?: { path: string; send(prompt: string): boolean | Promise<boolean> } }): React.JSX.Element {
   const { git: { editor: t }, common } = useT()

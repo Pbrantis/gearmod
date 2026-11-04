@@ -1,9 +1,9 @@
 import type { EditorState } from '@codemirror/state'
 
-/** Item da estrutura do arquivo: títulos do Markdown ou símbolos do índice de código (linha a partir de 1). */
+/** File structure item: Markdown headings or code index symbols (1-based line). */
 export interface OutlineItem { line: number; endLine: number; text: string; depth: number; kind?: string }
 
-/** Símbolos que contêm a linha, do mais externo ao mais interno (classe › método). */
+/** Symbols that contain the line, from outermost to innermost (class › method). */
 export function symbolTrail(items: OutlineItem[], line: number): OutlineItem[] {
   const trail: OutlineItem[] = []
   for (const item of items) {
@@ -15,7 +15,7 @@ export function symbolTrail(items: OutlineItem[], line: number): OutlineItem[] {
 }
 
 const identifier = /^[\p{L}_$][\p{L}\p{N}_$]*$/u
-/** Nome sob o cursor (ou o último pedaço do texto selecionado, como em `this.deps.save`); vazio se não for um identificador. */
+/** Name under the cursor (or the last part of the selected text, as in `this.deps.save`); empty if it is not an identifier. */
 export function nameAtCursor(state: EditorState): string {
   const range = state.selection.main
   if (!range.empty) {
@@ -27,7 +27,7 @@ export function nameAtCursor(state: EditorState): string {
   return identifier.test(text) ? text : ''
 }
 
-/** Letra curta do tipo de símbolo, mostrada antes do nome nas listas. */
+/** Short letter for the symbol kind, shown before the name in the lists. */
 export function kindMark(kind: string | undefined): string {
   switch (kind) {
     case 'function': case 'method': case 'constructor': return 'ƒ'

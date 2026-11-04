@@ -10,7 +10,7 @@ describe('painel de progresso', () => {
       ['T003 Fim', true, 'Fase 2', 0]
     ])
     expect(tasks[0]!.criteria).toEqual([{ text: 'migração', done: true, line: 4 }, { text: 'teste', done: false, line: 5 }])
-    // A linha de cada item é o que o clique do usuário usa para marcá-lo no checklist.
+    // Each item's line is what the user's click uses to check it off in the checklist.
     expect(tasks.map((task) => task.line)).toEqual([3, 10, 11])
   })
 })
