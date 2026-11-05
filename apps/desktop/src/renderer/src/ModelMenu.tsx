@@ -22,6 +22,7 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
   const profileId = config?.profileId, profileKey = profiles.map((item) => item.id).join(',')
   const latest = useRef(profiles); latest.current = profiles
   const [touched, setTouched] = useState(false)
+  const switchedFrom = useRef<{ rank: number; effort: Effort | null } | null>(null)
   useEffect(() => {
     let alive = true
     if (!cardId) {
@@ -40,22 +41,35 @@ export function useAgentConfig(cardId: string, purpose: AgentPurpose, profiles: 
   useEffect(() => {
     if (!profileId) return
     let alive = true
+    setOptions(undefined) // do not let the previous agent's models leak into the new agent's default
     void window.gearmod.invoke('agents:options', { profileId }).then((loaded) => { if (alive) setOptions(loaded) }).catch(() => { if (alive) setOptions({ models: [], mostUsed: { planning: null, execution: null, test: null } }) })
     return () => { alive = false }
   }, [profileId])
   // With no saved choice, shows the default: the most used or the recommended one for the purpose.
   useEffect(() => {
     if (!config || !options || config.model !== null || config.effort !== null) return
+    const from = switchedFrom.current
+    if (from && options.models.length) {
+      // Agent just switched: pick the equivalent tier (same position in the list) and keep the effort when supported.
+      switchedFrom.current = null
+      const target = options.models[Math.min(Math.round(from.rank * (options.models.length - 1)), options.models.length - 1)]!
+      setConfig({ ...config, model: target.id, effort: target.efforts.includes(from.effort as Effort) ? from.effort : target.defaultEffort })
+      return
+    }
     const used = options.mostUsed[purpose], recommended = options.models.find((model) => model.recommendedFor.includes(purpose))
     const model = used?.model ?? recommended?.id ?? null
     if (model) setConfig({ ...config, model, effort: used?.effort ?? options.models.find((item) => item.id === model)?.defaultEffort ?? null })
   }, [config, options, purpose])
   const update = useCallback(async (patch: Partial<AgentConfig>): Promise<void> => {
     if (!config) return
+    if (patch.profileId && patch.profileId !== config.profileId && options && config.model) {
+      const index = options.models.findIndex((item) => item.id === config.model)
+      switchedFrom.current = index >= 0 ? { rank: options.models.length > 1 ? index / (options.models.length - 1) : 0, effort: config.effort } : null
+    }
     const next = { ...config, ...patch }
     if (!cardId) { setTouched(true); setConfig(next); return }
     try { setError(''); await window.gearmod.invoke('cards:set-agent-config', { cardId, purpose, config: next }); setConfig(next) } catch (reason) { setError(plainError(reason)) }
-  }, [cardId, config, purpose])
+  }, [cardId, config, options, purpose])
   return { config, options, update, error, touched }
 }
 
