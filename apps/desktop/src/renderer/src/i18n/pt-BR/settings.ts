@@ -99,7 +99,8 @@ export const settings = {
     edit: 'Editar agente',
     new: 'Novo agente',
     previewFallback: 'Novo agente',
-    type: 'Tipo',
+    pickType: 'Qual agente você quer adicionar?',
+    back: 'Voltar',
     installFound: (version: string) => `Instalação encontrada: ${version}. Continue para conectar sua conta.`,
     notFound: (detail: string) => `Programa não encontrado. Clique em Instalar e, ao terminar, em Verificar instalação.${detail ? ` Detalhe: ${detail}` : ''}`,
     connectedReady: (label: string) => `${label} conectado e pronto para selecionar nos projetos.`,
@@ -124,8 +125,6 @@ export const settings = {
     billingCredits: 'Créditos',
     apiKeyHint: (hint: string) => `Indício visto na última execução (${hint}): pode ser cobrança por chave de API, não por assinatura. Se não era essa a intenção (S16: o app nunca reaproveita login existente; cada perfil tem a própria conta), refaça o login desta conta.`,
     redoLogin: 'Refazer login',
-    finishLoginThenCheck: 'Conclua o login na janela aberta e depois clique em Verificar conta.',
-    finishLoginThenCheck2: 'Conclua o login na janela aberta. Depois clique em Verificar conta.',
     envVars: 'Variáveis de ambiente liberadas para este agente',
     envVarsHint: 'Só os nomes; o valor nunca é mostrado nem salvo aqui. Além da lista fixa do app (PATH, proxy, certificados...), nada mais passa.',
     removeVar: (name: string) => `Remover ${name}`,
@@ -144,6 +143,39 @@ export const settings = {
     continueToAccount: 'Continuar para conta',
     removeTitle: (label: string) => `Remover ${label}?`,
     removeText: 'O agente sai da lista. Agentes com conversas, planos ou execuções salvos não podem ser removidos.'
+  },
+
+  agentLogin: {
+    title: (name: string) => `Conectando a conta do ${name}…`,
+    intro: 'O navegador vai abrir para você entrar na sua conta. Esta janela confere sozinha e fecha quando a conta conectar.',
+    waiting: 'Aguardando a conta conectar…',
+    ended: 'O login terminou, mas a conta ainda não aparece conectada. Veja a mensagem no terminal e tente de novo.',
+    terminal: 'Terminal do login',
+    minimize: 'Minimizar terminal',
+    showTerminal: 'Mostrar terminal',
+    expand: 'Expandir terminal',
+    shrink: 'Reduzir terminal',
+    retry: 'Tentar de novo',
+    connectedTitle: 'Conta conectada',
+    connectedText: (label: string) => `${label} está pronto para usar nos projetos.`
+  },
+
+  agentUpdate: {
+    title: (name: string) => `Atualizando o ${name}…`,
+    doneTitle: (name: string) => `${name} atualizado`,
+    running: 'Estamos trabalhando na atualização. Pode deixar em segundo plano: ela continua em Processos, na barra de título.',
+    done: (name: string) => `A atualização do ${name} terminou. Os próximos chats já usam a versão nova.`,
+    failed: 'A atualização não terminou. Veja a mensagem no terminal abaixo.',
+    exitCode: (code: number) => `O comando terminou com o código ${code}. Veja o terminal da atualização.`,
+    terminal: 'Terminal da atualização',
+    background: 'Deixar em segundo plano',
+    taskTitle: (name: string) => `Atualizar ${name}`
+  },
+
+  agentInvite: {
+    title: 'Que tal adicionar um agente ao seu GearMod?',
+    text: 'Os agentes (Claude ou Codex) são quem trabalha nos cards e conversa com você nos chats. Leva só um minuto: escolha o tipo, dê um nome e conecte sua conta.',
+    ok: 'Adicionar agente'
   },
 
   groq: {

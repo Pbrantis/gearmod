@@ -310,12 +310,15 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'profiles:probe-all': () => services.agentProbes.probeAll(),
     'profiles:detect-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.detectProvider(input.provider),
     'profiles:update-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.updateProvider(input.provider),
+    'profiles:update-terminal': (input: { provider: 'codex' | 'claude' | 'gemini' }) => ({ id: services.terminals.run(services.agentProbes.updatePlan(input.provider)) }),
     'tools:status': (input: { projectId: string }) => services.specTools.status(input.projectId),
     'tools:cached': () => services.toolUpdates.cached(),
     'tools:latest': (input: { force: boolean }) => services.toolUpdates.latest(input.force),
     'profiles:install-provider': (input: { provider: 'codex' | 'claude' }) => services.agentProbes.installProvider(input.provider),
     'profiles:install': (input: { profileId: string }) => services.agentProbes.install(input.profileId),
     'profiles:login': (input: { profileId: string }) => services.agentProbes.login(input.profileId),
+    // Login inside the app: the CLI runs in a terminal the screen shows (reuses `terminal:info/write/resize/kill`).
+    'profiles:login-terminal': (input: { profileId: string }) => ({ id: services.terminals.run(services.agentProbes.loginPlan(input.profileId)) }),
     'projects:list': () => services.projects.list(),
     'projects:create': async (input: { name?: string; sourcePaths: string[]; profileIds: string[] }) => {
       const probes = await Promise.all(input.profileIds.map((profileId) => services.agentProbes.probe(profileId)))

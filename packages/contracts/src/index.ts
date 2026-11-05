@@ -417,6 +417,7 @@ export const ipcContracts = {
   , 'profiles:probe-all': { input: z.undefined(), output: z.array(agentProbeSchema) }
   , 'profiles:detect-provider': { input: z.object({ provider: z.enum(['codex', 'claude', 'gemini']) }).strict(), output: z.object({ installed: z.boolean(), version: z.string().nullable(), error: z.string().nullable() }) }
   , 'profiles:update-provider': { input: z.object({ provider: z.enum(['codex', 'claude', 'gemini']) }).strict(), output: z.object({ started: z.literal(true) }) }
+  , 'profiles:update-terminal': { input: z.object({ provider: z.enum(['codex', 'claude', 'gemini']) }).strict(), output: z.object({ id: z.string().min(1).max(80) }) }
   , 'speckit:availability': { input: projectIdInput, output: z.object({ enabled: z.boolean(), reason: z.string().nullable() }) }
   , 'speckit:state': { input: z.object({ cardId: uuid }).strict(), output: specKitStateSchema }
   , 'speckit:choose': { input: z.object({ cardId: uuid, permission: z.enum(['manual', 'free']) }).strict(), output: specKitStateSchema }
@@ -432,6 +433,7 @@ export const ipcContracts = {
   , 'profiles:install-provider': { input: z.object({ provider: z.enum(['codex', 'claude', 'gemini']) }).strict(), output: z.object({ started: z.literal(true) }) }
   , 'profiles:install': { input: z.object({ profileId: uuid }).strict(), output: z.object({ started: z.literal(true) }) }
   , 'profiles:login': { input: z.object({ profileId: uuid }).strict(), output: z.object({ started: z.literal(true) }) }
+  , 'profiles:login-terminal': { input: z.object({ profileId: uuid }).strict(), output: z.object({ id: z.string().min(1).max(80) }) }
   , 'projects:list': { input: z.undefined(), output: z.array(projectSchema) }
   , 'projects:create': { input: createProjectInputSchema, output: projectSchema }
   , 'projects:update': { input: updateProjectInputSchema, output: projectSchema }

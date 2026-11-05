@@ -6,7 +6,8 @@ import './theme-tokens.css'
 import './prototype.css'
 import { Board } from './Board'
 import { ProjectAgentsDialog, ProjectConfigDialog, ProjectDialog } from './ProjectDialogs'
-import { applySettings, applyTheme, SettingsDialog } from './SettingsDialog'
+import { AgentDialog, applySettings, applyTheme, SettingsDialog } from './SettingsDialog'
+import { markInviteSeen, readInviteSeen, shouldInviteAgent } from './agentLogin'
 import { RunLimitPrompt } from './RunLimitPrompt'
 import { projectTheme, projectThemeEvent } from './projectTheme'
 import { Sidebar } from './Sidebar'
@@ -52,6 +53,7 @@ function App(): React.JSX.Element {
   }
   const [projects, setProjects] = useState<Project[]>([]), [profiles, setProfiles] = useState<AgentProfile[]>([]), [selected, setSelected] = useState<string | undefined>(pop?.projectId), [board, setBoard] = useState<ProjectBoard>()
   const selectedRef = useRef(selected); selectedRef.current = selected
+  const [profilesLoaded, setProfilesLoaded] = useState(false), [agentInvite, setAgentInvite] = useState<string>(), [addingAgent, setAddingAgent] = useState(false)
   const [removed, setRemoved] = useState<AgentProfile[]>([]), [freeRequest, setFreeRequest] = useState<{ projectId: string; at: number }>(), [constitutionRequest, setConstitutionRequest] = useState<{ projectId: string; prompt?: string; at: number }>(), [openTarget, setOpenTarget] = useState<{ projectId: string; cardId: string | null; chatId: string | null; purpose: string | null } | undefined>(pop?.kind === 'chat' && (pop.cardId || pop.chatId) ? { projectId: pop.projectId, cardId: pop.cardId, chatId: pop.chatId, purpose: pop.purpose } : undefined), [newProject, setNewProject] = useState(false), [settingsOpen, setSettingsOpen] = useState(false), [settingsTab, setSettingsTab] = useState<'general' | 'agents'>(), [projectConfig, setProjectConfig] = useState<string>(), [settings, setSettings] = useState<AppSettings>(defaultSettings), [collapsed, setCollapsed] = useState(false), [agentsPrompt, setAgentsPrompt] = useState<string>(), [error, setError] = useState(''), [deleting, setDeleting] = useState<Project>()
   const [configTab, setConfigTab] = useState<'general' | 'git'>('general'), [configFocus, setConfigFocus] = useState<'git-accounts'>()
   const [panelMenu, setPanelMenu] = useState<{ kind: 'files' | 'terminal'; x: number; y: number }>()
@@ -64,7 +66,7 @@ function App(): React.JSX.Element {
       await window.gearmod.invoke('windows:open', { kind, projectId: selected, cardId: (kind === 'files' && fileContext?.projectId === selected ? fileContext.cardId : context.cardId) ?? undefined, ...(terminalId ? { terminalId } : {}), placement: 'new' })
     } catch (reason) { toast.error(t.shell.app.openWindowFailed, plainError(reason)) }
   }
-  const reloadProjects = async (): Promise<void> => { const [p, a, gone] = await Promise.all([window.gearmod.invoke('projects:list', undefined), window.gearmod.invoke('profiles:list', undefined), window.gearmod.invoke('profiles:removed', undefined)]); setProjects(p); setProfiles(a); setRemoved(gone.map((item) => ({ ...item, label: t.shell.app.disabledSuffix(item.label) }))) }
+  const reloadProjects = async (): Promise<void> => { const [p, a, gone] = await Promise.all([window.gearmod.invoke('projects:list', undefined), window.gearmod.invoke('profiles:list', undefined), window.gearmod.invoke('profiles:removed', undefined)]); setProjects(p); setProfiles(a); setProfilesLoaded(true); setRemoved(gone.map((item) => ({ ...item, label: t.shell.app.disabledSuffix(item.label) }))) }
   const reloadBoard = async (id = selected): Promise<void> => { if (id) setBoard(await window.gearmod.invoke('board:get', { projectId: id })) }
   const refresh = async (): Promise<void> => { await Promise.all([reloadBoard(), reloadProjects()]) }
   const toggleFiles = (): void => {
@@ -122,6 +124,12 @@ function App(): React.JSX.Element {
     return () => { window.removeEventListener('gearmod:open-file', open); window.removeEventListener('gearmod:open-changes', changes); window.removeEventListener('gearmod:open-project-config', config) }
   }, [])
   useEffect(() => { void window.gearmod.invoke('settings:get', undefined).then(setSettings).catch((e: unknown) => setError(plainError(e))) }, [])
+  // First visit to a project with no agent: invites the user to add one (the new-project dialog already covers a just-created project).
+  useEffect(() => {
+    if (pop || !profilesLoaded || !selected) return
+    if (agentsPrompt === selected) { markInviteSeen(selected); return }
+    if (shouldInviteAgent({ projectId: selected, agentCount: profiles.length, seen: readInviteSeen(), busy: settingsOpen || newProject })) { markInviteSeen(selected); setAgentInvite(selected) }
+  }, [selected, profilesLoaded, profiles.length])
   const [themeTick, setThemeTick] = useState(0)
   useEffect(() => { const again = (): void => setThemeTick((value) => value + 1); window.addEventListener(projectThemeEvent, again); return () => window.removeEventListener(projectThemeEvent, again) }, [])
   // Global theme in settings; each project can have its own (Configure project > General) and it applies while that project is open.
@@ -174,12 +182,14 @@ function App(): React.JSX.Element {
     {!pop && <Sidebar projects={projects} profiles={profiles} selected={selected} collapsed={collapsed} onSelect={setSelected} onNew={() => setNewProject(true)} onSettings={() => setSettingsOpen(true)} onAddAgent={() => { setSettingsTab('agents'); setSettingsOpen(true) }} onProjectSettings={(id) => { setConfigTab('general'); setConfigFocus(undefined); setProjectConfig(id) }} onNewChat={(id) => { setSelected(id); setFreeRequest({ projectId: id, at: Date.now() }) }} onToggle={() => setCollapsed(!collapsed)}
       onReorder={(ids) => { setProjects((current) => ids.map((id) => current.find((item) => item.id === id)!).filter(Boolean)); void window.gearmod.invoke('projects:reorder', { projectIds: ids }).then(setProjects).catch((e: unknown) => setError(plainError(e))) }}
       onDelete={setDeleting} />}
-    {filePopout || pop?.kind === 'terminal' ? <div /> : board ? <Board key={board.project.id} slots={{ view: viewSlot, gear: gearSlot, tray: traySlot }} board={board} profiles={profiles} history={[...profiles, ...removed]} refresh={refresh} onProjectConfig={(tab) => { setConfigFocus(undefined); setConfigTab(tab ?? 'general'); setProjectConfig(board.project.id) }} openSettings={() => setSettingsOpen(true)} freeRequest={freeRequest} freeHandled={() => setFreeRequest(undefined)} constitutionRequest={constitutionRequest} constitutionHandled={() => setConstitutionRequest(undefined)} openTarget={openTarget} targetHandled={() => setOpenTarget(undefined)} />
+    {filePopout || pop?.kind === 'terminal' ? <div /> : board ? <Board key={board.project.id} slots={{ view: viewSlot, gear: gearSlot, tray: traySlot }} board={board} profiles={profiles} history={[...profiles, ...removed]} refresh={refresh} onProjectConfig={(tab) => { setConfigFocus(undefined); setConfigTab(tab ?? 'general'); setProjectConfig(board.project.id) }} openSettings={() => { setSettingsTab('agents'); setSettingsOpen(true) }} freeRequest={freeRequest} freeHandled={() => setFreeRequest(undefined)} constitutionRequest={constitutionRequest} constitutionHandled={() => setConstitutionRequest(undefined)} openTarget={openTarget} targetHandled={() => setOpenTarget(undefined)} />
       : <div className="content"><main><div className="head"><div className="lead"><div><div className="eyebrow">{t.shell.app.emptyEyebrow}</div><h1>{projects.length ? t.shell.app.pickProject : t.shell.app.startWithFolder}</h1><p>{t.shell.app.emptyText}</p></div></div></div>{!projects.length && <button style={{ marginTop: 18 }} onClick={() => setNewProject(true)}>{t.shell.app.addFirstProject}</button>}{error && <p className="error" style={{ marginTop: 14 }}>{error}</p>}</main></div>}
     {newProject && <ProjectDialog close={() => setNewProject(false)} created={async (project) => { setNewProject(false); await reloadProjects(); setSelected(project.id); setAgentsPrompt(project.id) }} />}
     {settingsOpen && <SettingsDialog profiles={profiles} settings={settings} initialTab={settingsTab} close={() => { setSettingsOpen(false); setSettingsTab(undefined) }} changed={refresh} settingsChanged={setSettings} />}
+    {agentInvite && !settingsOpen && !newProject && !addingAgent && <ConfirmDialog eyebrow={t.common.agent} title={t.settings.agentInvite.title} text={t.settings.agentInvite.text} ok={t.settings.agentInvite.ok} cancel={() => setAgentInvite(undefined)} confirm={() => { setAgentInvite(undefined); setAddingAgent(true) }} />}
+    {addingAgent && <AgentDialog close={() => setAddingAgent(false)} changed={refresh} />}
     <RunLimitPrompt openSettings={() => { setSettingsTab('general'); setSettingsOpen(true) }} />
-    {agentsPrompt && !settingsOpen && !newProject && projects.find((item) => item.id === agentsPrompt) && <ProjectAgentsDialog project={projects.find((item) => item.id === agentsPrompt)!} profiles={profiles} close={() => setAgentsPrompt(undefined)} saved={async () => { setAgentsPrompt(undefined); await refresh() }} openSettings={() => setSettingsOpen(true)} />}
+    {agentsPrompt && !settingsOpen && !newProject && projects.find((item) => item.id === agentsPrompt) && <ProjectAgentsDialog project={projects.find((item) => item.id === agentsPrompt)!} profiles={profiles} close={() => setAgentsPrompt(undefined)} saved={async () => { setAgentsPrompt(undefined); await refresh() }} openSettings={() => { setSettingsTab('agents'); setSettingsOpen(true) }} />}
     {configProject && <ProjectConfigDialog initialTab={configTab} initialFocus={configFocus} project={configProject} profiles={profiles} renamed={() => void reloadProjects()} saved={async () => { setProjectConfig(undefined); await refresh() }} openConstitutionChat={(prompt) => { setProjectConfig(undefined); setSelected(configProject.id); setConstitutionRequest({ projectId: configProject.id, prompt, at: Date.now() }) }} />}
     {deleting && <ConfirmDialog eyebrow={t.shell.app.deleteProject} title={deleting.name} text={t.shell.app.deleteProjectText} ok={t.shell.app.deleteProject} danger cancel={() => setDeleting(undefined)} confirm={() => { const gone = deleting; setDeleting(undefined); void window.gearmod.invoke('projects:delete', { projectId: gone.id }).then(async () => { if (selected === gone.id) setSelected(undefined); await reloadProjects() }).catch((e: unknown) => setError(plainError(e).replace(/^Error invoking remote method '[^']+': /, '').replace(/^Error: /, ''))) }} />}
   </div>

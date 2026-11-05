@@ -20,11 +20,17 @@ export class TerminalService {
   private shells = new Map<string, { proc: IPty; cwd: string; shell: string; text: string; seq: number; exited: boolean }>()
   constructor(private emit: (type: string, payload: Record<string, unknown>) => void, private platform: NodeJS.Platform = process.platform) {}
   open(cwd: string): string {
-    const id = randomUUID(), shell = shellCommand(this.platform, process.env.SHELL)
+    const shell = shellCommand(this.platform, process.env.SHELL)
+    return this.start({ file: shell.file, args: shell.args, env: process.env, cwd, title: this.platform === 'win32' ? 'PowerShell' : shell.file })
+  }
+  /** Runs one program (not a shell) in a PTY, e.g. an agent CLI's login; the session ends when the program exits. */
+  run(command: { file: string; args: string[] | string; env: NodeJS.ProcessEnv; cwd: string; title: string }): string { return this.start(command) }
+  private start(command: { file: string; args: string[] | string; env: NodeJS.ProcessEnv; cwd: string; title: string }): string {
+    const id = randomUUID()
     const { spawn } = require('node-pty') as typeof import('node-pty')
-    const env = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[0] !== 'ELECTRON_RUN_AS_NODE'))
-    const proc = spawn(shell.file, shell.args, { cwd: existsSync(cwd) ? cwd : homedir(), env: { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, cols: 100, rows: 28, name: 'xterm-256color', useConpty: true })
-    const session = { proc, cwd, shell: this.platform === 'win32' ? 'PowerShell' : shell.file, text: '', seq: 0, exited: false }; this.shells.set(id, session)
+    const env = Object.fromEntries(Object.entries(command.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[0] !== 'ELECTRON_RUN_AS_NODE'))
+    const proc = spawn(command.file, command.args, { cwd: existsSync(command.cwd) ? command.cwd : homedir(), env: { ...env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, cols: 100, rows: 28, name: 'xterm-256color', useConpty: true })
+    const session = { proc, cwd: command.cwd, shell: command.title, text: '', seq: 0, exited: false }; this.shells.set(id, session)
     proc.onData((data) => { session.text = (session.text + data).slice(-500_000); session.seq++; this.emit('gearmod/terminal-data', { id, data, seq: session.seq }) })
     proc.onExit(({ exitCode }) => { session.exited = true; this.emit('gearmod/terminal-exit', { id, code: exitCode }) })
     return id

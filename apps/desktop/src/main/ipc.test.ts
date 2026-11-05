@@ -50,4 +50,22 @@ describe('validated IPC', () => {
     expect(deleteCard).toHaveBeenCalledTimes(2)
     database.close()
   })
+
+  it('runs the agent login and update in an app terminal and returns its id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-ipc-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const ipc = new FakeIpc(), unavailable = {} as never, profileId = '123e4567-e89b-42d3-a456-426614174000'
+    const plan = { file: 'codex.exe', args: ['login'], env: {}, cwd: root, title: 'Codex' }
+    const updatePlan = vi.fn(() => plan), agentProbes = { loginPlan: vi.fn(() => plan), updatePlan } as never, run = vi.fn(() => 'term-1'), terminals = { run } as never
+    registerIpc(ipc, { database, notes: new NoteRepository(database), settings: new SettingsRepository(database), backups: new BackupService(root, '0.1.0'), profiles: unavailable, gitManager: unavailable, pullRequests: unavailable, gitAccounts: unavailable, projects: unavailable, board: unavailable, git: unavailable, agentProbes, conversations: unavailable, orchestrator: unavailable, worktrees: unavailable, quality: unavailable, executions: unavailable, agentConfigs: unavailable, skills: unavailable, constitution: unavailable, checklists: unavailable, voice: unavailable, usage: unavailable, collab: unavailable, history: unavailable, playwright: unavailable, fileWatch: unavailable, specTools: unavailable, speckit: unavailable, mcp: unavailable, toolUpdates: unavailable, approvals: unavailable, sddResolver: unavailable, sddWriter: unavailable, openPath: async () => undefined, trashItem: async () => undefined, terminals, openWindow: () => undefined, placeWindow: () => undefined, openExternal: async () => undefined, chooseSkillSource: async () => null, saveTextFile: async () => ({ saved: false, path: null }), chooseDirectory: async () => null, chooseFiles: async () => [], appVersion: '0.1.0', dataDir: root, reopen: async () => { await database.open() } })
+    await expect(ipc.invoke('profiles:login-terminal', { profileId })).resolves.toEqual({ id: 'term-1' })
+    expect(run).toHaveBeenCalledWith(plan)
+    await expect(ipc.invoke('profiles:login-terminal', { profileId: 'not-a-uuid' })).rejects.toThrow()
+    await expect(ipc.invoke('profiles:login-terminal', { profileId, extra: 1 })).rejects.toThrow()
+    await expect(ipc.invoke('profiles:update-terminal', { provider: 'codex' })).resolves.toEqual({ id: 'term-1' })
+    expect(updatePlan).toHaveBeenCalledWith('codex')
+    await expect(ipc.invoke('profiles:update-terminal', { provider: 'outro' })).rejects.toThrow()
+    database.close()
+  })
 })
+

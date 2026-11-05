@@ -100,7 +100,8 @@ export const settings: typeof source = {
     edit: 'Edit agent',
     new: 'New agent',
     previewFallback: 'New agent',
-    type: 'Type',
+    pickType: 'Which agent do you want to add?',
+    back: 'Back',
     installFound: (version) => `Installation found: ${version}. Continue to connect your account.`,
     notFound: (detail) => `Program not found. Click Install and, when it finishes, Check installation.${detail ? ` Details: ${detail}` : ''}`,
     connectedReady: (label) => `${label} is connected and ready to be selected in projects.`,
@@ -125,8 +126,6 @@ export const settings: typeof source = {
     billingCredits: 'Credits',
     apiKeyHint: (hint) => `Hint seen in the last run (${hint}): this may be billed by API key, not by subscription. If that was not intended (S16: the app never reuses an existing login; each profile has its own account), sign in to this account again.`,
     redoLogin: 'Sign in again',
-    finishLoginThenCheck: 'Finish the login in the open window, then click Check account.',
-    finishLoginThenCheck2: 'Finish the login in the open window. Then click Check account.',
     envVars: 'Environment variables allowed for this agent',
     envVarsHint: 'Names only; the value is never shown or saved here. Besides the app\'s fixed list (PATH, proxy, certificates...), nothing else gets through.',
     removeVar: (name) => `Remove ${name}`,
@@ -145,6 +144,39 @@ export const settings: typeof source = {
     continueToAccount: 'Continue to account',
     removeTitle: (label) => `Remove ${label}?`,
     removeText: 'The agent leaves the list. Agents with saved conversations, plans or executions cannot be removed.'
+  },
+
+  agentLogin: {
+    title: (name: string) => `Connecting your ${name} account…`,
+    intro: 'Your browser will open so you can sign in. This window checks by itself and closes once the account is connected.',
+    waiting: 'Waiting for the account to connect…',
+    ended: 'The login finished, but the account does not show as connected yet. Check the message in the terminal and try again.',
+    terminal: 'Login terminal',
+    minimize: 'Minimize terminal',
+    showTerminal: 'Show terminal',
+    expand: 'Expand terminal',
+    shrink: 'Shrink terminal',
+    retry: 'Try again',
+    connectedTitle: 'Account connected',
+    connectedText: (label: string) => `${label} is ready to use in your projects.`
+  },
+
+  agentUpdate: {
+    title: (name: string) => `Updating ${name}…`,
+    doneTitle: (name: string) => `${name} updated`,
+    running: 'We are working on the update. You can leave it in the background: it goes on in Processes, in the title bar.',
+    done: (name: string) => `The ${name} update finished. New chats already use the new version.`,
+    failed: 'The update did not finish. Check the message in the terminal below.',
+    exitCode: (code: number) => `The command ended with code ${code}. Check the update terminal.`,
+    terminal: 'Update terminal',
+    background: 'Leave in the background',
+    taskTitle: (name: string) => `Update ${name}`
+  },
+
+  agentInvite: {
+    title: 'How about adding an agent to your GearMod?',
+    text: 'Agents (Claude or Codex) work on your cards and talk with you in chats. It only takes a minute: pick the type, give it a name and connect your account.',
+    ok: 'Add agent'
   },
 
   groq: {

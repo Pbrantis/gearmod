@@ -18,6 +18,11 @@ import { ConfirmDialog } from './ConfirmDialog'
 import { Switch } from './Switch'
 import { setGravatarEnabled } from './gravatarSetting'
 import { DefaultCardTypes } from './CardTypes'
+import { AgentLoginDialog } from './AgentLoginDialog'
+import { toast } from './toasts'
+import { AgentUpdateDialog } from './AgentUpdateDialog'
+import { useTasks } from './backgroundTasks'
+import type { UpdatableProvider } from './agentUpdates'
 
 export const themes: ReadonlyArray<{ value: AppTheme; mode: 'dark' | 'light'; swatches: [string, string, string] }> = [
   { value: 'green', mode: 'dark', swatches: ['#8db99a', '#2f5a40', '#101713'] },
@@ -51,20 +56,24 @@ export function applySettings(settings: AppSettings): void {
   setLocale(settings.idioma)
 }
 
-/** Create and edit agent: install, connect the account, name, usage and personality color. */
-function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; close(): void; changed(): Promise<void> }): React.JSX.Element {
+/**
+ * Create and edit agent. A new one goes in steps: type (Claude/Codex), then name, usage and personality, then the account login
+ * inside the app (`AgentLoginDialog`). Editing shows everything at once.
+ */
+export function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; close(): void; changed(): Promise<void> }): React.JSX.Element {
   const t = useT(), ta = t.settings.agent
   const [provider, setProvider] = useState<'codex' | 'claude' | 'gemini'>(profile?.provider ?? 'claude'), [label, setLabel] = useState(profile?.label ?? ''), [scope, setScope] = useState(profile?.scope ?? 'Pessoal'), [color, setColor] = useState(profile?.color ?? defaultAgentColor('claude'))
   const [billingMode, setBillingMode] = useState<AgentProfile['billingMode']>(profile?.billingMode ?? 'unknown')
   const [envPassthrough, setEnvPassthrough] = useState<string[]>(profile?.envPassthrough ?? []), [envVarDraft, setEnvVarDraft] = useState('')
   const [installed, setInstalled] = useState(Boolean(profile)), [pending, setPending] = useState<AgentProfile | undefined>(undefined), [status, setStatus] = useState<AgentProbe>(), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [createdHere, setCreatedHere] = useState(false), [removing, setRemoving] = useState(false)
+  const [step, setStep] = useState<'type' | 'details'>(profile ? 'details' : 'type'), [loginFor, setLoginFor] = useState<AgentProfile>()
   const run = async (action: () => Promise<void>): Promise<void> => { setBusy(true); setMessage(''); try { await action() } catch (error) { setMessage(plainError(error)) } finally { setBusy(false) } }
   const checkInstall = async (which = provider): Promise<void> => {
     const result = await window.gearmod.invoke('profiles:detect-provider', { provider: which })
     setInstalled(result.installed)
     setMessage(result.installed ? ta.installFound(result.version || which) : ta.notFound(result.error ?? ''))
   }
-  useEffect(() => { if (!profile) void run(() => checkInstall(provider)) }, [provider])
+  useEffect(() => { if (!profile && step === 'details') void run(() => checkInstall(provider)) }, [provider, step])
   useEffect(() => { if (!profile) setColor(defaultAgentColor(provider)) }, [provider, profile])
   useEscape(() => { void cancel() })
   const cancel = async (): Promise<void> => { if (pending && createdHere) await window.gearmod.invoke('profiles:delete', { profileId: pending.id }).catch(() => undefined); close() }
@@ -77,8 +86,16 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
   const save = async (): Promise<void> => {
     if (profile) { await window.gearmod.invoke('profiles:update', { profileId: profile.id, label, scope, color, billingMode, envPassthrough }); await changed(); close(); return }
     const created = await window.gearmod.invoke('profiles:create', { provider, label: label.trim() || `Meu ${providerLabels[provider]}`, scope: scope.trim() || 'Pessoal', color })
-    setCreatedHere(true); setPending(created); await checkAccount(created)
+    setCreatedHere(true); setPending(created); setLoginFor(created)
   }
+  // Account connected in the login dialog: a new agent is ready (closes); when editing, refreshes the account shown.
+  // Login canceled for a new agent: removes the registration just created and goes back to the filled form (name, usage, personality).
+  const loginCanceled = async (): Promise<void> => {
+    setLoginFor(undefined)
+    if (profile || !pending || !createdHere) return
+    try { await window.gearmod.invoke('profiles:delete', { profileId: pending.id }); setPending(undefined); setCreatedHere(false); setMessage('') } catch (reason) { setMessage(plainError(reason)) }
+  }
+  const loggedIn = async (item: AgentProfile): Promise<void> => { setLoginFor(undefined); toast.success(t.settings.agentLogin.connectedTitle, t.settings.agentLogin.connectedText(item.label)); if (profile) await run(() => checkAccount(item)); else { await changed(); close() } }
   const [notice, setNotice] = useState<{ title: string; text: string; after?: boolean }>()
   const remove = async (): Promise<void> => {
     if (!profile) return
@@ -92,13 +109,13 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
   return <div className="overlay top" role="dialog" aria-label={profile ? ta.edit : ta.new}><div className="modal" style={{ width: 'min(460px,100%)' }}>
     <header><div><div className="eyebrow">{t.common.agent}</div><h2>{profile ? ta.edit : ta.new}</h2></div><button className="x" onClick={() => void cancel()} aria-label={t.common.close}>×</button></header>
     <div className="stack">
-      {!profile && !pending && <div className="f"><span>{ta.type}</span><div className="provcards">{newAgentProviders.map((item) => <button type="button" key={item} disabled={busy} className={provider === item ? 'sel' : ''} onClick={() => setProvider(item)}><i className={`av lg ${item}`} style={{ color: provider === item ? color : undefined }}><ProviderLogo provider={item} /></i><span><b>{item === 'claude' ? 'Claude' : 'Codex'}</b><small>{item === 'claude' ? 'Anthropic' : 'OpenAI'}</small></span></button>)}</div></div>}
-      {!profile && !pending && !installed && <div className="convbox"><p>{ta.notInstalledHere(item(provider))}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkInstall())}>{ta.checkInstall}</button><button type="button" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:install-provider', { provider }); setMessage(ta.installOpened) })}>{ta.install(item(provider))}</button></div></div>}
-      {(profile || installed) && !pending && <>
+      {!profile && !pending && step === 'type' && <div className="f"><span>{ta.pickType}</span><div className="provcards two">{newAgentProviders.map((item) => <button type="button" key={item} onClick={() => { setProvider(item); setStep('details') }}><i className={`av lg ${item}`} style={{ color: defaultAgentColor(item) }}><ProviderLogo provider={item} /></i><span><b>{item === 'claude' ? 'Claude' : 'Codex'}</b><small>{item === 'claude' ? 'Anthropic' : 'OpenAI'}</small></span></button>)}</div></div>}
+      {!profile && !pending && step === 'details' && !installed && <div className="convbox"><p>{ta.notInstalledHere(item(provider))}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkInstall())}>{ta.checkInstall}</button><button type="button" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:install-provider', { provider }); setMessage(ta.installOpened) })}>{ta.install(item(provider))}</button></div></div>}
+      {(profile || installed) && !pending && step === 'details' && <>
         <label className="f">{t.common.name}<input className="in" value={label} placeholder={provider === 'claude' ? ta.labelPlaceholderClaude : provider === 'gemini' ? ta.labelPlaceholderGemini : ta.labelPlaceholderCodex} onChange={(e) => setLabel(e.target.value)} /></label>
         <label className="f">{ta.usage}<input className="in" value={scope} onChange={(e) => setScope(e.target.value)} /></label>
         {profile && <div className="f"><span>{ta.billing}</span><Select label={ta.billing} options={[{ value: 'unknown', label: ta.billingUnknown }, { value: 'subscription', label: ta.billingSubscription }, { value: 'api', label: ta.billingApi }, { value: 'credits', label: ta.billingCredits }]} value={billingMode} onChange={(value) => setBillingMode(value as AgentProfile['billingMode'])} />
-          {profile.apiKeySourceHint && profile.apiKeySourceHint !== 'none' && billingMode !== 'api' && <div className="convbox" style={{ margin: 0 }}><p>{ta.apiKeyHint(profile.apiKeySourceHint)}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:login', { profileId: profile.id }); setMessage(ta.finishLoginThenCheck) })}>{ta.redoLogin}</button></div></div>}
+          {profile.apiKeySourceHint && profile.apiKeySourceHint !== 'none' && billingMode !== 'api' && <div className="convbox" style={{ margin: 0 }}><p>{ta.apiKeyHint(profile.apiKeySourceHint)}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => setLoginFor(profile)}>{ta.redoLogin}</button></div></div>}
         </div>}
         {profile && <div className="f"><span>{ta.envVars}<small>{ta.envVarsHint}</small></span>
           <div className="swatches" style={{ flexWrap: 'wrap', gap: 6 }}>{envPassthrough.map((name) => <span key={name} className="pillg" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{name}<button type="button" className="x" aria-label={ta.removeVar(name)} onClick={() => setEnvPassthrough(envPassthrough.filter((item) => item !== name))}>×</button></span>)}</div>
@@ -110,11 +127,12 @@ function AgentDialog({ profile, close, changed }: { profile?: AgentProfile; clos
         </div>}
         <div className="f"><span>{ta.personality}</span><div className="swatches">{agentColorPalette.map((value) => <button type="button" key={value} className={`sw ${color.toLowerCase() === value.toLowerCase() ? 'sel' : ''}`} style={{ '--c': value } as React.CSSProperties} aria-label={ta.colorAria(value)} aria-pressed={color.toLowerCase() === value.toLowerCase()} onClick={() => setColor(value)} />)}</div><div className="aeprev"><AgentIcon profile={preview} size="lg" tip={false} /><span>{preview.label}</span></div></div>
       </>}
-      {pending && <div className="convbox"><p>{ta.pendingLogin(pending.label)}</p><div className="actions" style={{ margin: 0 }}><button type="button" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:login', { profileId: pending.id }); setMessage(ta.finishLoginThenCheck2) })}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(pending))}>{ta.checkAccount}</button></div></div>}
-      {profile && <div className="convbox"><p>{status ? (status.authenticated ? ta.accountConnected(status.account ?? '') : status.installed ? ta.installedNotConnected : ta.notInstalled(status.error ?? ta.programNotFound)) : ta.checkPrompt}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => void run(async () => { await window.gearmod.invoke('profiles:login', { profileId: profile.id }); setMessage(ta.finishLoginThenCheck) })}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(profile))}>{ta.checkAccount}</button></div></div>}
+      {pending && <div className="convbox"><p>{ta.pendingLogin(pending.label)}</p><div className="actions" style={{ margin: 0 }}><button type="button" disabled={busy} onClick={() => setLoginFor(pending)}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(pending))}>{ta.checkAccount}</button></div></div>}
+      {profile && <div className="convbox"><p>{status ? (status.authenticated ? ta.accountConnected(status.account ?? '') : status.installed ? ta.installedNotConnected : ta.notInstalled(status.error ?? ta.programNotFound)) : ta.checkPrompt}</p><div className="actions" style={{ margin: 0 }}><button type="button" className="secondary" disabled={busy} onClick={() => setLoginFor(profile)}>{ta.signIn}</button><button type="button" className="secondary" disabled={busy} onClick={() => void run(() => checkAccount(profile))}>{ta.checkAccount}</button></div></div>}
       {message && <p role="status" className="hint" style={{ overflowWrap: 'anywhere' }}>{message}</p>}
     </div>
-    <div className="actions">{profile && <button type="button" className="danger" style={{ marginRight: 'auto' }} disabled={busy} onClick={() => setRemoving(true)}>{t.common.remove}</button>}<button type="button" className="secondary" onClick={() => void cancel()}>{pending ? ta.cancelRegistration : t.common.cancel}</button>{!pending && (profile || installed) && <button type="button" disabled={busy} onClick={() => void run(save)}>{profile ? t.common.save : ta.continueToAccount}</button>}</div>
+    <div className="actions">{profile && <button type="button" className="danger" style={{ marginRight: 'auto' }} disabled={busy} onClick={() => setRemoving(true)}>{t.common.remove}</button>}<button type="button" className="secondary" onClick={() => void cancel()}>{pending ? ta.cancelRegistration : t.common.cancel}</button>{!profile && !pending && step === 'details' && <button type="button" className="secondary" disabled={busy} onClick={() => { setStep('type'); setMessage('') }}>{ta.back}</button>}{!pending && step === 'details' && (profile || installed) && <button type="button" disabled={busy} onClick={() => void run(save)}>{profile ? t.common.save : ta.continueToAccount}</button>}</div>
+    {loginFor && <AgentLoginDialog profile={loginFor} close={() => void loginCanceled()} connected={() => void loggedIn(loginFor)} />}
     {removing && profile && <ConfirmDialog eyebrow={t.common.agent} title={ta.removeTitle(profile.label)} text={ta.removeText} ok={t.common.remove} danger cancel={() => setRemoving(false)} confirm={() => { setRemoving(false); void run(remove) }} />}
     {notice && <NoticeDialog eyebrow={t.common.agent} title={notice.title} text={notice.text} close={() => { const after = notice.after; setNotice(undefined); if (after) close() }} />}
   </div></div>
@@ -169,7 +187,7 @@ export function ThemePicker({ value, onChange, project = false }: { value: AppTh
 
 
 export function SettingsDialog({ profiles, settings, initialTab, close, changed, settingsChanged }: { profiles: AgentProfile[]; settings: AppSettings; initialTab?: 'general' | 'agents'; close(): void; changed(): Promise<void>; settingsChanged(settings: AppSettings): void }): React.JSX.Element {
-  const [tab, setTab] = useState<'agents' | 'skills' | 'mcp' | 'general' | 'shortcuts'>(initialTab ?? 'agents'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
+  const [tab, setTab] = useState<'agents' | 'skills' | 'mcp' | 'general' | 'shortcuts'>(initialTab ?? 'general'), [editing, setEditing] = useState<AgentProfile | 'new'>(), [items, setItems] = useState(profiles), [statuses, setStatuses] = useState<Record<string, AgentProbe>>({}), [error, setError] = useState('')
   const [messageSpacing, setMessageSpacing] = useState<MessageSpacing>(() => readMessageSpacing())
   const t = useT(), td = t.settings.dialog
   const voices: ReadonlyArray<{ value: VoiceModel; label: string }> = [{ value: 'small', label: td.voiceSmall }, { value: 'large-v3-turbo', label: td.voiceLarge }, { value: 'groq', label: td.voiceGroq }]
@@ -177,7 +195,10 @@ export function SettingsDialog({ profiles, settings, initialTab, close, changed,
   useEffect(() => setItems(profiles), [profiles])
   useEscape(close, !editing)
   const probeAll = (): void => { void window.gearmod.invoke('profiles:probe-all', undefined).then((all) => setStatuses(Object.fromEntries(all.map((probe) => [probe.profileId, probe])))).catch(() => undefined) }
-  useEffect(() => { probeAll() }, [profiles])
+  // An update that finished (here or in the background) changes the installed version: checks again.
+  const updatesFinished = useTasks().filter((task) => task.key.startsWith('agent-update:') && task.state !== 'running').length
+  const [updating, setUpdating] = useState<UpdatableProvider>()
+  useEffect(() => { probeAll() }, [profiles, updatesFinished])
   // The update runs in a separate terminal: when returning to the window, checks the version again.
   useEffect(() => { window.addEventListener('focus', probeAll); return () => window.removeEventListener('focus', probeAll) }, [])
   const latest = useLatestVersions()
@@ -191,9 +212,9 @@ export function SettingsDialog({ profiles, settings, initialTab, close, changed,
   const commitLimit = (): void => { const value = Math.round(Number(limitDraft)); setLimitDraft(undefined); if (limitDraft !== undefined && Number.isFinite(value) && value >= 1 && value !== limitValue) void save({ execucoesSimultaneas: Math.min(16, value) }) }
   return <div className="overlay" role="dialog" aria-label={t.common.settings}><div className="modal settings-dialog">
     <header><div><div className="eyebrow">{t.common.settings}</div><h2>GearMod</h2></div><button className="x" onClick={close} aria-label={t.common.close}>×</button></header>
-    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['agents', td.tabAgents], ['skills', td.tabSkills], ['mcp', td.tabMcp], ['shortcuts', td.tabShortcuts], ['general', td.tabGeneral]] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}{value === 'agents' && updatesPending && <i className="tab-dot" data-tip={td.agentUpdateTip} />}</button>)}</div>
+    <div className="tabs" role="tablist" style={{ marginBottom: 14 }}>{([['general', td.tabGeneral], ['agents', td.tabAgents], ['skills', td.tabSkills], ['mcp', td.tabMcp], ['shortcuts', td.tabShortcuts]] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? 'on' : ''}`} onClick={() => setTab(value)}>{label}{value === 'agents' && updatesPending && <i className="tab-dot" data-tip={td.agentUpdateTip} />}</button>)}</div>
     <div className="settings-dialog-body">{tab === 'agents' && <><p style={{ marginBottom: 12 }}>{td.agentsIntro}</p>
-      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">{td.noAgents}</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><span className="settings-agent-avatar tip" data-tip={!probe ? td.checkingConnection : probe.authenticated ? td.connected : probe.installed ? td.disconnectedNoLogin : td.disconnectedNotInstalled} aria-label={!probe ? td.checkingConnection : probe.authenticated ? td.connected : td.disconnected}><AgentIcon profile={profile} size="lg" tip={false} /><i className={`settings-agent-status ${state}`} aria-hidden="true" /></span><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" data-tip={td.accountTip}>{probe.account}</small>}</span>{newer(profile) && <span className="agupdate" data-tip={td.versionTip(statuses[profile.id]?.version ?? '?', newer(profile) ?? '')}>{td.updateAvailable}<button type="button" className="linklike" onClick={() => { void window.gearmod.invoke('profiles:update-provider', { provider: profile.provider as 'claude' | 'codex' }).catch((reason) => setError(plainError(reason))) }}>{td.update}</button></span>}<span className="agtype" data-tip={td.usageTip}>{profile.scope}</span><button className="mini secondary" onClick={() => setEditing(profile)}>{t.common.edit}</button></div> })}</div>
+      <div className="stack" style={{ gap: 8 }}>{items.length === 0 && <div className="emptyBox">{td.noAgents}</div>}{items.map((profile) => { const probe = statuses[profile.id], state = !probe ? 'checking' : probe.authenticated ? 'on' : 'off'; return <div className="ck-line" key={profile.id}><span className="settings-agent-avatar tip" data-tip={!probe ? td.checkingConnection : probe.authenticated ? td.connected : probe.installed ? td.disconnectedNoLogin : td.disconnectedNotInstalled} aria-label={!probe ? td.checkingConnection : probe.authenticated ? td.connected : td.disconnected}><AgentIcon profile={profile} size="lg" tip={false} /><i className={`settings-agent-status ${state}`} aria-hidden="true" /></span><span className="t">{profile.label}<small>{item(profile.provider)}</small>{probe?.account && <small className="acct" data-tip={td.accountTip}>{probe.account}</small>}</span>{newer(profile) && <span className="agupdate" data-tip={td.versionTip(statuses[profile.id]?.version ?? '?', newer(profile) ?? '')}>{td.updateAvailable}<button type="button" className="linklike" onClick={() => setUpdating(profile.provider)}>{td.update}</button></span>}<span className="agtype" data-tip={td.usageTip}>{profile.scope}</span><button className="mini secondary" onClick={() => setEditing(profile)}>{t.common.edit}</button></div> })}</div>
       <button className="bigadd" onClick={() => setEditing('new')}>{td.addAgent}</button></>}
     {tab === 'skills' && <SkillsPanel scope="global" profiles={items} />}
     {tab === 'mcp' && <McpPanel scope="global" available={['claude', 'codex']} />}
@@ -216,6 +237,7 @@ export function SettingsDialog({ profiles, settings, initialTab, close, changed,
         <section className="cx-wfcard"><h4>{td.cardVoice}</h4><div className="f"><span>{td.voice}</span><Select label={td.voice} options={[...voices]} value={settings.voz} onChange={(value) => void save({ voz: value as VoiceModel }).then(() => { dismissVoiceInstall(); notifyVoiceChanged() })} /></div>
         {settings.voz === 'groq' ? <GroqKeyField /> : <p className="hint">{td.voiceModelHint}</p>}</section>
       </div>{error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}</>}</div>
+    {updating && <AgentUpdateDialog provider={updating} close={() => setUpdating(undefined)} />}
     {editing && <AgentDialog profile={editing === 'new' ? undefined : editing} close={() => setEditing(undefined)} changed={refresh} />}
   </div></div>
 }

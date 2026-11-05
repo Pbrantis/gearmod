@@ -1,8 +1,9 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AgentProbeService, type CommandRunner } from './agents'
+import { AgentProbeService, resolveCommand, type CommandRunner } from './agents'
 import { AppDatabase } from './database'
 import { ProfileRepository } from './projects'
 import { seedProfiles } from './test-helpers'
@@ -34,4 +35,66 @@ describe('AgentProbeService', () => {
     expect(result.installed).toBe(false); expect(result.authenticated).toBe(false); expect(result.error).not.toContain('sk-secret-value')
     database.close()
   })
+
+  it('creates the profile folder before the Codex login (Codex refuses a CODEX_HOME that does not exist)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-probe-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root)
+    const profile = profiles.create({ provider: 'codex', label: 'Codex', scope: 'Pessoal' })
+    expect(existsSync(profile.configDir)).toBe(false)
+    const plan = new AgentProbeService(profiles).loginPlan(profile.id)
+    expect(existsSync(profile.configDir)).toBe(true)
+    expect(plan.env.CODEX_HOME).toBe(profile.configDir)
+    expect(typeof plan.args === 'string' ? plan.args : plan.args.join(' ')).toMatch(/login/)
+    expect(plan.title).toBe('Codex')
+    database.close()
+  })
+
+  it('logs Claude in with `auth login` in its own folder and without secrets from the app environment', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-probe-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root)
+    const profile = profiles.create({ provider: 'claude', label: 'Claude', scope: 'Pessoal' })
+    process.env.GEARMOD_TEST_SECRET_TOKEN = 'secret'
+    try {
+      const plan = new AgentProbeService(profiles).loginPlan(profile.id)
+      expect(plan.env.CLAUDE_CONFIG_DIR).toBe(profile.configDir)
+      expect(plan.env.GEARMOD_TEST_SECRET_TOKEN).toBeUndefined()
+      expect(typeof plan.args === 'string' ? plan.args : plan.args.join(' ')).toMatch(/auth.+login/)
+    } finally { delete process.env.GEARMOD_TEST_SECRET_TOKEN }
+    database.close()
+  })
+  it.runIf(process.platform === 'win32')('finds Codex in the current npm package layout before the desktop app copy, and probes pick it up over a saved path', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-probe-')); roots.push(root)
+    const vendor = join(root, 'Roaming', 'npm', 'node_modules', '@openai', 'codex', 'node_modules', '@openai', 'codex-win32-x64', 'vendor', 'x86_64-pc-windows-msvc', 'bin')
+    const desktop = join(root, 'Programs', 'OpenAI', 'Codex', 'bin')
+    mkdirSync(vendor, { recursive: true }); mkdirSync(desktop, { recursive: true }); mkdirSync(join(root, 'Local'), { recursive: true })
+    writeFileSync(join(vendor, 'codex.exe'), ''); writeFileSync(join(desktop, 'codex.exe'), '')
+    const env = { PATH: desktop, APPDATA: join(root, 'Roaming'), LOCALAPPDATA: join(root, 'Local'), USERPROFILE: root }
+    expect(resolveCommand('codex', env)).toBe(join(vendor, 'codex.exe'))
+    const saved = { PATH: process.env.PATH, APPDATA: process.env.APPDATA, LOCALAPPDATA: process.env.LOCALAPPDATA, USERPROFILE: process.env.USERPROFILE }
+    Object.assign(process.env, env)
+    try {
+      const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+      const profiles = new ProfileRepository(database, root), profile = profiles.create({ provider: 'codex', label: 'Codex', scope: 'Pessoal' })
+      profiles.setExecutable(profile.id, join(desktop, 'codex.exe'))
+      const calls: string[] = []
+      const runner: CommandRunner = { async run(command, args) { calls.push(command); return args[0] === '--version' ? { stdout: 'codex-cli 0.166.0', stderr: '' } : { stdout: 'Logged in', stderr: '' } } }
+      await new AgentProbeService(profiles, runner).probe(profile.id)
+      expect(calls[0]).toBe(join(vendor, 'codex.exe'))
+      expect(profiles.get(profile.id).executablePath).toBe(join(vendor, 'codex.exe'))
+      database.close()
+    } finally { for (const [name, value] of Object.entries(saved)) { if (value === undefined) delete process.env[name]; else process.env[name] = value } }
+  })
+
+  it('updates Codex through npm and Claude with `claude update`', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-probe-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const service = new AgentProbeService(new ProfileRepository(database, root))
+    const text = (plan: { file: string; args: string[] | string }): string => `${plan.file} ${typeof plan.args === 'string' ? plan.args : plan.args.join(' ')}`
+    expect(text(service.updatePlan('codex'))).toContain('npm install -g @openai/codex@latest')
+    expect(text(service.updatePlan('claude'))).toMatch(/claude.*update/i)
+    database.close()
+  })
 })
+

@@ -1,10 +1,11 @@
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, extname, isAbsolute, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { AgentProbe, AgentProfile } from '@gearmod/contracts'
 import { readAccountEmail } from './account'
+import { applyEnvPolicy } from './env-policy'
 import type { ProfileRepository } from './projects'
 import { tm } from './i18n'
 
@@ -25,12 +26,11 @@ export class AgentProbeService {
   async probe(profileId: string): Promise<AgentProbe> {
     const profile = this.profiles.list().find((item) => item.id === profileId)
     if (!profile) throw new Error(tm().common.profileNotFound)
-    const command = profile.executablePath || profile.provider
     const env = this.environment(profile)
+    const command = currentCommand(profile, env)
     try {
       const versionResult = await this.runner.run(command, ['--version'], env)
-      const resolved = resolveCommand(command, env)
-      if (isAbsolute(resolved)) this.profiles.setExecutable(profile.id, resolved)
+      if (isAbsolute(command) && command !== profile.executablePath) this.profiles.setExecutable(profile.id, command)
       const version = versionResult.stdout.trim() || versionResult.stderr.trim() || null
       const authenticated = await this.authentication(profile, command, env)
       const account = authenticated ? readAccountEmail(profile) : null
@@ -69,17 +69,47 @@ export class AgentProbeService {
     return { started: true }
   }
 
+  /**
+   * Update command to run in the in-app terminal: `claude update` (native and npm installs) or the npm package of Codex/Gemini.
+   * Runs with the user's environment (it is npm, not an agent) from the home folder.
+   */
+  updatePlan(provider: 'codex' | 'claude' | 'gemini'): CliPlan {
+    const env = { ...process.env }, title = providerUpdateTitle(provider)
+    if (provider === 'claude') {
+      const command = resolveCommand('claude', env)
+      if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(command).toLowerCase())) return { file: env.ComSpec || 'cmd.exe', args: `/d /s /c "${[command, 'update'].map(quoteCmdArgument).join(' ')}"`, env, cwd: homedir(), title }
+      return { file: command, args: ['update'], env, cwd: homedir(), title }
+    }
+    const npm = ['npm', 'install', '-g', provider === 'gemini' ? '@google/gemini-cli@latest' : '@openai/codex@latest']
+    if (process.platform === 'win32') return { file: env.ComSpec || 'cmd.exe', args: `/d /s /c "${npm.join(' ')}"`, env, cwd: homedir(), title }
+    return { file: npm[0]!, args: npm.slice(1), env, cwd: homedir(), title }
+  }
+
   install(profileId: string): { started: true } {
     const profile = this.profiles.get(profileId)
     return this.installProvider(profile.provider)
   }
 
+  /**
+   * Login command of the profile's CLI, ready to run in the in-app terminal. The profile folder is created first:
+   * Codex refuses to start when `CODEX_HOME` points to a folder that does not exist (Claude creates its own).
+   */
+  loginPlan(profileId: string): CliPlan {
+    const profile = this.profiles.get(profileId)
+    mkdirSync(profile.configDir, { recursive: true })
+    const env = { ...applyEnvPolicy(profile, process.env), ...profileHome(profile) }
+    const command = currentCommand(profile, { ...process.env, ...env })
+    const args = loginArgs(profile)
+    // A `.cmd` shim (npm) only runs through cmd.exe; the native `.exe` runs directly.
+    if (process.platform === 'win32' && ['.cmd', '.bat'].includes(extname(command).toLowerCase())) return { file: env.ComSpec || env.COMSPEC || 'cmd.exe', args: `/d /s /c "${[command, ...args].map(quoteCmdArgument).join(' ')}"`, env, cwd: homedir(), title: profile.label }
+    return { file: command, args, env, cwd: homedir(), title: profile.label }
+  }
+
+  /** Login in a separate terminal window (kept for "Redo login" in the agent editor). */
   login(profileId: string): { started: true } {
     const profile = this.profiles.get(profileId)
-    const env = this.environment(profile)
-    const command = resolveCommand(profile.executablePath || profile.provider, env)
-    // Gemini CLI has no login subcommand: opening the interactive CLI shows the login choice (Google or key); then just exit with /quit.
-    const args = profile.provider === 'codex' ? ['login'] : profile.provider === 'gemini' ? [] : ['auth', 'login']
+    mkdirSync(profile.configDir, { recursive: true })
+    const env = this.environment(profile), command = currentCommand(profile, env), args = loginArgs(profile)
     if (process.platform === 'win32') {
       const child = spawn('cmd.exe', ['/d', '/c', 'start', '', command, ...args], { env, detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
@@ -90,13 +120,7 @@ export class AgentProbeService {
     return { started: true }
   }
 
-  private environment(profile: AgentProfile): NodeJS.ProcessEnv {
-    const env = { ...process.env }
-    if (profile.provider === 'codex') env.CODEX_HOME = profile.configDir
-    else if (profile.provider === 'gemini') env.GEMINI_CLI_HOME = profile.configDir
-    else env.CLAUDE_CONFIG_DIR = profile.configDir
-    return env
-  }
+  private environment(profile: AgentProfile): NodeJS.ProcessEnv { return { ...process.env, ...profileHome(profile) } }
 
   private async authentication(profile: AgentProfile, command: string, env: NodeJS.ProcessEnv): Promise<boolean> {
     // Gemini: logged in = the profile's OAuth credential or an API key enabled for the profile (nothing is executed or consumed here).
@@ -108,6 +132,28 @@ export class AgentProbeService {
       return status.loggedIn === true
     } catch { return false }
   }
+}
+
+/** `args` as text is the raw Windows command line (needed by cmd.exe, which does not accept the usual quoting). */
+export interface CliPlan { file: string; args: string[] | string; env: NodeJS.ProcessEnv; cwd: string; title: string }
+
+// Gemini CLI has no login subcommand: opening the interactive CLI shows the login choice (Google or key); then just exit with /quit.
+const loginArgs = (profile: AgentProfile): string[] => profile.provider === 'codex' ? ['login'] : profile.provider === 'gemini' ? [] : ['auth', 'login']
+
+/** The variable that points the CLI to the profile's own folder (each profile has its own account). */
+const providerUpdateTitle = (provider: 'codex' | 'claude' | 'gemini'): string => provider === 'claude' ? 'claude update' : 'npm install -g'
+
+function profileHome(profile: AgentProfile): NodeJS.ProcessEnv {
+  return profile.provider === 'codex' ? { CODEX_HOME: profile.configDir } : profile.provider === 'gemini' ? { GEMINI_CLI_HOME: profile.configDir } : { CLAUDE_CONFIG_DIR: profile.configDir }
+}
+
+/**
+ * The CLI to run now: looks it up again on each check (an update may have installed a newer copy elsewhere, e.g. npm instead of
+ * the Codex desktop app) and only falls back to the path saved in the profile when the lookup finds nothing.
+ */
+function currentCommand(profile: AgentProfile, env: NodeJS.ProcessEnv): string {
+  const fresh = resolveCommand(profile.provider, env)
+  return isAbsolute(fresh) ? fresh : resolveCommand(profile.executablePath || profile.provider, env)
 }
 
 export function resolveCommand(command: string, env: NodeJS.ProcessEnv): string {
@@ -135,7 +181,8 @@ export function resolveCommand(command: string, env: NodeJS.ProcessEnv): string 
     const roots = [join(npmVendor, 'node_modules', '@openai', 'codex-win32-x64', 'vendor'), join(npmVendor, 'vendor')]
     for (const root of roots) {
       if (!existsSync(root)) continue
-      for (const entry of readdirSync(root)) folders.unshift(join(root, entry, 'codex'))
+      // Current npm package: `vendor/<target>/bin/codex.exe`; older ones: `vendor/<target>/codex/codex.exe`.
+      for (const entry of readdirSync(root)) folders.unshift(join(root, entry, 'codex'), join(root, entry, 'bin'))
     }
   }
   for (const extension of ['.exe', '.cmd', '.bat']) {
