@@ -36,6 +36,7 @@ import { terminal } from './terminalStore'
 import { useDictation } from './useDictation'
 import { useStickToBottom } from './useStickToBottom'
 import { adoptLiveRun, liveDelta, resetLiveRun, type LiveRunRefs } from './liveRun'
+import { listKeyDown, type InputEdit } from './markdownInput'
 import { pop } from './popout'
 import { useT } from './i18n'
 import { useProjectSkills, useSlashSkills } from './SlashSkills'
@@ -222,6 +223,8 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
     } catch (reason) { setError(plainError(reason)) }
   }
   const slashSkill = useSlashSkills({ available, provider, input, setInput, area: mention.ref, choose: (next) => void chooseSkill(next) })
+  /** Markdown list edit in the box (Shift+Enter continues the list, Tab indents): new text and caret. */
+  const applyEdit = (edit: InputEdit): void => { setInput(edit.text); mention.caret(edit.end); slashSkill.caret(edit.end); window.requestAnimationFrame(() => mention.ref.current?.setSelectionRange(edit.start, edit.end)) }
   const deliver = async (prompt: string, queuedFiles?: string[]): Promise<void> => {
     const files = queuedFiles ?? attach.take()
     if (inactive) { setError(c.agentRemoved(inactive.label.replace(' (desativado)', ''))); setInput(replies.restore(prompt)); attach.add(files); return }
@@ -342,7 +345,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
             <ReplyContextCards replies={replies.items} remove={replies.remove} />
           </div>}
           <AttachButton onClick={() => void attach.choose()} />
-          {mention.menu}{slashSkill.menu}<div className="hlwrap"><InputMirror text={input} skillNames={skillNames} area={mention.ref} /><textarea rows={1} aria-label={d.messageToAgent} spellCheck={false} value={input} placeholder={dictation.recording ? d.listening : planning ? c.placeholderPlanning : testing ? c.placeholderTest : c.placeholderExecution} ref={mention.ref} onSelect={(e) => { mention.caret(e.currentTarget.selectionStart); slashSkill.caret(e.currentTarget.selectionStart) }} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart); slashSkill.caret(e.target.selectionStart); slashSkill.reset() }} onKeyDown={(e) => { if (mention.keyDown(e) || slashSkill.keyDown(e)) return; const dropped = dropToken(e, input, skillNames); if (dropped) { e.preventDefault(); setInput(dropped.text); slashSkill.caret(dropped.at); mention.caret(dropped.at); if (dropped.token.kind === 'skill' && skill?.name === dropped.token.word.slice(1)) void chooseSkill(null); window.requestAnimationFrame(() => mention.ref.current?.setSelectionRange(dropped.at, dropped.at)); return }; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} /></div>
+          {mention.menu}{slashSkill.menu}<div className="hlwrap"><InputMirror text={input} skillNames={skillNames} area={mention.ref} /><textarea rows={1} aria-label={d.messageToAgent} spellCheck={false} value={input} placeholder={dictation.recording ? d.listening : planning ? c.placeholderPlanning : testing ? c.placeholderTest : c.placeholderExecution} ref={mention.ref} onSelect={(e) => { mention.caret(e.currentTarget.selectionStart); slashSkill.caret(e.currentTarget.selectionStart) }} onChange={(e) => { setInput(e.target.value); mention.caret(e.target.selectionStart); slashSkill.caret(e.target.selectionStart); slashSkill.reset() }} onKeyDown={(e) => { if (mention.keyDown(e) || slashSkill.keyDown(e)) return; const dropped = dropToken(e, input, skillNames); if (dropped) { e.preventDefault(); setInput(dropped.text); slashSkill.caret(dropped.at); mention.caret(dropped.at); if (dropped.token.kind === 'skill' && skill?.name === dropped.token.word.slice(1)) void chooseSkill(null); window.requestAnimationFrame(() => mention.ref.current?.setSelectionRange(dropped.at, dropped.at)); return }; if (listKeyDown(e, applyEdit)) return; if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send() } }} /></div>
           {dictation.recording && <span className="wave"><i /><i /><i /><i /><i /><i /><i /></span>}
           {busy && <button type="button" className="sendbtn stop tip" data-tip={d.stop} aria-label={d.stop} onClick={() => void stop()}><StopIcon /></button>}<button type="button" className="sendbtn tip" data-tip={busy ? d.queueTip : d.sendTip} aria-label={busy ? d.queue : d.send} hidden={!input.trim() && !replies.items.length && !attach.files.length} onClick={() => void send()}><SendIcon /></button>
           <button type="button" className={`micbtn tip ${dictation.recording ? 'on' : ''}`} data-tip={dictation.recording ? d.stopListening : dictation.transcribing ? d.transcribing : d.dictate} aria-label={d.dictate} aria-pressed={dictation.recording} disabled={dictation.transcribing || !dictation.status} onClick={() => (voiceReady ? void dictation.toggle() : setVoiceSetup(true))}>{dictation.transcribing ? <span className="spin sm" /> : <MicIcon />}</button>
