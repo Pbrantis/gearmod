@@ -10,10 +10,25 @@ let last: ToolVersions | undefined
 export function loadLatest(force = false): Promise<ToolVersions> {
   if (!force && pending) return pending
   const request = force ? window.gearmod.invoke('tools:latest', { force: true }) : window.gearmod.invoke('tools:cached', undefined)
-  pending = request.then((result) => { last = result; listeners.forEach((listener) => listener(result)); return result })
+  pending = request.then((result) => { publish(result); if (!force) refreshIfStale(result); return result })
   void pending.catch(() => { pending = null })
   return pending
 }
+const publish = (result: ToolVersions): void => { last = result; listeners.forEach((listener) => listener(result)) }
+const dayMs = 24 * 60 * 60 * 1000
+let refreshing = false
+/**
+ * The saved result is read first (instant). If it is more than 24 h old (or never existed), asks the main process to query the network in the
+ * background (without `force`, it keeps its own 24 h limit and, offline, returns what it had). This is how the new-version warnings
+ * (Claude, Codex, Spec Kit, Playwright CLI) show up without the user having to click "Check for updates".
+ */
+function refreshIfStale(current: ToolVersions): void {
+  if (refreshing || (current.checkedAt && Date.now() - Date.parse(current.checkedAt) < dayMs)) return
+  refreshing = true
+  void window.gearmod.invoke('tools:latest', { force: false }).then((result) => { pending = Promise.resolve(result); publish(result) }).catch(() => undefined).finally(() => { refreshing = false })
+}
+// An app left open for days also checks again when the window comes back into focus.
+if (typeof window !== 'undefined') window.addEventListener('focus', () => { if (last) refreshIfStale(last) })
 export function useLatestVersions(): ToolVersions | undefined {
   const [value, setValue] = useState(last)
   useEffect(() => { listeners.add(setValue); void loadLatest().then(setValue).catch(() => undefined); return () => { listeners.delete(setValue) } }, [])

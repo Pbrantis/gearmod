@@ -460,6 +460,8 @@ export const settings: typeof source = {
     latestHint: (version: string) => `Newest known: ${version}`,
     newVersion: (version: string) => `New version ${version} available`,
     installVersion: (version: string) => `Install ${version}`,
+    downloadedNewer: (version: string) => `Version ${version} already downloaded`,
+    useVersion: (version: string) => `Use ${version} in this project`,
     checkNewVersion: 'Check for a new version',
     checkingVersion: 'Checking…',
     installing: 'Installing…',

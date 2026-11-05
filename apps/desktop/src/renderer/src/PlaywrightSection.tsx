@@ -23,6 +23,8 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
     void window.gearmod.invoke('playwright:sources', { projectId }).then((found) => { setSources(found); setSourceId((current) => current || found[0]?.id || '') }).catch(() => undefined)
   }, [projectId])
   useEffect(() => { setVersion((current) => current || latest || 'latest') }, [latest])
+  // Tells the gear/tab dot (useToolsPending) that the version in use may have changed.
+  useEffect(() => { if (status) window.dispatchEvent(new CustomEvent('gearmod:playwright-changed', { detail: projectId })) }, [projectId, status?.selected, status?.versions.length])
   const busy = useTasks().some((item) => item.key === `playwright:${projectId}` && item.state === 'running')
   // The dialog shows live progress (the main process log) and can be minimized: the installation continues in the background.
   useEffect(() => {
@@ -48,6 +50,8 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
     setProcessId(id); setProcessOpen(true)
     void promise.catch(() => undefined)
   }
+  // Another project may have already downloaded a newer version (the versions live in the app's folder, shared); here it only needs to be selected.
+  const newerInstalled = status?.selected ? status.versions.map((item) => item.version).filter((item) => isOutdated(status.selected, item)).sort((a, b) => (isOutdated(a, b) ? -1 : 1)).pop() : undefined
   const nodeChip = status ? (status.node.system ? tw.nodeSystem(status.node.system.replace(/^v/, '')) : status.node.managed ? tw.nodeManaged(status.node.managed) : null) : null
   return <div className="cx-wfpanel">
     <section className="cx-wfcard">
@@ -65,7 +69,8 @@ export function PlaywrightSection({ projectId, enabled, toggle, latest }: { proj
       {status.versions.length ? <ul className="pw-versions">{status.versions.map((item) => <li key={item.version} className={item.version === status.selected ? 'on' : ''}>
         <code data-tip={item.path}>v{item.version}</code>
         {item.version === status.selected ? <span className="pw-chip ok"><i aria-hidden="true" />{tw.inUse}</span> : <button type="button" className="mini secondary" disabled={busy} onClick={() => void act(() => window.gearmod.invoke('playwright:select', { projectId, version: item.version }))}>{tw.use}</button>}
-        {item.version === status.selected && latest && isOutdated(item.version, latest) && <><span className="pw-chip warn"><i aria-hidden="true" />{tw.newVersion(latest)}</span><button type="button" className="mini" disabled={busy} onClick={() => { setVersion(latest); void openPicker() }}>{tw.installVersion(latest)}</button></>}
+        {item.version === status.selected && newerInstalled && <><span className="pw-chip warn"><i aria-hidden="true" />{tw.downloadedNewer(newerInstalled)}</span><button type="button" className="mini" disabled={busy} onClick={() => void act(() => window.gearmod.invoke('playwright:select', { projectId, version: newerInstalled }))}>{tw.useVersion(newerInstalled)}</button></>}
+        {item.version === status.selected && !newerInstalled && latest && isOutdated(item.version, latest) && <><span className="pw-chip warn"><i aria-hidden="true" />{tw.newVersion(latest)}</span><button type="button" className="mini" disabled={busy} onClick={() => { setVersion(latest); void openPicker() }}>{tw.installVersion(latest)}</button></>}
         <span className="ch-spacer" />
         <button type="button" className="ibtn tip danger" data-tip={tw.removeVersion(item.version)} aria-label={tw.removeVersion(item.version)} disabled={busy} onClick={() => setRemoving(item.version)}><TrashIcon /></button>
       </li>)}</ul> : <p className="cx-muted">{tw.noVersions}</p>}

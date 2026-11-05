@@ -18,23 +18,32 @@ const cachedStatus = (projectId: string): ToolsStatus | undefined => {
 }
 const saveStatus = (projectId: string, status: ToolsStatus): void => { try { localStorage.setItem(statusKey(projectId), JSON.stringify(status)) } catch { /* cache is just a visual convenience */ } }
 
-/** The gear and the tab share the last result, without waiting for another check when the dialog opens. */
+/** Is the Playwright version in use in this project older than the latest published or one already downloaded? (only if one is installed and selected) */
+async function playwrightOutdated(projectId: string, latest: string | null | undefined): Promise<boolean> {
+  try {
+    const status = await window.gearmod.invoke('playwright:status', { projectId })
+    if (!status.selected) return false
+    // Newer than the one in use: the latest published or one already downloaded (e.g. by another project, since the versions are shared).
+    return [latest ?? null, ...status.versions.map((item) => item.version)].some((candidate) => isOutdated(status.selected, candidate))
+  } catch { return false }
+}
+
+/** The gear and the tab share the last result, without waiting for another check when the dialog opens. They light up for Spec Kit and Playwright CLI. */
 export function useToolsPending(projectId: string): boolean {
   const latest = useLatestVersions(), [state, setState] = useState(() => ({ projectId, pending: pendingByProject.get(projectId) ?? false }))
   useEffect(() => {
     const listen = (id: string, pending: boolean): void => { if (id === projectId) setState({ projectId: id, pending }) }
     pendingListeners.add(listen); setState({ projectId, pending: pendingByProject.get(projectId) ?? false })
-    if (latest) {
-      const key = `${projectId}:${latest.checkedAt}`
-      if (!pendingChecks.has(key)) {
-        const check = Promise.resolve(cachedStatus(projectId)).then((tools) => {
-          const pending = Boolean(tools && isOutdated(tools.specify.version, latest.versions.specify))
-          pendingByProject.set(projectId, pending); pendingListeners.forEach((listener) => listener(projectId, pending))
-        }).catch(() => undefined).finally(() => pendingChecks.delete(key))
-        pendingChecks.set(key, check)
-      }
-    }
-    return () => { pendingListeners.delete(listen) }
+    const compute = (): Promise<void> => Promise.all([Promise.resolve(cachedStatus(projectId)), playwrightOutdated(projectId, latest?.versions.playwright)]).then(([tools, playwright]) => {
+      const pending = Boolean((tools && isOutdated(tools.specify.version, latest?.versions.specify ?? null)) || playwright)
+      pendingByProject.set(projectId, pending); pendingListeners.forEach((listener) => listener(projectId, pending))
+    }).catch(() => undefined)
+    const key = `${projectId}:${latest?.checkedAt}`
+    if (latest && !pendingChecks.has(key)) pendingChecks.set(key, compute().finally(() => pendingChecks.delete(key)))
+    // The Playwright section announces when something was installed, selected or removed: the dot is recalculated at once.
+    const changed = (event: Event): void => { if (latest && (event as CustomEvent<string>).detail === projectId) void compute() }
+    window.addEventListener('gearmod:playwright-changed', changed)
+    return () => { pendingListeners.delete(listen); window.removeEventListener('gearmod:playwright-changed', changed) }
   }, [projectId, latest?.checkedAt])
   return state.projectId === projectId ? state.pending : pendingByProject.get(projectId) ?? false
 }

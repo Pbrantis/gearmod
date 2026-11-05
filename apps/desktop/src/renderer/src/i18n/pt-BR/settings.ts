@@ -459,6 +459,8 @@ export const settings = {
     latestHint: (version: string) => `Mais nova conhecida: ${version}`,
     newVersion: (version: string) => `Nova versão ${version} disponível`,
     installVersion: (version: string) => `Instalar ${version}`,
+    downloadedNewer: (version: string) => `Versão ${version} já baixada`,
+    useVersion: (version: string) => `Usar ${version} neste projeto`,
     checkNewVersion: 'Verificar nova versão',
     checkingVersion: 'Verificando…',
     installing: 'Instalando…',
