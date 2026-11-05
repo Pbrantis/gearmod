@@ -1,7 +1,7 @@
-import { tintIcon } from './brandIcon'
+import { pngToIco, tintIcon } from './brandIcon'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Notification, safeStorage, screen, shell, Tray, utilityProcess, type OpenDialogOptions } from 'electron'
 import { existsSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -147,7 +147,7 @@ const notifier = new Notifier({
   focused: () => BrowserWindow.getAllWindows().some((window) => window.isFocused()),
   show: (notice, onClick) => {
     if (!Notification.isSupported()) return
-    const notification = new Notification({ title: notice.title, body: notice.body, icon: appIcon })
+    const notification = new Notification({ title: notice.title, body: notice.body, icon: brandIcons?.app ?? appIcon })
     shownNotifications.add(notification)  // keeps the reference until click or close, otherwise the system may discard it
     notification.on('click', () => { shownNotifications.delete(notification); onClick() })
     notification.on('close', () => shownNotifications.delete(notification))
@@ -246,6 +246,7 @@ async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Re
     }
   })
   if (!popout) mainWindow = window
+  if (lastTaskbarIcon) window.setAppDetails({ appId: 'dev.gearmod.desktop', appIconPath: lastTaskbarIcon, appIconIndex: 0 })
   window.once('ready-to-show', () => window.show())
   // Without the menu (File, Edit…) its shortcuts go away; in development, F12 / Ctrl+Shift+I opens the devtools and Ctrl+R reloads.
   if (!app.isPackaged) window.webContents.on('before-input-event', (event, input) => {
@@ -258,7 +259,7 @@ async function createWindow(popout?: { target: PopoutTarget; bounds: Electron.Re
   if (!popout) window.on('close', (event) => {
     if (quitting) return
     event.preventDefault(); window.hide()
-    if (!toldHidden && Notification.isSupported()) { toldHidden = true; new Notification({ ...hiddenNotice, icon: appIcon }).show() }
+    if (!toldHidden && Notification.isSupported()) { toldHidden = true; new Notification({ ...hiddenNotice, icon: brandIcons?.app ?? appIcon }).show() }
   })
   // The editor cancels `beforeunload` when there is an unsaved file; without that Electron would just ignore the close (the chat window's X did
   // nothing and "Quit" hung). Here the user chooses: discard and go on, or cancel — and, if a quit is cancelled, nothing has been closed yet.
@@ -395,8 +396,28 @@ function setBrandColor(color: string): void {
   if (brandIcons?.color === color) return
   brandIcons = { color, app: tintIcon(nativeImage.createFromPath(appIcon), color), tray: tintIcon(nativeImage.createFromPath(trayIconPath), color) }
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.setIcon(brandIcons.app)
+  void applyTaskbarIcon(brandIcons.app)
   if (tray && !tray.isDestroyed()) tray.setImage(brandIcons.tray)
 }
+
+/**
+ * Installed app: the taskbar shows the icon of the shortcut with the same AppUserModelID and ignores `win.setIcon`.
+ * Setting the AppUserModelID icon property on each window (a tinted .ico on disk) makes the taskbar follow the theme.
+ */
+async function applyTaskbarIcon(icon: Electron.NativeImage): Promise<void> {
+  if (process.platform !== 'win32' || icon.isEmpty()) return
+  try {
+    const dir = app.getPath('userData')
+    await mkdir(dir, { recursive: true })
+    const file = join(dir, `brand-icon-${Date.now()}.ico`)  // new name per change: Windows caches the icon by path
+    await writeFile(file, pngToIco(icon))
+    for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.setAppDetails({ appId: 'dev.gearmod.desktop', appIconPath: file, appIconIndex: 0 })
+    const previous = lastTaskbarIcon
+    lastTaskbarIcon = file
+    if (previous) setTimeout(() => { void rm(previous, { force: true }) }, 5000)
+  } catch (error) { console.error('Could not set the taskbar icon', error) }
+}
+let lastTaskbarIcon: string | null = null
 
 function createTray(): void {
   const icon = brandIcons?.tray ?? nativeImage.createFromPath(trayIconPath)
