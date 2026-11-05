@@ -15,7 +15,8 @@ describe('isTrustedSender', () => {
 
 describe('isLocalAbsolutePath', () => {
   it('refuses network and relative paths', () => {
-    expect(isLocalAbsolutePath(String.raw`C:\fotos\a.png`)).toBe(true)
+    // A local absolute path looks different on each OS (`C:\...` is relative on Linux).
+    expect(isLocalAbsolutePath(process.platform === 'win32' ? String.raw`C:\fotos\a.png` : '/home/eu/fotos/a.png')).toBe(true)
     expect(isLocalAbsolutePath(String.raw`\\servidor\share\a.png`)).toBe(false)
     expect(isLocalAbsolutePath('//servidor/share/a.png')).toBe(false)
     expect(isLocalAbsolutePath('fotos/a.png')).toBe(false)

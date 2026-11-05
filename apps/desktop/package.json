@@ -1,10 +1,13 @@
 {
   "name": "@gearmod/desktop",
   "version": "0.1.0",
+  "description": "Kanban board that runs AI coding agents on each card",
+  "homepage": "https://github.com/flucassena/gearmod",
   "private": true,
   "license": "PolyForm-Shield-1.0.0",
   "author": {
-    "name": "Francisco Lucas Lima Sena"
+    "name": "Francisco Lucas Lima Sena",
+    "email": "sena.franciscolucas@gmail.com"
   },
   "type": "module",
   "main": "./out/main/index.js",
@@ -19,7 +22,8 @@
     "posttest": "pnpm run rebuild:native",
     "prebuild": "pnpm run rebuild:native",
     "build": "electron-vite build",
-    "dist": "pnpm run build && electron-builder --win nsis"
+    "dist": "pnpm run build && electron-builder --win nsis",
+    "dist:linux": "pnpm run build && electron-builder --linux AppImage deb"
   },
   "dependencies": {
     "@gearmod/contracts": "workspace:*",
@@ -138,6 +142,31 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "artifactName": "GearMod-Setup-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "executableName": "gearmod",
+      "icon": "build/icon.png",
+      "category": "Development",
+      "synopsis": "Kanban board that runs AI coding agents on each card",
+      "maintainer": "Francisco Lucas Lima Sena <sena.franciscolucas@gmail.com>",
+      "artifactName": "GearMod-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "deb": {
+      "artifactName": "GearMod-${version}-${arch}.${ext}"
     }
   }
 }

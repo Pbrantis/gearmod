@@ -618,7 +618,7 @@ export const en: typeof ptBR = {
     memoryDescription: 'Knowledge-graph memory across conversations.',
     sequentialThinkingDescription: 'Step-by-step reasoning for hard problems.',
     postgresDescription: 'Queries a PostgreSQL database (read-only).',
-    postgresNote: 'Replace <string de conexão> with postgresql://user:password@host/database. The string becomes a visible process argument.',
+    postgresNote: 'Replace <string de conexão> with the database URL (postgresql://, with user, password, host and database name). The string becomes a visible process argument.',
     remoteLabel: 'Remote server (HTTP)',
     remoteDescription: 'Any MCP server reachable by URL.',
     remoteNote: 'Enter the server URL and, if needed, the Authorization header.',
@@ -634,5 +634,9 @@ export const en: typeof ptBR = {
   },
   documents: {
     verificationOnlyTasks: (items: string, plural: boolean) => `${items} ${plural ? 'are' : 'is'} only verification (running lint/type-check/tests or confirming something still works). That is not a development task: remove it from Tasks and put it in the "Test plan" section of the Plan (the tester runs it). The automated tests of each task stay as a criterion inside it, and running lint, type-check and the area's tests is the developer's definition of done.`,
+  },
+  linuxTerminal: {
+    notFound: (command: string) => `No terminal emulator was found to open. Open a terminal and run: ${command}`,
+    pressEnter: 'Press Enter to close.',
   },
 }

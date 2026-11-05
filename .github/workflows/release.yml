@@ -1,7 +1,8 @@
 name: Release
 
-# A version tag (e.g. v0.1.0) builds the Windows installer and publishes a Release with it and its SHA-256.
-# The tag version must match apps/desktop/package.json. The installer is not code-signed yet.
+# A version tag (e.g. v0.1.0) builds the Windows installer and the Linux packages (AppImage and deb, x64) and publishes
+# one Release with the three files and a single SHA256SUMS.txt. Nothing is published unless every package builds.
+# The tag version must match apps/desktop/package.json. The packages are not code-signed yet.
 on:
   push:
     tags: ['v*']
@@ -14,9 +15,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  installer:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the app version
+        id: version
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  installer-windows:
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,14 +45,6 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-
-      - name: Tag matches the app version
-        shell: pwsh
-        run: |
-          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
-          if ("v$version" -ne $env:GITHUB_REF_NAME) { throw "Tag $env:GITHUB_REF_NAME does not match apps/desktop/package.json version $version" }
-          "VERSION=$version" | Out-File -Append $env:GITHUB_ENV
-
       - name: Git identity (some tests commit in temporary repositories)
         run: |
           git config --global user.email "ci@example.invalid"
@@ -45,35 +58,117 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      - name: Checksum
+      - name: Installer exists
         shell: pwsh
         run: |
           $exe = "apps/desktop/dist/GearMod-Setup-$env:VERSION-x64.exe"
           if (-not (Test-Path $exe)) { throw "Installer not found: $exe" }
-          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  GearMod-Setup-$env:VERSION-x64.exe" | Out-File -Encoding ascii apps/desktop/dist/SHA256SUMS.txt
-          Get-Content apps/desktop/dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: apps/desktop/dist/GearMod-Setup-${{ env.VERSION }}-x64.exe
+          if-no-files-found: error
+
+  installer-linux:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Git identity (some tests commit in temporary repositories)
+        run: |
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "CI"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      - run: pnpm dist:linux
+
+      - name: Packages exist
+        run: |
+          for file in "GearMod-$VERSION-x86_64.AppImage" "GearMod-$VERSION-amd64.deb"; do
+            [ -f "apps/desktop/dist/$file" ] || { echo "::error::Package not found: $file"; exit 1; }
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: |
+            apps/desktop/dist/GearMod-${{ env.VERSION }}-x86_64.AppImage
+            apps/desktop/dist/GearMod-${{ env.VERSION }}-amd64.deb
+          if-no-files-found: error
+
+  publish:
+    # Runs only when both package jobs succeed, so a Release never goes out with missing files.
+    needs: [version, installer-windows, installer-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Checksum
+        working-directory: release
+        run: |
+          exe="GearMod-Setup-$VERSION-x64.exe"
+          appimage="GearMod-$VERSION-x86_64.AppImage"
+          deb="GearMod-$VERSION-amd64.deb"
+          for file in "$exe" "$appimage" "$deb"; do
+            [ -f "$file" ] || { echo "::error::Missing file: $file"; exit 1; }
+          done
+          sha256sum "$exe" "$appimage" "$deb" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Publish the release
-        shell: pwsh
+        working-directory: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $notes = @"
+          cat > notes.md <<'NOTES'
           ## Download
 
-          Download **GearMod-Setup-$env:VERSION-x64.exe** below and run it. Windows 10 or 11 (x64) only.
+          ### Windows
 
-          The installer is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Click **More info** and then **Run anyway**. You can check the download against ``SHA256SUMS.txt`` with:
+          Download **GearMod-Setup-@VERSION@-x64.exe** below and run it. Windows 10 or 11 (x64).
 
-          ``````powershell
-          Get-FileHash .\GearMod-Setup-$env:VERSION-x64.exe -Algorithm SHA256
-          ``````
-          "@
-          $extra = @()
-          if ($env:VERSION -match '-') { $extra += '--prerelease' }
-          gh release create $env:GITHUB_REF_NAME `
-            "apps/desktop/dist/GearMod-Setup-$env:VERSION-x64.exe" `
-            apps/desktop/dist/SHA256SUMS.txt `
-            --title "GearMod $env:VERSION" --notes $notes --generate-notes @extra
-          if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)" }
+          The installer is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC". Click **More info** and then **Run anyway**. You can check the download against `SHA256SUMS.txt` with:
+
+          ```powershell
+          Get-FileHash .\GearMod-Setup-@VERSION@-x64.exe -Algorithm SHA256
+          ```
+
+          ### Linux (x64)
+
+          - **Debian, Ubuntu and derivatives:** download **GearMod-@VERSION@-amd64.deb** and install it with `sudo apt install ./GearMod-@VERSION@-amd64.deb`. GearMod shows up in the applications menu.
+          - **Any distribution:** download **GearMod-@VERSION@-x86_64.AppImage**, then run `chmod +x GearMod-@VERSION@-x86_64.AppImage && ./GearMod-@VERSION@-x86_64.AppImage`. If it complains about FUSE, install `libfuse2` (`sudo apt install libfuse2t64` on Ubuntu 24.04, `libfuse2` on 22.04) or run it with `--appimage-extract-and-run`.
+
+          Check the downloads against `SHA256SUMS.txt` with:
+
+          ```sh
+          sha256sum -c SHA256SUMS.txt --ignore-missing
+          ```
+
+          To save secrets (API keys, tokens), GearMod needs a keyring: gnome-keyring or KWallet.
+          NOTES
+          sed -i "s/@VERSION@/$VERSION/g" notes.md
+          extra=()
+          if [[ "$VERSION" == *-* ]]; then extra+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" \
+            "GearMod-Setup-$VERSION-x64.exe" \
+            "GearMod-$VERSION-x86_64.AppImage" \
+            "GearMod-$VERSION-amd64.deb" \
+            SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "GearMod $VERSION" --notes-file notes.md --generate-notes "${extra[@]}"

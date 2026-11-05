@@ -22,7 +22,11 @@ const baselineAllowlist = [
   'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'SHELL', 'EDITOR', 'TERM', 'COLORTERM', 'FORCE_COLOR', 'CI',
   'NODE_OPTIONS', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
   'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'ALL_PROXY',
-  'DISPLAY', 'WSLENV', 'ELECTRON_RUN_AS_NODE'
+  'DISPLAY', 'WSLENV', 'ELECTRON_RUN_AS_NODE',
+  // Linux desktop session: without these, `xdg-open` cannot open the browser for the CLI login (Wayland/X11, D-Bus, desktop).
+  'USER', 'LOGNAME', 'LANGUAGE', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS',
+  'XDG_CURRENT_DESKTOP', 'XDG_SESSION_TYPE', 'XDG_SESSION_DESKTOP', 'DESKTOP_SESSION', 'XDG_DATA_DIRS', 'XDG_CONFIG_DIRS',
+  'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME', 'BROWSER'
 ]
 const baselineSet = new Set(baselineAllowlist)
 /** Never pass, declared or not: the agent's shell must not inherit access to Docker Engine by accident (docs/07 §7). */

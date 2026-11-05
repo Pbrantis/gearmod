@@ -8,6 +8,7 @@ import { readAccountEmail } from './account'
 import { applyEnvPolicy } from './env-policy'
 import type { ProfileRepository } from './projects'
 import { tm } from './i18n'
+import { openInTerminal } from './linux-terminal'
 
 const exec = promisify(execFile)
 export interface CommandRunner { run(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string }> }
@@ -20,8 +21,16 @@ const systemRunner: CommandRunner = { async run(command, args, env) {
   return exec(executable, args, { env, timeout: 10_000, windowsHide: true })
 } }
 
+/** How install/update/login open a terminal: `cmd` on Windows, a terminal emulator window elsewhere. Injectable for tests. */
+export interface TerminalLaunch {
+  platform: NodeJS.Platform
+  spawn: typeof spawn
+  openInTerminal: typeof openInTerminal
+}
+const systemLaunch: TerminalLaunch = { platform: process.platform, spawn, openInTerminal }
+
 export class AgentProbeService {
-  constructor(private readonly profiles: ProfileRepository, private readonly runner: CommandRunner = systemRunner) {}
+  constructor(private readonly profiles: ProfileRepository, private readonly runner: CommandRunner = systemRunner, private readonly launch: TerminalLaunch = systemLaunch) {}
 
   async probe(profileId: string): Promise<AgentProbe> {
     const profile = this.profiles.list().find((item) => item.id === profileId)
@@ -51,12 +60,11 @@ export class AgentProbeService {
 
   installProvider(provider: 'codex' | 'claude' | 'gemini'): { started: true } {
     const packageName = provider === 'codex' ? '@openai/codex@latest' : provider === 'gemini' ? '@google/gemini-cli@latest' : '@anthropic-ai/claude-code@latest'
-    if (process.platform === 'win32') {
-      const child = spawn('cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe', '/k', 'npm', 'install', '-g', packageName], { detached: true, stdio: 'ignore', windowsHide: true })
+    if (this.launch.platform === 'win32') {
+      const child = this.launch.spawn('cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe', '/k', 'npm', 'install', '-g', packageName], { detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
     } else {
-      const child = spawn('npm', ['install', '-g', packageName], { detached: true, stdio: 'ignore' })
-      child.unref()
+      this.launch.openInTerminal('npm', ['install', '-g', packageName], process.env)
     }
     return { started: true }
   }
@@ -64,8 +72,8 @@ export class AgentProbeService {
   /** Updates the agent CLI in a terminal opened for the user to follow: `claude update` (works for native and npm installs) or Codex's npm. */
   updateProvider(provider: 'codex' | 'claude' | 'gemini'): { started: true } {
     const command = provider === 'claude' ? ['claude', 'update'] : provider === 'gemini' ? ['npm', 'install', '-g', '@google/gemini-cli@latest'] : ['npm', 'install', '-g', '@openai/codex@latest']
-    if (process.platform === 'win32') spawn('cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe', '/k', ...command], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
-    else spawn(command[0]!, command.slice(1), { detached: true, stdio: 'ignore' }).unref()
+    if (this.launch.platform === 'win32') this.launch.spawn('cmd.exe', ['/d', '/c', 'start', '', 'cmd.exe', '/k', ...command], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    else this.launch.openInTerminal(command[0]!, command.slice(1), process.env)
     return { started: true }
   }
 
@@ -110,12 +118,11 @@ export class AgentProbeService {
     const profile = this.profiles.get(profileId)
     mkdirSync(profile.configDir, { recursive: true })
     const env = this.environment(profile), command = currentCommand(profile, env), args = loginArgs(profile)
-    if (process.platform === 'win32') {
-      const child = spawn('cmd.exe', ['/d', '/c', 'start', '', command, ...args], { env, detached: true, stdio: 'ignore', windowsHide: true })
+    if (this.launch.platform === 'win32') {
+      const child = this.launch.spawn('cmd.exe', ['/d', '/c', 'start', '', command, ...args], { env, detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
     } else {
-      const child = spawn(command, args, { env, detached: true, stdio: 'ignore' })
-      child.unref()
+      this.launch.openInTerminal(command, args, env)
     }
     return { started: true }
   }

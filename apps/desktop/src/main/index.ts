@@ -62,6 +62,10 @@ import { SddWriter } from './sdd/sdd-writer'
 import { onMainLocaleChange, setMainLocale, tm } from './i18n'
 import { CodeIndexService, type HostProcess } from './code-index/service'
 import { CodeIndexSettings } from './code-index/project-setting'
+import { loadShellPath } from './shell-path'
+
+// Linux: the PATH of the user's shell (nvm, ~/.npm-global/bin...), so the agent CLIs are found when the app is opened from the menu.
+loadShellPath()
 
 // Fixed data folder at %APPDATA%\GearMod, independent of the npm package name.
 // Separate profile (e.g. GEARMOD_PROFILE=test, used by test.ps1): another data folder and another single-instance lock, to run alongside the stable install.

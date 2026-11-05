@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AgentProbeService, resolveCommand, type CommandRunner } from './agents'
+import { AgentProbeService, resolveCommand, type CommandRunner, type TerminalLaunch } from './agents'
 import { AppDatabase } from './database'
 import { ProfileRepository } from './projects'
 import { seedProfiles } from './test-helpers'
@@ -30,9 +30,11 @@ describe('AgentProbeService', () => {
     const root = await mkdtemp(join(tmpdir(), 'gearmod-probe-')); roots.push(root)
     const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
     const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
-    const runner: CommandRunner = { async run() { throw new Error('spawn failed with sk-secret-value') } }
+    // Built at runtime so the fake key does not look like a real secret in the source.
+    const fakeKey = ['sk', 'fake', 'value'].join('-')
+    const runner: CommandRunner = { async run() { throw new Error(`spawn failed with ${fakeKey}`) } }
     const result = await new AgentProbeService(profiles, runner).probe(profiles.list()[0]!.id)
-    expect(result.installed).toBe(false); expect(result.authenticated).toBe(false); expect(result.error).not.toContain('sk-secret-value')
+    expect(result.installed).toBe(false); expect(result.authenticated).toBe(false); expect(result.error).not.toContain(fakeKey)
     database.close()
   })
 
@@ -98,3 +100,68 @@ describe('AgentProbeService', () => {
   })
 })
 
+describe('AgentProbeService terminals', () => {
+  const noRunner: CommandRunner = { async run() { throw new Error('not used') } }
+  function fakeLaunch(platform: NodeJS.Platform): TerminalLaunch & { spawned: Array<{ command: string; args: string[]; env?: NodeJS.ProcessEnv }>; opened: Array<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> } {
+    const spawned: Array<{ command: string; args: string[]; env?: NodeJS.ProcessEnv }> = []
+    const opened: Array<{ command: string; args: string[]; env: NodeJS.ProcessEnv }> = []
+    return {
+      platform, spawned, opened,
+      spawn: ((command: string, args: string[], options: { env?: NodeJS.ProcessEnv }) => { spawned.push({ command, args, env: options.env }); return { unref() {} } }) as unknown as TerminalLaunch['spawn'],
+      openInTerminal: (command, args, env = process.env) => { opened.push({ command, args, env }) },
+    }
+  }
+  async function setup(): Promise<{ profiles: ProfileRepository; close: () => void }> {
+    const root = await mkdtemp(join(tmpdir(), 'gearmod-launch-')); roots.push(root)
+    const database = new AppDatabase(join(root, 'db.sqlite'), '0.1.0'); await database.open()
+    const profiles = new ProfileRepository(database, root); seedProfiles(profiles)
+    return { profiles, close: () => database.close() }
+  }
+
+  it('opens install, update and login in a terminal window on Linux', async () => {
+    const { profiles, close } = await setup()
+    const launch = fakeLaunch('linux')
+    const service = new AgentProbeService(profiles, noRunner, launch)
+    service.installProvider('codex')
+    service.updateProvider('claude')
+    service.updateProvider('gemini')
+    const claude = profiles.list().find((item) => item.provider === 'claude')!
+    service.login(claude.id)
+    expect(launch.spawned).toEqual([])
+    expect(launch.opened.map(({ command, args }) => ({ command, args }))).toEqual([
+      { command: 'npm', args: ['install', '-g', '@openai/codex@latest'] },
+      { command: 'claude', args: ['update'] },
+      { command: 'npm', args: ['install', '-g', '@google/gemini-cli@latest'] },
+      { command: resolveCommand(claude.executablePath || claude.provider, launch.opened[3]!.env), args: ['auth', 'login'] },
+    ])
+    // The login runs with the profile's isolated config directory.
+    expect(launch.opened[3]!.env.CLAUDE_CONFIG_DIR).toBe(claude.configDir)
+    close()
+  })
+
+  it('lets the no-terminal error reach the caller on Linux', async () => {
+    const { profiles, close } = await setup()
+    const launch = fakeLaunch('linux')
+    launch.openInTerminal = () => { throw new Error('sem terminal') }
+    expect(() => new AgentProbeService(profiles, noRunner, launch).installProvider('claude')).toThrow('sem terminal')
+    close()
+  })
+
+  it('keeps using cmd.exe on Windows', async () => {
+    const { profiles, close } = await setup()
+    const launch = fakeLaunch('win32')
+    const service = new AgentProbeService(profiles, noRunner, launch)
+    service.installProvider('claude')
+    service.updateProvider('claude')
+    const codex = profiles.list().find((item) => item.provider === 'codex')!
+    service.login(codex.id)
+    expect(launch.opened).toEqual([])
+    expect(launch.spawned.map(({ command, args }) => ({ command, args }))).toEqual([
+      { command: 'cmd.exe', args: ['/d', '/c', 'start', '', 'cmd.exe', '/k', 'npm', 'install', '-g', '@anthropic-ai/claude-code@latest'] },
+      { command: 'cmd.exe', args: ['/d', '/c', 'start', '', 'cmd.exe', '/k', 'claude', 'update'] },
+      { command: 'cmd.exe', args: ['/d', '/c', 'start', '', resolveCommand(codex.executablePath || codex.provider, launch.spawned[2]!.env!), 'login'] },
+    ])
+    expect(launch.spawned[2]!.env!.CODEX_HOME).toBe(codex.configDir)
+    close()
+  })
+})

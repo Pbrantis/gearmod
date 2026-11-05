@@ -48,8 +48,12 @@ jobs:
           exit "$bad"
 
   check:
-    # The app is Windows-only (node-pty, NSIS), and the Git/shell tests run on the same OS as the product.
-    runs-on: windows-latest
+    # The app ships for Windows (NSIS) and Linux (AppImage, deb): the Git/shell tests run on both, like the product.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -87,4 +91,25 @@ jobs:
         with:
           name: GearMod-Setup
           path: apps/desktop/dist/GearMod-Setup-*.exe
+          if-no-files-found: error
+
+  installer-linux:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm dist:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GearMod-Linux
+          path: |
+            apps/desktop/dist/GearMod-*.AppImage
+            apps/desktop/dist/GearMod-*.deb
           if-no-files-found: error

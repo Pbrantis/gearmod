@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/flucassena/gearmod/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/flucassena/gearmod/actions/workflows/ci.yml)
 [![License: PolyForm Shield 1.0.0](https://img.shields.io/badge/license-PolyForm%20Shield%201.0.0-555)](LICENSE.md)
-![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-555)
+![Platform: Windows 10/11 and Linux x64](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011%20%7C%20Linux%20x64-555)
 
 **English** · [Português](README.pt-BR.md)
 
@@ -52,11 +52,11 @@ Everything runs on your machine. GearMod drives the agent CLIs you already use a
 ## Install
 
 **Requirements**
-- Windows 10 or 11, 64-bit. Other platforms are not supported yet.
+- Windows 10 or 11, 64-bit, or Linux x64 with a desktop (tested on Ubuntu 22.04 and newer). macOS is not supported yet.
 - [Git](https://git-scm.com/downloads).
 - At least one agent CLI, installed and signed in: [Claude Code](https://docs.claude.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex).
 
-**Steps**
+**Steps on Windows**
 1. Open the [latest release](https://github.com/flucassena/gearmod/releases/latest) and download `GearMod-Setup-<version>-x64.exe`.
 2. Run the installer. It installs for your user only and does not need administrator rights.
 3. The installer is not code-signed yet, so Windows SmartScreen may show **"Windows protected your PC"**. Click **More info** and then **Run anyway**.
@@ -69,6 +69,34 @@ Get-FileHash .\GearMod-Setup-<version>-x64.exe -Algorithm SHA256
 ```
 
 To update, install the new version over the old one; your data is kept. To uninstall, use **Settings › Apps** in Windows. Uninstalling does not delete your data.
+
+**Steps on Linux (x64)**
+
+The [latest release](https://github.com/flucassena/gearmod/releases/latest) has two Linux packages; pick one.
+
+- **`.deb` (Debian, Ubuntu and derivatives):** download `GearMod-<version>-amd64.deb` and install it with:
+
+  ```sh
+  sudo apt install ./GearMod-<version>-amd64.deb
+  ```
+
+  GearMod shows up in the applications menu. To update, install the new `.deb` the same way; to uninstall, run `sudo apt remove gearmod`.
+- **AppImage (any distribution):** download `GearMod-<version>-x86_64.AppImage` and run:
+
+  ```sh
+  chmod +x GearMod-<version>-x86_64.AppImage
+  ./GearMod-<version>-x86_64.AppImage
+  ```
+
+  If it fails with an error about FUSE (`libfuse.so.2`), install `libfuse2` (`sudo apt install libfuse2t64` on Ubuntu 24.04, `sudo apt install libfuse2` on 22.04) or start it with `./GearMod-<version>-x86_64.AppImage --appimage-extract-and-run`.
+
+To check the download, put it in the same folder as `SHA256SUMS.txt` from the same release and run:
+
+```sh
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
+GearMod stores secrets (API keys, tokens) in the system keyring, so Linux needs **gnome-keyring** or **KWallet** running. Without one, GearMod still opens, but it refuses to save secrets and says why. Signing in, installing or updating an agent CLI opens a terminal window (your `$TERMINAL`, or the first of `x-terminal-emulator`, GNOME Terminal, Konsole, Xfce Terminal, kitty, Alacritty and xterm found).
 
 ## Quick start
 
@@ -208,7 +236,7 @@ Card ──► Git worktree + branch ──► Agent CLI (Claude Code / Codex)
 
 ## Your data
 
-Everything lives on your machine, under `%APPDATA%\GearMod`: the SQLite database, attachments, backups and card worktrees. GearMod itself sends nothing anywhere. Optional features reach the network only when you turn them on; [SECURITY.md](SECURITY.md) lists them.
+Everything lives on your machine, under `%APPDATA%\GearMod` on Windows or `~/.config/GearMod` on Linux: the SQLite database, attachments, backups and card worktrees. GearMod itself sends nothing anywhere. Optional features reach the network only when you turn them on; [SECURITY.md](SECURITY.md) lists them.
 
 GearMod is **not a sandbox**: agents run with your user's permissions, within the permission mode you choose. Read [SECURITY.md](SECURITY.md) for what is and isn't promised.
 

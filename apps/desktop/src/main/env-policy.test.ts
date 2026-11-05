@@ -67,6 +67,13 @@ describe('applyEnvPolicy (enforce by default)', () => {
   })
 })
 
+describe('buildEnv on the Linux desktop', () => {
+  it('keeps the session variables the CLI login needs to open the browser', () => {
+    const linux: NodeJS.ProcessEnv = { PATH: '/usr/bin', HOME: '/home/ana', WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', XAUTHORITY: '/run/user/1000/.Xauth', XDG_RUNTIME_DIR: '/run/user/1000', DBUS_SESSION_BUS_ADDRESS: 'unix:path=/run/user/1000/bus', XDG_CURRENT_DESKTOP: 'GNOME', BROWSER: 'firefox' }
+    expect(buildEnv({ envPassthrough: [] }, linux, 'enforce').env).toEqual(linux)
+  })
+})
+
 describe('smoke test with simulated adapters', () => {
   it('existing profiles with the API key in the environment keep working in enforce only if declared', () => {
     const legacyProfile = { envPassthrough: [] as string[] } // profile from before S07, with nothing declared

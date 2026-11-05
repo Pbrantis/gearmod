@@ -10,7 +10,7 @@
 
 [![CI](https://github.com/flucassena/gearmod/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/flucassena/gearmod/actions/workflows/ci.yml)
 [![Licença: PolyForm Shield 1.0.0](https://img.shields.io/badge/licen%C3%A7a-PolyForm%20Shield%201.0.0-555)](LICENSE.md)
-![Plataforma: Windows 10/11](https://img.shields.io/badge/plataforma-Windows%2010%20%7C%2011-555)
+![Plataforma: Windows 10/11 e Linux x64](https://img.shields.io/badge/plataforma-Windows%2010%20%7C%2011%20%7C%20Linux%20x64-555)
 
 [English](README.md) · **Português**
 
@@ -52,11 +52,11 @@ Tudo roda na sua máquina. O GearMod usa as CLIs de agente que você já tem e n
 ## Instalação
 
 **Requisitos**
-- Windows 10 ou 11, 64 bits. Outras plataformas ainda não são suportadas.
+- Windows 10 ou 11, 64 bits, ou Linux x64 com ambiente gráfico (testado no Ubuntu 22.04 ou mais novo). O macOS ainda não é suportado.
 - [Git](https://git-scm.com/downloads).
 - Pelo menos uma CLI de agente instalada e logada: [Claude Code](https://docs.claude.com/en/docs/claude-code) ou [Codex](https://github.com/openai/codex).
 
-**Passos**
+**Passos no Windows**
 1. Abra a [última versão](https://github.com/flucassena/gearmod/releases/latest) e baixe o `GearMod-Setup-<versão>-x64.exe`.
 2. Rode o instalador. Ele instala só para o seu usuário e não precisa de administrador.
 3. O instalador ainda não é assinado, então o SmartScreen do Windows pode mostrar **"O Windows protegeu o computador"**. Clique em **Mais informações** e depois em **Executar assim mesmo**.
@@ -69,6 +69,34 @@ Get-FileHash .\GearMod-Setup-<versão>-x64.exe -Algorithm SHA256
 ```
 
 Para atualizar, instale a versão nova por cima da antiga; seus dados continuam. Para desinstalar, use **Configurações › Aplicativos** do Windows. Desinstalar não apaga seus dados.
+
+**Passos no Linux (x64)**
+
+A [última versão](https://github.com/flucassena/gearmod/releases/latest) traz dois pacotes para Linux; escolha um.
+
+- **`.deb` (Debian, Ubuntu e derivados):** baixe o `GearMod-<versão>-amd64.deb` e instale com:
+
+  ```sh
+  sudo apt install ./GearMod-<versão>-amd64.deb
+  ```
+
+  O GearMod aparece no menu de aplicativos. Para atualizar, instale o `.deb` novo do mesmo jeito; para desinstalar, rode `sudo apt remove gearmod`.
+- **AppImage (qualquer distribuição):** baixe o `GearMod-<versão>-x86_64.AppImage` e rode:
+
+  ```sh
+  chmod +x GearMod-<versão>-x86_64.AppImage
+  ./GearMod-<versão>-x86_64.AppImage
+  ```
+
+  Se der erro de FUSE (`libfuse.so.2`), instale o `libfuse2` (`sudo apt install libfuse2t64` no Ubuntu 24.04, `sudo apt install libfuse2` no 22.04) ou abra com `./GearMod-<versão>-x86_64.AppImage --appimage-extract-and-run`.
+
+Para conferir o download, deixe-o na mesma pasta do `SHA256SUMS.txt` da mesma versão e rode:
+
+```sh
+sha256sum -c SHA256SUMS.txt --ignore-missing
+```
+
+O GearMod guarda segredos (chaves de API, tokens) no cofre do sistema, então o Linux precisa do **gnome-keyring** ou do **KWallet** rodando. Sem um deles, o GearMod abre, mas recusa salvar segredos e explica o motivo. Entrar, instalar ou atualizar uma CLI de agente abre uma janela de terminal (o seu `$TERMINAL`, ou o primeiro encontrado entre `x-terminal-emulator`, GNOME Terminal, Konsole, Xfce Terminal, kitty, Alacritty e xterm).
 
 ## Primeiros passos
 
@@ -209,7 +237,7 @@ Card ──► Worktree Git + branch ──► CLI do agente (Claude Code / Code
 
 ## Seus dados
 
-Tudo fica na sua máquina, em `%APPDATA%\GearMod`: o banco SQLite, os anexos, os backups e as worktrees dos cards. O GearMod não envia nada para lugar nenhum. Recursos opcionais só usam a rede quando você os liga; o [SECURITY.md](SECURITY.md) lista quais são.
+Tudo fica na sua máquina, em `%APPDATA%\GearMod` no Windows ou `~/.config/GearMod` no Linux: o banco SQLite, os anexos, os backups e as worktrees dos cards. O GearMod não envia nada para lugar nenhum. Recursos opcionais só usam a rede quando você os liga; o [SECURITY.md](SECURITY.md) lista quais são.
 
 O GearMod **não é uma sandbox**: os agentes rodam com as permissões do seu usuário, dentro do modo de permissão escolhido. Leia o [SECURITY.md](SECURITY.md) para ver o que é e o que não é garantido.
 

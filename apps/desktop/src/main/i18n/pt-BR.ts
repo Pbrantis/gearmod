@@ -617,7 +617,7 @@ export const ptBR = {
     memoryDescription: 'Memória em grafo de conhecimento entre conversas.',
     sequentialThinkingDescription: 'Raciocínio em etapas para problemas difíceis.',
     postgresDescription: 'Consulta um banco PostgreSQL (somente leitura).',
-    postgresNote: 'Troque <string de conexão> por postgresql://usuário:senha@host/banco. A string vira argumento visível do processo.',
+    postgresNote: 'Troque <string de conexão> pela URL do banco (postgresql://, com usuário, senha, host e nome do banco). A string vira argumento visível do processo.',
     remoteLabel: 'Servidor remoto (HTTP)',
     remoteDescription: 'Qualquer servidor MCP acessível por URL.',
     remoteNote: 'Informe a URL do servidor e, se precisar, o cabeçalho Authorization.',
@@ -633,5 +633,9 @@ export const ptBR = {
   },
   documents: {
     verificationOnlyTasks: (items: string, plural: boolean) => `${items} ${plural ? 'são' : 'é'} só verificação (rodar lint/type-check/testes ou confirmar que algo continua funcionando). Isso não é task de desenvolvimento: tire do Tasks e ponha na seção "Plano de testes" do Plano (o testador executa). Os testes automatizados de cada task ficam como critério dentro dela, e rodar lint, type-check e os testes da área é a regra de pronto do desenvolvedor.`,
+  },
+  linuxTerminal: {
+    notFound: (command: string) => `Não achei um emulador de terminal para abrir. Abra um terminal e rode: ${command}`,
+    pressEnter: 'Pressione Enter para fechar.',
   },
 }
