@@ -1,74 +1,90 @@
-# Constituição do GearMod
+# Constituição — GearMod
 
-**Versão:** 1.0.0 · **Ratificada em:** 2026-10-30
+App desktop Electron (Windows 10/11, 64 bits) que entrega cards de um kanban a agentes de programação (Claude Code, Codex, Gemini), cada card na sua worktree Git. Monorepo pnpm em TypeScript strict: `apps/desktop` (main em `src/main`, preload em `src/preload`, renderer React em `src/renderer/src`) e `packages/contracts` (tipos e esquemas Zod compartilhados). Estas regras protegem a fronteira de segurança entre a interface, o sistema e os agentes, os dados do usuário e a consistência da interface.
 
-Princípios que valem para todo card. Detalhes de uma feature ficam na Especificação dela; comandos e convenções de trabalho ficam no `CLAUDE.md`.
+## Princípios
 
-Os componentes citados estão em `apps/desktop/src/renderer/src/`.
+### I. Renderer só fala com o main pelo contrato Zod (inegociável)
+- O renderer **DEVE** chamar o main só por `window.gearmod.invoke` (e `onRunEvent`), com o canal declarado em `ipcContracts` de `@gearmod/contracts`.
+- **NÃO DEVE** usar `ipcRenderer`, `require('electron')` ou módulos do Node no renderer. As janelas **DEVEM** manter `contextIsolation: true`, `nodeIntegration: false` e `sandbox: true`.
+- Canal novo **DEVE** ter entrada e saída em Zod (`.strict()` nos objetos, limites em strings e listas) e teste no main.
+- Caminho vindo do renderer **DEVE** passar pelas checagens do main (`allowedPath`, `trashablePath`) antes de ler, escrever ou apagar.
 
----
+**Por quê:** o contrato é o que confere os dois lados e impede que a interface (que mostra conteúdo de agentes) acesse o sistema direto.
 
-## I. Diálogos seguem um formato só
+### II. Agentes recebem o mínimo e nunca veem segredos (inegociável)
+- O ambiente de processo de agente **DEVE** ser montado por `buildEnv` (`env-policy.ts`). **NÃO DEVE** repassar `process.env` inteiro.
+- Segredo (token, senha, chave) **DEVE** ficar no `SecretStore` (armazenamento criptografado do sistema). **NÃO DEVE** ir para o SQLite, para logs ou para o contexto do agente.
+- Texto de agente ou de comando que vai para disco, log ou tela **DEVE** passar por `redact`.
+- Commit feito por agente **DEVE** passar pela verificação de segredos (`secret-scan.ts`).
+- Ação arriscada pedida por agente **DEVE** passar pelo `ApprovalService`.
 
-- **DEVE** usar `ConfirmDialog` para pedir confirmação e `NoticeDialog` para avisar algo com um botão só.
-- **NÃO DEVE** usar `window.confirm`, `window.alert` ou `window.prompt`.
-- Todo modal **DEVE** ter a estrutura `.overlay > .modal`, com `role="dialog"` (ou `role="alertdialog"` para confirmação e aviso) e `aria-label`.
-- Todo modal **DEVE** ter `header` com `.eyebrow` (o contexto, ex.: "Excluir card") e `h2` (o título), e os botões no rodapé em `.actions`.
-- Em `.actions` a ordem **DEVE** ser: Cancelar (`.secondary`) primeiro, ação principal por último. Ação destrutiva **DEVE** usar `.danger` (`.danger.solid` quando for o botão principal).
-- Todo modal **DEVE** fechar com Esc (Esc cancela, nunca confirma). O handler de Esc **DEVE** parar a propagação, para não fechar o que estiver por trás.
-- **Por quê:** o diálogo nativo do Electron não segue o tema, trava a janela e mostra o título do app; e cada modal feito à mão acabava com um comportamento de teclado diferente.
+**Por quê:** o agente roda código no computador do usuário; vazar uma credencial ou deixar o agente agir sem permissão não tem volta.
 
-## II. Campos de formulário usam os componentes do app
-
-- Lista de escolha **DEVE** usar `Select` (uma opção) ou `MultiSelect` (várias). **NÃO DEVE** usar `<select>` nativo.
-- Caixa de seleção **DEVE** usar `Checkbox`. **NÃO DEVE** haver `<input type="checkbox">` solto, sem o visual do app.
-- Liga/desliga **DEVE** usar o padrão de interruptor (`label.autosave > input[type=checkbox][role=switch] + span.sw`), por um componente compartilhado quando ele existir.
-- Escolha exclusiva entre poucas opções descritas **DEVE** usar linhas `.ck-line.pickrow` (como em `GitSetup`).
-- Campo de texto **DEVE** usar a classe `in`, e o rótulo **DEVE** envolver o campo (`label.f`) ou ligar-se a ele por `aria-label`.
-- **Por quê:** os controles nativos ignoram o tema (escuro e claro) e cada um aparece de um jeito no Windows; com um componente só, ajustar o visual é um lugar só.
-
-## III. Dica de botão é `data-tip`
-
-- Dica ao passar o mouse **DEVE** usar o atributo `data-tip`, que o `TooltipLayer` mostra.
-- **NÃO DEVE** usar o atributo `title` nativo em elementos HTML. (A prop `title` de componentes como `ConfirmDialog` não é dica e não entra nesta regra.)
-- Botão só com ícone **DEVE** ter `data-tip` e `aria-label` dizendo o que ele faz.
-- **Por quê:** o `title` nativo demora, não segue o tema e sai em lugar diferente do tooltip do app; misturar os dois deixa a interface inconsistente.
-
-## IV. Cores vêm do tema
-
-- Cores **DEVEM** vir das variáveis do `prototype.css` (`--text`, `--muted`, `--surface*`, `--border`, `--accent*`, `--danger`…) ou das classes que já as usam.
-- **NÃO DEVE** haver cor fixa (`#hex`, `rgb()`) em `style` inline nos `.tsx`. Exceção: dados que são a própria cor (paleta de agentes, amostras de tema, cor escolhida pelo usuário).
-- Regra nova de CSS com cor fixa **DEVE** ter a variante do tema claro (`:root[data-theme="light"]`).
-- **Por quê:** o app tem tema claro e vários acentos; uma cor fixa some ou fica ilegível quando o tema muda.
-
-## V. Erro aparece para o usuário em português simples
-
-- Falha de uma ação que o usuário pediu **DEVE** aparecer para ele: `toast.error` ou mensagem no próprio diálogo, com o texto passado por `plainError`.
-- **NÃO DEVE** engolir o erro de uma ação do usuário com `catch(() => undefined)`. Engolir só é aceito em leituras de fundo opcionais (ex.: carregar um selo, uma contagem).
-- **NÃO DEVE** mostrar `String(error)` cru (com "Error invoking remote method…").
-- **Por quê:** clicar e nada acontecer é o pior caso; e a mensagem técnica do Electron não diz nada ao usuário.
-
-## VI. Toda a interface é em português do Brasil
-
-- Texto visível, dicas, `aria-label`, mensagens de erro e de confirmação **DEVEM** estar em pt-BR, sem jargão desnecessário. Termos consagrados do Git e das ferramentas (commit, branch, worktree, pull request) podem ficar em inglês.
-- Botão de confirmação **DEVE** dizer a ação ("Excluir", "Descartar", "Enviar"), não "OK" ou "Sim".
-- **Por quê:** o público do app fala português; e um botão com o verbo deixa claro o que vai acontecer antes do clique.
-
-## VII. Renderer só fala com o main pelo contrato
-
-- O renderer **DEVE** chamar o main só por `window.gearmod.invoke`, com o canal tipado em `@gearmod/contracts`. **NÃO DEVE** usar `ipcRenderer`, `require('electron')` ou Node direto.
-- Canal novo **DEVE** ter o tipo de entrada e saída no contrato e teste no main.
-- **Por quê:** o contrato é o que mantém os dois lados conferidos pelo TypeScript e o renderer isolado do sistema.
-
-## VIII. Nada se perde sem querer
-
-- Excluir arquivo ou pasta do usuário **DEVE** mandar para a Lixeira (`shell.trashItem`). **NÃO DEVE** apagar em definitivo o que é do usuário. (Pastas temporárias do próprio app podem ser apagadas.)
+### III. Nada do usuário se perde sem querer (inegociável)
+- Excluir arquivo ou pasta do usuário **DEVE** mandar para a Lixeira (`shell.trashItem`). Exceção: pastas temporárias do próprio app.
 - Ação destrutiva ou que descarta edição **DEVE** pedir confirmação com `ConfirmDialog` (`danger`) dizendo o que se perde.
-- Migração de banco **DEVE** ser nova e numerada; **NÃO DEVE** alterar uma migração já publicada.
-- **Por quê:** o usuário confia projetos e histórico ao app; um erro aqui não tem volta.
+- Push forçado **DEVE** usar `--force-with-lease`. **NÃO DEVE** usar `--force` em push.
+- SQL destrutivo na página de banco **DEVE** passar por `sql-danger` (confirmação na tela e defesa no main).
 
----
+**Por quê:** o usuário confia projetos, branches e bancos ao app; um erro aqui apaga trabalho dele.
 
-## Registro de mudanças
+### IV. Migração de banco é nova, numerada e imutável (inegociável)
+- Mudança no esquema do SQLite **DEVE** ser uma migração nova em `migrations.ts`, com a próxima `version` e um `checksum` próprio.
+- **NÃO DEVE** alterar uma migração já publicada (o app recusa abrir com checksum diferente).
+- Migração **DEVE** preservar os dados existentes e ter teste.
 
-- **1.0.0 (2026-10-30):** primeira versão, levantada dos padrões que o código já usa (diálogos, campos, tooltip, tema, erros, idioma, contrato IPC, exclusão).
+**Por quê:** o usuário atualiza instalando por cima e os dados continuam; uma migração reescrita quebra quem já tem o banco.
+
+### V. Texto da interface passa pelo i18n
+- Texto visível, dicas, `aria-label` e mensagens **DEVEM** vir dos dicionários: `useT()` em componentes, `tr()` fora deles (renderer), `tm()` no main. Chave nova **DEVE** existir em `pt-BR` e `en` (o pt-BR é a fonte do tipo).
+- **NÃO DEVE** haver texto de usuário fixo no código.
+- A tela **NÃO DEVE** depender do texto de uma mensagem: use um código de `error-codes.ts` (`withErrorCode`/`errorCodeOf`).
+- Botão de confirmação **DEVE** dizer a ação ("Excluir", "Descartar"), não "OK" ou "Sim".
+- Prompts e skills enviados aos agentes **DEVEM** ser em inglês e indicar o idioma de saída pelo `idioma`. Eles não entram nos dicionários.
+
+**Por quê:** o app tem dois idiomas; texto fixo aparece no idioma errado e tela que lê texto quebra quando a tradução muda.
+
+### VI. Erro de ação do usuário aparece para ele, em linguagem simples
+- Falha de uma ação que o usuário pediu **DEVE** aparecer: `toast.error` ou mensagem no próprio diálogo, com o texto passado por `plainError`.
+- **NÃO DEVE** engolir o erro de uma ação do usuário com `catch(() => undefined)`. Isso só é aceito em leituras de fundo opcionais (selo, contagem).
+- **NÃO DEVE** mostrar `String(error)` cru ("Error invoking remote method…").
+
+**Por quê:** clicar e nada acontecer é o pior caso; e a mensagem técnica do Electron não diz nada ao usuário.
+
+### VII. Diálogos seguem um formato só
+- Confirmação **DEVE** usar `ConfirmDialog`; aviso com um botão, `NoticeDialog`. **NÃO DEVE** usar `window.confirm`, `window.alert`, `window.prompt` nem o diálogo nativo do Electron para isso.
+- Modal **DEVE** ter `.overlay > .modal`, `role="dialog"` (ou `alertdialog`) e `aria-label`; `header` com `.eyebrow` e `h2`; botões em `.actions`, com Cancelar (`.secondary`) primeiro e a ação principal por último (`.danger` / `.danger.solid` se destrutiva).
+- Modal **DEVE** fechar com Esc pelo `useEscape` (Esc cancela, nunca confirma, e não fecha o que está por trás).
+
+**Por quê:** o diálogo nativo não segue o tema e trava a janela; modal feito à mão acaba com teclado diferente em cada tela.
+
+### VIII. Controles, dicas e cores vêm dos componentes e do tema
+- Lista de escolha **DEVE** usar `Select` / `MultiSelect`; caixa de seleção, `Checkbox`; liga/desliga, `Switch`; escolha exclusiva descrita, linhas `.ck-line.pickrow`. **NÃO DEVE** haver `<select>` ou checkbox nativo solto.
+- Campo de texto **DEVE** usar a classe `in` e ter rótulo (`label.f` ou `aria-label`).
+- Dica **DEVE** usar `data-tip` (mostrado pelo `TooltipLayer`). **NÃO DEVE** usar o atributo `title` nativo em elemento HTML. Botão só com ícone **DEVE** ter `data-tip` e `aria-label`.
+- Cor **DEVE** vir das variáveis de `prototype.css` / `theme-tokens.css` ou de classes que as usam. **NÃO DEVE** haver `#hex` ou `rgb()` em `style` inline. Exceção: dados que são a própria cor (paleta de agentes, amostras de tema, cor escolhida).
+- Cor fixa nova em CSS **DEVE** ter a variante de `:root[data-theme="light"]`.
+
+**Por quê:** controles nativos e `title` ignoram o tema e o idioma; com um componente só, ajustar o visual é um lugar só.
+
+### IX. Comportamento novo vem com teste
+- Mudança de comportamento no main, nos contratos ou em lógica pura do renderer **DEVE** ter teste Vitest no arquivo `*.test.ts` ao lado do código.
+- Teste de Git e SDD **DEVE** rodar contra um repositório real numa pasta temporária (`mkdtemp` + `git init`), como os testes existentes.
+- Correção de bug **DEVE** vir com teste que falhava antes da correção, quando der para reproduzir.
+- `typecheck`, `lint` (zero avisos) e `test` **DEVEM** passar.
+
+**Por quê:** o app mexe em repositórios e dados do usuário; regressão aqui só aparece no computador dele.
+
+## Restrições
+
+- Plataforma: só Windows 10/11 x64. Código específico de outra plataforma não é exigido, mas **NÃO DEVE** quebrar o build do Windows.
+- Tudo roda local: sem servidor nem conta do GearMod. **NÃO DEVE** haver telemetria ou envio de dados do usuário para serviço do GearMod. Chamadas externas só para o que o usuário configurou (CLIs de agente, GitHub/GitLab, Groq, bancos).
+- Dependência nova empacotada no app **DEVE** ter licença compatível com a PolyForm Shield e entrar no `THIRD-PARTY-NOTICES.md` (`pnpm notices`).
+- `src/main/generated/` é gerado por `scripts/generate-codex-types.mjs` e **NÃO DEVE** ser editado à mão.
+
+## Domínio, produto e operação
+
+- O checkout principal do usuário **NÃO DEVE** ser alterado pelo trabalho de um card: o agente trabalha na worktree do card.
+- Integração com o Spec Kit **DEVE** respeitar a versão máxima suportada (`specKitUpdateCeiling` em `specKitUpdates.ts`) e não reinstalar nem sobrescrever o que o projeto já tem em `.specify/`.
+- Atualizar instalando por cima e desinstalar **NÃO DEVEM** apagar os dados do usuário (`%APPDATA%\GearMod`).
