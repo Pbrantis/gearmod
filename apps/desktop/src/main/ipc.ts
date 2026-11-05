@@ -359,6 +359,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'cards:documents': (input: { cardId: string }) => services.board.documents.get(input.cardId),
     'collab:list': (input: { cardId: string }) => services.collab.list(input.cardId),
     'collab:send-change': (input: { changeId: string }) => services.collab.sendChange(input.changeId),
+    'collab:send-test-failures': (input: { cardId: string }) => services.collab.sendTestFailures(input.cardId),
     'collab:decide-change': (input: { changeId: string; decision: 'accept' | 'reject' | 'suggest'; note?: string }) => services.collab.decideChange(input.changeId, input.decision, input.note),
     'collab:answer-question': (input: { questionId: string; answer: string }) => services.collab.answerByUser(input.questionId, input.answer),
     'cards:write-document': (input: { cardId: string; kind: CardDocumentKind; contentMd: string }) => (systemDocumentKinds as readonly string[]).includes(input.kind) ? (() => { throw new Error(tm().ipc.documentGeneratedBySystem) })() : services.board.documents.write(input.cardId, input.kind, input.contentMd, 'user'),

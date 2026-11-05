@@ -6,6 +6,7 @@ import { basename, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { defaultAgentColor, geminiEnabled, type CardRunState, type AgentProfile, BoardColumn, Card, Project, ProjectBoard, ProjectSource } from '@gearmod/contracts'
 import type { AppDatabase } from './database'
+import { failedChecklistItems } from './checklists'
 import { DocumentRepository } from './documents'
 import { countTasks } from './tasks'
 import type Database from 'better-sqlite3'
@@ -374,9 +375,20 @@ export class BoardRepository {
     return this.card(cardId)
   }
 
-  private pendingCounts(cardId: string): { changes: number; questions: number; commits: number; toSend: number } {
+  private pendingCounts(cardId: string): { changes: number; questions: number; commits: number; toSend: number; testFailures: number } {
     const count = (sql: string): number => (this.database.db.prepare(sql).get(cardId) as { value: number }).value
-    return { changes: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status = 'pending'"), questions: count("SELECT COUNT(*) AS value FROM card_questions WHERE card_id = ? AND status = 'user'"), commits: count("SELECT COUNT(*) AS value FROM git_commit_requests WHERE card_id = ? AND status = 'pending'"), toSend: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status IN ('accepted', 'applied') AND sent_at IS NULL") }
+    return { changes: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status = 'pending'"), questions: count("SELECT COUNT(*) AS value FROM card_questions WHERE card_id = ? AND status = 'user'"), commits: count("SELECT COUNT(*) AS value FROM git_commit_requests WHERE card_id = ? AND status = 'pending'"), toSend: count("SELECT COUNT(*) AS value FROM card_changes WHERE card_id = ? AND status IN ('accepted', 'applied') AND sent_at IS NULL"), testFailures: this.testFailures(cardId) }
+  }
+
+  /**
+   * Failures in the tester's checklist still waiting for the developer: only while the last implementation/test run is a finished
+   * test run. Once the developer runs again (sent by the user or not), the badge goes away until the next test pass.
+   */
+  private testFailures(cardId: string): number {
+    const last = this.database.db.prepare(`SELECT ch.purpose, r.status FROM runs r JOIN chats ch ON ch.id = r.chat_id WHERE r.card_id = ? AND ch.purpose <> 'planning' ORDER BY r.started_at DESC, r.rowid DESC LIMIT 1`).get(cardId) as { purpose: string; status: string } | undefined
+    if (last?.purpose !== 'test' || last.status === 'queued' || last.status === 'running') return 0
+    const checklist = this.database.db.prepare("SELECT content_md FROM card_checklists WHERE card_id = ? AND purpose = 'test'").pluck().get(cardId) as string | undefined
+    return failedChecklistItems(checklist ?? '').length
   }
 
   private execSettings(cardId: string): { execProfileId: string | null; execModel: string | null } {

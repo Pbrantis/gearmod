@@ -45,7 +45,7 @@ import { CardHistoryService } from './history'
 import { exportPlanArtifacts, refreshArtifactCopies, resolvedSddRoot } from './workflows'
 import { HarnessService } from './harness'
 import { PlaywrightCliService } from './playwright-cli'
-import { ChecklistRepository } from './checklists'
+import { ChecklistRepository, failedChecklistItems } from './checklists'
 import { AutoResumeRepository, AutoResumeService } from './auto-resume'
 import { UsageLedgerService } from './usage-ledger'
 import { CardUsageExport } from './card-usage-export'
@@ -126,7 +126,9 @@ const agentContext = new AgentContextService(board, settings, existsSync(pluginD
     return { nome: source.name, noCard: card.repoIds ? card.repoIds.includes(source.id) : source.id === sources[0]?.id, ...(member ? { pasta: member.path, estado: member.status, ...(member.error ? { erro: member.error } : {}) } : {}) }
   }) : undefined
   const playwrightCli = playwright.forCard(cardId)
-  return { ...(repositorios ? { repositorios, regraRepositorios: 'Só os repositórios com noCard=true ganham worktree. Se precisar de outro, chame gearmod_set_repositories.' } : {}), ...(playwrightCli ? { playwrightCli } : {}) }
+  // The developer does not read the tester's checklist (that tool is the tester's): the failures of the last test pass travel in the context.
+  const falhasDoTeste = failedChecklistItems(checklists.get(cardId).contentMd)
+  return { ...(repositorios ? { repositorios, regraRepositorios: 'Só os repositórios com noCard=true ganham worktree. Se precisar de outro, chame gearmod_set_repositories.' } : {}), ...(playwrightCli ? { playwrightCli } : {}), ...(falhasDoTeste.length ? { falhasDoTeste, regraFalhasDoTeste: 'Items the tester marked as failed in the last test pass. The developer fixes them when asked, following the documents; the tester verifies them again in the next pass.' } : {}) }
 }, sddResolver)
 const agentConfigs = new AgentConfigRepository(database, board, profiles, (profileId) => listCodexModels(profiles.get(profileId)))
 const usageLedger = new UsageLedgerService(database)
@@ -135,7 +137,7 @@ board.setOnDone((cardId) => { void cardUsageExport.export(cardId).catch(() => co
 const usage = new UsageService(database, profiles, (profile) => probeClaudeLimits(profile), undefined, (profile) => readCodexQuota(profile), usageLedger)
 const appIcon = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'tray' : 'resources/tray', 'app.png')
 const mcpServerScript = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), app.isPackaged ? 'gearmod-mcp' : 'resources/gearmod-mcp', 'server.mjs')
-const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/card-updated', payload: { cardId, type: 'document' } })))
+const collab = new CollaborationService(database, board, conversations, agentConfigs, (cardId) => BrowserWindow.getAllWindows().forEach((window) => window.webContents.send('runs:event-pushed', { runId: '', eventType: 'gearmod/card-updated', payload: { cardId, type: 'document' } })), checklists)
 // S05, behind the flag (default off until soak, Q-05): an immediate agent move becomes a pending approval request.
 const mcpBridge = new McpBridge({ board, context: agentContext, serverScript: mcpServerScript, collab, conversations, constitution, checklists, git: gitManager, history, approvals, policy, sddResolver, sddWriter, planReady: (cardId) => exportPlanArtifacts(history, board, cardId), prepareWorktree: (cardId) => worktrees.prepare(cardId), repositories: (cardId) => worktrees.repositories(cardId), agentMoveApproval: process.env.GEARMOD_AGENT_MOVE_APPROVAL === '1', codeIndex, codeRoots, codeEnabled })
 const writeback = new AgentWriteback(board, mcpBridge)

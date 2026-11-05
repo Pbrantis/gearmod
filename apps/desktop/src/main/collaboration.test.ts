@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { AgentConfigRepository } from './agent-config'
+import { ChecklistRepository, failedChecklistItems } from './checklists'
 import { CollaborationService, type FollowUp } from './collaboration'
 import { ConversationRepository } from './conversations'
 import { AppDatabase } from './database'
@@ -25,9 +26,10 @@ async function setup() {
   const dev = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: codex!.id })
   const tester = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'test', profileId: codex!.id })
   const started: FollowUp[] = []
-  const collab = new CollaborationService(database, board, conversations, new AgentConfigRepository(database, board, profiles))
+  const checklists = new ChecklistRepository(database)
+  const collab = new CollaborationService(database, board, conversations, new AgentConfigRepository(database, board, profiles), undefined, checklists)
   collab.setStarter((action) => { started.push(action) })
-  return { database, board, collab, card, planning, dev, tester, started, conversations }
+  return { database, board, collab, card, planning, dev, tester, started, conversations, checklists }
 }
 
 describe('questions between steps', () => {
@@ -104,7 +106,7 @@ describe('changes awaiting authorization', () => {
   })
 
   it('reject goes straight back to the author; suggest needs a note and goes through the planner', async () => {
-    const { database, collab, card, planning, tester, started } = await setup()
+    const { database, collab, card, planning, dev, tester, started } = await setup()
     const first = collab.proposeChange({ cardId: card.id, chatId: tester.id, purpose: 'test', title: 'Teste extra', details: 'Cobrir X', reason: 'Risco' })
     collab.decideChange(first.id, 'reject', 'Fora do escopo')
     expect(started).toHaveLength(1); expect(started[0]).toMatchObject({ chatId: tester.id, planning: false }); expect(started[0]!.prompt).toContain('REJECTED'); expect(started[0]!.prompt).toContain('Fora do escopo')
@@ -113,8 +115,51 @@ describe('changes awaiting authorization', () => {
     collab.decideChange(second.id, 'suggest', 'Prefiro cobrir só o caso principal')
     expect(started[1]).toMatchObject({ chatId: planning.id, planning: true }); expect(started[1]!.prompt).toContain('Prefiro cobrir só o caso principal')
     collab.afterRun({ cardId: card.id, chatId: planning.id, purpose: 'planning', status: 'completed' })
-    expect(started[2]!.prompt).toContain('different view')
+    // The tester's proposal is implemented by the developer, not sent back to the test chat.
+    expect(started[2]).toMatchObject({ chatId: dev.id, planning: false }); expect(started[2]!.prompt).toContain('different view'); expect(started[2]!.prompt).toContain('proposed by the tester')
     expect(() => collab.proposeChange({ cardId: card.id, chatId: planning.id, purpose: 'planning', title: 'a', details: 'b', reason: 'c' })).toThrow('developer and the tester')
+    database.close()
+  })
+
+  it("accepted tester proposal goes to the developer, both after the planner and from the send button", async () => {
+    const { database, collab, card, planning, dev, tester, started } = await setup()
+    const change = collab.proposeChange({ cardId: card.id, chatId: tester.id, purpose: 'test', title: 'Teste de borda', details: 'Cobrir lista vazia', reason: 'Não coberto' })
+    collab.decideChange(change.id, 'accept')
+    collab.afterRun({ cardId: card.id, chatId: planning.id, purpose: 'planning', status: 'completed' })
+    expect(started[1]).toMatchObject({ chatId: dev.id, planning: false }); expect(started[1]!.prompt).toContain('Implement it according to the updated documents')
+    collab.sendChange(change.id)
+    expect(started[2]).toMatchObject({ chatId: dev.id }); expect(started.some((item) => item.chatId === tester.id)).toBe(false)
+    database.close()
+  })
+
+  it('without an implementation chat, the accepted tester proposal stays to send', async () => {
+    const { database, board, collab, card: first, planning: firstPlanning, tester: firstTester, started, conversations } = await setup()
+    // Another card with only planning and test chats (no implementation yet).
+    const card = board.create({ projectId: first.projectId, columnId: first.columnId, title: 'Sem dev', description: '', type: 'task', priority: 'medium', acceptanceCriteria: [] })
+    const planning = conversations.createChat({ projectId: card.projectId, cardId: card.id, purpose: 'planning', profileId: firstPlanning.profileId })
+    const tester = conversations.createChat({ projectId: card.projectId, cardId: card.id, purpose: 'test', profileId: firstTester.profileId })
+    const change = collab.proposeChange({ cardId: card.id, chatId: tester.id, purpose: 'test', title: 'X', details: 'Y', reason: 'Z' })
+    collab.decideChange(change.id, 'accept')
+    collab.afterRun({ cardId: card.id, chatId: planning.id, purpose: 'planning', status: 'completed' })
+    expect(started).toHaveLength(1); expect(collab.counts(card.id).toSend).toBe(1)
+    database.close()
+  })
+})
+
+describe('test failures to the developer', () => {
+  it('picks only unchecked items with a failure note, in any language', () => {
+    expect(failedChecklistItems('- [x] Lint passou\n- [ ] CA01 botão aparece — falhou: não aparece no perfil admin\n- [ ] CA02 ainda não verificado\n  - [ ] sub — failed: timeout\n- [x] CA03 — falhou: corrigido\n')).toEqual(['CA01 botão aparece — falhou: não aparece no perfil admin', 'sub — failed: timeout'])
+    expect(failedChecklistItems('')).toEqual([])
+  })
+
+  it('sends the failures to the implementation chat and refuses when there are none', async () => {
+    const { database, collab, card, dev, started, checklists } = await setup()
+    checklists.write(card.id, '- [x] Testes passam\n- [ ] Lint\n')
+    expect(() => collab.sendTestFailures(card.id)).toThrow()
+    checklists.write(card.id, '- [x] Testes passam\n- [ ] CA01 exporta CSV — falhou: separador errado\n')
+    collab.sendTestFailures(card.id)
+    expect(started).toHaveLength(1); expect(started[0]).toMatchObject({ chatId: dev.id, planning: false })
+    expect(started[0]!.prompt).toContain('- CA01 exporta CSV — falhou: separador errado'); expect(started[0]!.prompt).not.toContain('Testes passam')
     database.close()
   })
 })

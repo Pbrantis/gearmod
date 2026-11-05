@@ -191,7 +191,7 @@ export const cardRunStateSchema = z.object({ state: z.enum(['idle', 'planning', 
 export const cardSchema = z.object({
   id: uuid, projectId: uuid, columnId: uuid, sourceId: uuid.nullable(), type: cardTypeSchema, title: z.string(), description: z.string(),
   priority: cardPrioritySchema, orderKey: z.number(), createdAt: isoDate, updatedAt: isoDate,
-  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema, run: cardRunStateSchema, hasPlan: z.boolean(), planningOpen: z.boolean(), workspace: z.object({ branch: z.string(), baseRef: z.string(), path: z.string(), sharedFrom: z.string().nullable().optional() }).nullable(), pending: z.object({ changes: z.number().int().nonnegative(), questions: z.number().int().nonnegative(), commits: z.number().int().nonnegative(), toSend: z.number().int().nonnegative() }), execProfileId: uuid.nullable(), execModel: z.string().nullable(), agentIds: z.array(uuid), complexity: cardComplexitySchema.nullable(), repoIds: z.array(uuid).nullable(),
+  archivedAt: isoDate.nullable(), acceptanceCriteria: z.array(criterionSchema), tasks: taskCountSchema, run: cardRunStateSchema, hasPlan: z.boolean(), planningOpen: z.boolean(), workspace: z.object({ branch: z.string(), baseRef: z.string(), path: z.string(), sharedFrom: z.string().nullable().optional() }).nullable(), pending: z.object({ changes: z.number().int().nonnegative(), questions: z.number().int().nonnegative(), commits: z.number().int().nonnegative(), toSend: z.number().int().nonnegative(), testFailures: z.number().int().nonnegative() }), execProfileId: uuid.nullable(), execModel: z.string().nullable(), agentIds: z.array(uuid), complexity: cardComplexitySchema.nullable(), repoIds: z.array(uuid).nullable(),
   /** Chosen flow (`light` = short flow, a single agent) and, in SDD, the method. Null = not chosen yet. */
   workflow: workflowKindSchema.nullable(), sddMethod: cardSddMethodSchema.nullable()
 })
@@ -532,6 +532,7 @@ export const ipcContracts = {
   , 'workspace:versions': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), path: z.string().min(1).max(4096) }).strict(), output: z.object({ path: z.string(), relative: z.string(), root: z.string(), before: z.string().nullable(), after: z.string().nullable(), baseLabel: z.string(), binary: z.boolean(), truncated: z.boolean() }) }
   , 'collab:list': { input: cardIdInput, output: collaborationSchema }
   , 'collab:send-change': { input: z.object({ changeId: uuid }).strict(), output: collaborationSchema }
+  , 'collab:send-test-failures': { input: cardIdInput, output: collaborationSchema }
   , 'collab:decide-change': { input: z.object({ changeId: uuid, decision: z.enum(['accept', 'reject', 'suggest']), note: z.string().trim().max(4000).optional() }).strict(), output: collaborationSchema }
   , 'collab:answer-question': { input: z.object({ questionId: uuid, answer: z.string().trim().min(1).max(8000) }).strict(), output: collaborationSchema }
   , 'cards:delete': { input: z.object({ cardId: uuid, deleteArtifacts: z.boolean().optional() }).strict(), output: z.object({ deleted: z.boolean() }) }

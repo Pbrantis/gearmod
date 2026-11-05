@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { AgentPurpose, Change, Collaboration, Question } from '@gearmod/contracts'
 import type { AgentConfigRepository } from './agent-config'
+import { failedChecklistItems, type ChecklistRepository } from './checklists'
 import type { ConversationRepository } from './conversations'
 import type { AppDatabase } from './database'
 import type { BoardRepository } from './projects'
@@ -38,7 +39,7 @@ function publicChange(row: ChangeRow): Change {
 
 export class CollaborationService {
   private starter?: (action: FollowUp) => void
-  constructor(private readonly database: AppDatabase, private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly configs: Pick<AgentConfigRepository, 'get'>, private readonly notify: (cardId: string) => void = () => undefined) {}
+  constructor(private readonly database: AppDatabase, private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly configs: Pick<AgentConfigRepository, 'get'>, private readonly notify: (cardId: string) => void = () => undefined, private readonly checklists?: Pick<ChecklistRepository, 'get'>) {}
 
   setStarter(starter: (action: FollowUp) => void): void { this.starter = starter }
 
@@ -158,14 +159,26 @@ export class CollaborationService {
     if (!row) throw new Error(tm().common.proposalNotFound)
     const change = this.changes(row.cardId).find((item) => item.id === changeId)!
     if (change.status !== 'accepted' && change.status !== 'applied') throw new Error(tm().collaboration.onlyAuthorizedCanImplement)
-    const card = this.board.card(row.cardId)
-    const execution = this.conversations.listChats(card.projectId, row.cardId).find((chat) => chat.purpose === 'execution')
-    const chatId = change.proposerChatId ?? execution?.id
+    const chatId = this.implementationChat(row.cardId, change)
     if (!chatId) throw new Error(tm().collaboration.noImplementationChat)
     this.database.db.prepare(`UPDATE card_changes SET status = 'applied', sent_at = ? WHERE id = ?`).run(new Date().toISOString(), changeId)
     this.render(row.cardId)
     this.start({ chatId, planning: false, prompt: `Change ${mLabel(change.number)} (${change.title}) was AUTHORIZED by the user. Work on it now.\n\nWhat changes: ${change.details}\nReason: ${change.reason}${change.userNote ? `\nUser note: ${change.userNote}` : ''}\n\nFollow the card documents; if any of them does not reflect this change yet, follow the details above and mention it in the Summary.` })
     return this.list(row.cardId)
+  }
+
+  /**
+   * Sends the failures in the tester's checklist to the developer (the implementation chat). The user clicks it: like the other
+   * stages, the fix does not start on its own. Failures outside the documents still go through gearmod_propose_change.
+   */
+  sendTestFailures(cardId: string): Collaboration {
+    const card = this.board.card(cardId)
+    const failures = failedChecklistItems(this.checklists?.get(cardId).contentMd ?? '')
+    if (!failures.length) throw new Error(tm().collaboration.noTestFailures)
+    const execution = this.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === 'execution')
+    if (!execution) throw new Error(tm().collaboration.noImplementationChat)
+    this.start({ chatId: execution.id, planning: false, prompt: `The tester checked this card and these items FAILED (from the test checklist):\n\n${failures.map((item) => `- ${item}`).join('\n')}\n\nFix them in the current worktree, following the card documents. If a fix needs something outside the documents, do not do it: record it with gearmod_propose_change. If you think a failure is wrong, do not change the code for it; explain why in the Summary. Run the tests of the area you changed, then update the Summary with what you fixed. The user runs the test stage again afterwards.` })
+    return this.list(cardId)
   }
 
   /** Called when a run ends successfully: chains whatever was waiting for it. */
@@ -190,12 +203,17 @@ export class CollaborationService {
       if (action) this.start(action)
     }
     if (stuck.length) this.render(info.cardId)
-    // Authorized/adjusted changes: the documents were already updated, the author resumes.
+    // Authorized/adjusted changes: the documents were already updated, the developer implements (also what the tester proposed).
     for (const change of this.changes(info.cardId).filter((item) => item.status === 'accepted' || item.status === 'suggested')) {
+      const chatId = this.implementationChat(info.cardId, change)
+      // No implementation chat yet: the change stays "to send" on the card until the user starts the execution.
+      if (!chatId) { this.database.db.prepare(`UPDATE card_changes SET status = 'applied' WHERE id = ?`).run(change.id); continue }
       this.database.db.prepare(`UPDATE card_changes SET status = 'applied', sent_at = ? WHERE id = ?`).run(new Date().toISOString(), change.id)
-      this.start(this.resumeChange(change, change.status === 'accepted'
-        ? `Change ${mLabel(change.number)} (${change.title}) was AUTHORIZED and is already in the card documents. Resume where you left off and implement according to the updated documents.`
-        : `The user suggested a different view for ${mLabel(change.number)} (${change.title}): ${change.userNote}. The planner adjusted the documents; follow the updated documents and resume where you left off.`))
+      // The developer's own proposal: it stopped to wait and resumes. The tester's: the developer gets it as new work.
+      const own = change.proposerPurpose === 'execution', label = `${mLabel(change.number)} (${change.title})${own ? '' : `, proposed by the ${promptRole[change.proposerPurpose]},`}`
+      this.start({ chatId, planning: false, prompt: change.status === 'accepted'
+        ? `Change ${label} was AUTHORIZED and is already in the card documents. ${own ? 'Resume where you left off and implement' : 'Implement it'} according to the updated documents.`
+        : `The user suggested a different view for ${label}: ${change.userNote}. The planner adjusted the documents; follow the updated documents and ${own ? 'resume where you left off' : 'implement it'}.` })
     }
     this.render(info.cardId)
     this.deliverAnswers(info.cardId)
@@ -218,6 +236,16 @@ export class CollaborationService {
   private plannerQuestionsPrompt(items: QuestionRow[], retry = false): string {
     const lines = items.map((item) => `${qLabel(item.number)} (${promptRole[item.askerPurpose]}): ${item.question}`).join('\n')
     return `${retry ? 'You have not answered the questions below yet. ' : ''}Questions from the ${[...new Set(items.map((item) => promptRole[item.askerPurpose]))].join(' and ')} of this card. Answer each one by calling gearmod_answer_question (numero and resposta). If the answer changes the Specification, the Plan or the Tasks, update the documents FIRST with gearmod_write_document. If only the user can decide, call gearmod_ask_user (numero and a clear question). Do not implement anything.\n\n${lines}`
+  }
+
+  /**
+   * Who implements an authorized change: the implementation chat. A tester's proposal is code (or tests) for the developer too; the
+   * tester's skill does not change code, so sending it back to the test chat would leave the change undone.
+   */
+  private implementationChat(cardId: string, change: ChangeRow): string | null {
+    if (change.proposerPurpose === 'execution' && change.proposerChatId) return change.proposerChatId
+    const card = this.board.card(cardId)
+    return this.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === 'execution')?.id ?? null
   }
 
   private resumeChange(change: ChangeRow, prompt: string): FollowUp {

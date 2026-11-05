@@ -56,6 +56,7 @@ export const ptBR = {
     suggestNeedsNote: 'Conte qual é a sua visão para sugerir outra solução',
     onlyAuthorizedCanImplement: 'Só uma mudança autorizada pode ser mandada para implementar',
     noImplementationChat: 'Este card ainda não tem chat de implementação. Inicie a execução primeiro.',
+    noTestFailures: 'O checklist do teste não tem item com falha para mandar ao desenvolvedor.',
     proposalNoOriginChat: 'A proposta não tem chat de origem',
     questionNotFound: (label: string) => `Dúvida ${label} não encontrada`,
     questionAlreadyAnswered: (label: string) => `A dúvida ${label} já foi respondida`,

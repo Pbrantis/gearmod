@@ -57,6 +57,7 @@ export const en: typeof ptBR = {
     suggestNeedsNote: 'Tell us your view to suggest another solution',
     onlyAuthorizedCanImplement: 'Only an authorized change can be sent to implementation',
     noImplementationChat: 'This card has no implementation chat yet. Start the execution first.',
+    noTestFailures: 'The test checklist has no failed item to send to the developer.',
     proposalNoOriginChat: 'The proposal has no origin chat',
     questionNotFound: (label: string) => `Question ${label} not found`,
     questionAlreadyAnswered: (label: string) => `Question ${label} has already been answered`,
