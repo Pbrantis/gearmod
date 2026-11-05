@@ -15,6 +15,8 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
   const [config, setConfig] = useState<SddConfig>(), [branch, setBranch] = useState(project.baseBranch), [branches, setBranches] = useState<string[]>([])
   const [preview, setPreview] = useState<IpcOutput<'sdd:detect-constitutions'>>(), [message, setMessage] = useState(''), [busy, setBusy] = useState(false)
   const [editRoot, setEditRoot] = useState(false), [editConstitution, setEditConstitution] = useState(false)
+  // Bumped on each save: the Constitution panel below reads the file again from the new location.
+  const [savedCount, setSavedCount] = useState(0)
   const sources = project.sources.filter((source) => source.isGitRepository)
   const source = sources.find((item) => item.id === config?.sourceId) ?? sources[0]
   useEffect(() => { void window.gearmod.invoke('sdd:config-get', { projectId: project.id }).then(setConfig).catch((e) => setMessage(plainError(e))) }, [project.id])
@@ -27,6 +29,7 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
       // Validate the branch before persisting the location, so a typo cannot silently become the base.
       await window.gearmod.invoke('projects:set-base-branch', { projectId: project.id, sourceId: source.id, branch })
       setConfig(await window.gearmod.invoke('sdd:config-set', { projectId: project.id, config }))
+      setSavedCount((count) => count + 1)
       setMessage(t.saved)
     } catch (e) { setMessage(plainError(e)) } finally { setBusy(false) }
   }
@@ -81,7 +84,7 @@ export function SddSettings({ project, openConstitutionChat, onOpenReference }: 
       <div className="f"><span>{t.projectBaseBranch}</span><Select label={t.projectBaseBranch} value={branch} options={[...(!branches.includes(branch) && branch ? [{ value: branch, label: t.notFound(branch) }] : []), ...branches.map((name) => ({ value: name, label: name }))]} onChange={setBranch} /></div>
       <div className="f"><span>{t.sddFolder}</span>{!editRoot ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{config.root ? t.chosenFolder : t.repoRoot}</b><code>{absolutePath(config.root)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditRoot(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={config.root} onChange={(event) => set({ root: event.target.value })} placeholder={t.repoRoot} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('root')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditRoot(false)}>{t.done}</button></div>}</div>
       <div className="f"><span className="cx-labelrow">{t.constitutionPath(config.method === 'native' ? t.methodNames.native : t.methodNames.speckit)}<button type="button" className="cx-tiny" disabled={busy} onClick={() => chooseConstitutionSource(config.method === 'native' ? 'speckit' : 'native')}>{config.method === 'native' ? t.useSpecKitPath : t.useGearModPath}</button></span>{!editConstitution ? <div className="cx-pathrow"><span className="cx-pathchip big"><b>{t.chosenFolder}</b><code>{absolutePath(constitutionFolder)}</code><FolderIcon /></span><button type="button" className="mini secondary" onClick={() => setEditConstitution(true)}>{common.edit}</button></div> : <div className="cx-add"><input value={constitutionFolder} onChange={(event) => set({ constitution: { ...config.constitution, [config.method]: [event.target.value, 'constitution.md'].filter(Boolean).join('/') } })} placeholder={config.method === 'native' ? '.gearmod' : '.specify/memory'} /><button type="button" className="mini secondary" onClick={() => void chooseFolder('constitution')}>{t.choose}</button><button type="button" className="mini" onClick={() => setEditConstitution(false)}>{t.done}</button></div>}</div>
-      <section className="cx-wfcard"><span className="sectitle">{t.constitution}</span><ConstitutionPanel projectId={project.id} openChat={openConstitutionChat} onOpenReference={onOpenReference} /></section>
+      <section className="cx-wfcard"><span className="sectitle">{t.constitution}</span><ConstitutionPanel projectId={project.id} reloadKey={savedCount} openChat={openConstitutionChat} onOpenReference={onOpenReference} /></section>
     </div>}
     {message && <p role="status">{message}</p>}
     {preview && <div><p>{t.result(preview.kind, preview.action)}</p>{(['db', 'native', 'speckit'] as const).map((key) => <p key={key}><b>{key}</b>: {preview.candidates[key]?.sha256 ?? t.absent}</p>)}</div>}

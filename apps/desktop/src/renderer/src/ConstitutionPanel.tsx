@@ -15,11 +15,11 @@ const when = (iso: string | null): string => iso ? new Date(iso).toLocaleDateStr
  * Project Constitution tab: the principles every card respects (optional). Shows the text, edits by hand,
  * opens the Constitution chat and lists the changes the agents suggested in the other chats.
  */
-export function ConstitutionPanel({ projectId, openChat, onOpenReference }: { projectId: string; openChat(prompt?: string): void; onOpenReference?(): void }): React.JSX.Element {
+export function ConstitutionPanel({ projectId, reloadKey = 0, openChat, onOpenReference }: { projectId: string; /** Changes when the Constitution's location changes: reads the file again. */ reloadKey?: number; openChat(prompt?: string): void; onOpenReference?(): void }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.constitution
   const [state, setState] = useState<ConstitutionState>(), [editing, setEditing] = useState<string | null>(null), [error, setError] = useState(''), [working, setWorking] = useState(false), [viewing, setViewing] = useState(false)
   const load = useCallback(async () => { try { setState(await window.gearmod.invoke('constitution:get', { projectId })) } catch (reason) { setError(plainError(reason)) } }, [projectId])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { void load() }, [load, reloadKey])
   // The agent writes or suggests changes while the tab is open: reloads when it signals.
   useEffect(() => window.gearmod.onRunEvent((event) => { if (event.eventType === 'gearmod/card-updated' && event.payload.type === 'constitution') void load() }), [load])
   const act = async (call: () => Promise<ConstitutionState>): Promise<void> => {
