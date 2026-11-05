@@ -66,13 +66,14 @@ describe('ExecutionService', () => {
 
 describe('test step and chat reset', () => {
   it('runs the test step in its own chat, locks the agent per chat and resumes the right one', async () => {
-    const { database, board, conversations, profiles, card, started, service } = await setup()
+    const { database, board, conversations, profiles, columns, card, started, service } = await setup()
     const [codex, claude] = [profiles[0]!, profiles[1]!]
     const exec = service.start(card.id, { profileId: codex.id, model: null, effort: null, mode: 'auto' })
     conversations.updateRun(exec.id, 'completed', null)
     const testRun = service.start(card.id, { profileId: codex.id, model: null, effort: null, mode: 'auto' }, 'test')
     expect(started[1]!.prompt).toBe('Use the gearmod-test skill to test this card.'); expect(started[0]!.chatId).not.toBe(started[1]!.chatId)
     expect(board.card(card.id).run).toMatchObject({ state: 'running', purpose: 'test', runId: testRun.id })
+    expect(board.card(card.id).columnId).toBe(columns.find((column) => column.semanticState === 'test')!.id)
     conversations.updateRun(testRun.id, 'interrupted', 'x')
     expect(() => service.start(card.id, { profileId: claude.id, model: null, effort: null, mode: 'accept_edits' }, 'test')).toThrow('reinicia o chat')
     service.resume(card.id, 'execution'); expect(started[2]!.chatId).toBe(started[0]!.chatId)

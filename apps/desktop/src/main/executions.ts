@@ -16,7 +16,7 @@ const steps = {
 const skillPrompt = (what: string, skill: string): string => `Use the ${skill} skill to ${what}.`
 const skillNotice = (skill: string, extra = ''): string => `▶ Usando a skill ${skill}${extra}`
 
-/** Start and continue runs: Start approves the current plan, moves the card to Doing and uses the card's execution chat. */
+/** Start and continue runs: Start approves the current plan, moves the card to its stage's column (Doing or Test) and uses the card's execution chat. */
 export class ExecutionService {
   constructor(private readonly board: BoardRepository, private readonly conversations: ConversationRepository, private readonly orchestrator: Pick<AgentOrchestrator, 'start'>, private readonly configs?: Pick<AgentConfigRepository, 'set'>, private readonly git?: { branches(localPath: string): Promise<string[]> }, private readonly history?: Pick<CardHistoryService, 'config'>, private readonly speckit?: Pick<SpecKitRuntime, 'active' | 'artifacts'>) {}
 
@@ -39,11 +39,10 @@ export class ExecutionService {
     const existing = this.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === purpose)
     if (existing && existing.profileId !== profileId) throw new Error(tm().executions.stageHasOtherAgent)
     this.configs?.set(cardId, purpose, config)
-    if (purpose === 'execution') {
-      const columns = this.board.get(card.projectId).columns, doing = columns.find((column) => column.semanticState === 'doing')
-      if (doing && card.columnId !== doing.id) this.board.move(cardId, doing.id, null, 'user')
-      if (!small) this.conversations.approveCurrentPlan(cardId, profileId, this.board.documents.read(cardId, 'plano'))
-    }
+    // The card goes to its stage's column: implementation to Doing, test to Test.
+    const stage = this.board.get(card.projectId).columns.find((column) => column.semanticState === (purpose === 'test' ? 'test' : 'doing'))
+    if (stage && card.columnId !== stage.id) this.board.move(cardId, stage.id, null, 'user')
+    if (purpose === 'execution' && !small) this.conversations.approveCurrentPlan(cardId, profileId, this.board.documents.read(cardId, 'plano'))
     const chat = this.conversations.purposeChat(card.projectId, cardId, purpose, profileId)
     // Spec Kit: implementation is the native speckit-implement skill, only after the card's feature has a specification, plan and tasks.
     if (speckit) {
