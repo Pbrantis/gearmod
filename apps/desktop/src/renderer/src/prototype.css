@@ -1316,6 +1316,8 @@ button.gwp:hover{filter:none;text-decoration:underline}
 .pane-left .sechead{min-height:24px}
 .pane-left .foldprev{margin-top:0}.pane-left .startsec{margin-top:2px}
 .pane-left .wsmeta{display:flex;margin-top:2px}
+/* A long base name is cut with an ellipsis inside the box (the full name is in the tip). */
+.wsbox>.wsmeta>.wsbase{flex:0 1 auto;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Split Pull: button + options (fetch all / ff / ff-only / rebase) */
 .gsplit{position:relative;display:inline-flex;align-items:center}
 .gsplit .gtool:first-child{padding-right:6px}.gcaret{padding:6px 5px!important;font-size:11px}
