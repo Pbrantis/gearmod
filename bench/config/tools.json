@@ -1,0 +1,46 @@
+{
+  "$comment": [
+    "Configurations compared. kind: none (agent's own tools only) | gearmod (this project's index, bench/servers) | mcp (external MCP server) | map (text map added to the prompt).",
+    "Placeholders in commands: {root} = folder the agent works in, {work} = bench-data/work, {repo} = repository id.",
+    "copy: true = the tool writes into the project folder (e.g. .codegraph/), so it gets its own copy made by prepare.mjs.",
+    "setup: command run once per repository copy before the runs, with the project as working folder (indexing time is recorded apart, not in the agent's time).",
+    "hint: adds the sentence from config/prompts.json telling the agent the code tools exist (the same sentence for every tool).",
+    "Versions are pinned (npx/uvx download them on first use). Commands from each project's README on 2026-11-03; run `node bench/run.mjs experiments/smoke.json --check` before a real run."
+  ],
+  "tools": {
+    "baseline": { "kind": "none" },
+
+    "gearmod": { "kind": "gearmod", "hint": true },
+    "gearmod-summary": { "kind": "gearmod", "detail": "resumo", "hint": true },
+    "gearmod-all-tools": { "kind": "gearmod", "toolset": "all", "hint": true },
+    "gearmod-explorer": { "kind": "gearmod", "explorer": true, "hint": "explorer", "agents": ["claude"] },
+
+    "abl-types": { "kind": "gearmod", "ablate": "types", "hint": true },
+    "abl-terms": { "kind": "gearmod", "ablate": "terms", "hint": true },
+    "abl-lines": { "kind": "gearmod", "ablate": "lines", "hint": true },
+    "abl-mentions": { "kind": "gearmod", "ablate": "mentions", "hint": true },
+    "abl-all": { "kind": "gearmod", "ablate": "types,terms,lines,mentions", "hint": true },
+
+    "codegraph": {
+      "kind": "mcp", "copy": true, "hint": true, "version": "1.6.2",
+      "setup": ["npx", "-y", "@colbymchenry/codegraph@1.6.2", "init"],
+      "command": "npx", "args": ["-y", "@colbymchenry/codegraph@1.6.2", "serve", "--mcp", "--path", "{root}", "--no-watch"]
+    },
+    "codebase-memory": {
+      "kind": "mcp", "hint": true, "version": "0.12.1",
+      "$install": "PowerShell: irm https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.ps1 | iex  (or the release binary on PATH). The README says the agent indexes with its index_repository tool; the hint stays the same as for the other tools.",
+      "$status": "2026-11-04: not usable on this machine, so it is left out of every experiment. The release binary (v0.12.1, SHA-256 checked against checksums.txt) runs --version, but refuses to install or to run any tool: 'activation could not reserve exclusive access ... C:\\Users\\<user>: DACL entry 3 grants mutation rights 0x000d0152 to untrusted identity (other S-1-5-21-...-1004)', then 'could not load saved runtime settings'. The SID is a second local account of the same owner with Full Control on the profile folder, a legitimate setup that must stay. The tool finds the profile through the Windows API, so overriding HOME, USERPROFILE, APPDATA, LOCALAPPDATA or CBM_CACHE_DIR does not help, and an owner-only folder elsewhere does not help either. Ways to include it later: another machine or Windows user whose profile grants no other account write access, or the Linux build under WSL.",
+      "command": "codebase-memory-mcp", "args": []
+    },
+    "serena": {
+      "kind": "mcp", "hint": true, "version": "2.1.0",
+      "command": "uvx", "args": ["-p", "3.13", "--from", "serena-agent==2.1.0", "serena", "start-mcp-server", "--context", "claude-code", "--project", "{root}"]
+    },
+    "aider-map": {
+      "kind": "map", "version": "0.86.2",
+      "$comment": "Prints Aider's repository map without calling any model (the model name only satisfies the CLI). 1024 tokens, close to GearMod's own map.",
+      "map": ["uvx", "-p", "3.12", "--from", "aider-chat==0.86.2", "aider", "--model", "gpt-4o", "--no-show-model-warnings", "--show-repo-map", "--map-tokens", "1024", "--no-check-update", "--no-analytics", "--no-pretty", "--no-fancy-input", "--no-gitignore"],
+      "env": { "PYTHONIOENCODING": "utf-8" }
+    }
+  }
+}

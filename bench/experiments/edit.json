@@ -1,0 +1,16 @@
+{
+  "id": "edit",
+  "$comment": "Long tasks with an objective result: the agent edits the code in a fresh worktree and the repository's tests decide (edit.check). Also where the explorer subagent's smaller context should pay off. About 20 tasks x 4 x (2 agents, explorer only Claude) x 3.",
+  "repos": ["gearmod", "typedoc", "litestar", "nushell", "gitea"],
+  "types": ["edit"],
+  "configs": ["baseline", "gearmod", "gearmod-explorer", "codegraph"],
+  "agents": ["claude-sonnet", "codex"],
+  "variants": "first",
+  "repeats": 3,
+  "seed": 20261103,
+  "concurrency": 2,
+  "maxTurns": 120,
+  "timeoutSec": 2400,
+  "maxUsd": 300,
+  "estimateUsdPerRun": 0.6
+}

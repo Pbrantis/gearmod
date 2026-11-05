@@ -17,3 +17,10 @@ coverage/
 
 # Dados temporários do Postgres de teste
 /.tmp-gearmod-pg/
+
+# Benchmark (bench/): bundle, cloned repositories and results
+/apps/desktop/.bench/
+/bench/work/
+/bench/results/
+/bench/questions/
+/bench-data/

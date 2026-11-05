@@ -1,0 +1,16 @@
+{
+  "id": "own",
+  "$comment": "First real block on the author's two projects (reviewed catalogs): no graph, the index, CodeGraph, Serena and the Aider map; Claude Sonnet, 3 repetitions. 35 questions x 5 x 3 = 525 runs. codebase-memory-mcp is out: its binary refuses this machine user profile ACL (see config/tools.json).",
+  "repos": ["desrotula", "am-em-chamas"],
+  "types": ["locate", "flow", "impact", "tests", "vague"],
+  "configs": ["baseline", "gearmod", "codegraph", "serena", "aider-map"],
+  "agents": ["claude-sonnet"],
+  "variants": "first",
+  "repeats": 3,
+  "seed": 20261104,
+  "concurrency": 4,
+  "maxTurns": 60,
+  "timeoutSec": 900,
+  "maxUsd": 70,
+  "estimateUsdPerRun": 0.1
+}

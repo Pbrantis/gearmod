@@ -1,0 +1,19 @@
+{
+  "$comment": "Fixed text added to every question, by language. The hint is the same for every code tool, so no tool gets better instructions than another. hintCodex is added for Codex only: Codex hides MCP tools behind its tool search, and without this sentence it never finds them (tested on 2026-11-05).",
+  "pt": {
+    "answer": "\n\nResponda em português, de forma objetiva, citando os arquivos e as linhas (caminho:linha) que sustentam cada afirmação. Não altere nenhum arquivo.",
+    "edit": "\n\nFaça a mudança no código. Antes de terminar, rode os testes relevantes e confirme que passam. Ao final, resuma o que mudou.",
+    "hint": " Há ferramentas de mapa de código disponíveis (mcp__graph__*); prefira-as a abrir arquivos inteiros.",
+    "explorer": " Há ferramentas de mapa de código (mcp__graph__*) e um subagente explorador (ferramenta Agent, subagent_type explorador). Para entender o código, delegue a busca ao explorador com a pergunta e use o relatório dele; depois leia só trechos pontuais se precisar confirmar algo.",
+    "map": "Mapa do repositório (gerado automaticamente):\n\n",
+    "hintCodex": " No Codex elas ficam ocultas: busque-as pela busca de ferramentas antes de começar."
+  },
+  "en": {
+    "answer": "\n\nAnswer concisely, citing the files and lines (path:line) that support each statement. Do not change any file.",
+    "edit": "\n\nMake the change in the code. Before finishing, run the relevant tests and make sure they pass. At the end, summarize what changed.",
+    "hint": " Code map tools are available (mcp__graph__*); prefer them to opening whole files.",
+    "explorer": " Code map tools (mcp__graph__*) and an explorer subagent (Agent tool, subagent_type explorador) are available. To understand the code, hand the search to the explorer with the question and use its report; then read only specific excerpts if you need to confirm something.",
+    "map": "Repository map (generated automatically):\n\n",
+    "hintCodex": " In Codex they are hidden: look them up with the tool search before starting."
+  }
+}

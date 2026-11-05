@@ -1,0 +1,28 @@
+{
+  "$comment": [
+    "Repositories. url + commit (full sha; tag only documents it) = fetched by prepare.mjs into bench-data/work/repos/<id>. path = an existing local folder used as it is (private repositories).",
+    "tier by source files (tests included): small < 1,000 | medium 1,000-3,000 | large > 3,000. Source counts are estimates from git ls-tree on 2026-11-03; prepare.mjs records the exact ones in work/repo-stats.json.",
+    "role: dev (used while building the index; reported apart) | eval (never used to tune the index). set: core | optional | swap.",
+    "strip: extra paths deleted after checkout. prepare.mjs also always deletes agent instruction files (CLAUDE.md, AGENTS.md, .claude/, .serena/, .cursor/ ...) at any depth, because they change how agents behave.",
+    "memorization: risk that the models already know the code from training (stars, age). Report results with and without the high-risk ones."
+  ],
+  "repos": [
+    { "id": "gearmod", "url": "C:/work/gearmod/repo", "commit": "3b38519bd5db0842952481bd63b4256ddbd8d101", "langs": ["ts"], "tier": "small", "role": "dev", "set": "core", "license": "PolyForm-Shield-1.0.0", "strip": ["bench", "spike", "docs"], "tsconfig": "apps/desktop/tsconfig.json", "memorization": "none" },
+    { "id": "desrotula", "parts": { "back": { "path": "C:/work/desrotula/back", "commit": "cdc170b9dab75c07ab3050f9892df405c2341703" }, "front": { "path": "C:/work/desrotula/front", "commit": "a7552733ea07109193c89d82576976813c59685c" } }, "langs": ["py", "ts"], "tier": "small", "role": "eval", "set": "core", "private": true, "memorization": "none" },
+    { "id": "am-em-chamas", "parts": { "back": { "path": "C:/work/AM-EM-CHAMAS/am-chamas-back", "commit": "1f29bb6f667ce444056097c90d631a4aed54c68c" }, "front": { "path": "C:/work/AM-EM-CHAMAS/am-chamas-front", "commit": "1fe9bacbc58bbb8296a3fb33e03da01fc3bd237b" } }, "langs": ["py", "ts"], "tier": "small", "role": "eval", "set": "core", "private": true, "memorization": "none" },
+
+    { "id": "typedoc", "url": "https://github.com/TypeStrong/typedoc.git", "tag": "v0.28.20", "commit": "34d843be0953fc81de0fde14bea8db72d0bbccc6", "langs": ["ts"], "tier": "small", "role": "eval", "set": "core", "license": "Apache-2.0", "tests": ["npm", "test"], "memorization": "low-medium" },
+    { "id": "litestar", "url": "https://github.com/litestar-org/litestar.git", "tag": "v2.25.0", "commit": "ac33702eea7aa3c99d62711bce2d55bdada6b944", "langs": ["py"], "tier": "small", "role": "eval", "set": "core", "license": "MIT", "tests": ["uv", "run", "pytest", "tests"], "memorization": "low" },
+    { "id": "apollo", "url": "https://github.com/apolloconfig/apollo.git", "tag": "v3.0.0", "commit": "00d307b0044e2c55c5390ffdf5658f079ee9b187", "langs": ["java"], "tier": "small", "role": "eval", "set": "core", "license": "Apache-2.0", "tests": ["./mvnw", "test"], "memorization": "medium" },
+    { "id": "nushell", "url": "https://github.com/nushell/nushell.git", "tag": "0.116.1", "commit": "b632ef0994e07b5176ec45171e8cee2c127c5563", "langs": ["rust"], "tier": "medium", "role": "eval", "set": "core", "license": "MIT", "tests": ["cargo", "test", "--workspace"], "memorization": "medium" },
+    { "id": "squidex", "url": "https://github.com/Squidex/squidex.git", "tag": "7.24.0", "commit": "e6d32f0fe1efe7db1e569a82c79a587c901f1013", "langs": ["cs", "ts"], "tier": "large", "role": "eval", "set": "core", "license": "MIT", "tests": ["dotnet", "test", "backend/Squidex.slnx"], "memorization": "low" },
+    { "id": "gitea", "url": "https://github.com/go-gitea/gitea.git", "tag": "v28.3.0", "commit": "4f5a3e13e5f3aca85d830e3a9024c893b0bbf1e1", "langs": ["go", "ts"], "tier": "large", "role": "eval", "set": "core", "license": "MIT", "tests": ["make", "test-backend"], "memorization": "high" },
+
+    { "id": "koel", "url": "https://github.com/koel/koel.git", "tag": "v9.15.0", "commit": "7f9fe1ad76aee28d5d2a808ea91890d4ef866b0b", "langs": ["php", "ts"], "tier": "medium", "role": "eval", "set": "optional", "license": "MIT", "tests": ["composer", "test"], "memorization": "medium" },
+    { "id": "mlflow", "url": "https://github.com/mlflow/mlflow.git", "tag": "v3.17.2", "commit": "d0b397f85b602e8f146be0d0373b28bba2ca2b74", "langs": ["py", "ts"], "tier": "large", "role": "eval", "set": "optional", "license": "Apache-2.0", "tests": ["pytest"], "memorization": "high" },
+
+    { "id": "caddy", "url": "https://github.com/caddyserver/caddy.git", "tag": "v2.11.8", "commit": "55996dfe05c10bb616ccdcc9bf5b8407a5be75b7", "langs": ["go"], "tier": "small", "role": "eval", "set": "swap", "license": "Apache-2.0", "tests": ["go", "test", "./..."], "memorization": "high" },
+    { "id": "polly", "url": "https://github.com/App-vNext/Polly.git", "tag": "8.9.0", "commit": "1fc5d119f0e7445563229bd144ba271e907d89f2", "langs": ["cs"], "tier": "small", "role": "eval", "set": "swap", "license": "BSD-3-Clause", "tests": ["dotnet", "test"], "memorization": "medium" },
+    { "id": "solidus", "url": "https://github.com/solidusio/solidus.git", "tag": "v4.8.0", "commit": "8acbcba84621fa0d2b8c06acb6ccfdc36ada4bc9", "langs": ["ruby"], "tier": "medium", "role": "eval", "set": "swap", "license": "BSD-3-Clause", "tests": ["bin/rspec"], "memorization": "low" }
+  ]
+}

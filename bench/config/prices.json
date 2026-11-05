@@ -1,0 +1,7 @@
+{
+  "$comment": "US$ per million tokens, used only for agents whose CLI does not report the cost (Codex). Fill in with the official prices on the day of the run and write the date; null = cost left empty (tokens are still recorded).",
+  "date": null,
+  "models": {
+    "gpt-6.1-terra": { "input": null, "cachedInput": null, "output": null }
+  }
+}

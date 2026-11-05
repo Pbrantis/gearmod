@@ -1,0 +1,15 @@
+{
+  "id": "pilot",
+  "$comment": "Small run to check the whole pipeline (tools start, answers are scored, the dataset exports) before spending on the main blocks.",
+  "repos": ["gearmod"],
+  "configs": ["baseline", "gearmod"],
+  "agents": ["claude-sonnet"],
+  "variants": "first",
+  "repeats": 1,
+  "seed": 7,
+  "concurrency": 4,
+  "maxTurns": 60,
+  "timeoutSec": 900,
+  "maxUsd": 5,
+  "estimateUsdPerRun": 0.1
+}

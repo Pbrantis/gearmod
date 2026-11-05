@@ -1,0 +1,39 @@
+{
+  "id": "main",
+  "$comment": "Main block: every tool on every core repository with Claude Sonnet, 3 repetitions, up to 25 questions per repository. The author's two projects (desrotula, am-em-chamas) ran the same configurations in own.json; export both (node bench/export.mjs own,main). codebase-memory-mcp is left out (README: Problemas conhecidos).",
+  "repos": [
+    "gearmod",
+    "typedoc",
+    "litestar",
+    "apollo",
+    "nushell",
+    "squidex",
+    "gitea"
+  ],
+  "types": [
+    "locate",
+    "flow",
+    "impact",
+    "tests",
+    "vague"
+  ],
+  "perRepo": 25,
+  "configs": [
+    "baseline",
+    "gearmod",
+    "codegraph",
+    "serena",
+    "aider-map"
+  ],
+  "agents": [
+    "claude-sonnet"
+  ],
+  "variants": "first",
+  "repeats": 3,
+  "seed": 20261103,
+  "concurrency": 4,
+  "maxTurns": 60,
+  "timeoutSec": 900,
+  "maxUsd": 600,
+  "estimateUsdPerRun": 0.12
+}

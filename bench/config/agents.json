@@ -1,0 +1,10 @@
+{
+  "$comment": "Agents and models. cli: claude | codex. Claude reports the cost in US$; for Codex the cost is estimated from tokens with config/prices.json.",
+  "agents": [
+    { "id": "claude-sonnet", "cli": "claude", "model": "sonnet" },
+    { "id": "claude-haiku", "cli": "claude", "model": "haiku" },
+    { "id": "claude-opus", "cli": "claude", "model": "opus" },
+    { "id": "codex", "cli": "codex", "model": "gpt-6.1-terra", "effort": "medium" },
+    { "id": "codex-low", "cli": "codex", "model": "gpt-6.1-terra", "effort": "low" }
+  ]
+}

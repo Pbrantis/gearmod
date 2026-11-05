@@ -1,0 +1,17 @@
+{
+  "id": "generalization",
+  "$comment": "Does the result hold for other agents and models? A subset of the questions (same seed = same questions as main) with Codex and a small Claude model. 9 x 8 x 4 x 2 x 3 = 1,728 runs.",
+  "repos": ["gearmod", "desrotula", "am-em-chamas", "typedoc", "litestar", "apollo", "nushell", "squidex", "gitea"],
+  "types": ["locate", "flow", "impact", "tests", "vague"],
+  "perRepo": 8,
+  "configs": ["baseline", "gearmod", "codegraph", "aider-map"],
+  "agents": ["codex", "claude-haiku"],
+  "variants": "first",
+  "repeats": 3,
+  "seed": 20261103,
+  "concurrency": 4,
+  "maxTurns": 60,
+  "timeoutSec": 900,
+  "maxUsd": 250,
+  "estimateUsdPerRun": 0.08
+}

@@ -1,0 +1,10 @@
+{
+  "id": "smoke",
+  "$comment": "Only for --check: does every configuration start with every agent? node bench/run.mjs experiments/smoke.json --check",
+  "repos": ["gearmod"],
+  "configs": ["baseline", "gearmod", "gearmod-summary", "abl-types", "gearmod-explorer", "codegraph", "codebase-memory", "serena", "aider-map"],
+  "agents": ["claude-sonnet", "codex"],
+  "questions": ["locate-secret-scan"],
+  "repeats": 1,
+  "seed": 1
+}

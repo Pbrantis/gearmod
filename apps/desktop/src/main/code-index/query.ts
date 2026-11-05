@@ -5,6 +5,7 @@ import type { Statement } from 'better-sqlite3'
 import { isGenerated, isTest } from './languages'
 import { words, type Db } from './store'
 import { expandTerms } from './terms'
+import { ablated } from './ablation'
 
 /**
  * Queries over a folder's index. Answers are text for the agent (in English, like the other MCP
@@ -249,17 +250,17 @@ export class Queries {
     for (const [id, level] of seen) { const found = this.sym(id); if (!found) continue; const list = byFile.get(found.path); if (list) list.push({ o: found, d: level }); else byFile.set(found.path, [{ o: found, d: level }]) }
     const files = [...byFile].sort((a, b) => Math.min(...a[1].map((x) => x.d)) - Math.min(...b[1].map((x) => x.d)) || testFirst(a[0]) - testFirst(b[0]))
     const tests = files.filter(([path]) => isTest(path)).map(([path]) => path)
-    const calls = (found: SymbolRow): string => { const lines = callLines.get(found.id); return lines ? ` — calls at lines ${[...new Set(lines)].sort((a, b) => a - b).join(', ')}` : '' }
+    const calls = (found: SymbolRow): string => { const lines = ablated('lines') ? undefined : callLines.get(found.id); return lines ? ` — calls at lines ${[...new Set(lines)].sort((a, b) => a - b).join(', ')}` : '' }
     let out = `Impact of changing ${def.kind} ${def.qname} (${this.where(def)}): ${seen.size} symbols in ${byFile.size} files, up to ${depth} levels.${defs.length > 1 ? ` (${defs.length} definitions share this name; used the first — pass arquivo to pick)` : ''}\n`
     out += 'Level 1 (·) uses it directly; the line of each call comes after the dash. Level 2 (··) uses something from level 1.\n'
     for (const [path, list] of files.filter(([path]) => !isTest(path)).slice(0, 25)) out += `\n${path}\n${list.sort((a, b) => a.d - b.d || a.o.line - b.o.line).slice(0, 30).map(({ o, d }) => `  ${'·'.repeat(d)} ${o.kind === 'file' ? '(file level)' : o.qname}:${o.line}${calls(o)}`).join('\n')}${list.length > 30 ? `\n  … +${list.length - 30}` : ''}`
     // tests that call directly change together in a rename
-    const direct = files.filter(([path]) => isTest(path)).flatMap(([, list]) => list.filter(({ o }) => callLines.has(o.id)).map(({ o }) => `  ${o.path}:${[...new Set(callLines.get(o.id))].join(', ')}`))
+    const direct = files.filter(([path]) => isTest(path)).flatMap(([, list]) => list.filter(({ o }) => callLines.has(o.id)).map(({ o }) => ablated('lines') ? `  ${o.path}` : `  ${o.path}:${[...new Set(callLines.get(o.id))].join(', ')}`))
     if (direct.length) out += `\n\nTests that use it directly (change with it):\n${direct.join('\n')}`
     // name mentioned outside the links: strings (mock.patch, routes, config), comments, imports
     const known = new Set([...callLines].flatMap(([id, lines]) => { const found = this.sym(id); return found ? lines.map((line) => `${found.path}:${line}`) : [] }))
     for (const item of defs) known.add(`${item.path}:${item.line}`)
-    const mentions = this.textMentions(def.name, known)
+    const mentions = ablated('mentions') ? [] : this.textMentions(def.name, known)
     if (mentions.length) out += `\n\nOther mentions of the name (text, comment, mock, import — check them in a rename) (${mentions.length}):\n${mentions.slice(0, 40).map((mention) => `  ${mention}`).join('\n')}${mentions.length > 40 ? `\n  … +${mentions.length - 40}` : ''}`
     for (const mention of mentions) { const path = mention.slice(0, mention.indexOf(':')); if (isTest(path) && !tests.includes(path)) tests.push(path) }
     return `${out}\n\nTests to run (${tests.length}): ${tests.join(', ') || 'none found'}`

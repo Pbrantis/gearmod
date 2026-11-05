@@ -2,12 +2,14 @@ import { readFileSync } from 'node:fs'
 import { join, posix } from 'node:path'
 import { LANGUAGES, familyOf, type Family } from './languages'
 import type { Db } from './store'
+import { ablated, ablationTag } from './ablation'
 
 /**
  * Links references to definitions (edges) in a folder. It depends on the whole tree (imports, types), so it is per folder,
  * unlike extraction. It can redo only the files affected by a change.
  */
-export const LINKER_VERSION = 6 // bump when the rule changes: folders are relinked even with no changed file
+// bump the number when the rule changes: folders are relinked even with no changed file (the ablation tag is empty in the app)
+export const LINKER_VERSION = `6${ablationTag() ? `-${ablationTag()}` : ''}`
 
 const CLASSY = new Set(['class', 'interface', 'struct', 'trait', 'enum', 'type', 'module'])
 const SELF = new Set(['this', 'self', 'cls', 'Self', '$this'])
@@ -529,6 +531,7 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
 
   function resolveRef(fc: FileCtx, ref: RefRow): Hit[] {
     if (!ref.receiver) return bareLookup(fc, ref.name, ref.src, ref.kind)
+    if (ablated('types')) return byNameOnly(fc, ref)
     if (ref.receiver !== '(expr)') {
       const parts = ref.receiver.split('.')
       const current = chainType(fc, parts, ref.src)
@@ -544,6 +547,14 @@ function linker(ctx: RootContext, refsOf: (sha: string) => RefRow[]): { linkFile
     const candidates = (ctx.byName.get(ref.name) ?? []).filter((symbol) => (symbol.kind === 'method' || symbol.kind === 'property') && symbol.family === fc.family && (near.has(symbol.path) || dirOf(symbol.path) === dirOf(fc.path)))
     const owners = new Set(candidates.map((symbol) => symbol.owner ?? ctx.syms.get(symbol.sha)?.[symbol.parent]?.id))
     return candidates.length && owners.size === 1 && candidates.length <= 2 ? candidates.map((s) => ({ s, conf: 0.6 })) : []
+  }
+
+  // ablation 'types' (bench only): a call on a receiver links to every method or property with that name in the
+  // same language, up to 3, without looking at the receiver's type
+  function byNameOnly(fc: FileCtx, ref: RefRow): Hit[] {
+    const head = ref.receiver?.split('.')[0] ?? ''
+    if (ref.kind === 'type' || GLOBALS.has(head)) return []
+    return (ctx.byName.get(ref.name) ?? []).filter((symbol) => (symbol.kind === 'method' || symbol.kind === 'property') && symbol.family === fc.family).slice(0, 3).map((s) => ({ s, conf: 0.5 }))
   }
 
   return {

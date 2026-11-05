@@ -1,0 +1,17 @@
+{
+  "id": "paraphrase",
+  "$comment": "Robustness to wording and language: every variant (pt and en, precise and vague) of a few questions per repository. 9 x 6 x 2 variants x 2 x 2 = 432 runs.",
+  "repos": ["gearmod", "desrotula", "am-em-chamas", "typedoc", "litestar", "apollo", "nushell", "squidex", "gitea"],
+  "types": ["locate", "flow", "impact", "vague"],
+  "perRepo": 6,
+  "configs": ["baseline", "gearmod"],
+  "agents": ["claude-sonnet"],
+  "variants": "all",
+  "repeats": 2,
+  "seed": 20261103,
+  "concurrency": 4,
+  "maxTurns": 60,
+  "timeoutSec": 900,
+  "maxUsd": 60,
+  "estimateUsdPerRun": 0.12
+}

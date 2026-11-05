@@ -1,5 +1,7 @@
 // Programming terms in Portuguese -> words that usually appear in code names (in English).
 // It only expands the text search; symbol names cited in the question still count as they are.
+import { ablated } from './ablation'
+
 const PT_EN: Record<string, string> = {
   caminho: 'path', caminhos: 'path', arquivo: 'file', arquivos: 'file', pasta: 'folder dir directory', pastas: 'folder dir',
   ler: 'read', le: 'read', lê: 'read', leitura: 'read', escrever: 'write', escreve: 'write', grava: 'write save', gravar: 'write save', salvar: 'save', salva: 'save',
@@ -31,6 +33,7 @@ const PT_EN: Record<string, string> = {
 }
 
 export function expandTerms(words: string[]): string[] {
+  if (ablated('terms')) return [...new Set(words)]
   const out = new Set(words)
   for (const w of words) { const e = PT_EN[w.toLowerCase()]; if (e) for (const x of e.split(' ')) out.add(x) }
   return [...out]
