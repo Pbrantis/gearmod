@@ -2937,6 +2937,16 @@ body:has(.overlay) .viewdock.floating{display:none}
 .imgpreview-x{position:absolute;top:14px;right:18px;width:34px;height:34px;padding:0;border-radius:50%;font-size:22px;line-height:1;background:rgba(255,255,255,.14);color:#fff;border:0;cursor:pointer}
 .imgpreview-x:hover{background:rgba(255,255,255,.26)}
 
+/* Executions history: steps in the order they happened, so the card's back and forth is visible. */
+.cx-flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0 10px}
+.cx-flowarrow{color:var(--muted);font-size:12px}
+.cx-flowchip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font:600 11.5px var(--sans);cursor:pointer;color:var(--step,var(--text));background:color-mix(in srgb, var(--step,var(--accent)) 14%, transparent);border:1px solid color-mix(in srgb, var(--step,var(--accent)) 40%, transparent)}
+.cx-flowchip small{opacity:.75;font-weight:600}
+.cx-flowchip:hover{filter:brightness(1.15)}
+[data-step=planning]{--step:#7aa2ff}[data-step=execution]{--step:#5ecb8f}[data-step=test]{--step:#e0b25a}
+.cx-roundnum{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:6px;font:700 10.5px var(--sans);color:var(--muted);background:color-mix(in srgb, var(--accent) 8%, var(--g27))}
+.cx-roundstep{color:var(--step,inherit)}
+.cx-return{padding:1px 7px;border-radius:999px;font:600 10px var(--sans);color:#e0b25a;background:color-mix(in srgb, #e0b25a 14%, transparent);border:1px solid color-mix(in srgb, #e0b25a 35%, transparent)}
 /* In-app agent login: mini terminal with the CLI login */
 .agent-login-box{border:1px solid var(--border);border-radius:9px;overflow:hidden;background:color-mix(in srgb, var(--accent) 4%, var(--g0f))}
 .agent-login-bar{display:flex;align-items:center;gap:2px;padding:3px 4px 3px 10px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)}

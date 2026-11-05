@@ -233,7 +233,9 @@ function Donut({ parts, center, label }: { parts: Array<{ key: string; value: nu
 function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): React.JSX.Element {
   const t = useT().board.assessment
   const [view, setView] = useState<'dashboard' | 'tabela'>(() => { try { return localStorage.getItem('gearmod.metricsView') === 'tabela' ? 'tabela' : 'dashboard' } catch { return 'dashboard' } })
-  const [openSteps, setOpenSteps] = useState<string[]>([])
+  const [openSteps, setOpenSteps] = useState<string[]>([]), [openRounds, setOpenRounds] = useState<number[]>([])
+  const [runsView, setRunsView] = useState<'etapas' | 'historico'>(() => { try { return localStorage.getItem('gearmod.runsView') === 'historico' ? 'historico' : 'etapas' } catch { return 'etapas' } })
+  const chooseRuns = (value: 'etapas' | 'historico'): void => { setRunsView(value); try { localStorage.setItem('gearmod.runsView', value) } catch { /* only a convenience */ } }
   const choose = (value: 'dashboard' | 'tabela'): void => { setView(value); try { localStorage.setItem('gearmod.metricsView', value) } catch { /* only a convenience */ } }
   if (!runs.length) return <div className="cx-empty"><b>{t.noRuns}</b><span>{t.noRunsHint}</span></div>
   const total = runs.reduce((sum, run) => ({ input: sum.input + run.input, cached: sum.cached + run.cached, output: sum.output + run.output, cost: sum.cost + (run.costUsd ?? 0), unknown: sum.unknown + (run.costUsd === null ? 1 : 0), ms: sum.ms + (run.durationMs ?? 0) }), { input: 0, cached: 0, output: 0, cost: 0, unknown: 0, ms: 0 })
@@ -244,6 +246,19 @@ function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): Reac
   const singleAgent = simple && steps.length === 1 && steps[0]?.key !== 'test'
   const stepName = (purpose: string | null): string => singleAgent && purpose === steps[0]?.key ? t.agentFallbackTitle : (t.stepLabels as Record<string, string>)[purpose ?? ''] ?? purpose ?? '—'
   const biggest = Math.max(1, ...steps.map((step) => step.input + step.output))
+  const runRow = (run: RunMetric): React.JSX.Element => <li key={run.runId}><span className={`cx-dot ${run.status === 'failed' ? 'complex' : run.status === 'running' ? 'medium' : 'simple'}`} />
+              <div><b>{formatDate(run.startedAt)}</b>{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}<small>{[run.provider, run.modelEffective && run.modelEffective !== run.model ? `${run.model} → ${run.modelEffective}` : run.model, run.effort].filter(Boolean).join(' · ') || '—'}</small></div>
+              <span className="cx-run-n">{compact(run.input + run.output)}<small>{t.tokens}</small></span><span className="cx-run-n">{run.durationMs === null ? '—' : seconds(run.durationMs)}<small>{t.duration}</small></span><span className="cx-run-n" data-tip={run.costUsd === null ? t.costUnknownTip(1) : undefined}>{run.costUsd === null ? '—' : t.usd(run.costUsd.toFixed(2))}<small>{t.cost}</small></span></li>
+  // History: runs in the order they happened; consecutive runs of the same step form a "round", so the back and forth
+  // (planning, implementation, test, implementation again...) shows at a glance. `pass` counts how many times the step came back.
+  const rounds: Array<{ purpose: string | null; items: RunMetric[]; pass: number }> = [], passes = new Map<string, number>()
+  for (const run of [...runs].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))) {
+    const last = rounds.at(-1)
+    if (last && last.purpose === run.purpose) { last.items.push(run); continue }
+    const pass = (passes.get(run.purpose ?? '') ?? 0) + 1; passes.set(run.purpose ?? '', pass)
+    rounds.push({ purpose: run.purpose, items: [run], pass })
+  }
+  const toggleRound = (index: number): void => setOpenRounds((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index])
   const groups = [...steps.filter((step) => step.runs > 0).map((step) => ({ key: step.key, title: stepName(step.key), runs: runs.filter((run) => run.purpose === step.key) })), ...(steps.filter((step) => step.runs > 0).length > 1 ? [{ key: 'total', title: t.totalTitle, runs }] : [])]
   return <div className="cx-metrics">
     <div className="cx-sechead"><h3>{t.metricsTitle}</h3><span className="cx-count">{runs.length}</span><span className="cx-spacer" />
@@ -266,14 +281,21 @@ function Metrics({ runs, simple }: { runs: RunMetric[]; simple: boolean }): Reac
               <small className="cx-muted">{t.readWrittenCache(fmt(step.input), fmt(step.output), fmt(step.cached))}</small>
             </div> })}</div>
           <div className="cx-legend"><span><i className="in" />{t.read}</span><span><i className="out" />{t.written}</span></div></section>
-      <section className="cx-card"><h4>{t.runs}</h4>
-        <div className="cx-groups">{steps.filter((step) => step.runs > 0).map((step) => { const shown = openSteps.includes(step.key), items = runs.filter((run) => run.purpose === step.key), cost = items.reduce((sum, run) => sum + (run.costUsd ?? 0), 0), noCost = items.filter((run) => run.costUsd === null).length
+      <section className="cx-card"><div className="cx-sechead"><h4>{t.runs}</h4><span className="cx-spacer" />
+        <div className="cx-seg" role="tablist" aria-label={t.runsViewLabel}><button type="button" role="tab" aria-selected={runsView === 'etapas'} className={runsView === 'etapas' ? 'on' : ''} onClick={() => chooseRuns('etapas')}>{t.byStep}</button><button type="button" role="tab" aria-selected={runsView === 'historico'} className={runsView === 'historico' ? 'on' : ''} onClick={() => chooseRuns('historico')}>{t.history}</button></div></div>
+        {runsView === 'historico' ? <>
+          <p className="cx-muted">{t.historyHint}</p>
+          <div className="cx-flow" aria-label={t.historyFlow}>{rounds.map((round, index) => <React.Fragment key={index}>{index > 0 && <span className="cx-flowarrow" aria-hidden="true">→</span>}<button type="button" className="cx-flowchip" data-step={round.purpose ?? ''} data-tip={`${stepName(round.purpose)} · ${t.runCount(round.items.length)}`} onClick={() => toggleRound(index)}>{stepName(round.purpose)}<small>{round.items.length}</small></button></React.Fragment>)}</div>
+          <div className="cx-groups">{rounds.map((round, index) => { const shown = openRounds.includes(index), cost = round.items.reduce((sum, run) => sum + (run.costUsd ?? 0), 0), noCost = round.items.filter((run) => run.costUsd === null).length, failed = round.items.filter((run) => run.status === 'failed').length
+            return <div className={`cx-stepgroup ${shown ? 'open' : ''}`} key={index}>
+              <button type="button" className="cx-grouphead" aria-expanded={shown} onClick={() => toggleRound(index)}><span className="cx-gname"><span className="cx-chev">{shown ? '▾' : '▸'}</span><span className="cx-roundnum">{index + 1}</span><b className="cx-roundstep" data-step={round.purpose ?? ''}>{stepName(round.purpose)}</b>{round.pass > 1 && <span className="cx-return" data-tip={t.cameBack}>{t.pass(round.pass)}</span>}<span className="cx-count">{round.items.length}</span>{failed > 0 && <span className="cx-dot complex" data-tip={t.failedRuns(failed)} />}<small className="cx-muted">{formatDate(round.items[0]!.startedAt)}</small></span><span className="cx-run-n">{compact(round.items.reduce((sum, run) => sum + run.input + run.output, 0))}<small>{t.tokens}</small></span><span className="cx-run-n">{seconds(round.items.reduce((sum, run) => sum + (run.durationMs ?? 0), 0))}<small>{t.duration}</small></span><span className="cx-run-n" data-tip={noCost ? t.costUnknownTip(noCost) : undefined}>{t.usd(cost.toFixed(2))}{noCost ? '*' : ''}<small>{t.cost}</small></span></button>
+              {shown && <ul className="cx-runs">{round.items.map(runRow)}</ul>}
+            </div> })}</div>
+        </> : <div className="cx-groups">{steps.filter((step) => step.runs > 0).map((step) => { const shown = openSteps.includes(step.key), items = runs.filter((run) => run.purpose === step.key), cost = items.reduce((sum, run) => sum + (run.costUsd ?? 0), 0), noCost = items.filter((run) => run.costUsd === null).length
           return <div className={`cx-stepgroup ${shown ? 'open' : ''}`} key={step.key}>
             <button type="button" className="cx-grouphead" aria-expanded={shown} onClick={() => setOpenSteps(shown ? openSteps.filter((key) => key !== step.key) : [...openSteps, step.key])}><span className="cx-gname"><span className="cx-chev">{shown ? '▾' : '▸'}</span><b>{stepName(step.key)}</b><span className="cx-count">{step.runs}</span></span><span className="cx-run-n">{compact(step.input + step.output)}<small>{t.tokens}</small></span><span className="cx-run-n">{seconds(step.ms)}<small>{t.duration}</small></span><span className="cx-run-n" data-tip={noCost ? t.costUnknownTip(noCost) : undefined}>{t.usd(cost.toFixed(2))}{noCost ? '*' : ''}<small>{t.cost}</small></span></button>
-            {shown && <ul className="cx-runs">{[...items].reverse().map((run) => <li key={run.runId}><span className={`cx-dot ${run.status === 'failed' ? 'complex' : run.status === 'running' ? 'medium' : 'simple'}`} />
-              <div><b>{formatDate(run.startedAt)}</b>{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}<small>{[run.provider, run.modelEffective && run.modelEffective !== run.model ? `${run.model} → ${run.modelEffective}` : run.model, run.effort].filter(Boolean).join(' · ') || '—'}</small></div>
-              <span className="cx-run-n">{compact(run.input + run.output)}<small>{t.tokens}</small></span><span className="cx-run-n">{run.durationMs === null ? '—' : seconds(run.durationMs)}<small>{t.duration}</small></span><span className="cx-run-n" data-tip={run.costUsd === null ? t.costUnknownTip(1) : undefined}>{run.costUsd === null ? '—' : t.usd(run.costUsd.toFixed(2))}<small>{t.cost}</small></span></li>)}</ul>}
-          </div> })}</div>
+            {shown && <ul className="cx-runs">{[...items].reverse().map(runRow)}</ul>}
+          </div> })}</div>}
       </section>
     </> : <div className="cx-tablewrap"><table className="cx-table cx-mtable"><thead><tr><th>{t.step}</th><th>{t.status}</th><th>{t.agentModel}</th><th>{t.effort}</th><th className="num">{t.durationHeader}</th><th className="num">{t.input}</th><th className="num">{t.cache}</th><th className="num">{t.output}</th><th className="num">{t.contextSent}</th><th className="num">{t.costHeader}</th></tr></thead><tbody>
       {runs.map((run) => <tr key={run.runId}><td>{stepName(run.purpose)}{run.usedPlaywrightCli && <span className="cx-kind" style={{ marginLeft: 6 }}>playwright-cli</span>}</td><td><span className={`cx-pill ${run.status === 'failed' ? 'bad' : run.status === 'running' ? 'warn' : 'ok'}`}>{run.status}</span></td><td>{[run.provider, run.modelEffective && run.modelEffective !== run.model ? `${run.model} → ${run.modelEffective}` : run.model].filter(Boolean).join(' · ') || '—'}</td><td>{run.effort ?? '—'}</td><td className="num">{run.durationMs === null ? '—' : seconds(run.durationMs)}</td><td className="num">{fmt(run.input)}</td><td className="num">{fmt(run.cached)}</td><td className="num">{fmt(run.output)}</td><td className="num">{run.promptChars === null ? '—' : t.chars(fmt(run.promptChars))}</td><td className="num">{run.costUsd === null ? <span className="cx-muted">{t.notReported}</span> : t.usd(run.costUsd.toFixed(4))}</td></tr>)}
