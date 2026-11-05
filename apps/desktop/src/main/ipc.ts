@@ -583,6 +583,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'worktrees:candidates': (input: { cardId: string }) => services.worktrees.candidates(input.cardId)
     , 'worktrees:link': (input: { cardId: string; fromCardId: string | null }) => { services.worktrees.link(input.cardId, input.fromCardId); return {} }
     , 'tests:run': (input: { cardId: string; executable: string; args: string[] }) => services.quality.runTest(input.cardId, input.executable, input.args)
+    , 'tests:detect-command': (input: { cardId: string }) => services.quality.detectCommand(input.cardId)
     , 'quality:status': (input: { cardId: string }) => services.quality.status(input.cardId)
     , 'reviews:prepare-local': (input: { cardId: string }) => services.quality.prepareLocalReview(input.cardId)
     , 'git:repos': (input: { projectId: string }) => services.gitManager.repos(input.projectId)

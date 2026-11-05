@@ -20,7 +20,15 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
   const [files, setFiles] = useState<FileChange[]>(), [test, setTest] = useState<TestRun | null>(null), [review, setReview] = useState<Review | null>(null)
   const [command, setCommand] = useState(() => readCommand(projectId)), [draftCommand, setDraftCommand] = useState(() => readCommand(projectId))
   const [ask, setAsk] = useState<'' | 'test' | 'review'>(''), [configuring, setConfiguring] = useState<'' | 'save' | 'run'>(''), [working, setWorking] = useState<'' | 'refresh' | 'test' | 'review'>(''), [error, setError] = useState('')
+  const [suggested, setSuggested] = useState('')
   const loading = useRef(false)
+  // No command saved yet: asks the main process to guess it from the worktree (package.json, manage.py, Cargo.toml...).
+  useEffect(() => {
+    if (command.trim() || noWorktree) return
+    let alive = true
+    void window.gearmod.invoke('tests:detect-command', { cardId }).then((result) => { if (alive) setSuggested(result.command) }).catch(() => { /* suggestion only */ })
+    return () => { alive = false }
+  }, [cardId, command, noWorktree, files === undefined])
   // `silent`: automatic refresh; does not show the loading state nor override a read that is still in progress.
   const refresh = useCallback(async (silent = false) => {
     if (loading.current) return
@@ -48,7 +56,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
 
   const runTest = async (value = command): Promise<void> => {
     const nextCommand = value.trim(), parts = nextCommand.split(/\s+/).filter(Boolean)
-    if (!parts.length) { setDraftCommand(''); setConfiguring('run'); return }
+    if (!parts.length) { setDraftCommand(suggested); setConfiguring('run'); return }
     setCommand(nextCommand); setDraftCommand(nextCommand)
     try { localStorage.setItem(commandKey(projectId), nextCommand) } catch { /* convenience only */ }
     setWorking('test'); setError('')
@@ -66,7 +74,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
   const showAll = (): void => { if (files?.length) window.dispatchEvent(new CustomEvent('gearmod:open-changes', { detail: { projectId, cardId, files } })) }
   const added = files?.reduce((sum, item) => sum + item.added, 0) ?? 0, removed = files?.reduce((sum, item) => sum + item.removed, 0) ?? 0
   const passed = test?.status === 'passed', approved = review?.state === 'approved' || review?.state === 'merged'
-  const configure = (action: 'save' | 'run'): void => { setDraftCommand(command); setConfiguring(action) }
+  const configure = (action: 'save' | 'run'): void => { setDraftCommand(command || suggested); setConfiguring(action) }
   const saveConfiguredCommand = (): void => {
     const next = draftCommand.trim(); if (!next) return
     setCommand(next); try { localStorage.setItem(commandKey(projectId), next) } catch { /* convenience only */ }
@@ -90,7 +98,7 @@ export function ChangesCard({ cardId, projectId, busy, shared }: { cardId: strin
     <div className="ch-steps">
       <button type="button" className={`ch-step ${passed ? 'ok' : test?.status === 'failed' ? 'bad' : ''}`} data-tip={t.autoTestsTip} disabled={Boolean(working) || busy} onClick={() => command.trim() ? setAsk('test') : configure('run')}>{working === 'test' ? <span className="spin sm" /> : passed ? '✓' : test?.status === 'failed' ? '✕' : '○'} {test?.status === 'failed' ? t.autoTestsFailed : passed ? t.autoTestsPassed : t.autoTests}</button>
       <button type="button" className={`ch-step ${approved ? 'ok' : ''}`} data-tip={t.reviewTip} disabled={Boolean(working) || busy || !passed || approved} onClick={() => setAsk('review')}>{working === 'review' ? <span className="spin sm" /> : approved ? '✓' : '○'} {approved ? t.reviewApproved : t.review}</button>
-      <button type="button" className={`ch-step ch-command ${command.trim() ? '' : 'bad'}`} data-tip={command.trim() ? t.currentCommand(command) : t.defineCommandTip} onClick={() => configure('save')}>{command.trim() ? `⌘ ${command}` : t.configureCommand}</button>
+      <button type="button" className={`ch-step ch-command ${command.trim() ? '' : 'bad'}`} data-tip={command.trim() ? t.currentCommand(command) : suggested ? t.suggestedCommandTip(suggested) : t.defineCommandTip} onClick={() => configure('save')}>{command.trim() ? `⌘ ${command}` : suggested ? t.suggestedCommand(suggested) : t.configureCommand}</button>
       {passed && approved && <span className="ch-ready"><CheckIcon />{t.readyForDone}</span>}
     </div>
     {error && <p className="ch-error">{error}</p>}

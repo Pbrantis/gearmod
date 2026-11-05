@@ -7,6 +7,7 @@ import { redact } from './redaction'
 import type { WorktreeService } from './worktrees'
 import { applyEnvPolicy } from './env-policy'
 import { tm } from './i18n'
+import { detectTestCommand } from './test-command'
 
 const exec = promisify(execFile)
 export class QualityService {
@@ -29,6 +30,12 @@ export class QualityService {
     const endedAt = new Date().toISOString()
     this.database.db.prepare('UPDATE test_runs SET status = ?, exit_code = ?, summary = ?, ended_at = ? WHERE id = ?').run(status, exitCode, redact(summary), endedAt, id)
     return { id, cardId, command, status, exitCode, summary: redact(summary), startedAt, endedAt }
+  }
+
+  /** Suggested test command for the card's worktree ('' when nothing is recognized). */
+  detectCommand(cardId: string): { command: string } {
+    const worktree = this.worktrees.get(cardId)
+    return { command: worktree ? detectTestCommand(worktree.path) : '' }
   }
 
   /** Last test and last review of the card: what the Done gate checks. */

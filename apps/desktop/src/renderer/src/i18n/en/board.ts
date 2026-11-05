@@ -242,6 +242,8 @@ export const board: typeof source = {
     review: 'Review',
     reviewApproved: 'Review · approved',
     currentCommand: (command) => `Current command: ${command}`,
+    suggestedCommand: (command) => `⌘ Confirm: ${command}`,
+    suggestedCommandTip: (command) => `We detected "${command}" for this project. Click to confirm or edit.`,
     defineCommandTip: "Define which command runs this project's tests",
     configureCommand: '⌘ Configure command',
     readyForDone: 'Ready for Done',

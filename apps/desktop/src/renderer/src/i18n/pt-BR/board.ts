@@ -242,6 +242,8 @@ export const board = {
     review: 'Revisar',
     reviewApproved: 'Revisar · aprovada',
     currentCommand: (command: string) => `Comando atual: ${command}`,
+    suggestedCommand: (command: string) => `⌘ Confirmar: ${command}`,
+    suggestedCommandTip: (command: string) => `Detectamos "${command}" para este projeto. Clique para confirmar ou editar.`,
     defineCommandTip: 'Defina qual comando executa os testes deste projeto',
     configureCommand: '⌘ Configurar comando',
     readyForDone: 'Pronto para Done',
