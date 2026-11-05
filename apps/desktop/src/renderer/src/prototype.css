@@ -946,7 +946,8 @@ select.in{appearance:none;background-image:linear-gradient(45deg,transparent 50%
 .agnone{font:600 11px var(--mono);color:var(--muted)}
 .tb-brand{position:relative;flex:none;width:230px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding-left:14px;font-weight:800;font-size:13px;transition:width .2s}
 .tb-brand .brandmark{width:26px;height:26px}
-.titlebar.collapsed .tb-brand{width:auto;padding-right:14px}
+/* Collapsed menu: the brand keeps its width so the project name and path do not move. */
+.titlebar.collapsed .tb-brand{width:230px}
 .tb-path{position:relative;margin:0 0 0 20px;font-size:11.5px;-webkit-app-region:no-drag;max-width:calc(100% - 520px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tb-actions{display:flex;gap:5px;margin-left:auto;margin-right:145px;-webkit-app-region:no-drag;position:relative;flex:none}.tb-actions .ibtn{height:32px}.tb-path{min-width:0;flex:0 1 auto}
 .wf-host{position:fixed;inset:var(--titlebar) 0 0;z-index:45;pointer-events:none}.workspacefiles{pointer-events:auto;position:absolute;display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--border);box-shadow:0 12px 40px var(--cs-00000077);min-width:340px;min-height:240px}.workspacefiles.left{inset:0 auto 0 0;width:min(72vw,1120px);resize:horizontal;overflow:auto}.workspacefiles.right{inset:0 0 0 auto;width:min(72vw,1120px);resize:horizontal;overflow:auto}.workspacefiles.top{inset:0 0 auto;height:65%;resize:vertical;overflow:auto}.workspacefiles.bottom{inset:auto 0 0;height:65%;resize:vertical;overflow:auto}.workspacefiles.expanded,.workspacefiles.standalone{inset:0;width:100%;height:100%;box-shadow:none}
@@ -2171,10 +2172,9 @@ button.pathchip.tb-path:focus-visible{outline:2px solid var(--accent);outline-of
 /* Git context of the roots and of the open file. */
 .wf-tree-label{display:grid;gap:2px;min-width:0}.wf-tree-label>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wf-branchchip{display:inline-flex;align-items:center;gap:4px;justify-self:start;max-width:100%;padding:1px 6px;border:1px solid color-mix(in srgb,var(--accent) 26%,var(--border));border-radius:5px;background:color-mix(in srgb,var(--accent) 10%,var(--surface-2));color:var(--accent-strong);font:600 9px/1.35 var(--sans);white-space:nowrap}.wf-branchchip>svg{flex:none;width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.wf-branchchip>span{min-width:0;overflow:hidden;text-overflow:ellipsis}.wf-branchchip.worktree{border-color:var(--cl-8fb8d666);background:var(--cb-8fb8d61a);color:var(--cf-a9cdef)}.wf-filebar>.wf-branchchip{flex:none;max-width:42%;margin-right:4px;font-size:10px}
 /* Title bar: gear aligned with the content, lower path chip and Board/Chats/Git at the same height as the icons. */
-.titlebar.collapsed .tb-slot-gear{margin-left:18px}
 .tb-slot-gear{margin-right:2px}
 .tb-title{margin:0 8px 0 6px}
-.titlebar:not(.collapsed) .tb-title{margin-left:30px}
+.tb-title{margin-left:30px}
 button.pathchip.tb-path{height:24px;padding:0 10px;gap:6px;font-size:11px;line-height:1;margin-left:4px}
 button.pathchip.tb-path svg{width:13px;height:13px}
 .tb-slot .viewtoggle{height:28px;padding:2px;box-sizing:border-box;align-items:stretch;gap:2px;border-radius:9px}
