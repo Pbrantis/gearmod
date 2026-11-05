@@ -36,7 +36,7 @@ export class AgentOrchestrator {
   constructor(
     private readonly conversations: ConversationRepository,
     private readonly adapters: Record<'codex' | 'claude' | 'gemini', AgentAdapter>,
-    private readonly emit: (event: { runId: string; eventType: string; payload: Record<string, unknown> }) => void,
+    private readonly emit: (event: { runId: string; eventType: string; payload: Record<string, unknown>; seq?: number }) => void,
     private readonly worktrees: WorktreeService,
     /** Limit of simultaneous runs; a function so it takes effect immediately when the user changes the setting. */
     private readonly concurrency: number | (() => number) = 2,
@@ -138,7 +138,7 @@ export class AgentOrchestrator {
       if (this.stopping) return
       if (event.type === 'tokens.update') { try { this.ledger?.recordDelta?.(job.run.id, { input: Number(event.payload.input) || 0, cached: Number(event.payload.cached) || 0, output: Number(event.payload.output) || 0 }) } catch { /* ledger is informational */ } }
       if (event.type === 'claude/rate_limit_event') { try { this.usage?.recordClaude(context.profile.id, event.payload) } catch { /* usage is informational */ } }
-      const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload })
+      const saved = this.conversations.appendEvent(job.run.id, event.type, event.payload); this.emit({ runId: job.run.id, eventType: saved.eventType, payload: saved.payload, seq: saved.seq })
       // Tools used become gray lines in the chat (as in Claude Code); the screen reloads the messages when it receives the notice.
       const tools = toolActivities(event.type, event.payload)
       // The agent touched another card's worktree (e.g. the user asked to work there): warns once per owner, so the screen can offer the link.

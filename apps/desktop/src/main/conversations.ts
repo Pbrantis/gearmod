@@ -97,6 +97,20 @@ export class ConversationRepository {
     return [...running, ...done]
   }
 
+  /**
+   * The chat's run still in progress and the text it streamed so far, rebuilt from the saved deltas. The screen keeps the live text
+   * only in memory: without this, leaving the chat and coming back showed nothing until the run ended. `seq` is the last saved event.
+   */
+  liveRun(chatId: string): { runId: string; text: string; seq: number } | null {
+    const run = this.database.db.prepare(`SELECT id FROM runs WHERE chat_id = ? AND status IN ('queued', 'running') ORDER BY started_at DESC, rowid DESC LIMIT 1`).get(chatId) as { id: string } | undefined
+    if (!run) return null
+    const seq = (this.database.db.prepare('SELECT COALESCE(MAX(seq), -1) AS seq FROM run_events WHERE run_id = ?').get(run.id) as { seq: number }).seq
+    const deltas = this.database.db.prepare(`SELECT payload_json_sanitized FROM run_events WHERE run_id = ? AND event_type = 'item/agentMessage/delta' ORDER BY seq`).pluck().all(run.id) as string[]
+    let text = ''
+    for (const payload of deltas) { try { text += String((JSON.parse(payload) as { delta?: unknown }).delta ?? '') } catch { /* damaged event: skip it */ } }
+    return { runId: run.id, text, seq }
+  }
+
   appendEvent(runId: string, eventType: string, payload: Record<string, unknown>): RunEvent {
     const next = this.database.db.prepare('SELECT COALESCE(MAX(seq), -1) + 1 AS seq FROM run_events WHERE run_id = ?').get(runId) as { seq: number }
     const event = { id: randomUUID(), runId, seq: next.seq, eventType, payload, createdAt: new Date().toISOString() }

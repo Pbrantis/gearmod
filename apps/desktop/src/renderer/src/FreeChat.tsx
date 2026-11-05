@@ -27,6 +27,7 @@ import { ThinkingIndicator, useBusySince, useTypewriter } from './Thinking'
 import { startVoiceInstall } from './voiceStore'
 import { useDictation } from './useDictation'
 import { useStickToBottom } from './useStickToBottom'
+import { adoptLiveRun, liveDelta, resetLiveRun, type LiveRunRefs } from './liveRun'
 import { pop } from './popout'
 import { plainError } from './NoticeDialog'
 import { useT } from './i18n'
@@ -51,7 +52,8 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const [chat, setChat] = useState<Chat | undefined>(start), [messages, setMessages] = useState<ChatMessage[]>([]), [input, setInput] = useState(''), [live, setLive] = useState(''), [error, setError] = useState('')
   const saved = useMemo(() => (mode === 'free' ? readSaved(project.id) : null), [project.id, mode])
   const [profileId, setProfileId] = useState(start?.profileId ?? (saved && profiles.some((item) => item.id === saved.profileId) ? saved.profileId : undefined) ?? profiles[0]?.id ?? ''), [busy, setBusy] = useState(Boolean(start?.busy))
-  const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), converted = useRef<string | undefined>(undefined)
+  const chatRef = useRef(chat); chatRef.current = chat
+  const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), seen = useRef(-1), liveRefs: LiveRunRefs = { runId, seen }, converted = useRef<string | undefined>(undefined)
   const agentState = useAgentConfig('', 'execution', profiles, profileId || undefined), agentConfig = mode === 'free' ? agentState.config : undefined
   const restored = useRef(false)
   // Restores the configuration chosen last time (model, effort and mode) as soon as the agent's options arrive.
@@ -66,7 +68,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const [switchTo, setSwitchTo] = useState<AgentProfile>()
   useEffect(() => { if (agentState.config && agentState.config.profileId !== profileId && !chat) setProfileId(agentState.config.profileId) }, [agentState.config?.profileId])
   const restartWith = (target: AgentProfile): void => {
-    setSwitchTo(undefined); setChat(undefined); setMessages([]); setLive(''); setError(''); setBusy(false); runId.current = undefined; setProfileId(target.id); replies.clear()
+    setSwitchTo(undefined); setChat(undefined); setMessages([]); setLive(''); setError(''); setBusy(false); resetLiveRun(liveRefs); setProfileId(target.id); replies.clear()
     void agentState.update({ profileId: target.id, model: null, effort: null, mode: defaultPermissionMode(target.provider, 'execution') })
   }
   const [modeMenu, setModeMenu] = useState(false), modeBox = useRef<HTMLSpanElement>(null), modeMenuBox = useRef<HTMLDivElement>(null)
@@ -91,11 +93,19 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
   const dictation = useDictation(useCallback((text: string) => setInput((value) => `${value}${value && !/\s$/.test(value) ? ' ' : ''}${text}`), []))
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
   const load = useCallback(async (chatId: string) => setMessages(await window.gearmod.invoke('messages:list', { chatId })), [])
-  useEffect(() => { if (start) void load(start.id).catch((reason: unknown) => setError(plainError(reason))) }, [start, load])
+  useEffect(() => {
+    if (!start) return
+    void load(start.id).catch((reason: unknown) => setError(plainError(reason)))
+    // Opened while the agent is still answering (left and came back): reconnects to the run and shows the text so far.
+    void adoptLiveRun(start.id, liveRefs, setLive).then((found) => { if (found) setBusy(true) })
+  }, [start, load])
   useEffect(() => window.gearmod.onRunEvent((event) => {
     if (event.eventType === 'gearmod/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void load(id); return current }); return }
+    // Run started outside this screen in this chat (queued message, automatic resume): adopts it to show the stream.
+    if (event.eventType === 'gearmod/run-started' && event.runId && event.payload.chatId === chatRef.current?.id) { resetLiveRun(liveRefs, event.runId); setBusy(true); setLive(''); return }
     if (!runId.current || event.runId !== runId.current) return
-    if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
+    const delta = liveDelta(event, liveRefs)
+    if (delta) setLive((value) => value + delta)
     if (event.eventType === 'gearmod/card-updated' && event.payload.type === 'converted') converted.current = String(event.payload.cardId)
     if (event.eventType === 'gearmod/run-completed') {
       runId.current = undefined; setBusy(false); setLive(''); changed()
@@ -113,7 +123,7 @@ export function FreeChat({ project, profiles, chat: start, close, onConverted, c
       if (!current) { if (!profileId) throw new Error(t.chat.cardChat.chooseAgent); current = await window.gearmod.invoke('chats:create', { projectId: project.id, cardId: null, purpose: mode, profileId, skill }); setChat(current) }
       else if ((current.skill?.name ?? null) !== (skill?.name ?? null) || (current.skill?.path ?? null) !== (skill?.path ?? null)) { current = await window.gearmod.invoke('chats:set-skill', { chatId: current.id, skill }); setChat(current) }
       const started = await window.gearmod.invoke('agents:start', { chatId: current.id, prompt, planning: readOnly, attachments: files.length ? files : undefined, choice: agentConfig ? { model: agentConfig.model, effort: agentConfig.effort, mode: agentConfig.mode } : undefined })
-      runId.current = started.id; setBusy(true); setLive(''); await load(current.id); changed()
+      resetLiveRun(liveRefs, started.id); setBusy(true); setLive(''); await load(current.id); changed()
     } catch (reason) { setError(plainError(reason)); const restored = replies.restore(prompt); setInput((value) => [restored, value].filter(Boolean).join('\n\n')); attach.add(files) }
   }
   const cancel = async (): Promise<void> => { if (runId.current) await window.gearmod.invoke('agents:cancel', { runId: runId.current }).catch((reason: unknown) => setError(plainError(reason))) }

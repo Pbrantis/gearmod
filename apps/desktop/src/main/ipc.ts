@@ -553,6 +553,7 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     , 'chats:list': (input: { projectId: string; cardId?: string | null }) => services.conversations.listChats(input.projectId, input.cardId)
     , 'chats:create': async (input: { projectId: string; cardId: string | null; purpose: AgentPurpose; profileId: string; skill?: { name: string; path: string } | null }) => { if (input.skill) await services.skills.assertKnown(input.skill, input.projectId); return services.conversations.createChat(input) }
     , 'messages:list': (input: { chatId: string }) => services.conversations.listMessages(input.chatId)
+    , 'runs:live': (input: { chatId: string }) => services.conversations.liveRun(input.chatId)
     , 'agents:start': (input: { chatId: string; prompt: string; planning: boolean; attachments?: string[]; choice?: { model?: string | null; effort?: Effort | null; mode?: PermissionMode } }) => {
       try { return services.orchestrator.start(input) } catch (error) {
         // Asked for implementation in Spec Kit planning: the block applies, and the app offers to move the card (user approval).

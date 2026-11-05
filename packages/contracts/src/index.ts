@@ -581,6 +581,7 @@ export const ipcContracts = {
   , 'chats:list': { input: projectIdInput.extend({ cardId: uuid.nullable().optional() }).strict(), output: z.array(chatSchema) }
   , 'chats:create': { input: z.object({ projectId: uuid, cardId: uuid.nullable(), purpose: chatPurposeSchema, profileId: uuid, skill: skillRefSchema.nullable().optional() }).strict(), output: chatSchema }
   , 'messages:list': { input: z.object({ chatId: uuid }).strict(), output: z.array(chatMessageSchema) }
+  , 'runs:live': { input: z.object({ chatId: uuid }).strict(), output: z.object({ runId: uuid, text: z.string(), seq: z.number().int() }).nullable() }
   , 'agents:permissions': { input: z.object({ chatId: uuid }).strict(), output: z.array(agentPermissionSchema) }
   , 'agents:permission-decide': { input: z.object({ runId: uuid, requestId: uuid, allow: z.boolean() }).strict(), output: z.object({ decided: z.boolean() }) }
   , 'agents:start': { input: z.object({ chatId: uuid, prompt: z.string().trim().min(1).max(100_000), planning: z.boolean(), attachments: z.array(z.string().min(1).max(2048)).max(20).optional(), choice: z.object({ model: z.string().trim().max(120).nullable().optional(), effort: effortSchema.nullable().optional(), mode: permissionModeSchema.optional() }).strict().optional() }).strict(), output: runSchema }
@@ -700,7 +701,8 @@ export type CardChecklist = z.output<typeof cardChecklistSchema>
 export type ChatMessage = z.output<typeof chatMessageSchema>
 export type Run = z.output<typeof runSchema>
 export type RunEvent = z.output<typeof runEventSchema>
-export type PushedRunEvent = Pick<RunEvent, 'runId' | 'eventType' | 'payload'>
+/** `seq` comes with the events saved in the run (it lets a chat that reloaded the text so far skip what it already has). */
+export type PushedRunEvent = Pick<RunEvent, 'runId' | 'eventType' | 'payload'> & { seq?: number }
 export type Plan = z.output<typeof planSchema>
 export type Worktree = z.output<typeof worktreeSchema>
 export type GitSnapshot = z.output<typeof gitSnapshotSchema>

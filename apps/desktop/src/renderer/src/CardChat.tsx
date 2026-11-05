@@ -35,6 +35,7 @@ import { useFitInView } from './useFitInView'
 import { terminal } from './terminalStore'
 import { useDictation } from './useDictation'
 import { useStickToBottom } from './useStickToBottom'
+import { adoptLiveRun, liveDelta, resetLiveRun, type LiveRunRefs } from './liveRun'
 import { pop } from './popout'
 import { useT } from './i18n'
 import { useProjectSkills, useSlashSkills } from './SlashSkills'
@@ -143,7 +144,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const [input, setInput] = useState(''), [error, setError] = useState(''), [skill, setSkill] = useState<SkillRef | null>(null)
   const [menu, setMenu] = useState<'mode' | 'skill' | null>(null), [skillFilter, setSkillFilter] = useState(''), [voiceSetup, setVoiceSetup] = useState(false)
   const chatRef = useRef<Chat | undefined>(undefined)
-  const log = useRef<HTMLDivElement>(null), runId =useRef<string | undefined>(undefined), wrap = useRef<HTMLDivElement>(null), skillFilterInput = useRef<HTMLInputElement>(null)
+  const log = useRef<HTMLDivElement>(null), runId = useRef<string | undefined>(undefined), seen = useRef(-1), liveRefs: LiveRunRefs = { runId, seen }, wrap = useRef<HTMLDivElement>(null), skillFilterInput = useRef<HTMLInputElement>(null)
   const [chats, setChats] = useState<Chat[]>([])
   // A short flow has a single agent and a single chat (plans, executes and validates): the tab does not distinguish stages.
   const singleChat = card.workflow === 'light' && chats.length <= 1
@@ -178,14 +179,15 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
   const voiceReady = Boolean(dictation.status?.modelInstalled && dictation.status.engineInstalled)
   const loadMessages = useCallback(async (chatId: string) => setMessages(await window.gearmod.invoke('messages:list', { chatId })), [])
   useEffect(() => { if (card.id) void window.gearmod.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }, [card.id])
-  useEffect(() => { if (!card.id) return; void window.gearmod.invoke('chats:list', { projectId: project.id, cardId: card.id }).then((items) => { setChats(items); const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); void loadMessages(found.id) } }).catch((reason: unknown) => setError(plainError(reason))) }, [project.id, card.id, mode, loadMessages])
+  useEffect(() => { if (!card.id) return; void window.gearmod.invoke('chats:list', { projectId: project.id, cardId: card.id }).then((items) => { setChats(items); const found = items.find((item) => item.purpose === mode); if (found) { setChat(found); void loadMessages(found.id); void adoptLiveRun(found.id, liveRefs, setLive) } }).catch((reason: unknown) => setError(plainError(reason))) }, [project.id, card.id, mode, loadMessages])
   useEffect(() => window.gearmod.onRunEvent((event) => {
     if (event.eventType === 'gearmod/tool-activity') { const id = String(event.payload.chatId ?? ''); setChat((current) => { if (current && current.id === id) void loadMessages(id); return current }); return }
     const own = Boolean(chatRef.current) && event.payload.chatId === chatRef.current?.id
     // Run that started outside this component (queued message, resume, chaining): the chat adopts it to show the stream.
-    if (event.eventType === 'gearmod/run-started' && own && event.runId) { runId.current = event.runId; setLive(''); void loadMessages(chatRef.current!.id); return }
+    if (event.eventType === 'gearmod/run-started' && own && event.runId) { resetLiveRun(liveRefs, event.runId); setLive(''); void loadMessages(chatRef.current!.id); return }
     if (event.eventType !== 'gearmod/run-completed' || !own) { if (event.runId !== runId.current) return }
-    if (event.eventType === 'item/agentMessage/delta') setLive((value) => value + String(event.payload.delta ?? ''))
+    const delta = liveDelta(event, liveRefs)
+    if (delta) setLive((value) => value + delta)
     if (event.eventType === 'gearmod/run-completed') { runId.current = undefined; setRun(undefined); setLive(''); setChat((current) => { if (current) void loadMessages(current.id); return current }); void window.gearmod.invoke('cards:mark-viewed', { cardId: card.id }).catch(() => undefined) }
   }), [card.id, loadMessages])
   useEffect(() => { chatRef.current = chat }, [chat])
@@ -236,7 +238,7 @@ export function CardChat({ project, card, board, profiles, columnLabel, mode, cl
       }
       if (!current) { if (!chosen) throw new Error(c.chooseAgent); current = await window.gearmod.invoke('chats:create', { projectId: project.id, cardId, purpose: mode, profileId: chosen, skill }); setChat(current) }
       const started = await window.gearmod.invoke('agents:start', { chatId: current.id, prompt, planning, attachments: files.length ? files : undefined })
-      runId.current = started.id; setRun(started); setLive(''); await loadMessages(current.id)
+      resetLiveRun(liveRefs, started.id); setRun(started); setLive(''); await loadMessages(current.id)
     } catch (reason) { setError(plainError(reason)); const restored = replies.restore(prompt); setInput((value) => [restored, value].filter(Boolean).join('\n\n')); attach.add(files) }
   }
   const cancel = async (): Promise<void> => { const id = run?.id ?? card.run.runId; if (id) await window.gearmod.invoke('agents:cancel', { runId: id }).catch((reason: unknown) => setError(plainError(reason))) }
