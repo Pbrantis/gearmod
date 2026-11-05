@@ -846,7 +846,7 @@ ${diff}`
   }
 
   /** Branch menu actions on the repository's main folder. Merge and rebase with conflicts are undone, so the folder is not left halfway. */
-  async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote'; name: string; newName?: string; force?: boolean }): Promise<{ output: string }> {
+  async branchAction(sourceId: string, input: { cardId?: string | null; action: 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'rename' | 'delete' | 'delete-remote'; name: string; newName?: string; force?: boolean }): Promise<{ output: string }> {
     const dir = (await (input.action === 'push' || input.action === 'delete-remote' ? this.target(this.source(sourceId), input.cardId ?? null) : this.busyTarget(this.source(sourceId), input.cardId ?? null))).dir, { action, name } = input
     const valid = async (ref: string): Promise<void> => { if (ref.startsWith('-') || await this.tryRun(dir, ['check-ref-format', '--allow-onelevel', ref]) === null) throw new Error(tm().git.invalidBranchName(ref)) }
     await valid(name)
@@ -901,12 +901,42 @@ ${diff}`
       await this.record(key, dir, 'create-branch', before, { name: created, hash: (await this.tryRun(dir, ['rev-parse', 'HEAD']))?.trim() ?? '' })
       return { output: tm().git.branchCreatedFromOpened(created, name) }
     }
+    if (action === 'rename') return this.renameBranch(sourceId, dir, key, name, input.newName?.trim() ?? '', valid)
     if (isHead) throw new Error(tm().git.cannotDeleteCurrentBranch)
     const hash = (await this.tryRun(dir, ['rev-parse', '-q', '--verify', `refs/heads/${name}`]))?.trim() ?? '', remote = (await this.tryRun(dir, ['config', `branch.${name}.remote`]))?.trim() ?? '', merge = (await this.tryRun(dir, ['config', `branch.${name}.merge`]))?.trim() ?? ''
     // `-D` only after the user confirmed deleting a branch with commits that are in no other branch.
     await this.run(dir, ['branch', input.force ? '-D' : '-d', name])
     if (hash) await this.record(key, dir, 'delete-branch', before, { name, hash, remote, merge }, [hash]); else await this.forget(key)
     return { output: tm().git.branchDeleted(name) }
+  }
+
+  /**
+   * Renames a local branch (`git branch -m`, which also moves its upstream config and any worktree on it). A card's branch is renamed
+   * in every repository of the card's worktree and in the card's record, so GearMod keeps finding it. The remote branch keeps its name.
+   */
+  private async renameBranch(sourceId: string, dir: string, key: string, name: string, renamed: string, valid: (ref: string) => Promise<void>): Promise<{ output: string }> {
+    if (!renamed) throw new Error(tm().git.typeNewBranchName)
+    await valid(renamed)
+    if (renamed === name) return { output: tm().git.branchRenamed(name, renamed) }
+    const source = this.source(sourceId), normal = (value: string): string => value.split(String.fromCharCode(92)).join('/').toLowerCase().replace(/\/+$/, '')
+    const owner = this.members(source.projectId).find((member) => member.branch === name && member.status === 'active' && normal(member.repoPath) === normal(source.path))
+    const repos = owner ? this.members(source.projectId, owner.cardId).filter((member) => member.status === 'active').map((member) => member.repoPath) : [dir]
+    if (owner) this.assertIdle(sourceId, owner.path)
+    for (const repo of repos) {
+      if (await this.tryRun(repo, ['show-ref', '--verify', '-q', `refs/heads/${name}`]) === null) throw new Error(tm().git.localBranchMissing(name))
+      if (await this.tryRun(repo, ['show-ref', '--verify', '-q', `refs/heads/${renamed}`]) !== null) throw new Error(tm().git.undoBranchExists(renamed))
+    }
+    const done: string[] = []
+    try {
+      for (const repo of repos) { await this.run(repo, ['branch', '-m', name, renamed]); done.push(repo) }
+    } catch (error) {
+      // Half renamed would leave the card's repositories on different branches: puts back the ones already renamed.
+      for (const repo of done) await this.tryRun(repo, ['branch', '-m', renamed, name])
+      throw error
+    }
+    if (owner) this.database.db.prepare('UPDATE worktrees SET branch = ? WHERE card_id = ? AND branch = ?').run(renamed, owner.cardId, name)
+    await this.forget(key)
+    return { output: owner && repos.length > 1 ? tm().git.cardBranchRenamed(name, renamed, repos.length) : tm().git.branchRenamed(name, renamed) }
   }
 
   /** Updates the local branch from the remote with fast-forward only. If it is open in a worktree, the pull runs inside it (Git does not allow `fetch name:name` in that case). */

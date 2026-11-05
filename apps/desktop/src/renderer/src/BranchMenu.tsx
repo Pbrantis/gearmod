@@ -3,7 +3,7 @@ import { useEscape } from './useEscape'
 import { tr } from './i18n'
 
 export interface MenuItem<K extends string = string> { key: K; label: string; danger?: boolean; off?: string }
-export type BranchAction = 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'delete' | 'delete-remote' | 'copy'
+export type BranchAction = 'checkout' | 'pull' | 'pull-rebase' | 'push' | 'rebase-onto' | 'merge' | 'create' | 'rename' | 'delete' | 'delete-remote' | 'copy'
 export type CommitMenuAction = 'checkout' | 'cherry-pick' | 'revert' | 'rebase' | 'reset-soft' | 'reset-mixed' | 'reset-hard' | 'branch' | 'tag' | 'copy'
 export type StashMenuAction = 'apply' | 'pop' | 'drop'
 
@@ -50,6 +50,7 @@ export function branchItems(kind: 'local' | 'remote', head: boolean, current: st
     { key: 'rebase-onto', label: m.rebaseOnto(current), off: other },
     { key: 'merge', label: m.mergeInto(current), off: other },
     { key: 'create', label: m.createFromHere },
+    ...(local ? [{ key: 'rename', label: m.renameBranch } as MenuItem<BranchAction>] : []),
     ...(local ? [{ key: 'delete', label: m.deleteBranch, danger: true, off: head ? m.isCurrent : undefined } as MenuItem<BranchAction>] : []),
     ...(local ? [] : [{ key: 'delete-remote', label: m.deleteRemote, danger: true } as MenuItem<BranchAction>]),
     { key: 'copy', label: m.copyName }

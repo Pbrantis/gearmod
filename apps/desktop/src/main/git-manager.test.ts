@@ -448,3 +448,22 @@ describe('fileVersions', () => {
     expect(await manager.fileVersions(sourceId, null, 'grande.txt', 'unstaged')).toEqual({ before: null, after: null, binary: false, truncated: true })
   })
 })
+describe('rename branch', () => {
+  it('renames a loose branch and refuses a name already in use', async () => {
+    const { manager, repo, sourceId } = await setup()
+    await git(repo, 'branch', 'solta'); await git(repo, 'branch', 'ocupada')
+    await expect(manager.branchAction(sourceId, { action: 'rename', name: 'solta', newName: 'ocupada' })).rejects.toThrow(/ocupada/)
+    await expect(manager.branchAction(sourceId, { action: 'rename', name: 'solta', newName: 'nome ruim' })).rejects.toThrow()
+    expect((await manager.branchAction(sourceId, { action: 'rename', name: 'solta', newName: 'feature/nova' })).output).toContain('feature/nova')
+    const branches = (await git(repo, 'branch', '--list')).stdout
+    expect(branches).toContain('feature/nova'); expect(branches).not.toContain('solta')
+  })
+
+  it("renames a card's branch in its worktree and in the card's record", async () => {
+    const { manager, database, repo, sourceId, cardId, wt, branch } = await setup()
+    await manager.branchAction(sourceId, { action: 'rename', name: branch, newName: 'feature/instalador-linux' })
+    expect((await git(wt, 'branch', '--show-current')).stdout.trim()).toBe('feature/instalador-linux')
+    expect((await git(repo, 'branch', '--list', branch)).stdout.trim()).toBe('')
+    expect(database.db.prepare('SELECT branch FROM worktrees WHERE card_id = ?').pluck().get(cardId)).toBe('feature/instalador-linux')
+  })
+})

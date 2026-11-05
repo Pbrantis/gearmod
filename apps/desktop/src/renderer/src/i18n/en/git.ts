@@ -112,7 +112,7 @@ export const git: typeof source = {
     conflictTab: 'conflict',
     opTitle: {
       fetch: 'Fetch', pull: 'Pull', push: 'Push', stash: 'Stash', pop: 'Pop', checkout: 'Checkout', 'pull-rebase': 'Pull with rebase',
-      'rebase-onto': 'Rebase', merge: 'Merge', create: 'Create branch', delete: 'Delete branch', 'delete-remote': 'Delete remote branch',
+      'rebase-onto': 'Rebase', merge: 'Merge', create: 'Create branch', rename: 'Rename branch', delete: 'Delete branch', 'delete-remote': 'Delete remote branch',
       'cherry-pick': 'Cherry-pick', rebase: 'Rebase', revert: 'Revert', 'reset-soft': 'Reset', 'reset-mixed': 'Reset', 'reset-hard': 'Reset',
       branch: 'Create branch', tag: 'Create tag', apply: 'Apply stash', drop: 'Drop stash'
     },
@@ -201,6 +201,10 @@ export const git: typeof source = {
     deleteFolderText: 'Each branch will be deleted with Git\'s normal protection. The current branch and branches in worktrees will be kept. For branches with commits that are in no other branch, the app asks before deleting. The result will show what could not be deleted.',
     deleteFolderOk: 'Delete branches',
     newBranch: 'New branch',
+    renameBranch: 'Rename branch',
+    renameRemoteKept: 'The remote branch, if any, keeps the old name. The next push publishes it with the new name.',
+    renaming: 'Renaming…',
+    renameOk: 'Rename',
     newTag: 'New tag',
     fromName: (name) => `From ${name}`,
     atCommit: (hash) => `At commit ${hash}`,
@@ -274,6 +278,7 @@ export const git: typeof source = {
     rebaseOnto: (current) => `Rebase ${current ?? 'the current one'} onto this`,
     mergeInto: (current) => `Merge this into ${current ?? 'the current one'}`,
     createFromHere: 'Create branch from here',
+    renameBranch: 'Rename',
     deleteBranch: 'Delete branch',
     deleteRemote: 'Delete remote branch',
     copyName: 'Copy name',

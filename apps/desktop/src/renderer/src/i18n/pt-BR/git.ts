@@ -121,7 +121,7 @@ export const git = {
     // Operações
     opTitle: {
       fetch: 'Fetch', pull: 'Pull', push: 'Push', stash: 'Stash', pop: 'Pop', checkout: 'Checkout', 'pull-rebase': 'Pull com rebase',
-      'rebase-onto': 'Rebase', merge: 'Merge', create: 'Criar branch', delete: 'Apagar branch', 'delete-remote': 'Apagar branch remota',
+      'rebase-onto': 'Rebase', merge: 'Merge', create: 'Criar branch', rename: 'Renomear branch', delete: 'Apagar branch', 'delete-remote': 'Apagar branch remota',
       'cherry-pick': 'Cherry-pick', rebase: 'Rebase', revert: 'Reverter', 'reset-soft': 'Reset', 'reset-mixed': 'Reset', 'reset-hard': 'Reset',
       branch: 'Criar branch', tag: 'Criar tag', apply: 'Aplicar stash', drop: 'Descartar stash'
     } as Record<string, string>,
@@ -214,6 +214,10 @@ export const git = {
     deleteFolderText: 'Cada branch será apagada com a proteção normal do Git. A branch atual e branches em worktrees serão mantidas. Para branches com commits que não estão em outra branch, o app pergunta antes de apagar. O resultado mostrará o que não pôde ser apagado.',
     deleteFolderOk: 'Apagar branches',
     newBranch: 'Nova branch',
+    renameBranch: 'Renomear branch',
+    renameRemoteKept: 'A branch remota, se houver, continua com o nome antigo. O próximo push publica com o nome novo.',
+    renaming: 'Renomeando…',
+    renameOk: 'Renomear',
     newTag: 'Nova tag',
     fromName: (name: string) => `A partir de ${name}`,
     atCommit: (hash: string) => `No commit ${hash}`,
@@ -288,6 +292,7 @@ export const git = {
     rebaseOnto: (current: string | null) => `Rebase ${current ?? 'a atual'} em cima desta`,
     mergeInto: (current: string | null) => `Merge desta em ${current ?? 'a atual'}`,
     createFromHere: 'Criar branch a partir daqui',
+    renameBranch: 'Renomear',
     deleteBranch: 'Apagar branch',
     deleteRemote: 'Apagar branch remota',
     copyName: 'Copiar o nome',
