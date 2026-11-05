@@ -35,10 +35,13 @@ export class ExecutionService {
     const speckit = purpose === 'execution' && !small && this.speckit?.active(cardId)
     if (speckit && !this.speckit!.artifacts(cardId).ready) throw new Error(tm().executions.speckitNotReady)
     if (baseBranch && !card.workspace) this.board.setBaseBranch(cardId, baseBranch)
-    const profileId = config.profileId
-    const existing = this.conversations.listChats(card.projectId, cardId).find((chat) => chat.purpose === purpose)
+    const profileId = config.profileId, chats = this.conversations.listChats(card.projectId, cardId)
+    // Short flow: one chat only. Without a work chat yet, the planning chat carries on as the work chat (same conversation and agent).
+    const planningChat = small && !chats.some((chat) => chat.purpose === 'execution') ? chats.find((chat) => chat.purpose === 'planning') : undefined
+    const existing = chats.find((chat) => chat.purpose === purpose) ?? planningChat
     if (existing && existing.profileId !== profileId) throw new Error(tm().executions.stageHasOtherAgent)
     this.configs?.set(cardId, purpose, config)
+    if (planningChat) this.conversations.promotePlanningChat(planningChat.id)
     // The card goes to its stage's column: implementation to Doing, test to Test.
     const stage = this.board.get(card.projectId).columns.find((column) => column.semanticState === (purpose === 'test' ? 'test' : 'doing'))
     if (stage && card.columnId !== stage.id) this.board.move(cardId, stage.id, null, 'user')

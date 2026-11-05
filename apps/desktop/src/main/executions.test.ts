@@ -57,6 +57,18 @@ describe('ExecutionService', () => {
     database.close()
   })
 
+  it('short flow: Start carries on in the planning chat instead of opening another one', async () => {
+    const { database, board, conversations, profile, card, started, service } = await setup()
+    database.db.prepare("UPDATE cards SET workflow = 'light' WHERE id = ?").run(card.id)
+    const planning = conversations.createChat({ projectId: board.card(card.id).projectId, cardId: card.id, purpose: 'planning', profileId: profile.id })
+    service.start(card.id, { profileId: profile.id, model: null, effort: null, mode: 'auto' })
+    const chats = conversations.listChats(board.card(card.id).projectId, card.id)
+    expect(chats).toHaveLength(1)
+    expect(chats[0]).toMatchObject({ id: planning.id, purpose: 'execution' })
+    expect(started[0]!.chatId).toBe(planning.id)
+    database.close()
+  })
+
   it('does not resume a card that never ran', async () => {
     const { database, card, service } = await setup()
     expect(() => service.resume(card.id)).toThrow('ainda não tem execução')

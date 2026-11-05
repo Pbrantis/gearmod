@@ -213,6 +213,11 @@ export class ConversationRepository {
   }
 
   /** Chat of each card stage (planning, implementation, testing): one per stage, with the history, created the first time. */
+  /** Short flow has a single chat: the planning chat becomes the work chat, keeping its messages and the agent's session. */
+  promotePlanningChat(chatId: string): void {
+    this.database.db.prepare("UPDATE chats SET purpose = 'execution' WHERE id = ? AND purpose = 'planning'").run(chatId)
+  }
+
   purposeChat(projectId: string, cardId: string, purpose: AgentPurpose, profileId: string): Chat {
     const existing = this.listChats(projectId, cardId).find((chat) => chat.purpose === purpose)
     return existing ?? this.createChat({ projectId, cardId, purpose, profileId })

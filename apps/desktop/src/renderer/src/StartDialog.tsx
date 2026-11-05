@@ -13,7 +13,7 @@ import { useT } from './i18n'
 export function StartDialog({ card, purpose, profiles, close, start }: { card: Card; purpose: 'execution' | 'test'; profiles: AgentProfile[]; close(): void; start(config: AgentConfig, baseBranch?: string): Promise<void> }): React.JSX.Element {
   const { board: tb, common } = useT(), t = tb.start
   const [lockedId, setLockedId] = useState<string>()
-  useEffect(() => { void window.gearmod.invoke('chats:list', { projectId: card.projectId, cardId: card.id }).then((items) => setLockedId(items.find((item) => item.purpose === purpose)?.profileId)).catch(() => undefined) }, [card.id, card.projectId, purpose])
+  useEffect(() => { void window.gearmod.invoke('chats:list', { projectId: card.projectId, cardId: card.id }).then((items) => setLockedId((items.find((item) => item.purpose === purpose) ?? (card.workflow === 'light' ? items.find((item) => item.purpose === 'planning') : undefined))?.profileId)).catch(() => undefined) }, [card.id, card.projectId, card.workflow, purpose])
   const state = useAgentConfig(card.id, purpose, profiles, lockedId)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   // Worktree: new (default) or another project card's (only if this card does not have one yet).
