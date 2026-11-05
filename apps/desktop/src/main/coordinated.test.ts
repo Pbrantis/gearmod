@@ -109,10 +109,22 @@ describe('Harness', () => {
     expect(outOfScope('Mexe em `api/routes/`', ['backend/api/routes/a.ts', 'frontend/src/b.ts'], ['backend', 'frontend'])).toEqual(['frontend/src/b.ts'])
   })
 
+  it('ignores what the test tools leave behind (Playwright logs, reports, evidence screenshots)', () => {
+    const plan = 'Áreas afetadas: `web/src/contrato/`'
+    expect(outOfScope(plan, ['web/src/contrato/a.ts', 'web/.playwright-cli/console-2026-11-02.log', 'web/playwright-report/index.html', 'web/test-results/x/trace.zip', 'docs/cards/asf/playwright/us1.png', 'api/serializers/x.py'])).toEqual(['api/serializers/x.py'])
+  })
+
+  it('does not flag the paths the project asked to ignore (card documents and evidence folder)', () => {
+    const plan = 'Áreas afetadas: `contrato/api/`'
+    const changed = ['contrato/api/a.py', 'sdd/cards-nosdd/asf-4668/discovery.md', 'sdd/cards-nosdd/asf-4668/playwright/x.png', 'sdd/outra/x.md', 'web/src/b.ts']
+    expect(outOfScope(plan, changed, ['contrato', 'sdd', 'web'], ['cards-nosdd/'])).toEqual(['sdd/outra/x.md', 'web/src/b.ts'])
+    expect(outOfScope(plan, changed, ['contrato', 'sdd', 'web'], ['sdd/cards-nosdd', ' ', 'web'])).toEqual(['sdd/outra/x.md'])
+  })
+
   it('stops on budget and on repeated failures only in automatic resumes', async () => {
     const { database, board, card, project, data, worktrees, profiles } = await workspace()
     const history = new CardHistoryService(database, data), harness = new HarnessService(database, history, worktrees)
-    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: 30, maxTokens: 5000, maxCostUsd: null, includeEquivalentCost: false, maxAttempts: 2, scopeCheck: true } })
+    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: 30, maxTokens: 5000, maxCostUsd: null, includeEquivalentCost: false, maxAttempts: 2, scopeCheck: true, scopeIgnore: [] } })
     const conversations = new ConversationRepository(database), chat = conversations.createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profiles.list()[0]!.id })
     for (const reason of ['Claude exited (1): rede caiu 12', 'Claude exited (1): rede caiu 13']) {
       const run = conversations.createRun({ cardId: card.id, chatId: chat.id, profileId: profiles.list()[0]!.id }); conversations.updateRun(run.id, 'failed', reason)
@@ -168,12 +180,12 @@ describe('Harness', () => {
     const chat = new ConversationRepository(database).createChat({ projectId: project.id, cardId: card.id, purpose: 'execution', profileId: profiles.list()[0]!.id })
     const insert = database.db.prepare(`INSERT INTO usage_ledger(id, at, run_id, seq, source, provider, profile_id, card_id, cost_kind, cost_usd)
       VALUES (?, ?, NULL, 0, 'run', 'claude', ?, ?, ?, ?)`)
-    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: null, maxTokens: null, maxCostUsd: 1, includeEquivalentCost: false, maxAttempts: 3, scopeCheck: true } })
+    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: null, maxTokens: null, maxCostUsd: 1, includeEquivalentCost: false, maxAttempts: 3, scopeCheck: true, scopeIgnore: [] } })
     insert.run('u1', new Date().toISOString(), profiles.list()[0]!.id, card.id, 'api_equivalent', 5)
     expect(harness.before({ cardId: card.id, chatId: chat.id, automatic: false })).toBeNull()
     insert.run('u2', new Date().toISOString(), profiles.list()[0]!.id, card.id, 'billed', 2)
     expect(harness.before({ cardId: card.id, chatId: chat.id, automatic: false })).toMatch(/custo faturado,/)
-    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: null, maxTokens: null, maxCostUsd: 1, includeEquivalentCost: true, maxAttempts: 3, scopeCheck: true } })
+    history.setConfig(project.id, { ...defaultWorkflowConfig, harness: { timeoutMinutes: null, maxTokens: null, maxCostUsd: 1, includeEquivalentCost: true, maxAttempts: 3, scopeCheck: true, scopeIgnore: [] } })
     expect(harness.before({ cardId: card.id, chatId: chat.id, automatic: false })).toMatch(/custo faturado e equivalente/)
     expect(board.card(card.id).id).toBe(card.id)
   })

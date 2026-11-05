@@ -49,11 +49,11 @@ export const historyEventTypes = ['assessment.created', 'assessment.revised', 'a
 export const historyEventSchema = z.object({ id: uuid, v: z.literal(1), type: z.enum(historyEventTypes), at: isoDate, cardId: uuid, projectId: uuid, source: z.object({ actor: z.enum(['agent', 'user', 'system']), profileId: z.string().nullable().optional(), runId: z.string().nullable().optional(), chatId: z.string().nullable().optional() }), refs: z.array(z.string()), payload: z.record(z.string(), z.unknown()) })
 /**
  * Execution limits (Harness). Null = no limit. `maxAttempts`: consecutive failures with the same error before stopping the
- * automatic resumes; `scopeCheck`: warn when the agent changes files outside the areas named in the Plan.
+ * automatic resumes; `scopeCheck`: warn when the agent changes files outside the areas named in the Plan; `scopeIgnore`: paths/folders (one per entry, e.g. `cards/`) the check never flags, such as the folder where the workflow keeps the card's own documents and evidence.
  */
 /** `includeEquivalentCost`: by default `maxCostUsd` sums only billed cost (`cost_kind='billed'`); turning it on also includes the estimated equivalent of subscription plans. */
-export const harnessConfigSchema = z.object({ timeoutMinutes: z.number().int().min(1).max(24 * 60).nullable(), maxTokens: z.number().int().min(1000).nullable(), maxCostUsd: z.number().min(0.01).nullable(), includeEquivalentCost: z.boolean().default(false), maxAttempts: z.number().int().min(1).max(20), scopeCheck: z.boolean() }).strict()
-export const defaultHarnessConfig: HarnessConfig = { timeoutMinutes: null, maxTokens: null, maxCostUsd: null, includeEquivalentCost: false, maxAttempts: 3, scopeCheck: true }
+export const harnessConfigSchema = z.object({ timeoutMinutes: z.number().int().min(1).max(24 * 60).nullable(), maxTokens: z.number().int().min(1000).nullable(), maxCostUsd: z.number().min(0.01).nullable(), includeEquivalentCost: z.boolean().default(false), maxAttempts: z.number().int().min(1).max(20), scopeCheck: z.boolean(), scopeIgnore: z.array(z.string().max(300)).max(50).default([]) }).strict()
+export const defaultHarnessConfig: HarnessConfig = { timeoutMinutes: null, maxTokens: null, maxCostUsd: null, includeEquivalentCost: false, maxAttempts: 3, scopeCheck: true, scopeIgnore: [] }
 export type HarnessConfig = z.output<typeof harnessConfigSchema>
 /** S11 — minimal `PolicyEngine`: rule per action (the first that matches decides); with no rule for the action, it stays `ask` (nothing changes on its own). */
 export const policyActionSchema = z.enum(['commit', 'move', 'choose-workflow'])

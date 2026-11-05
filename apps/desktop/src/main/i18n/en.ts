@@ -516,8 +516,9 @@ export const en: typeof ptBR = {
     reposNotReady: (list: string) => `Repositories left out of this run: ${list}. The card can't move to Done until they are ready; the next run tries to prepare them again.`,
     branchChanged: (repo: string, from: string, to: string) => `The branch of ${repo} changed from ${from} to ${to} during the run. That shouldn't happen on its own; check what ran in that folder.`,
     unexpectedCommits: (repo: string, count: number, hashes: string) => `${repo}: ${count} commit${count === 1 ? '' : 's'} on the branch during the run did not come from the agent's commit request. Check ${hashes}.`,
-    moreFiles: (count: number) => ` and ${count} more`,
-    outOfScope: (list: string) => `Files changed outside the areas named in the Plan: ${list}. Check whether they belong to the card; if not, ask the agent to undo them or record the scope change.`,
+    moreFiles: (count: number) => `… and ${count} more`,
+    // First line = summary (always visible); the rest opens when expanded (chat: ChatMessageView, marked by the "▸ " prefix).
+    outOfScope: (list: string, count: number) => `▸ ${count} file${count === 1 ? '' : 's'} changed outside the areas named in the Plan\n${list}\nCheck whether they belong to the card; if not, ask the agent to undo them or record the scope change.`,
   },
   autoResume: {
     resumingNotice: '▶ The usage limit is back · resuming from where it stopped',

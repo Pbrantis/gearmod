@@ -21,6 +21,11 @@ export function ChatMessageView({ message, answered = true, busy = false, answer
   const skill = message.role === 'system' ? /^▶ Usando a skill (\S+)(.*)$/.exec(message.body) : null
   if (skill) return <div className="msg sys skillnote"><span className="skillbadge">skill</span><b>{skill[1]}</b>{skill[2] && <small>{skill[2].replace(/^\s*·\s*/, '')}</small>}</div>
   const kind = message.role === 'assistant' ? 'agent' : message.role === 'system' ? 'sys' : message.role
+  // Long system notice marked with `▸ ` (e.g. files outside the Plan): first line always visible, the rest opens on click, so it does not take up the card.
+  if (message.role === 'system' && message.status === 'failed' && message.body.includes('\n')) {
+    const [title, ...rest] = message.body.split('\n')
+    return <details className="msg sys toolrow sysnote" data-mid={message.id}><summary>⚠ {title}</summary><pre>{rest.join('\n').trim()}</pre></details>
+  }
   return <div className={`msg ${kind}`} data-mid={message.id}>{message.role === 'system' && message.status === 'failed' ? '⚠ ' : ''}{message.role === 'assistant' ? <div className="md chatmd"><AgentMessage source={message.body} answered={answered} busy={busy} answers={answers} /></div> : message.role === 'user' ? <UserBody body={message.body} /> : message.body}</div>
 }
 

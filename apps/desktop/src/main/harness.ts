@@ -102,10 +102,11 @@ export class HarnessService implements RunHarness {
         const files = new Set([...status.split(/\r?\n/).filter(Boolean).map((line) => line.slice(3).split(' -> ').pop()!.trim().replace(/^"|"$/g, '')), ...committed.split(/\r?\n/).filter(Boolean)])
         files.forEach((file) => { if (file === '.specify/feature.json') return; changed.push(repos.length > 1 ? `${name}/${file}` : file) })
       }
-      const outside = outOfScope(docs.join('\n'), changed, repos.length > 1 ? repos.map((repo) => basename(repo.repoPath)) : [])
+      const outside = outOfScope(docs.join('\n'), changed, repos.length > 1 ? repos.map((repo) => basename(repo.repoPath)) : [], limits.scopeIgnore ?? [])
       if (outside.length) {
-        const list = outside.slice(0, 15).join(', ') + (outside.length > 15 ? tm().harness.moreFiles(outside.length - 15) : '')
-        notices.push(tm().harness.outOfScope(list))
+        // One line in the chat (expandable): the file list and the guidance only show when the user opens it.
+        const list = outside.slice(0, 15).join('\n') + (outside.length > 15 ? `\n${tm().harness.moreFiles(outside.length - 15)}` : '')
+        notices.push(tm().harness.outOfScope(list, outside.length))
         try { this.history.recordAlert(input.cardId, { kind: 'out-of-scope', files: outside, runId: input.runId }) } catch { /* the warning stays in the chat */ }
       }
     }
@@ -138,13 +139,18 @@ export function usedPlaywrightCli(database: AppDatabase, runId: string): boolean
  * Changed files that are not in any area cited in the card documents (paths like `src/push/` or `src/app.ts`).
  * With no cited path, there is no way to judge and nothing is flagged. Lock and build files are ignored.
  */
-export function outOfScope(docs: string, changed: string[], repoNames: string[] = []): string[] {
+export function outOfScope(docs: string, changed: string[], repoNames: string[] = [], ignorePaths: string[] = []): string[] {
   const cited = [...docs.matchAll(/(?:^|[\s`'"([])((?:[\w.@-]+\/)+[\w.@*-]*|[\w-]+\.[a-z0-9]{1,6})(?=$|[\s`'"),:;\]])/gim)].map((match) => match[1]!.replace(/\*.*$/, '').replace(/^\.\//, '').toLowerCase())
   if (!cited.length) return []
-  const ignore = /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|dist\/|out\/|build\/|node_modules\/)/i
+  // Lock/build files and what the test tools leave behind (Playwright CLI logs, reports, traces, evidence screenshots): not part of the card's code.
+  const ignore = /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|dist\/|out\/|build\/|node_modules\/|\.playwright[\w-]*\/|playwright-report\/|test-results\/|playwright\/[^/]+\.(png|jpe?g|webm|zip))/i
   const strip = (file: string): string => { const lower = file.replace(/\\/g, '/').toLowerCase(); const repo = repoNames.find((name) => lower.startsWith(`${name.toLowerCase()}/`)); return repo ? lower.slice(repo.length + 1) : lower }
+  // Project setting: folders or files the check never flags (e.g. where the workflow keeps each card's documents). Matches a path or folder
+  // at the start of the path (with or without the repository name) or after any folder; case-insensitive, no wildcards.
+  const skip = ignorePaths.map((item) => item.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '').toLowerCase()).filter(Boolean)
+  const skipped = (file: string): boolean => { const full = file.replace(/\\/g, '/').toLowerCase(), path = strip(file); return skip.some((item) => [full, path].some((p) => p === item || p.startsWith(`${item}/`) || p.includes(`/${item}/`) || p.endsWith(`/${item}`))) }
   return changed.filter((file) => {
-    if (ignore.test(file)) return false
+    if (ignore.test(file) || skipped(file)) return false
     const path = strip(file), full = file.replace(/\\/g, '/').toLowerCase()
     return !cited.some((area) => {
       // A cited folder counts in full; a cited file counts for its neighbors only in a specific folder (src/push/x.ts covers src/push/, src/app.ts does not cover src/).

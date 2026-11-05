@@ -56,6 +56,7 @@ export function WorkflowPanel({ projectId }: { projectId: string }): React.JSX.E
     </div>
     <label className="ck-line"><Checkbox checked={harness.includeEquivalentCost} onChange={(includeEquivalentCost) => setHarness({ includeEquivalentCost })} /> {t.includeEquivalentCost}</label>
     <label className="ck-line"><Checkbox checked={harness.scopeCheck} onChange={(scopeCheck) => setHarness({ scopeCheck })} /> {t.scopeCheck}</label>
+    {harness.scopeCheck && <label className="cx-field">{t.scopeIgnore}<textarea rows={3} value={harness.scopeIgnore.join('\n')} onChange={(event) => setHarness({ scopeIgnore: event.target.value.split('\n').slice(0, 50) })} placeholder={t.scopeIgnorePlaceholder} spellCheck={false} /><small className="cx-note">{t.scopeIgnoreNote}</small></label>}
     <label className="ck-line"><Checkbox checked={config.exportUsage} onChange={(exportUsage) => set({ exportUsage })} /> {t.exportUsage}</label>
     </section>
     <div className="cx-autosave" role="status" aria-live="polite">{saveState === 'saving' ? common.saving : saveState === 'saved' ? t.savedAuto : message ? <span className="cx-warn">{message}</span> : t.autoSaveNote}</div>
