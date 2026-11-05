@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { PlusIcon } from './icons'
 import { toast } from './toasts'
 import { plainError } from './NoticeDialog'
@@ -90,10 +91,33 @@ function AttachmentCard({ path, remove }: { path: string; remove?(path: string):
     window.gearmod.invoke('files:preview', { path }).then((url) => { if (alive) setSrc(url) }).catch(() => undefined)
     return () => { alive = false }
   }, [path])
+  const [zoom, setZoom] = useState(false)
+  // Image: opens a preview over the chat. Any other file: opens in the system's app (the app only allows documents and images).
+  const open = (): void => {
+    if (src) { setZoom(true); return }
+    window.gearmod.invoke('files:open', { path }).catch((reason) => toast.error(t.openFailed, plainError(reason)))
+  }
   return <div className={`attcard tip ${src ? 'image' : 'file'}`} data-tip={path}>
-    {src ? <img src={src} alt={fileName(path)} /> : <><span className="attcard-name">{fileName(path)}</span><span className="attcard-ext">{extLabel(path)}</span></>}
+    <button type="button" className="attcard-open" aria-label={t.open(fileName(path))} onClick={open}>
+      {src ? <img src={src} alt={fileName(path)} /> : <><span className="attcard-name">{fileName(path)}</span><span className="attcard-ext">{extLabel(path)}</span></>}
+    </button>
     {remove && <button type="button" className="attcard-x" aria-label={t.remove(fileName(path))} onClick={() => remove(path)}>×</button>}
+    {zoom && src && <ImagePreview src={src} name={fileName(path)} onClose={() => setZoom(false)} />}
   </div>
+}
+
+/** Preview of an attached image over the whole window: closes with Esc, a click outside the image or the × button. */
+function ImagePreview({ src, name, onClose }: { src: string; name: string; onClose(): void }): React.JSX.Element {
+  const t = useT().chat.attachments
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }
+    window.addEventListener('keydown', onKey, true); return () => window.removeEventListener('keydown', onKey, true)
+  }, [onClose])
+  return createPortal(<div className="imgpreview" role="dialog" aria-modal="true" aria-label={name} onClick={onClose}>
+    <img src={src} alt={name} onClick={(event) => event.stopPropagation()} />
+    <span className="imgpreview-name">{name}</span>
+    <button type="button" className="imgpreview-x" aria-label={t.close} onClick={onClose}>×</button>
+  </div>, document.body)
 }
 
 export function AttachmentChips({ files, remove }: { files: string[]; remove?(path: string): void }): React.JSX.Element | null {

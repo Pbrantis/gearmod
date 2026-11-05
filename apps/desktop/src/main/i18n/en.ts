@@ -293,6 +293,8 @@ export const en: typeof ptBR = {
     constitutionSaveViaCard: 'The Constitution lives in the repository file. To change it, use the Constitution chat: it creates a card and the change is applied after your approval.',
     untrustedSender: 'Request refused: it did not come from the GearMod window',
     linkNotAllowed: 'Link not allowed',
+    fileNotAllowed: 'This file type cannot be opened from the chat',
+    fileNotFound: 'File not found',
     artifactsSharedCannotDelete: 'The artifacts folder is shared with another card and cannot be deleted automatically.',
     artifactsTrashFailed: 'Could not send the artifacts to the trash.',
     chooseSddMethod: 'Choose the card\'s SDD method.',

@@ -209,7 +209,10 @@ export const chat = {
     attach: 'Anexar arquivos',
     fileExt: 'arquivo',
     remove: (name: string) => `Remover ${name}`,
-    attachedFiles: 'Arquivos anexados'
+    attachedFiles: 'Arquivos anexados',
+    open: (name: string) => `Abrir ${name}`,
+    openFailed: 'Não foi possível abrir o arquivo',
+    close: 'Fechar preview'
   },
   tokens: {
     million: ' mi',

@@ -210,7 +210,10 @@ export const chat: typeof source = {
     attach: 'Attach files',
     fileExt: 'file',
     remove: (name: string) => `Remove ${name}`,
-    attachedFiles: 'Attached files'
+    attachedFiles: 'Attached files',
+    open: (name: string) => `Open ${name}`,
+    openFailed: 'Could not open the file',
+    close: 'Close preview'
   },
   tokens: {
     million: 'M',

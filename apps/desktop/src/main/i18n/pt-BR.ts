@@ -292,6 +292,8 @@ export const ptBR = {
     constitutionSaveViaCard: 'A Constituição fica no arquivo do repositório. Para alterar, use o chat da Constituição: ele cria um card e a mudança só entra depois da sua aprovação.',
     untrustedSender: 'Pedido recusado: não veio da janela do GearMod',
     linkNotAllowed: 'Link não permitido',
+    fileNotAllowed: 'Esse tipo de arquivo não pode ser aberto pelo chat',
+    fileNotFound: 'Arquivo não encontrado',
     artifactsSharedCannotDelete: 'A pasta de artefatos é compartilhada com outro card e não pode ser excluída automaticamente.',
     artifactsTrashFailed: 'Não foi possível enviar os artefatos para a lixeira.',
     chooseSddMethod: 'Escolha o método SDD do card.',

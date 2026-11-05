@@ -586,6 +586,7 @@ export const ipcContracts = {
   , 'agents:permission-decide': { input: z.object({ runId: uuid, requestId: uuid, allow: z.boolean() }).strict(), output: z.object({ decided: z.boolean() }) }
   , 'agents:start': { input: z.object({ chatId: uuid, prompt: z.string().trim().min(1).max(100_000), planning: z.boolean(), attachments: z.array(z.string().min(1).max(2048)).max(20).optional(), choice: z.object({ model: z.string().trim().max(120).nullable().optional(), effort: effortSchema.nullable().optional(), mode: permissionModeSchema.optional() }).strict().optional() }).strict(), output: runSchema }
   , 'files:preview': { input: z.object({ path: z.string() }), output: z.string().nullable() }
+  , 'files:open': { input: z.object({ path: z.string().max(2048) }).strict(), output: z.object({ opened: z.literal(true) }) }
   , 'files:choose': { input: z.undefined(), output: z.array(z.string()) }
   , 'files:save-pasted': { input: z.object({ name: z.string().max(200), base64: z.string().max(40_000_000) }).strict(), output: z.string() }
   , 'agents:cancel': { input: z.object({ runId: uuid }).strict(), output: z.object({ cancelled: z.boolean() }) }

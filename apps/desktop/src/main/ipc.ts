@@ -56,6 +56,8 @@ import { randomUUID } from 'node:crypto'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { tm } from './i18n'
 
+/** Attachment types the chat may open in the system's app: documents, spreadsheets, text, images. */
+const openableAttachment = /^\.(pdf|docx?|dotx?|xlsx?|xlsm|csv|tsv|pptx?|odt|ods|odp|rtf|txt|md|json|jsonl|log|xml|ya?ml|png|jpe?g|gif|webp|bmp|svg|ico)$/i
 const imageMime: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' }
 
 export interface IpcMainLike {
@@ -464,6 +466,12 @@ export function registerIpc(ipcMain: IpcMainLike, services: Services): () => voi
     'files:preview': (input: { path: string }) => {
       const mime = imageMime[extname(input.path).toLowerCase()]
       try { return mime && isLocalAbsolutePath(input.path) && statSync(input.path).size < 8_000_000 ? `data:${mime};base64,${readFileSync(input.path).toString('base64')}` : null } catch { return null }
+    },
+    // Opens an attachment from the chat in the system's default app. Only documents and images that exist: never executables or scripts, which the system would run.
+    'files:open': async (input: { path: string }) => {
+      if (!isLocalAbsolutePath(input.path) || !openableAttachment.test(extname(input.path))) throw new Error(tm().ipc.fileNotAllowed)
+      try { if (!statSync(input.path).isFile()) throw new Error() } catch { throw new Error(tm().ipc.fileNotFound) }
+      await services.openPath(input.path); return { opened: true as const }
     },
     // A file pasted from the clipboard (screenshot, copied image) has no path: it goes to the app's attachments folder and the agent reads it from there.
     'files:save-pasted': (input: { name: string; base64: string }) => {
