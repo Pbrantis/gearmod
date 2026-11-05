@@ -91,7 +91,10 @@ export class WorktreeService {
     const slug = plain(card.title).replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase().slice(0, 36) || 'task'
     // A recreated worktree (deleted folder) stays on the branch it already had, even if the generated name has changed.
     // The branch is born with the card type's prefix, in English by default (feature/, fix/, hotfix/...); whoever wants can change the prefix in the type.
-    const branch = existing?.branch ?? `${branchPrefixOf(findCardType(projectCardTypes(this.database.db, card.projectId).types, card.type), card.type)}/${slug}-${short}`
+    // The branch can be born before the card has a title (the agent names it later): "feature/task-<id>". Once the title exists, the branch takes its name.
+    const renamed = alive && slug !== 'task' ? await this.renamePlaceholderBranch(alive, slug, short) : null
+    const branch = renamed ?? existing?.branch ?? `${branchPrefixOf(findCardType(projectCardTypes(this.database.db, card.projectId).types, card.type), card.type)}/${slug}-${short}`
+    if (alive && renamed) alive.branch = renamed
     const current = alive ? this.members(alive.id) : []
     const todo = sources.filter((source) => !current.some((member) => same(member.repoPath, source.repoPath) && member.status === 'active' && existsSync(member.path)))
     if (alive && !todo.length) return alive
@@ -113,6 +116,36 @@ export class WorktreeService {
       results.forEach((item) => upsert.run(randomUUID(), worktree.id, item.repoPath, item.path, item.baseRef, item.error ? 'failed' : 'active', item.error))
     })()
     return worktree
+  }
+
+  /**
+   * Renames the placeholder branch (`<prefix>/task-<id>`) to one that follows the card title. Only when it is safe: every repository's branch
+   * has no commit of its own and was never published (no upstream), and the new name is free. Returns the new name, or null when nothing changed.
+   */
+  private async renamePlaceholderBranch(worktree: Worktree, slug: string, short: string): Promise<string | null> {
+    const old = worktree.branch, marker = `/task-${short}`
+    if (!old.endsWith(marker)) return null
+    const next = `${old.slice(0, -marker.length)}/${slug}-${short}`
+    const members = this.members(worktree.id).filter((member) => member.status === 'active' && existsSync(member.path))
+    if (!members.length) return null
+    try {
+      for (const member of members) {
+        const base = member.baseRef
+        const unique = Number((await this.git.run(['-C', member.path, 'rev-list', '--count', `${base}..${old}`])).stdout.trim()) || 0
+        const upstream = (await this.git.run(['-C', member.path, 'config', '--get', `branch.${old}.remote`]).catch(() => ({ stdout: '' }))).stdout.trim()
+        const taken = (await this.git.run(['-C', member.path, 'branch', '--list', next])).stdout.trim()
+        if (unique > 0 || upstream || taken) return null
+      }
+      const done: string[] = []
+      try {
+        for (const member of members) { await this.git.run(['-C', member.path, 'branch', '-m', old, next]); done.push(member.path) }
+      } catch (error) {
+        for (const path of done) await this.git.run(['-C', path, 'branch', '-m', next, old]).catch(() => undefined)  // all or nothing
+        throw error
+      }
+      this.database.db.prepare('UPDATE worktrees SET branch = ? WHERE id = ?').run(next, worktree.id)
+      return next
+    } catch { return null }
   }
 
   /** Creates (or confirms) a repository's folder in the worktree, on the card's branch; never throws — the error goes in the `error` field. */
