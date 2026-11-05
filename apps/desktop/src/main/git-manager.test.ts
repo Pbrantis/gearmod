@@ -448,6 +448,19 @@ describe('fileVersions', () => {
     expect(await manager.fileVersions(sourceId, null, 'grande.txt', 'unstaged')).toEqual({ before: null, after: null, binary: false, truncated: true })
   })
 })
+
+describe('rebase onto another branch', () => {
+  it("makes that branch the card's new base", async () => {
+    const { manager, database, repo, sourceId, cardId } = await setup()
+    await git(repo, 'branch', 'dev'); await git(repo, 'checkout', 'dev')
+    await writeFile(join(repo, 'dev.txt'), 'dev\n'); await git(repo, 'add', 'dev.txt'); await git(repo, 'commit', '-m', 'na dev'); await git(repo, 'checkout', 'main')
+    await manager.branchAction(sourceId, { cardId, action: 'rebase-onto', name: 'dev' })
+    expect(database.db.prepare('SELECT base_ref FROM worktrees WHERE card_id = ?').pluck().get(cardId)).toBe('dev')
+    expect(database.db.prepare('SELECT m.base_ref FROM worktree_members m JOIN worktrees w ON w.id = m.worktree_id WHERE w.card_id = ?').pluck().get(cardId)).toBe('dev')
+    expect(database.db.prepare('SELECT base_branch FROM cards WHERE id = ?').pluck().get(cardId)).toBe('dev')
+  })
+})
+
 describe('rename branch', () => {
   it('renames a loose branch and refuses a name already in use', async () => {
     const { manager, repo, sourceId } = await setup()

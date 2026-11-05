@@ -891,7 +891,11 @@ ${diff}`
       if (isHead) throw new Error(tm().git.pickOtherBranch)
       await this.forget(key)
       if (action === 'rebase-onto') await this.updateIfBehind(sourceId, dir, name, current)
-      try { return { output: last(await this.run(dir, action === 'merge' ? ['merge', '--no-edit', name] : ['rebase', name]), tm().git.done) } } catch (error) { throw await this.afterFailure(dir, action === 'merge' ? 'merge' : 'rebase', error) }
+      try {
+        const output = last(await this.run(dir, action === 'merge' ? ['merge', '--no-edit', name] : ['rebase', name]), tm().git.done)
+        if (action === 'rebase-onto') this.rebasedOnto(sourceId, dir, current, name)
+        return { output }
+      } catch (error) { throw await this.afterFailure(dir, action === 'merge' ? 'merge' : 'rebase', error) }
     }
     if (action === 'create') {
       const created = input.newName?.trim() ?? ''
@@ -990,7 +994,12 @@ ${diff}`
         if (behind > 0) { await this.fastForwardBranch(sourceId, dir, tip, current); onto = (await this.run(dir, ['rev-parse', tip])).trim(); break }
       }
       if (onto === (await this.run(dir, ['rev-parse', 'HEAD'])).trim()) throw new Error(tm().git.pickOtherBranch)
-      try { await this.run(dir, ['rebase', onto]); return { output: tm().git.branchRebasedOnto(current, onto.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, 'rebase', error) }
+      try {
+        await this.run(dir, ['rebase', onto])
+        // The commit is a branch tip: that branch becomes the card's base.
+        if (tips[0]) this.rebasedOnto(sourceId, dir, current, tips[0])
+        return { output: tm().git.branchRebasedOnto(current, onto.slice(0, 7)) }
+      } catch (error) { throw await this.afterFailure(dir, 'rebase', error) }
     }
     try { await this.run(dir, action === 'revert' ? ['revert', '--no-edit', hash] : ['cherry-pick', hash]); return { output: action === 'revert' ? tm().git.commitReverted(hash.slice(0, 7)) : tm().git.commitCherryPicked(hash.slice(0, 7)) } } catch (error) { throw await this.afterFailure(dir, action as 'cherry-pick' | 'revert', error) }
   }
@@ -1163,6 +1172,24 @@ ${diff}`
     const out = await this.tryRun(source.path, ['for-each-ref', '--format=%(refname:short)', 'refs/heads', 'refs/remotes/origin'])
     const cardBranches = new Set(this.database.db.prepare('SELECT branch FROM worktrees').pluck().all() as string[])
     return [...new Set((out ?? '').split(/\r?\n/).map((line) => line.trim()).filter((name) => name && name !== 'origin' && name !== 'origin/HEAD' && !name.startsWith('gearmod/') && !cardBranches.has(name) && !cardBranches.has(name.replace(/^origin\//, ''))))]
+  }
+
+  /**
+   * After a card's branch is rebased onto another branch, that branch is its new base: the card shows it and counts its commits
+   * from it. Only for the repository that was rebased; a branch that is not a card's changes nothing.
+   */
+  private rebasedOnto(sourceId: string, dir: string, branch: string, onto: string): void {
+    const member = this.members(this.source(sourceId).projectId).find((item) => item.status === 'active' && item.branch === branch && (sameDir(item.path, dir) || sameDir(item.repoPath, dir)))
+    if (!member) return
+    const db = this.database.db
+    db.transaction(() => {
+      const worktrees = db.prepare("SELECT id, repo_path AS repoPath FROM worktrees WHERE card_id = ? AND cleanup_state != 'removed'").all(member.cardId) as Array<{ id: string; repoPath: string }>
+      for (const wt of worktrees) {
+        db.prepare('UPDATE worktree_members SET base_ref = ? WHERE worktree_id = ? AND path = ?').run(onto, wt.id, member.path)
+        // The card's main repository: the base shown on the card and used by the next stages.
+        if (sameDir(wt.repoPath, member.repoPath)) { db.prepare('UPDATE worktrees SET base_ref = ? WHERE id = ?').run(onto, wt.id); db.prepare('UPDATE cards SET base_branch = ? WHERE id = ?').run(onto, member.cardId) }
+      }
+    })()
   }
 
   /** Changes the origin of ONE card repository (the others do not change): the card's commits are counted from it from now on. */
