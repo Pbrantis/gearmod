@@ -1,5 +1,5 @@
 /** Messages between the main process (CodeIndexService) and the index utility process (host.ts). */
-export type CodeTool = 'explore' | 'node' | 'search' | 'impact' | 'callers' | 'callees' | 'affected' | 'map'
+export type CodeTool = 'explore' | 'node' | 'search' | 'impact' | 'callers' | 'affected' | 'map'
 
 export type HostRequest =
   | { op: 'init'; dbFile: string }

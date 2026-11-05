@@ -5,7 +5,7 @@ description: Writes the Specification document of an GearMod card in SDD style (
 
 # Document: Specification
 
-The Specification says **what** the card delivers and **how to know it is right**. **How to implement** goes in the Plan. The structure follows GitHub Spec Kit's specification template, lean for one card.
+The Specification says **what** the card delivers and **how to know it is right**. **How to implement** goes in the Plan. To ground it in what exists today (current behavior, edge cases already handled), use the code index (`gearmod_code_explore`, `gearmod_code_callers`) instead of guessing. The structure follows GitHub Spec Kit's specification template, lean for one card.
 
 ## Language
 

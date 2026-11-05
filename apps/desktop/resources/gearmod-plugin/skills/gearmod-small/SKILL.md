@@ -9,7 +9,7 @@ Write everything you produce for the user (the Summary, questions and chat repli
 
 This card is in the short workflow (`fluxo: "curto"` in the context): a localized change. A single agent does everything, to spend less. The context carries only the title and the description of what to do; there is no Specification, Plan or Tasks.
 
-1. Read what you need from the project (only what the task touches) and make the change in the current worktree, preserving existing changes.
+1. Read what you need from the project (only what the task touches), using the code index instead of whole files: `gearmod_code_explore` for the area, `gearmod_code_node` for one symbol and `gearmod_code_impact` before changing or renaming something (Grep only for plain text). Then make the change in the current worktree, preserving existing changes.
 2. Validate what you changed: run the project's tests, lint and typecheck and review your own diff. Fix what fails.
 3. When done, update the Summary with `gearmod_write_document` (type `resumo`): keep the original text and add a "Result" section (in the language of `idioma`) with what changed, how it was validated and what is left pending, if anything.
 4. Do only what the description asks. If the task turns out bigger than it seemed (several modules, design decisions, real risk), stop and tell the user instead of going on: it deserves full planning.

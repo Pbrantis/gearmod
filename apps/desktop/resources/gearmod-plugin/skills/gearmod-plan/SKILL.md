@@ -19,7 +19,7 @@ Write everything you produce for the user — documents, headings, labels, descr
 4. **Decisions.** Each one in the format **Decision** / **Reason** / **Alternatives rejected**.
 5. **Data model.** Only if the card changes data: tables, fields, migration and what happens to existing data.
 6. **Contracts.** Only if the card changes an interface (IPC, API, events, file format): name, input, output and validation.
-7. **Affected areas.** Real repository paths (check that they exist) and what changes in each. A new file gets "(new)". Do not invent paths.
+7. **Affected areas.** Real repository paths (check that they exist, with `gearmod_code_search` or `gearmod_code_node`; find who else is reached with `gearmod_code_impact`) and what changes in each. A new file gets "(new)". Do not invent paths.
 8. **Risks.** What can break and how to avoid it. Remove if there is no real risk.
 9. **How to validate.** Commands the project already uses (tests, typecheck, lint) and the manual step that proves each P1 story.
 10. **Complexity.** Only if the principles check has a ⚠️: table Violation / Why it is necessary / Simpler alternative rejected because.

@@ -11,7 +11,6 @@ export const codeToolNames: Record<string, CodeTool> = {
   gearmod_code_search: 'search',
   gearmod_code_impact: 'impact',
   gearmod_code_callers: 'callers',
-  gearmod_code_callees: 'callees',
   gearmod_code_affected_tests: 'affected',
   gearmod_code_map: 'map'
 }
@@ -32,11 +31,11 @@ export function runCodeTool(q: Queries, tool: CodeTool, args: Record<string, unk
       if (!query) throw new Error('consulta must be a name or words')
       return q.search(query, { kind: text(args.tipo), limit: int(args.limite, 1, 50) ?? 10 })
     }
-    case 'impact': case 'callers': case 'callees': {
+    case 'impact': case 'callers': {
       const symbol = text(args.simbolo)
       if (!symbol) throw new Error('simbolo must be the name of a function, method, class or type')
       if (tool === 'impact') return q.impact(symbol, { file: text(args.arquivo), depth: int(args.profundidade, 1, 5) ?? 2 })
-      return q.walk(symbol, { file: text(args.arquivo), depth: int(args.profundidade, 1, 4) ?? 1, direction: tool === 'callers' ? 'in' : 'out' })
+      return q.walk(symbol, { file: text(args.arquivo), depth: int(args.profundidade, 1, 4) ?? 1, direction: 'in' })
     }
     case 'affected': return q.affected({ files: Array.isArray(args.arquivos) ? args.arquivos.filter((item): item is string => typeof item === 'string') : undefined })
     case 'map': return q.map({ tokens: int(args.tokens, 200, 6000) ?? 1500, path: text(args.pasta) })

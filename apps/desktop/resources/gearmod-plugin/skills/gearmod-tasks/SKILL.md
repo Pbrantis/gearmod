@@ -16,6 +16,7 @@ Write everything you produce for the user — documents, headings, labels, descr
 - A `## Tasks` heading at the top and one `### Phase ...` section per phase (phase heading in the language of `idioma`).
 - Each task is a **top-level** list item:
   `- [ ] T001 [P] [H1] <imperative verb> <what> in \`<real/path>\``
+  - `<real/path>`: confirm it exists (or mark it "(new)") with `gearmod_code_search` or `gearmod_code_node`; never invent a path.
   - `T001`: sequential number, in execution order, with no gaps.
   - `[P]`: optional; only when the task touches different files from the other tasks in the phase and does not depend on them.
   - `[H1]`: the Specification story that the task delivers (H1 = Story 1; the story tag follows the template of `idioma`). Setup, foundation and polish tasks carry no story.
