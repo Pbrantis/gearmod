@@ -161,7 +161,10 @@ export const files = {
     label: 'Ações do arquivo'
   },
   terminal: {
-    closeRunningConfirm: 'Este terminal ainda está em execução. Fechar a aba encerra o que estiver rodando nele. Fechar?',
+    closeRunningEyebrow: 'Fechar terminal',
+    closeRunningTitle: (title: string) => `Fechar ${title}?`,
+    closeRunningText: 'Este terminal ainda está em execução. Fechar a aba encerra o que estiver rodando nele.',
+    closeRunningOk: 'Encerrar e fechar',
     openLinkFailed: 'Não foi possível abrir o link',
     linkHint: 'Ctrl+clique para abrir',
     interactive: (shell: string) => `${shell} interativo`,

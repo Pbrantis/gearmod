@@ -14,7 +14,7 @@ export function cardTypeView(types: readonly CardTypeDef[], id: string): { name:
 /** Type badge (`.pill`) in the registered color; unknown type gets the badge's neutral color. */
 export function CardTypePill({ types, type }: { types: readonly CardTypeDef[]; type: string }): React.JSX.Element {
   const view = cardTypeView(types, type)
-  return <span className={`pill cardtype-pill ${view.color ? 'tc' : ''}`} title={view.name} style={view.color ? { '--tc': view.color } as React.CSSProperties : undefined}>{view.name}</span>
+  return <span className={`pill cardtype-pill ${view.color ? 'tc' : ''}`} data-tip={view.name} style={view.color ? { '--tc': view.color } as React.CSSProperties : undefined}>{view.name}</span>
 }
 
 /** Type options for the selectors (with the color); keeps the card's current type even if it left the list. */

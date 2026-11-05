@@ -59,7 +59,7 @@ function CardTile({ card, types, state, agent, agents, dropLabel, dragProps, onP
   return <article className={`card ${run === 'finished' ? 'fin' : ''} ${run === 'paused' ? 'paused' : ''} ${open ? 'planopen' : ''} ${ready ? 'ready' : ''} ${dropLabel ? 'drop-before' : ''}`} data-plabel={dropLabel} onClick={onOpen} {...dragProps}>
     <div className="pills"><CardTypePill types={types} type={card.type} /><span className={`pill ${card.priority}`}>{t.priority[card.priority]}</span><ComplexityBadge complexity={card.complexity} onClick={onComplexity} /></div>
     <button type="button" className="cardchat tip" data-tip={t.tile.openChat} aria-label={t.tile.openChat} onClick={(e) => { e.stopPropagation(); onChat() }}><ChatIcon /></button>
-    <h3 className="ctitle" title={card.title || undefined}>{card.title || t.newCard}</h3>
+    <h3 className="ctitle" data-tip={card.title || undefined}>{card.title || t.newCard}</h3>
     {card.description && <div className="desc">{plain(card.description)}</div>}
     {card.pending.changes > 0 && <button type="button" className="badge ask" onClick={(e) => { e.stopPropagation(); onPending() }}><span className="dot pulse" />{t.tile.changesWaiting(card.pending.changes)}</button>}
     {card.pending.toSend > 0 && <button type="button" className="badge ask" data-tip={t.tile.sendTip} onClick={(e) => { e.stopPropagation(); onSend() }}><span className="dot pulse" />{t.tile.changesToSend(card.pending.toSend)}</button>}

@@ -13,6 +13,7 @@ import { pop } from './popout'
 import { FileFind, type FindOptions } from './FileFind'
 import { terminalTheme } from './terminalTheme'
 import { nearestDockEdge } from './dockLayout'
+import { useAsk } from './useAsk'
 import { toast } from './toasts'
 import { plainError } from './NoticeDialog'
 import { tr, useT } from './i18n'
@@ -82,6 +83,11 @@ function Screen({ tab, visible }: { tab: TerminalTab; visible: boolean }): React
 }
 
 export function TerminalPanel({ standalone = false }: { standalone?: boolean } = {}): React.JSX.Element | null {
+  const { ask, dialog } = useAsk()
+  const closeTab = async (tab: TerminalTab): Promise<void> => {
+    if (terminal.running(tab.id) && !(await ask({ eyebrow: t.files.terminal.closeRunningEyebrow, title: t.files.terminal.closeRunningTitle(tab.title), text: t.files.terminal.closeRunningText, ok: t.files.terminal.closeRunningOk, danger: true }))) return
+    terminal.close(tab.id)
+  }
   const t = useT(), { open, tabs, active, error, context } = useTerminal(), [position, setPosition] = useState<LayoutPosition>(() => { try { const saved = localStorage.getItem('gearmod.terminalPosition'); return saved === 'top' || saved === 'left' || saved === 'right' ? saved : 'bottom' } catch { return 'bottom' } }), [expanded, setExpanded] = useState(false), [height, setHeight] = useState(() => { try { return Number(localStorage.getItem('gearmod.terminalHeight')) || 300 } catch { return 300 } }), [width, setWidth] = useState(() => { try { return Number(localStorage.getItem('gearmod.terminalWidth')) || Math.round(window.innerWidth * .48) } catch { return Math.round(window.innerWidth * .48) } }), [dragging, setDragging] = useState(false), [moveTarget, setMoveTarget] = useState<LayoutPosition>()
   const current = tabs.find((tab) => tab.id === active), panel = useRef<HTMLElement>(null)
   useEffect(() => {
@@ -122,13 +128,14 @@ export function TerminalPanel({ standalone = false }: { standalone?: boolean } =
   return <section ref={panel} className={`term terminalpty ${standalone ? 'standalone' : expanded ? 'expanded' : position} ${dragging ? 'dragging' : ''}`} style={standalone || expanded ? undefined : size} aria-label={t.files.terminal.panelLabel}>
     {!standalone && !expanded && <div className={`term-grip ${position}`} role="separator" aria-orientation={position === 'top' || position === 'bottom' ? 'horizontal' : 'vertical'} aria-label={position === 'top' || position === 'bottom' ? t.files.terminal.resizeHeight : t.files.terminal.resizeWidth} onPointerDown={resize} />}
     {moveTarget && <div className={`term-move-preview ${moveTarget}`} aria-hidden="true" />}
-    <div className="term-tabs" onPointerDown={moveHeader}><span className="powershell-icon" aria-hidden="true">›_</span><div className="term-tablist">{tabs.map((tab) => <span key={tab.id} className={`term-tab ${tab.id === active ? 'on' : ''}`}><button type="button" onClick={() => terminal.select(tab.id)} data-tip={tab.cwd}>{tab.exited ? t.files.terminal.tabExited(tab.title) : tab.title}</button><button type="button" className="x" aria-label={t.files.terminal.closeTab(tab.title)} onClick={() => terminal.close(tab.id)}>×</button></span>)}</div>
+    <div className="term-tabs" onPointerDown={moveHeader}><span className="powershell-icon" aria-hidden="true">›_</span><div className="term-tablist">{tabs.map((tab) => <span key={tab.id} className={`term-tab ${tab.id === active ? 'on' : ''}`}><button type="button" onClick={() => terminal.select(tab.id)} data-tip={tab.cwd}>{tab.exited ? t.files.terminal.tabExited(tab.title) : tab.title}</button><button type="button" className="x" aria-label={t.files.terminal.closeTab(tab.title)} onClick={() => void closeTab(tab)}>×</button></span>)}</div>
       <button type="button" className="ibtn" data-tip={t.files.terminal.newTip} aria-label={t.files.terminal.newLabel} onClick={() => void terminal.newTab()}>+</button><span className="term-header-drag" aria-hidden="true" />
       {current && <button type="button" className="term-link" onClick={() => terminal.clear(current.id)}>{t.common.clear}</button>}
       <WindowLayoutMenu move={(value) => { if (standalone) void window.gearmod.invoke('windows:place', { placement: value }); else moveTo(value) }} detach={!standalone ? () => void detach() : undefined} detachDisabled={!current || !context} />
       {!standalone && <button type="button" className="ibtn" aria-label={expanded ? t.files.terminal.restore : t.files.terminal.expand} onClick={fill}>{expanded ? <CollapseIcon /> : <ExpandIcon />}</button>}<button type="button" className="ibtn" aria-label={t.files.terminal.hide} onClick={() => { if (standalone) window.close(); else terminal.setOpen(false) }}><CloseIcon /></button>
     </div>
     {error && <p className="term-error">{error}</p>}{tabs.map((tab) => <Screen key={tab.id} tab={tab} visible={active === tab.id} />)}
+    {dialog}
     {!current && <div className="term-empty"><button type="button" onClick={() => void terminal.newTab()}>{t.files.terminal.openPowerShell}</button></div>}
   </section>
 }

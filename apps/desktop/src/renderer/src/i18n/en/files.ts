@@ -162,7 +162,10 @@ export const files: typeof source = {
     label: 'File actions'
   },
   terminal: {
-    closeRunningConfirm: 'This terminal is still running. Closing the tab will stop whatever is running in it. Close it?',
+    closeRunningEyebrow: 'Close terminal',
+    closeRunningTitle: (title: string) => `Close ${title}?`,
+    closeRunningText: 'This terminal is still running. Closing the tab will stop whatever is running in it.',
+    closeRunningOk: 'Stop and close',
     openLinkFailed: 'Could not open the link',
     linkHint: 'Ctrl+click to open',
     interactive: (shell: string) => `Interactive ${shell}`,

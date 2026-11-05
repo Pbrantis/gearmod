@@ -79,9 +79,10 @@ export const terminal = {
     if (!id) id = await terminal.newTab()
     if (id) for (const line of command.split(/\r?\n/).filter((item) => item.trim())) await terminal.send(id, line)
   },
+  /** Whether the tab's process is still running (closing it then stops what runs there, so the screen confirms first). */
+  running: (id: string): boolean => state.tabs.some((tab) => tab.id === id && !tab.exited),
+  /** Closes the tab and kills its process. The screen asks for confirmation before, when `running`. */
   close(id: string): void {
-    // Closing the tab kills its process: if it is still running, confirm first.
-    if (state.tabs.some((tab) => tab.id === id && !tab.exited) && !window.confirm(tr().files.terminal.closeRunningConfirm)) return
     void window.gearmod.invoke('terminal:kill', { id }).catch(() => undefined)
     const tabs = state.tabs.filter((tab) => tab.id !== id)
     set({ tabs, active: state.active === id ? tabs.at(-1)?.id ?? null : state.active, open: tabs.length > 0 && state.open })
