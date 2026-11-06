@@ -16,12 +16,12 @@ concurrency:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag matches the app version
         id: version
         run: |
@@ -39,9 +39,9 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -63,7 +63,7 @@ jobs:
         run: |
           $exe = "apps/desktop/dist/GearMod-Setup-$env:VERSION-x64.exe"
           if (-not (Test-Path $exe)) { throw "Installer not found: $exe" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-windows
           path: apps/desktop/dist/GearMod-Setup-${{ env.VERSION }}-x64.exe
@@ -71,14 +71,14 @@ jobs:
 
   installer-linux:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -98,7 +98,7 @@ jobs:
           for file in "GearMod-$VERSION-x86_64.AppImage" "GearMod-$VERSION-amd64.deb"; do
             [ -f "apps/desktop/dist/$file" ] || { echo "::error::Package not found: $file"; exit 1; }
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-linux
           path: |
@@ -109,12 +109,12 @@ jobs:
   publish:
     # Runs only when both package jobs succeed, so a Release never goes out with missing files.
     needs: [version, installer-windows, installer-linux]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release
           merge-multiple: true

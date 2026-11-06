@@ -14,10 +14,10 @@ permissions:
 jobs:
   close:
     if: github.event.pull_request.user.login != 'flucassena' && github.event.pull_request.user.type != 'Bot'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo
